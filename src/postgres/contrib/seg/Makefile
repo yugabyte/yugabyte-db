@@ -1,11 +1,14 @@
 # contrib/seg/Makefile
 
 MODULE_big = seg
-OBJS = seg.o segparse.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	seg.o \
+	segparse.o
 
 EXTENSION = seg
-DATA = seg--1.1.sql seg--1.1--1.2.sql seg--1.2--1.3.sql \
-	seg--1.0--1.1.sql seg--unpackaged--1.0.sql
+DATA = seg--1.1.sql seg--1.1--1.2.sql seg--1.2--1.3.sql seg--1.3--1.4.sql \
+	seg--1.0--1.1.sql
 PGFILEDESC = "seg - line segment data type"
 
 HEADERS = segdata.h

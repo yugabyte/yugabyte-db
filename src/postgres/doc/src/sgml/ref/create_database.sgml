@@ -25,6 +25,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
     [ [ WITH ] [ OWNER [=] <replaceable class="parameter">user_name</replaceable> ]
            [ TEMPLATE [=] <replaceable class="parameter">template</replaceable> ]
            [ ENCODING [=] <replaceable class="parameter">encoding</replaceable> ]
+           [ LOCALE [=] <replaceable class="parameter">locale</replaceable> ]
            [ LC_COLLATE [=] <replaceable class="parameter">lc_collate</replaceable> ]
            [ LC_CTYPE [=] <replaceable class="parameter">lc_ctype</replaceable> ]
            [ TABLESPACE [=] <replaceable class="parameter">tablespace_name</replaceable> ]
@@ -53,8 +54,10 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
    system database <literal>template1</literal>.  A different template can be
    specified by writing <literal>TEMPLATE
    <replaceable class="parameter">name</replaceable></literal>.  In particular,
-   by writing <literal>TEMPLATE template0</literal>, you can create a virgin
-   database containing only the standard objects predefined by your
+   by writing <literal>TEMPLATE template0</literal>, you can create a pristine
+   database (one where no user-defined objects exist and where the system
+   objects have not been altered)
+   containing only the standard objects predefined by your
    version of <productname>PostgreSQL</productname>.  This is useful
    if you wish to avoid copying
    any installation-local objects that might have been added to
@@ -112,11 +115,31 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
       </listitem>
      </varlistentry>
      <varlistentry>
+      <term><replaceable class="parameter">locale</replaceable></term>
+      <listitem>
+       <para>
+        This is a shortcut for setting <symbol>LC_COLLATE</symbol>
+        and <symbol>LC_CTYPE</symbol> at once.  If you specify this,
+        you cannot specify either of those parameters.
+       </para>
+       <tip>
+        <para>
+         The other locale settings <xref linkend="guc-lc-messages"/>, <xref
+         linkend="guc-lc-monetary"/>, <xref linkend="guc-lc-numeric"/>, and
+         <xref linkend="guc-lc-time"/> are not fixed per database and are not
+         set by this command.  If you want to make them the default for a
+         specific database, you can use <literal>ALTER DATABASE
+         ... SET</literal>.
+        </para>
+       </tip>
+      </listitem>
+     </varlistentry>
+     <varlistentry>
       <term><replaceable class="parameter">lc_collate</replaceable></term>
       <listitem>
        <para>
         Collation order (<literal>LC_COLLATE</literal>) to use in the new database.
-        This affects the sort order applied to strings, e.g. in queries with
+        This affects the sort order applied to strings, e.g., in queries with
         ORDER BY, as well as the order used in indexes on text columns.
         The default is to use the collation order of the template database.
         See below for additional restrictions.
@@ -128,7 +151,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
       <listitem>
        <para>
         Character classification (<literal>LC_CTYPE</literal>) to use in the new
-        database. This affects the categorization of characters, e.g. lower,
+        database. This affects the categorization of characters, e.g., lower,
         upper and digit. The default is to use the character classification of
         the template database. See below for additional restrictions.
        </para>
@@ -203,7 +226,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
    </para>
 
    <para>
-    Use <xref linkend="sql-dropdatabase"/> to remove a database.
+    Use <link linkend="sql-dropdatabase"><command>DROP DATABASE</command></link> to remove a database.
    </para>
 
    <para>
@@ -212,9 +235,9 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
    </para>
 
    <para>
-    Database-level configuration parameters (set via <xref
-    linkend="sql-alterdatabase"/>) are not copied from the template
-    database.
+    Database-level configuration parameters (set via <link
+    linkend="sql-alterdatabase"><command>ALTER DATABASE</command></link>) and database-level permissions (set via
+    <link linkend="sql-grant"><command>GRANT</command></link>) are not copied from the template database.
    </para>
 
   <para>
@@ -287,7 +310,7 @@ CREATE DATABASE sales OWNER salesapp TABLESPACE salesspace;
    To create a database <literal>music</literal> with a different locale:
 <programlisting>
 CREATE DATABASE music
-    LC_COLLATE 'sv_SE.utf8' LC_CTYPE 'sv_SE.utf8'
+    LOCALE 'sv_SE.utf8'
     TEMPLATE template0;
 </programlisting>
     In this example, the <literal>TEMPLATE template0</literal> clause is required if
@@ -300,7 +323,7 @@ CREATE DATABASE music
    different character set encoding:
 <programlisting>
 CREATE DATABASE music2
-    LC_COLLATE 'sv_SE.iso885915' LC_CTYPE 'sv_SE.iso885915'
+    LOCALE 'sv_SE.iso885915'
     ENCODING LATIN9
     TEMPLATE template0;
 </programlisting>

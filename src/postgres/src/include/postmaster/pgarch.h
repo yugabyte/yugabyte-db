@@ -3,7 +3,7 @@
  * pgarch.h
  *	  Exports from postmaster/pgarch.c.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/postmaster/pgarch.h
@@ -26,14 +26,10 @@
 #define MAX_XFN_CHARS	40
 #define VALID_XFN_CHARS "0123456789ABCDEF.history.backup.partial"
 
-/* ----------
- * Functions called from postmaster
- * ----------
- */
-extern int	pgarch_start(void);
-
-#ifdef EXEC_BACKEND
-extern void PgArchiverMain(int argc, char *argv[]) pg_attribute_noreturn();
-#endif
+extern Size PgArchShmemSize(void);
+extern void PgArchShmemInit(void);
+extern bool PgArchCanRestart(void);
+extern void PgArchiverMain(void) pg_attribute_noreturn();
+extern void PgArchWakeup(void);
 
 #endif							/* _PGARCH_H */

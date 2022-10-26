@@ -17,19 +17,20 @@ teardown
 }
 
 session "s0"
+setup { SET synchronous_commit=on; }
 step "s0_begin" { BEGIN; }
 step "s0_begin_sub0" { SAVEPOINT s0; }
-step "s0_log_assignment" { SELECT txid_current() IS NULL; }
+step "s0_log_assignment" { SELECT pg_current_xact_id() IS NULL; }
 step "s0_begin_sub1" { SAVEPOINT s1; }
 step "s0_sub_get_base_snap" { INSERT INTO dummy VALUES (0); }
 step "s0_insert" { INSERT INTO harvest VALUES (1, 2, 3); }
 step "s0_end_sub0" { RELEASE SAVEPOINT s0; }
 step "s0_end_sub1" { RELEASE SAVEPOINT s1; }
-step "s0_insert2" { INSERT INTO harvest VALUES (1, 2, 3, 4); }
 step "s0_commit" { COMMIT; }
 step "s0_get_changes" { SELECT data FROM pg_logical_slot_get_changes('isolation_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1'); }
 
 session "s1"
+setup { SET synchronous_commit=on; }
 step "s1_produce_new_snap" { ALTER TABLE harvest ADD COLUMN mangos int; }
 
 # start top-level without base snap, get base snap in subxact, then create new

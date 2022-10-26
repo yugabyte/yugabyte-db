@@ -25,6 +25,7 @@
 
 #include "miscadmin.h"
 #include "access/sysattr.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
@@ -46,6 +47,7 @@
 #include "commands/ybccmds.h"
 
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -193,6 +195,8 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	ListCell  *cell;
 	IndexElem *index_elem;
 
+#ifdef NEIL_OID
+	/* OID is now a regular column */
 	/* For tables created WITH (oids = true), we expect oid column to be the only PK. */
 	if (desc->tdhasoid)
 	{
@@ -230,7 +234,8 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 												 is_desc,
 												 is_nulls_first));
 	}
-	else if (primary_key != NULL)
+#endif
+	if (primary_key != NULL)
 	{
 		/* Add all key columns first with respect to compound key order */
 		foreach(cell, primary_key->yb_index_params)
@@ -403,7 +408,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			} else {
 				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
 				bool is_pg_catalog_table_ =
-					IsSystemNamespace(namespaceId) && IsToastNamespace(namespaceId);
+					IsCatalogNamespace(namespaceId) && IsToastNamespace(namespaceId);
 				/*
 				 * Checking if  table_oid is valid simple means if the table is
 				 * part of a tablegroup.
@@ -518,7 +523,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		RangeVar   *rv = (RangeVar *) lfirst(list_head(stmt->inhRelations));
 		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
 
-		Relation parentRel = heap_open(parentOid, NoLock);
+		Relation parentRel = table_open(parentOid, NoLock);
 		Assert(!OidIsValid(tablegroupId));
 		tablegroupId = YbGetTableProperties(parentRel)->tablegroup_oid;
 		List *idxlist = RelationGetIndexList(parentRel);
@@ -535,17 +540,12 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 				relation_close(idxRel, AccessShareLock);
 				continue;
 			}
-			AttrNumber *attmap;
-			IndexStmt  *idxstmt;
-			Oid         constraintOid;
+			AttrMap *attmap;
+			IndexStmt *idxstmt;
+			Oid constraintOid;
 
-			attmap = convert_tuples_by_name_map(RelationGetDescr(rel),
-								RelationGetDescr(parentRel),
-								gettext_noop("could not convert row type"));
-			idxstmt =
-				generateClonedIndexStmt(NULL, RelationGetRelid(rel), idxRel,
-						attmap, RelationGetDescr(rel)->natts,
-						&constraintOid);
+			attmap = build_attrmap_by_name(RelationGetDescr(rel), RelationGetDescr(parentRel));
+			idxstmt = generateClonedIndexStmt(NULL, idxRel, attmap, &constraintOid);
 
 			primary_key = makeNode(Constraint);
 			primary_key->contype      = CONSTR_PRIMARY;
@@ -565,8 +565,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 			relation_close(idxRel, AccessShareLock);
 		}
-		heap_close(parentRel, NoLock);
-		heap_close(rel, AccessShareLock);
+		table_close(parentRel, NoLock);
+		table_close(rel, AccessShareLock);
 	}
 
 	/* By default, inherit the colocated option from the database */
@@ -939,9 +939,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				}
 			}
 
+			/* YB_TODO(neil@yugabyte)
+			 * Read typeOid from "values" and "nulls" instead of tuple header.
+			 */
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
-			typeOid = HeapTupleGetOid(typeTuple);
+			typeOid = YbHeapTupleGetOid(typeTuple);
 			ReleaseSysCache(typeTuple);
+
 			order = RelationGetNumberOfAttributes(rel) + *col;
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
@@ -1153,7 +1157,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
-				dependent_rel = heap_openrv(((PartitionCmd *)cmd->def)->name,
+				dependent_rel = table_openrv(((PartitionCmd *)cmd->def)->name,
 											AccessExclusiveLock);
 				/*
 				 * If the partition table is not YB supported table including
@@ -1162,7 +1166,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				if (!IsYBBackedRelation(dependent_rel) ||
 					dependent_rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 				{
-					heap_close(dependent_rel, AccessExclusiveLock);
+					table_close(dependent_rel, AccessExclusiveLock);
 					dependent_rel = NULL;
 				}
 			}
@@ -1173,8 +1177,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			else if (cmd->subtype == AT_AddConstraintRecurse &&
 					 ((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 			{
-				dependent_rel = heap_openrv(((Constraint *) cmd->def)->pktable,
-											AccessExclusiveLock);
+				dependent_rel = table_openrv(((Constraint *) cmd->def)->pktable,
+											 AccessExclusiveLock);
 			}
 			/*
 			 * For drop foreign key case, assigning the primary key table
@@ -1216,8 +1220,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					if (con->contype == CONSTRAINT_FOREIGN &&
 						relationId != con->confrelid)
 					{
-						dependent_rel = heap_open(con->confrelid,
-												  AccessExclusiveLock);
+						dependent_rel = table_open(con->confrelid,
+												   AccessExclusiveLock);
 					}
 				}
 			}
@@ -1239,7 +1243,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 							 errmsg("This ALTER TABLE command is"
 									" not yet supported.")));
 				}
-				dependent_rel = heap_openrv(index->relation,
+				dependent_rel = table_openrv(index->relation,
 											AccessExclusiveLock);
 			}
 			/*
@@ -1257,7 +1261,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				HandleYBStatus(
 					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 				handles = lappend(handles, alter_cmd_handle);
-				heap_close(dependent_rel, AccessExclusiveLock);
+				table_close(dependent_rel, AccessExclusiveLock);
 			}
 			*needsYBAlter = true;
 			break;
@@ -1472,7 +1476,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 
 	heapId = IndexGetRelation(indexId, false);
 	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
-	heapRel = heap_open(heapId, ShareLock);
+	heapRel = table_open(heapId, ShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -1504,7 +1508,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 				   out_param);
 
 	index_close(indexRel, ShareLock);
-	heap_close(heapRel, ShareLock);
+	table_close(heapRel, ShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);
@@ -1513,7 +1517,8 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	/* output tuples */
-	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt));
+	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt),
+									  &TTSOpsVirtual);
 	do_text_output_oneline(tstate, out_param->bfoutput->data);
 	end_tup_output(tstate);
 }
@@ -1523,24 +1528,23 @@ TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
 	Oid			result_type = TEXTOID;
 
 	/* Need a tuple descriptor representing a single TEXT or XML column */
-	tupdesc = CreateTemplateTupleDesc(1, false);
+	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
 					   result_type, -1, 0);
 	return tupdesc;
 }
 
 void
-YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel, AttrNumber *new_to_old_attmap) {
+YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel,
+					   AttrMap *new_to_old_attmap)
+{
 	Relation index_rel = index_open(index_oid, AccessExclusiveLock);
 
 	/* Construct the new CREATE INDEX stmt */
-
 	IndexStmt* index_stmt = generateClonedIndexStmt(NULL /* heapRel, we provide an oid instead */,
-					new_rel_id,
-					index_rel,
-					new_to_old_attmap,
-					RelationGetDescr(old_rel)->natts,
-					NULL /* parent constraint OID pointer */);
+													index_rel,
+													new_to_old_attmap,
+													NULL /* parent constraint OID pointer */);
 
 	const char* index_name = RelationGetRelationName(index_rel);
 	const char* index_namespace_name = get_namespace_name(index_rel->rd_rel->relnamespace);

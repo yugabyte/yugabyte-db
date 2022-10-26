@@ -14,6 +14,10 @@ INSERT INTO PG_LSN_TBL VALUES ('-1/0');
 INSERT INTO PG_LSN_TBL VALUES (' 0/12345678');
 INSERT INTO PG_LSN_TBL VALUES ('ABCD/');
 INSERT INTO PG_LSN_TBL VALUES ('/ABCD');
+
+-- Min/Max aggregation
+SELECT MIN(f1), MAX(f1) FROM PG_LSN_TBL;
+
 DROP TABLE PG_LSN_TBL;
 
 -- Operators
@@ -23,6 +27,17 @@ SELECT '0/16AE7F7' < '0/16AE7F8'::pg_lsn;
 SELECT '0/16AE7F8' > pg_lsn '0/16AE7F7';
 SELECT '0/16AE7F7'::pg_lsn - '0/16AE7F8'::pg_lsn;
 SELECT '0/16AE7F8'::pg_lsn - '0/16AE7F7'::pg_lsn;
+SELECT '0/16AE7F7'::pg_lsn + 16::numeric;
+SELECT 16::numeric + '0/16AE7F7'::pg_lsn;
+SELECT '0/16AE7F7'::pg_lsn - 16::numeric;
+SELECT 'FFFFFFFF/FFFFFFFE'::pg_lsn + 1::numeric;
+SELECT 'FFFFFFFF/FFFFFFFE'::pg_lsn + 2::numeric; -- out of range error
+SELECT '0/1'::pg_lsn - 1::numeric;
+SELECT '0/1'::pg_lsn - 2::numeric; -- out of range error
+SELECT '0/0'::pg_lsn + ('FFFFFFFF/FFFFFFFF'::pg_lsn - '0/0'::pg_lsn);
+SELECT 'FFFFFFFF/FFFFFFFF'::pg_lsn - ('FFFFFFFF/FFFFFFFF'::pg_lsn - '0/0'::pg_lsn);
+SELECT '0/16AE7F7'::pg_lsn + 'NaN'::numeric;
+SELECT '0/16AE7F7'::pg_lsn - 'NaN'::numeric;
 
 -- Check btree and hash opclasses
 EXPLAIN (COSTS OFF)

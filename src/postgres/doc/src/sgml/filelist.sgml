@@ -36,13 +36,13 @@
 <!ENTITY client-auth   SYSTEM "client-auth.sgml">
 <!ENTITY diskusage     SYSTEM "diskusage.sgml">
 <!ENTITY high-availability      SYSTEM "high-availability.sgml">
+<!ENTITY installbin    SYSTEM "install-binaries.sgml">
 <!ENTITY installation  SYSTEM "installation.sgml">
 <!ENTITY installw      SYSTEM "install-windows.sgml">
 <!ENTITY maintenance   SYSTEM "maintenance.sgml">
 <!ENTITY manage-ag     SYSTEM "manage-ag.sgml">
 <!ENTITY monitoring    SYSTEM "monitoring.sgml">
 <!ENTITY regress       SYSTEM "regress.sgml">
-<!ENTITY recovery-config SYSTEM "recovery-config.sgml">
 <!ENTITY runtime       SYSTEM "runtime.sgml">
 <!ENTITY config        SYSTEM "config.sgml">
 <!ENTITY user-manag    SYSTEM "user-manag.sgml">
@@ -89,7 +89,9 @@
 <!ENTITY spgist     SYSTEM "spgist.sgml">
 <!ENTITY gin        SYSTEM "gin.sgml">
 <!ENTITY brin       SYSTEM "brin.sgml">
+<!ENTITY hash       SYSTEM "hash.sgml">
 <!ENTITY planstats    SYSTEM "planstats.sgml">
+<!ENTITY tableam    SYSTEM "tableam.sgml">
 <!ENTITY indexam    SYSTEM "indexam.sgml">
 <!ENTITY nls        SYSTEM "nls.sgml">
 <!ENTITY plhandler  SYSTEM "plhandler.sgml">
@@ -102,6 +104,7 @@
 <!ENTITY storage    SYSTEM "storage.sgml">
 <!ENTITY tablesample-method SYSTEM "tablesample-method.sgml">
 <!ENTITY generic-wal SYSTEM "generic-wal.sgml">
+<!ENTITY backup-manifest SYSTEM "backup-manifest.sgml">
 
 <!-- contrib information -->
 <!ENTITY contrib         SYSTEM "contrib.sgml">
@@ -128,6 +131,7 @@
 <!ENTITY lo              SYSTEM "lo.sgml">
 <!ENTITY ltree           SYSTEM "ltree.sgml">
 <!ENTITY oid2name        SYSTEM "oid2name.sgml">
+<!ENTITY oldsnapshot     SYSTEM "oldsnapshot.sgml">
 <!ENTITY pageinspect     SYSTEM "pageinspect.sgml">
 <!ENTITY passwordcheck   SYSTEM "passwordcheck.sgml">
 <!ENTITY pgbuffercache   SYSTEM "pgbuffercache.sgml">
@@ -135,9 +139,9 @@
 <!ENTITY pgfreespacemap  SYSTEM "pgfreespacemap.sgml">
 <!ENTITY pgprewarm       SYSTEM "pgprewarm.sgml">
 <!ENTITY pgrowlocks      SYSTEM "pgrowlocks.sgml">
-<!ENTITY pgstandby       SYSTEM "pgstandby.sgml">
 <!ENTITY pgstatstatements SYSTEM "pgstatstatements.sgml">
 <!ENTITY pgstattuple     SYSTEM "pgstattuple.sgml">
+<!ENTITY pgsurgery       SYSTEM "pgsurgery.sgml">
 <!ENTITY pgtrgm          SYSTEM "pgtrgm.sgml">
 <!ENTITY pgvisibility    SYSTEM "pgvisibility.sgml">
 <!ENTITY postgres-fdw    SYSTEM "postgres-fdw.sgml">
@@ -166,14 +170,26 @@
 <!ENTITY sourcerepo SYSTEM "sourcerepo.sgml">
 
 <!ENTITY release    SYSTEM "release.sgml">
-<!ENTITY release-11     SYSTEM "release-11.sgml">
+<!ENTITY release-15     SYSTEM "release-15.sgml">
 
+<!ENTITY limits     SYSTEM "limits.sgml">
 <!ENTITY acronyms   SYSTEM "acronyms.sgml">
+<!ENTITY glossary   SYSTEM "glossary.sgml">
+<!ENTITY color      SYSTEM "color.sgml">
 
 <!ENTITY features-supported   SYSTEM "features-supported.sgml">
 <!ENTITY features-unsupported SYSTEM "features-unsupported.sgml">
 
 <!ENTITY errcodes-table SYSTEM "errcodes-table.sgml">
+<!ENTITY keywords-table SYSTEM "keywords-table.sgml">
 
 <!-- back matter -->
 <!ENTITY biblio     SYSTEM "biblio.sgml">
+
+<!-- Stubs for removed entries to preserve public links -->
+<!ENTITY obsolete SYSTEM "appendix-obsolete.sgml">
+<!ENTITY obsolete-recovery-config SYSTEM "appendix-obsolete-recovery-config.sgml">
+<!ENTITY obsolete-default-roles SYSTEM "appendix-obsolete-default-roles.sgml">
+<!ENTITY obsolete-pgxlogdump SYSTEM "appendix-obsolete-pgxlogdump.sgml">
+<!ENTITY obsolete-pgresetxlog SYSTEM "appendix-obsolete-pgresetxlog.sgml">
+<!ENTITY obsolete-pgreceivexlog SYSTEM "appendix-obsolete-pgreceivexlog.sgml">

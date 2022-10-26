@@ -2,7 +2,7 @@
  * launcher.c
  *	   PostgreSQL logical replication worker launcher process
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/launcher.c
@@ -17,42 +17,36 @@
 
 #include "postgres.h"
 
-#include "funcapi.h"
-#include "miscadmin.h"
-#include "pgstat.h"
-
 #include "access/heapam.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
+#include "access/tableam.h"
 #include "access/xact.h"
-
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
-
+#include "funcapi.h"
 #include "libpq/pqsignal.h"
-
+#include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/fork_process.h"
+#include "postmaster/interrupt.h"
 #include "postmaster/postmaster.h"
-
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
 #include "replication/slot.h"
 #include "replication/walreceiver.h"
 #include "replication/worker_internal.h"
-
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
-
 #include "tcop/tcopprot.h"
-
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/ps_status.h"
-#include "utils/timeout.h"
 #include "utils/snapmgr.h"
+#include "utils/timeout.h"
 
 /* max sleep time between cycles (3min) */
 #define DEFAULT_NAPTIME_PER_CYCLE 180000L
@@ -73,34 +67,11 @@ typedef struct LogicalRepCtxStruct
 
 LogicalRepCtxStruct *LogicalRepCtx;
 
-typedef struct LogicalRepWorkerId
-{
-	Oid			subid;
-	Oid			relid;
-} LogicalRepWorkerId;
-
-typedef struct StopWorkersData
-{
-	int			nestDepth;		/* Sub-transaction nest level */
-	List	   *workers;		/* List of LogicalRepWorkerId */
-	struct StopWorkersData *parent; /* This need not be an immediate
-									 * subtransaction parent */
-} StopWorkersData;
-
-/*
- * Stack of StopWorkersData elements. Each stack element contains the workers
- * to be stopped for that subtransaction.
- */
-static StopWorkersData *on_commit_stop_workers = NULL;
-
 static void ApplyLauncherWakeup(void);
 static void logicalrep_launcher_onexit(int code, Datum arg);
 static void logicalrep_worker_onexit(int code, Datum arg);
 static void logicalrep_worker_detach(void);
 static void logicalrep_worker_cleanup(LogicalRepWorker *worker);
-
-/* Flags set by signal handlers */
-static volatile sig_atomic_t got_SIGHUP = false;
 
 static bool on_commit_launcher_wakeup = false;
 
@@ -118,7 +89,7 @@ get_subscription_list(void)
 {
 	List	   *res = NIL;
 	Relation	rel;
-	HeapScanDesc scan;
+	TableScanDesc scan;
 	HeapTuple	tup;
 	MemoryContext resultcxt;
 
@@ -131,12 +102,16 @@ get_subscription_list(void)
 	 * the secondary effect that it sets RecentGlobalXmin.  (This is critical
 	 * for anything that reads heap pages, because HOT may decide to prune
 	 * them even if the process doesn't attempt to modify any tuples.)
+	 *
+	 * FIXME: This comment is inaccurate / the code buggy. A snapshot that is
+	 * not pushed/active does not reliably prevent HOT pruning (->xmin could
+	 * e.g. be cleared when cache invalidations are processed).
 	 */
 	StartTransactionCommand();
 	(void) GetTransactionSnapshot();
 
-	rel = heap_open(SubscriptionRelationId, AccessShareLock);
-	scan = heap_beginscan_catalog(rel, 0, NULL);
+	rel = table_open(SubscriptionRelationId, AccessShareLock);
+	scan = table_beginscan_catalog(rel, 0, NULL);
 
 	while (HeapTupleIsValid(tup = heap_getnext(scan, ForwardScanDirection)))
 	{
@@ -153,7 +128,7 @@ get_subscription_list(void)
 		oldcxt = MemoryContextSwitchTo(resultcxt);
 
 		sub = (Subscription *) palloc0(sizeof(Subscription));
-		sub->oid = HeapTupleGetOid(tup);
+		sub->oid = subform->oid;
 		sub->dbid = subform->subdbid;
 		sub->owner = subform->subowner;
 		sub->enabled = subform->subenabled;
@@ -164,8 +139,8 @@ get_subscription_list(void)
 		MemoryContextSwitchTo(oldcxt);
 	}
 
-	heap_endscan(scan);
-	heap_close(rel, AccessShareLock);
+	table_endscan(scan);
+	table_close(rel, AccessShareLock);
 
 	CommitTransactionCommand();
 
@@ -221,12 +196,8 @@ WaitForReplicationWorkerAttach(LogicalRepWorker *worker,
 		 * about the worker attach.  But we don't expect to have to wait long.
 		 */
 		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 					   10L, WAIT_EVENT_BGWORKER_STARTUP);
-
-		/* emergency bailout if postmaster has died */
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
 
 		if (rc & WL_LATCH_SET)
 		{
@@ -234,8 +205,6 @@ WaitForReplicationWorkerAttach(LogicalRepWorker *worker,
 			CHECK_FOR_INTERRUPTS();
 		}
 	}
-
-	return;
 }
 
 /*
@@ -307,8 +276,8 @@ logicalrep_worker_launch(Oid dbid, Oid subid, const char *subname, Oid userid,
 	TimestampTz now;
 
 	ereport(DEBUG1,
-			(errmsg("starting logical replication worker for subscription \"%s\"",
-					subname)));
+			(errmsg_internal("starting logical replication worker for subscription \"%s\"",
+							 subname)));
 
 	/* Report this after the initial starting message for consistency. */
 	if (max_replication_slots == 0)
@@ -410,6 +379,7 @@ retry:
 	worker->relid = relid;
 	worker->relstate = SUBREL_STATE_UNKNOWN;
 	worker->relstate_lsn = InvalidXLogRecPtr;
+	worker->stream_fileset = NULL;
 	worker->last_lsn = InvalidXLogRecPtr;
 	TIMESTAMP_NOBEGIN(worker->last_send_time);
 	TIMESTAMP_NOBEGIN(worker->last_recv_time);
@@ -498,12 +468,8 @@ logicalrep_worker_stop(Oid subid, Oid relid)
 
 		/* Wait a bit --- we don't expect to have to wait long. */
 		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 					   10L, WAIT_EVENT_BGWORKER_STARTUP);
-
-		/* emergency bailout if postmaster has died */
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
 
 		if (rc & WL_LATCH_SET)
 		{
@@ -546,12 +512,8 @@ logicalrep_worker_stop(Oid subid, Oid relid)
 
 		/* Wait a bit --- we don't expect to have to wait long. */
 		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 					   10L, WAIT_EVENT_BGWORKER_SHUTDOWN);
-
-		/* emergency bailout if postmaster has died */
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
 
 		if (rc & WL_LATCH_SET)
 		{
@@ -563,51 +525,6 @@ logicalrep_worker_stop(Oid subid, Oid relid)
 	}
 
 	LWLockRelease(LogicalRepWorkerLock);
-}
-
-/*
- * Request worker for specified sub/rel to be stopped on commit.
- */
-void
-logicalrep_worker_stop_at_commit(Oid subid, Oid relid)
-{
-	int			nestDepth = GetCurrentTransactionNestLevel();
-	LogicalRepWorkerId *wid;
-	MemoryContext oldctx;
-
-	/* Make sure we store the info in context that survives until commit. */
-	oldctx = MemoryContextSwitchTo(TopTransactionContext);
-
-	/* Check that previous transactions were properly cleaned up. */
-	Assert(on_commit_stop_workers == NULL ||
-		   nestDepth >= on_commit_stop_workers->nestDepth);
-
-	/*
-	 * Push a new stack element if we don't already have one for the current
-	 * nestDepth.
-	 */
-	if (on_commit_stop_workers == NULL ||
-		nestDepth > on_commit_stop_workers->nestDepth)
-	{
-		StopWorkersData *newdata = palloc(sizeof(StopWorkersData));
-
-		newdata->nestDepth = nestDepth;
-		newdata->workers = NIL;
-		newdata->parent = on_commit_stop_workers;
-		on_commit_stop_workers = newdata;
-	}
-
-	/*
-	 * Finally add a new worker into the worker list of the current
-	 * subtransaction.
-	 */
-	wid = palloc(sizeof(LogicalRepWorkerId));
-	wid->subid = subid;
-	wid->relid = relid;
-	on_commit_stop_workers->workers =
-		lappend(on_commit_stop_workers->workers, wid);
-
-	MemoryContextSwitchTo(oldctx);
 }
 
 /*
@@ -727,26 +644,16 @@ static void
 logicalrep_worker_onexit(int code, Datum arg)
 {
 	/* Disconnect gracefully from the remote side. */
-	if (wrconn)
-		walrcv_disconnect(wrconn);
+	if (LogRepWorkerWalRcvConn)
+		walrcv_disconnect(LogRepWorkerWalRcvConn);
 
 	logicalrep_worker_detach();
 
+	/* Cleanup fileset used for streaming transactions. */
+	if (MyLogicalRepWorker->stream_fileset != NULL)
+		FileSetDeleteAll(MyLogicalRepWorker->stream_fileset);
+
 	ApplyLauncherWakeup();
-}
-
-/* SIGHUP: set flag to reload configuration at next convenient time */
-static void
-logicalrep_launcher_sighup(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_SIGHUP = true;
-
-	/* Waken anything waiting on the process latch */
-	SetLatch(MyLatch);
-
-	errno = save_errno;
 }
 
 /*
@@ -853,106 +760,18 @@ ApplyLauncherShmemInit(void)
 }
 
 /*
- * Check whether current transaction has manipulated logical replication
- * workers.
- */
-bool
-XactManipulatesLogicalReplicationWorkers(void)
-{
-	return (on_commit_stop_workers != NULL);
-}
-
-/*
  * Wakeup the launcher on commit if requested.
  */
 void
 AtEOXact_ApplyLauncher(bool isCommit)
 {
-
-	Assert(on_commit_stop_workers == NULL ||
-		   (on_commit_stop_workers->nestDepth == 1 &&
-			on_commit_stop_workers->parent == NULL));
-
 	if (isCommit)
 	{
-		ListCell   *lc;
-
-		if (on_commit_stop_workers != NULL)
-		{
-			List	   *workers = on_commit_stop_workers->workers;
-
-			foreach(lc, workers)
-			{
-				LogicalRepWorkerId *wid = lfirst(lc);
-
-				logicalrep_worker_stop(wid->subid, wid->relid);
-			}
-		}
-
 		if (on_commit_launcher_wakeup)
 			ApplyLauncherWakeup();
 	}
 
-	/*
-	 * No need to pfree on_commit_stop_workers.  It was allocated in
-	 * transaction memory context, which is going to be cleaned soon.
-	 */
-	on_commit_stop_workers = NULL;
 	on_commit_launcher_wakeup = false;
-}
-
-/*
- * On commit, merge the current on_commit_stop_workers list into the
- * immediate parent, if present.
- * On rollback, discard the current on_commit_stop_workers list.
- * Pop out the stack.
- */
-void
-AtEOSubXact_ApplyLauncher(bool isCommit, int nestDepth)
-{
-	StopWorkersData *parent;
-
-	/* Exit immediately if there's no work to do at this level. */
-	if (on_commit_stop_workers == NULL ||
-		on_commit_stop_workers->nestDepth < nestDepth)
-		return;
-
-	Assert(on_commit_stop_workers->nestDepth == nestDepth);
-
-	parent = on_commit_stop_workers->parent;
-
-	if (isCommit)
-	{
-		/*
-		 * If the upper stack element is not an immediate parent
-		 * subtransaction, just decrement the notional nesting depth without
-		 * doing any real work.  Else, we need to merge the current workers
-		 * list into the parent.
-		 */
-		if (!parent || parent->nestDepth < nestDepth - 1)
-		{
-			on_commit_stop_workers->nestDepth--;
-			return;
-		}
-
-		parent->workers =
-			list_concat(parent->workers, on_commit_stop_workers->workers);
-	}
-	else
-	{
-		/*
-		 * Abandon everything that was done at this nesting level.  Explicitly
-		 * free memory to avoid a transaction-lifespan leak.
-		 */
-		list_free_deep(on_commit_stop_workers->workers);
-	}
-
-	/*
-	 * We have taken care of the current subtransaction workers list for both
-	 * abort or commit. So we are ready to pop the stack.
-	 */
-	pfree(on_commit_stop_workers);
-	on_commit_stop_workers = parent;
 }
 
 /*
@@ -985,7 +804,7 @@ ApplyLauncherMain(Datum main_arg)
 	TimestampTz last_start_time = 0;
 
 	ereport(DEBUG1,
-			(errmsg("logical replication launcher started")));
+			(errmsg_internal("logical replication launcher started")));
 
 	before_shmem_exit(logicalrep_launcher_onexit, (Datum) 0);
 
@@ -993,7 +812,7 @@ ApplyLauncherMain(Datum main_arg)
 	LogicalRepCtx->launcher_pid = MyProcPid;
 
 	/* Establish signal handlers. */
-	pqsignal(SIGHUP, logicalrep_launcher_sighup);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
 	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
 
@@ -1072,13 +891,9 @@ ApplyLauncherMain(Datum main_arg)
 
 		/* Wait for more work. */
 		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 					   wait_time,
 					   WAIT_EVENT_LOGICAL_LAUNCHER_MAIN);
-
-		/* emergency bailout if postmaster has died */
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
 
 		if (rc & WL_LATCH_SET)
 		{
@@ -1086,9 +901,9 @@ ApplyLauncherMain(Datum main_arg)
 			CHECK_FOR_INTERRUPTS();
 		}
 
-		if (got_SIGHUP)
+		if (ConfigReloadPending)
 		{
-			got_SIGHUP = false;
+			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
 	}
@@ -1128,8 +943,7 @@ pg_stat_get_subscription(PG_FUNCTION_ARGS)
 	if (!(rsinfo->allowedModes & SFRM_Materialize))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
+				 errmsg("materialize mode required, but it is not allowed in this context")));
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)

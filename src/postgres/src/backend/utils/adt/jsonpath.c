@@ -53,7 +53,7 @@
  * |	  |__|	|__||________________________||___________________|		   |
  * |_______________________________________________________________________|
  *
- * Copyright (c) 2019, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath.c
@@ -74,13 +74,13 @@
 
 static Datum jsonPathFromCstring(char *in, int len);
 static char *jsonPathToCstring(StringInfo out, JsonPath *in,
-				  int estimated_len);
-static int flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
-						 int nestingLevel, bool insideArraySubscript);
+							   int estimated_len);
+static int	flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
+									 int nestingLevel, bool insideArraySubscript);
 static void alignStringInfoInt(StringInfo buf);
 static int32 reserveSpaceForItemPointer(StringInfo buf);
 static void printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
-				  bool printBracketes);
+							  bool printBracketes);
 static int	operationPriority(JsonPathItemType op);
 
 
@@ -179,7 +179,8 @@ jsonPathFromCstring(char *in, int len)
 	if (!jsonpath)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for jsonpath: \"%s\"", in)));
+				 errmsg("invalid input syntax for type %s: \"%s\"", "jsonpath",
+						in)));
 
 	flattenJsonPathParseItem(&buf, jsonpath->expr, 0, false);
 
@@ -228,7 +229,7 @@ static int
 flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 						 int nestingLevel, bool insideArraySubscript)
 {
-	/* position from begining of jsonpath data */
+	/* position from beginning of jsonpath data */
 	int32		pos = buf->len - JSONPATH_HDRSZ;
 	int32		chld;
 	int32		next;
@@ -659,7 +660,7 @@ printJsonPathItem(StringInfo buf, JsonPathItem *v, bool inKey,
 			else if (v->content.anybounds.first == v->content.anybounds.last)
 			{
 				if (v->content.anybounds.first == PG_UINT32_MAX)
-					appendStringInfo(buf, "**{last}");
+					appendStringInfoString(buf, "**{last}");
 				else
 					appendStringInfo(buf, "**{%u}",
 									 v->content.anybounds.first);
@@ -867,7 +868,6 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiString:
 		case jpiVariable:
 			read_int32(v->content.value.datalen, base, pos);
-			/* follow next */
 			switch_fallthrough();
 		case jpiNumeric:
 		case jpiBool:

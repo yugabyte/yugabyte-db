@@ -4,12 +4,12 @@
 #ifndef __BTREE_UTILS_NUM_H__
 #define __BTREE_UTILS_NUM_H__
 
-#include "btree_gist.h"
-#include "access/gist.h"
-#include "utils/rel.h"
-
 #include <math.h>
 #include <float.h>
+
+#include "access/gist.h"
+#include "btree_gist.h"
+#include "utils/rel.h"
 
 typedef char GBT_NUMKEY;
 
@@ -74,7 +74,7 @@ typedef struct
 	(*(result)) += (float) ( ((double)(tmp)) / ( (double)(tmp) + ( ((double)(oupper))*0.49F - ((double)(olower))*0.49F ) ) ); \
 	(*(result)) *= (FLT_MAX / (((GISTENTRY *) PG_GETARG_POINTER(0))->rel->rd_att->natts + 1)); \
   } \
-} while (0);
+} while (0)
 
 
 /*
@@ -89,47 +89,30 @@ typedef struct
 
 #define GET_FLOAT_DISTANCE(t, arg1, arg2)	Abs( ((float8) *((const t *) (arg1))) - ((float8) *((const t *) (arg2))) )
 
-/*
- * check to see if a float4/8 val has underflowed or overflowed
- * borrowed from src/backend/utils/adt/float.c
- */
-#define CHECKFLOATVAL(val, inf_is_valid, zero_is_valid)			\
-do {															\
-	if (isinf(val) && !(inf_is_valid))							\
-		ereport(ERROR,											\
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
-		  errmsg("value out of range: overflow")));				\
-																\
-	if ((val) == 0.0 && !(zero_is_valid))						\
-		ereport(ERROR,											\
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
-		 errmsg("value out of range: underflow")));				\
-} while(0)
-
 
 extern Interval *abs_interval(Interval *a);
 
 extern bool gbt_num_consistent(const GBT_NUMKEY_R *key, const void *query,
-				   const StrategyNumber *strategy, bool is_leaf,
-				   const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+							   const StrategyNumber *strategy, bool is_leaf,
+							   const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern float8 gbt_num_distance(const GBT_NUMKEY_R *key, const void *query,
-				 bool is_leaf, const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+							   bool is_leaf, const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern GIST_SPLITVEC *gbt_num_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
-				  const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+										const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern GISTENTRY *gbt_num_compress(GISTENTRY *entry, const gbtree_ninfo *tinfo);
 
 extern GISTENTRY *gbt_num_fetch(GISTENTRY *entry, const gbtree_ninfo *tinfo);
 
 extern void *gbt_num_union(GBT_NUMKEY *out, const GistEntryVector *entryvec,
-			  const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+						   const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern bool gbt_num_same(const GBT_NUMKEY *a, const GBT_NUMKEY *b,
-			 const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+						 const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern void gbt_num_bin_union(Datum *u, GBT_NUMKEY *e,
-				  const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
+							  const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 #endif

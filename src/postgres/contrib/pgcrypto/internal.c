@@ -33,42 +33,13 @@
 
 #include <time.h>
 
-#include "px.h"
-#include "md5.h"
-#include "sha1.h"
 #include "blf.h"
+#include "px.h"
 #include "rijndael.h"
 
-/*
- * System reseeds should be separated at least this much.
- */
-#define SYSTEM_RESEED_MIN			(20*60) /* 20 min */
-/*
- * How often to roll dice.
- */
-#define SYSTEM_RESEED_CHECK_TIME	(10*60) /* 10 min */
-/*
- * The chance is x/256 that the reseed happens.
- */
-#define SYSTEM_RESEED_CHANCE		(4) /* 256/4 * 10min ~ 10h */
-
-/*
- * If this much time has passed, force reseed.
- */
-#define SYSTEM_RESEED_MAX			(12*60*60)	/* 12h */
-
-
-#ifndef MD5_DIGEST_LENGTH
-#define MD5_DIGEST_LENGTH 16
-#endif
-
-#ifndef SHA1_DIGEST_LENGTH
-#ifdef SHA1_RESULTLEN
-#define SHA1_DIGEST_LENGTH SHA1_RESULTLEN
-#else
-#define SHA1_DIGEST_LENGTH 20
-#endif
-#endif
+#include "common/cryptohash.h"
+#include "common/md5.h"
+#include "common/sha1.h"
 
 #define SHA1_BLOCK_SIZE 64
 #define MD5_BLOCK_SIZE 64
@@ -115,35 +86,37 @@ int_md5_block_len(PX_MD *h)
 static void
 int_md5_update(PX_MD *h, const uint8 *data, unsigned dlen)
 {
-	MD5_CTX    *ctx = (MD5_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	MD5Update(ctx, data, dlen);
+	if (pg_cryptohash_update(ctx, data, dlen) < 0)
+		elog(ERROR, "could not update %s context", "MD5");
 }
 
 static void
 int_md5_reset(PX_MD *h)
 {
-	MD5_CTX    *ctx = (MD5_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	MD5Init(ctx);
+	if (pg_cryptohash_init(ctx) < 0)
+		elog(ERROR, "could not initialize %s context", "MD5");
 }
 
 static void
 int_md5_finish(PX_MD *h, uint8 *dst)
 {
-	MD5_CTX    *ctx = (MD5_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	MD5Final(dst, ctx);
+	if (pg_cryptohash_final(ctx, dst, h->result_size(h)) < 0)
+		elog(ERROR, "could not finalize %s context", "MD5");
 }
 
 static void
 int_md5_free(PX_MD *h)
 {
-	MD5_CTX    *ctx = (MD5_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	px_memset(ctx, 0, sizeof(*ctx));
-	px_free(ctx);
-	px_free(h);
+	pg_cryptohash_free(ctx);
+	pfree(h);
 }
 
 /* SHA1 */
@@ -163,35 +136,37 @@ int_sha1_block_len(PX_MD *h)
 static void
 int_sha1_update(PX_MD *h, const uint8 *data, unsigned dlen)
 {
-	SHA1_CTX   *ctx = (SHA1_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	SHA1Update(ctx, data, dlen);
+	if (pg_cryptohash_update(ctx, data, dlen) < 0)
+		elog(ERROR, "could not update %s context", "SHA1");
 }
 
 static void
 int_sha1_reset(PX_MD *h)
 {
-	SHA1_CTX   *ctx = (SHA1_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	SHA1Init(ctx);
+	if (pg_cryptohash_init(ctx) < 0)
+		elog(ERROR, "could not initialize %s context", "SHA1");
 }
 
 static void
 int_sha1_finish(PX_MD *h, uint8 *dst)
 {
-	SHA1_CTX   *ctx = (SHA1_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	SHA1Final(dst, ctx);
+	if (pg_cryptohash_final(ctx, dst, h->result_size(h)) < 0)
+		elog(ERROR, "could not finalize %s context", "SHA1");
 }
 
 static void
 int_sha1_free(PX_MD *h)
 {
-	SHA1_CTX   *ctx = (SHA1_CTX *) h->p.ptr;
+	pg_cryptohash_ctx *ctx = (pg_cryptohash_ctx *) h->p.ptr;
 
-	px_memset(ctx, 0, sizeof(*ctx));
-	px_free(ctx);
-	px_free(h);
+	pg_cryptohash_free(ctx);
+	pfree(h);
 }
 
 /* init functions */
@@ -199,10 +174,9 @@ int_sha1_free(PX_MD *h)
 static void
 init_md5(PX_MD *md)
 {
-	MD5_CTX    *ctx;
+	pg_cryptohash_ctx *ctx;
 
-	ctx = px_alloc(sizeof(*ctx));
-	memset(ctx, 0, sizeof(*ctx));
+	ctx = pg_cryptohash_create(PG_MD5);
 
 	md->p.ptr = ctx;
 
@@ -219,10 +193,9 @@ init_md5(PX_MD *md)
 static void
 init_sha1(PX_MD *md)
 {
-	SHA1_CTX   *ctx;
+	pg_cryptohash_ctx *ctx;
 
-	ctx = px_alloc(sizeof(*ctx));
-	memset(ctx, 0, sizeof(*ctx));
+	ctx = pg_cryptohash_create(PG_SHA1);
 
 	md->p.ptr = ctx;
 
@@ -265,9 +238,9 @@ intctx_free(PX_Cipher *c)
 	if (cx)
 	{
 		px_memset(cx, 0, sizeof *cx);
-		px_free(cx);
+		pfree(cx);
 	}
-	px_free(c);
+	pfree(c);
 }
 
 /*
@@ -392,8 +365,7 @@ rj_load(int mode)
 	PX_Cipher  *c;
 	struct int_ctx *cx;
 
-	c = px_alloc(sizeof *c);
-	memset(c, 0, sizeof *c);
+	c = palloc0(sizeof *c);
 
 	c->block_size = rj_block_size;
 	c->key_size = rj_key_size;
@@ -403,8 +375,7 @@ rj_load(int mode)
 	c->decrypt = rj_decrypt;
 	c->free = intctx_free;
 
-	cx = px_alloc(sizeof *cx);
-	memset(cx, 0, sizeof *cx);
+	cx = palloc0(sizeof *cx);
 	cx->mode = mode;
 
 	c->ptr = cx;
@@ -501,8 +472,7 @@ bf_load(int mode)
 	PX_Cipher  *c;
 	struct int_ctx *cx;
 
-	c = px_alloc(sizeof *c);
-	memset(c, 0, sizeof *c);
+	c = palloc0(sizeof *c);
 
 	c->block_size = bf_block_size;
 	c->key_size = bf_key_size;
@@ -512,8 +482,7 @@ bf_load(int mode)
 	c->decrypt = bf_decrypt;
 	c->free = intctx_free;
 
-	cx = px_alloc(sizeof *cx);
-	memset(cx, 0, sizeof *cx);
+	cx = palloc0(sizeof *cx);
 	cx->mode = mode;
 	c->ptr = cx;
 	return c;
@@ -583,7 +552,7 @@ px_find_digest(const char *name, PX_MD **res)
 	for (p = int_digest_list; p->name; p++)
 		if (pg_strcasecmp(p->name, name) == 0)
 		{
-			h = px_alloc(sizeof(*h));
+			h = palloc(sizeof(*h));
 			p->init(h);
 
 			*res = h;

@@ -3,7 +3,7 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,12 +15,14 @@
 
 #include "postgres.h"
 
-#include "access/tuptoaster.h"
+#include "access/detoast.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "executor/functions.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "pgstat.h"
 #include "utils/acl.h"
@@ -56,12 +58,12 @@ static HTAB *CFuncHash = NULL;
 
 
 static void fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
-					   bool ignore_security);
+								   bool ignore_security);
 static void fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple);
 static void fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple);
 static CFuncHashTabEntry *lookup_C_func(HeapTuple procedureTuple);
 static void record_C_func(HeapTuple procedureTuple,
-			  PGFunction user_fn, const Pg_finfo_record *inforec);
+						  PGFunction user_fn, const Pg_finfo_record *inforec);
 
 /* extern so it's callable via JIT */
 extern Datum fmgr_security_definer(PG_FUNCTION_ARGS);
@@ -78,12 +80,12 @@ fmgr_isbuiltin(Oid id)
 	uint16		index;
 
 	/* fast lookup only possible if original oid still assigned */
-	if (id >= FirstBootstrapObjectId)
+	if (id > fmgr_last_builtin_oid)
 		return NULL;
 
 	/*
 	 * Lookup function data. If there's a miss in that range it's likely a
-	 * nonexistant function, returning NULL here will trigger an ERROR later.
+	 * nonexistent function, returning NULL here will trigger an ERROR later.
 	 */
 	index = fmgr_builtin_oid_index[id];
 	if (index == InvalidOidBuiltinMapping)
@@ -280,7 +282,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
  * If *mod == NULL and *fn != NULL, the function is implemented by a symbol in
  * the main binary.
  *
- * If *mod != NULL and *fn !=NULL the function is implemented in an extension
+ * If *mod != NULL and *fn != NULL the function is implemented in an extension
  * shared object.
  *
  * The returned module and function names are pstrdup'ed into the current
@@ -295,14 +297,11 @@ fmgr_symbol(Oid functionId, char **mod, char **fn)
 	Datum		prosrcattr;
 	Datum		probinattr;
 
-	/* Otherwise we need the pg_proc entry */
 	procedureTuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(functionId));
 	if (!HeapTupleIsValid(procedureTuple))
 		elog(ERROR, "cache lookup failed for function %u", functionId);
 	procedureStruct = (Form_pg_proc) GETSTRUCT(procedureTuple);
 
-	/*
-	 */
 	if (procedureStruct->prosecdef ||
 		!heap_attisnull(procedureTuple, Anum_pg_proc_proconfig, NULL) ||
 		FmgrHookIsNeeded(functionId))
@@ -538,7 +537,7 @@ fetch_finfo_record(void *filehandle, const char *funcname)
 static CFuncHashTabEntry *
 lookup_C_func(HeapTuple procedureTuple)
 {
-	Oid			fn_oid = HeapTupleGetOid(procedureTuple);
+	Oid			fn_oid = ((Form_pg_proc) GETSTRUCT(procedureTuple))->oid;
 	CFuncHashTabEntry *entry;
 
 	if (CFuncHash == NULL)
@@ -565,7 +564,7 @@ static void
 record_C_func(HeapTuple procedureTuple,
 			  PGFunction user_fn, const Pg_finfo_record *inforec)
 {
-	Oid			fn_oid = HeapTupleGetOid(procedureTuple);
+	Oid			fn_oid = ((Form_pg_proc) GETSTRUCT(procedureTuple))->oid;
 	CFuncHashTabEntry *entry;
 	bool		found;
 
@@ -574,7 +573,6 @@ record_C_func(HeapTuple procedureTuple,
 	{
 		HASHCTL		hash_ctl;
 
-		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = sizeof(Oid);
 		hash_ctl.entrysize = sizeof(CFuncHashTabEntry);
 		CFuncHash = hash_create("CFuncHash",
@@ -1873,7 +1871,7 @@ OidSendFunctionCall(Oid functionId, Datum val)
 /*-------------------------------------------------------------------------
  *		Support routines for standard maybe-pass-by-reference datatypes
  *
- * int8, float4, and float8 can be passed by value if Datum is wide enough.
+ * int8 and float8 can be passed by value if Datum is wide enough.
  * (For backwards-compatibility reasons, we allow pass-by-ref to be chosen
  * at compile time even if pass-by-val is possible.)
  *
@@ -1893,21 +1891,6 @@ Int64GetDatum(int64 X)
 	*retval = X;
 	return PointerGetDatum(retval);
 }
-#endif							/* USE_FLOAT8_BYVAL */
-
-#ifndef USE_FLOAT4_BYVAL
-
-Datum
-Float4GetDatum(float4 X)
-{
-	float4	   *retval = (float4 *) palloc(sizeof(float4));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-}
-#endif
-
-#ifndef USE_FLOAT8_BYVAL
 
 Datum
 Float8GetDatum(float8 X)
@@ -1917,7 +1900,7 @@ Float8GetDatum(float8 X)
 	*retval = X;
 	return PointerGetDatum(retval);
 }
-#endif
+#endif							/* USE_FLOAT8_BYVAL */
 
 
 /*-------------------------------------------------------------------------
@@ -1929,7 +1912,7 @@ struct varlena *
 pg_detoast_datum(struct varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
-		return heap_tuple_untoast_attr(datum);
+		return detoast_attr(datum);
 	else
 		return datum;
 }
@@ -1938,7 +1921,7 @@ struct varlena *
 pg_detoast_datum_copy(struct varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
-		return heap_tuple_untoast_attr(datum);
+		return detoast_attr(datum);
 	else
 	{
 		/* Make a modifiable copy of the varlena object */
@@ -1954,14 +1937,14 @@ struct varlena *
 pg_detoast_datum_slice(struct varlena *datum, int32 first, int32 count)
 {
 	/* Only get the specified portion from the toast rel */
-	return heap_tuple_untoast_attr_slice(datum, first, count);
+	return detoast_attr_slice(datum, first, count);
 }
 
 struct varlena *
 pg_detoast_datum_packed(struct varlena *datum)
 {
 	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
-		return heap_tuple_untoast_attr(datum);
+		return detoast_attr(datum);
 	else
 		return datum;
 }
@@ -2155,6 +2138,57 @@ get_fn_expr_variadic(FmgrInfo *flinfo)
 		return ((FuncExpr *) expr)->funcvariadic;
 	else
 		return false;
+}
+
+/*
+ * Set options to FmgrInfo of opclass support function.
+ *
+ * Opclass support functions are called outside of expressions.  Thanks to that
+ * we can use fn_expr to store opclass options as bytea constant.
+ */
+void
+set_fn_opclass_options(FmgrInfo *flinfo, bytea *options)
+{
+	flinfo->fn_expr = (Node *) makeConst(BYTEAOID, -1, InvalidOid, -1,
+										 PointerGetDatum(options),
+										 options == NULL, false);
+}
+
+/*
+ * Check if options are defined for opclass support function.
+ */
+bool
+has_fn_opclass_options(FmgrInfo *flinfo)
+{
+	if (flinfo && flinfo->fn_expr && IsA(flinfo->fn_expr, Const))
+	{
+		Const	   *expr = (Const *) flinfo->fn_expr;
+
+		if (expr->consttype == BYTEAOID)
+			return !expr->constisnull;
+	}
+	return false;
+}
+
+/*
+ * Get options for opclass support function.
+ */
+bytea *
+get_fn_opclass_options(FmgrInfo *flinfo)
+{
+	if (flinfo && flinfo->fn_expr && IsA(flinfo->fn_expr, Const))
+	{
+		Const	   *expr = (Const *) flinfo->fn_expr;
+
+		if (expr->consttype == BYTEAOID)
+			return expr->constisnull ? NULL : DatumGetByteaP(expr->constvalue);
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("operator class options info is absent in function call context")));
+
+	return NULL;
 }
 
 /*-------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  *
  * Transforms tokenized jsonpath into tree of JsonPathParseItem structs.
  *
- * Copyright (c) 2019, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath_gram.y
@@ -153,7 +153,7 @@ scalar_value:
 	| FALSE_P						{ $$ = makeItemBool(false); }
 	| NUMERIC_P						{ $$ = makeItemNumeric(&$1); }
 	| INT_P							{ $$ = makeItemNumeric(&$1); }
-	| VARIABLE_P 					{ $$ = makeItemVariable(&$1); }
+	| VARIABLE_P					{ $$ = makeItemVariable(&$1); }
 	;
 
 comp_op:
@@ -175,12 +175,12 @@ predicate:
 	| expr comp_op expr				{ $$ = makeItemBinary($2, $1, $3); }
 	| predicate AND_P predicate		{ $$ = makeItemBinary(jpiAnd, $1, $3); }
 	| predicate OR_P predicate		{ $$ = makeItemBinary(jpiOr, $1, $3); }
-	| NOT_P delimited_predicate 	{ $$ = makeItemUnary(jpiNot, $2); }
+	| NOT_P delimited_predicate		{ $$ = makeItemUnary(jpiNot, $2); }
 	| '(' predicate ')' IS_P UNKNOWN_P
 									{ $$ = makeItemUnary(jpiIsUnknown, $2); }
 	| expr STARTS_P WITH_P starts_with_initial
 									{ $$ = makeItemBinary(jpiStartsWith, $1, $4); }
-	| expr LIKE_REGEX_P STRING_P 	{ $$ = makeItemLikeRegex($1, &$3, NULL); }
+	| expr LIKE_REGEX_P STRING_P	{ $$ = makeItemLikeRegex($1, &$3, NULL); }
 	| expr LIKE_REGEX_P STRING_P FLAG_P STRING_P
 									{ $$ = makeItemLikeRegex($1, &$3, &$5); }
 	;
@@ -430,18 +430,18 @@ makeItemList(List *list)
 {
 	JsonPathParseItem  *head,
 					   *end;
-	ListCell		   *cell = list_head(list);
+	ListCell		   *cell;
 
-	head = end = (JsonPathParseItem *) lfirst(cell);
+	head = end = (JsonPathParseItem *) linitial(list);
 
-	if (!lnext(cell))
+	if (list_length(list) == 1)
 		return head;
 
 	/* append items to the end of already existing list */
 	while (end->next)
 		end = end->next;
 
-	for_each_cell(cell, lnext(cell))
+	for_each_from(cell, list, 1)
 	{
 		JsonPathParseItem *c = (JsonPathParseItem *) lfirst(cell);
 
@@ -526,8 +526,8 @@ makeItemLikeRegex(JsonPathParseItem *expr, JsonPathString *pattern,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("invalid input syntax for type %s", "jsonpath"),
-						 errdetail("unrecognized flag character \"%c\" in LIKE_REGEX predicate",
-								   flags->val[i])));
+						 errdetail("unrecognized flag character \"%.*s\" in LIKE_REGEX predicate",
+								   pg_mblen(flags->val + i), flags->val + i)));
 				break;
 		}
 	}
@@ -582,6 +582,14 @@ jspConvertRegexFlags(uint32 xflags)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("XQuery \"x\" flag (expanded regular expressions) is not implemented")));
 	}
+
+	/*
+	 * We'll never need sub-match details at execution.  While
+	 * RE_compile_and_execute would set this flag anyway, force it on here to
+	 * ensure that the regex cache entries created by makeItemLikeRegex are
+	 * useful.
+	 */
+	cflags |= REG_NOSUB;
 
 	return cflags;
 }

@@ -36,7 +36,7 @@
  * the probability of unintended failure) than to fix the total time
  * spent.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -50,9 +50,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "storage/s_lock.h"
 #include "port/atomics.h"
-
+#include "storage/s_lock.h"
 
 #define MIN_SPINS_PER_DELAY 10
 #define MAX_SPINS_PER_DELAY 1000
@@ -369,7 +368,7 @@ main()
 	printf("             if S_LOCK() and TAS() are working.\n");
 	fflush(stdout);
 
-	s_lock(&test_lock.lock, __FILE__, __LINE__);
+	s_lock(&test_lock.lock, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
 
 	printf("S_LOCK_TEST: failed, lock not locked\n");
 	return 1;

@@ -22,7 +22,7 @@ endif
 PGFILEDESC = "llvmjit - JIT using LLVM"
 NAME = llvmjit
 
-# All files in this directy use LLVM.
+# All files in this directory use LLVM.
 CFLAGS += $(LLVM_CFLAGS)
 CXXFLAGS += $(LLVM_CXXFLAGS)
 override CPPFLAGS := $(LLVM_CPPFLAGS) $(CPPFLAGS)
@@ -33,12 +33,20 @@ SHLIB_LINK += $(LLVM_LIBS)
 # loadable modules.
 override COMPILER = $(CXX) $(CFLAGS)
 
-OBJS=$(WIN32RES)
+OBJS = \
+	$(WIN32RES)
 
 # Infrastructure
-OBJS += llvmjit.o llvmjit_error.o llvmjit_inline.o llvmjit_wrap.o
+OBJS += \
+	llvmjit.o \
+	llvmjit_error.o \
+	llvmjit_inline.o \
+	llvmjit_wrap.o
+
 # Code generation
-OBJS += llvmjit_expr.o llvmjit_deform.o
+OBJS += \
+	llvmjit_deform.o \
+	llvmjit_expr.o
 
 all: all-shared-lib llvmjit_types.bc
 

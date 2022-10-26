@@ -28,10 +28,8 @@ select g+100000, point(g*10+1, g*10+1) from generate_series(1, 10000) g;
 -- To test vacuum, delete some entries from all over the index.
 delete from gist_point_tbl where id % 2 = 1;
 
--- And also delete some concentration of values. (GiST doesn't currently
--- attempt to delete pages even when they become empty, but if it did, this
--- would exercise it)
-delete from gist_point_tbl where id < 10000;
+-- And also delete some concentration of values.
+delete from gist_point_tbl where id > 5000;
 
 vacuum analyze gist_point_tbl;
 
@@ -110,6 +108,22 @@ select b from gist_tbl where b <@ box(point(5,5), point(6,6));
 
 -- execute the same
 select b from gist_tbl where b <@ box(point(5,5), point(6,6));
+
+-- Also test an index-only knn-search
+explain (costs off)
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by b <-> point(5.2, 5.91);
+
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by b <-> point(5.2, 5.91);
+
+-- Check commuted case as well
+explain (costs off)
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by point(5.2, 5.91) <-> b;
+
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by point(5.2, 5.91) <-> b;
 
 drop index gist_tbl_box_index;
 

@@ -111,11 +111,18 @@ extern int32_t yb_follower_read_staleness_ms;
  * Iterate over databases and execute a given code snippet.
  * Should terminate with YB_FOR_EACH_DB_END.
  */
+#define YB_HACK_INVALID_OID -1
+#define YB_HACK_INVALID_FLAG -1
+
+#define YbHeapTupleGetOid(x) YB_HACK_INVALID_OID
+
+#define YbFirstBootstrapObjectId 10000
+
 #define YB_FOR_EACH_DB(pg_db_tuple) \
 	{ \
 		/* Shared operations shouldn't be used during initdb. */ \
 		Assert(!IsBootstrapProcessingMode()); \
-		Relation    pg_db      = heap_open(DatabaseRelationId, AccessExclusiveLock); \
+		Relation    pg_db      = table_open(DatabaseRelationId, AccessExclusiveLock); \
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
@@ -130,7 +137,7 @@ extern int32_t yb_follower_read_staleness_ms;
 #define YB_FOR_EACH_DB_END \
 		} \
 		systable_endscan(pg_db_scan); \
-		heap_close(pg_db, AccessExclusiveLock); \
+		table_close(pg_db, AccessExclusiveLock); \
 	}
 
 /*
@@ -649,7 +656,7 @@ bool IsYbDbAdminUserNosuper(Oid member);
 /*
  * Check unsupported system columns and report error.
  */
-void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
+void YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *rte);
 
 /*
  * Register system table for prefetching.

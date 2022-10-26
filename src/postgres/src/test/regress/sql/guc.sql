@@ -47,7 +47,7 @@ SET datestyle = 'MDY';
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
 SAVEPOINT first_sp;
-SET vacuum_cost_delay TO 80;
+SET vacuum_cost_delay TO 80.1;
 SHOW vacuum_cost_delay;
 SET datestyle = 'German, DMY';
 SHOW datestyle;
@@ -56,7 +56,7 @@ ROLLBACK TO first_sp;
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
 SAVEPOINT second_sp;
-SET vacuum_cost_delay TO 90;
+SET vacuum_cost_delay TO '900us';
 SET datestyle = 'SQL, YMD';
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
@@ -143,6 +143,25 @@ SELECT '2006-08-13 12:34:56'::timestamptz;
 RESET datestyle;
 SHOW datestyle;
 SELECT '2006-08-13 12:34:56'::timestamptz;
+
+-- Test some simple error cases
+SET seq_page_cost TO 'NaN';
+SET vacuum_cost_delay TO '10s';
+SET no_such_variable TO 42;
+
+-- Test "custom" GUCs created on the fly (which aren't really an
+-- intended feature, but many people use them).
+SHOW custom.my_guc;  -- error, not known yet
+SET custom.my_guc = 42;
+SHOW custom.my_guc;
+RESET custom.my_guc;  -- this makes it go to empty, not become unknown again
+SHOW custom.my_guc;
+SET custom.my.qualified.guc = 'foo';
+SHOW custom.my.qualified.guc;
+SET custom."bad-guc" = 42;  -- disallowed because -c cannot set this name
+SHOW custom."bad-guc";
+SET special."weird name" = 'foo';  -- could be allowed, but we choose not to
+SHOW special."weird name";
 
 --
 -- Test DISCARD TEMP
@@ -288,6 +307,10 @@ set default_text_search_config = no_such_config;
 select func_with_bad_set();
 
 reset check_function_bodies;
+
+set default_with_oids to f;
+-- Should not allow to set it to true.
+set default_with_oids to t;
 
 -- test SET unrecognized parameter
 SET foo = false;  -- no such setting

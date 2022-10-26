@@ -21,13 +21,34 @@ SET standard_conforming_strings TO on;
 
 SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
 SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061" UESCAPE '*';
+SELECT U&'a\\b' AS "a\b";
 
 SELECT U&' \' UESCAPE '!' AS "tricky";
 SELECT 'tricky' AS U&"\" UESCAPE '!';
 
 SELECT U&'wrong: \061';
 SELECT U&'wrong: \+0061';
+SELECT U&'wrong: +0061' UESCAPE +;
 SELECT U&'wrong: +0061' UESCAPE '+';
+
+SELECT U&'wrong: \db99';
+SELECT U&'wrong: \db99xy';
+SELECT U&'wrong: \db99\\';
+SELECT U&'wrong: \db99\0061';
+SELECT U&'wrong: \+00db99\+000061';
+SELECT U&'wrong: \+2FFFFF';
+
+-- while we're here, check the same cases in E-style literals
+SELECT E'd\u0061t\U00000061' AS "data";
+SELECT E'a\\b' AS "a\b";
+SELECT E'wrong: \u061';
+SELECT E'wrong: \U0061';
+SELECT E'wrong: \udb99';
+SELECT E'wrong: \udb99xy';
+SELECT E'wrong: \udb99\\';
+SELECT E'wrong: \udb99\u0061';
+SELECT E'wrong: \U0000db99\U00000061';
+SELECT E'wrong: \U002FFFFF';
 
 SET standard_conforming_strings TO off;
 
@@ -110,31 +131,161 @@ SELECT SUBSTRING('1234567890' FROM 3) = '34567890' AS "34567890";
 
 SELECT SUBSTRING('1234567890' FROM 4 FOR 3) = '456' AS "456";
 
--- T581 regular expression substring (with SQL99's bizarre regexp syntax)
+-- test overflow cases
+SELECT SUBSTRING('string' FROM 2 FOR 2147483646) AS "tring";
+SELECT SUBSTRING('string' FROM -10 FOR 2147483646) AS "string";
+SELECT SUBSTRING('string' FROM -10 FOR -2147483646) AS "error";
+
+-- T581 regular expression substring (with SQL's bizarre regexp syntax)
+SELECT SUBSTRING('abcdefg' SIMILAR 'a#"(b_d)#"%' ESCAPE '#') AS "bcd";
+-- obsolete SQL99 syntax
 SELECT SUBSTRING('abcdefg' FROM 'a#"(b_d)#"%' FOR '#') AS "bcd";
 
 -- No match should return NULL
-SELECT SUBSTRING('abcdefg' FROM '#"(b_d)#"%' FOR '#') IS NULL AS "True";
+SELECT SUBSTRING('abcdefg' SIMILAR '#"(b_d)#"%' ESCAPE '#') IS NULL AS "True";
 
 -- Null inputs should return NULL
-SELECT SUBSTRING('abcdefg' FROM '(b|c)' FOR NULL) IS NULL AS "True";
-SELECT SUBSTRING(NULL FROM '(b|c)' FOR '#') IS NULL AS "True";
-SELECT SUBSTRING('abcdefg' FROM NULL FOR '#') IS NULL AS "True";
+SELECT SUBSTRING('abcdefg' SIMILAR '%' ESCAPE NULL) IS NULL AS "True";
+SELECT SUBSTRING(NULL SIMILAR '%' ESCAPE '#') IS NULL AS "True";
+SELECT SUBSTRING('abcdefg' SIMILAR NULL ESCAPE '#') IS NULL AS "True";
 
--- PostgreSQL extension to allow omitting the escape character;
--- here the regexp is taken as Posix syntax
+-- The first and last parts should act non-greedy
+SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%#"g' ESCAPE '#') AS "bcdef";
+SELECT SUBSTRING('abcdefg' SIMILAR 'a*#"%#"g*' ESCAPE '#') AS "abcdefg";
+
+-- Vertical bar in any part affects only that part
+SELECT SUBSTRING('abcdefg' SIMILAR 'a|b#"%#"g' ESCAPE '#') AS "bcdef";
+SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%#"x|g' ESCAPE '#') AS "bcdef";
+SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%|ab#"g' ESCAPE '#') AS "bcdef";
+
+-- Can't have more than two part separators
+SELECT SUBSTRING('abcdefg' SIMILAR 'a*#"%#"g*#"x' ESCAPE '#') AS "error";
+
+-- Postgres extension: with 0 or 1 separator, assume parts 1 and 3 are empty
+SELECT SUBSTRING('abcdefg' SIMILAR 'a#"%g' ESCAPE '#') AS "bcdefg";
+SELECT SUBSTRING('abcdefg' SIMILAR 'a%g' ESCAPE '#') AS "abcdefg";
+
+-- substring() with just two arguments is not allowed by SQL spec;
+-- we accept it, but we interpret the pattern as a POSIX regexp not SQL
 SELECT SUBSTRING('abcdefg' FROM 'c.e') AS "cde";
 
 -- With a parenthesized subexpression, return only what matches the subexpr
 SELECT SUBSTRING('abcdefg' FROM 'b(.*)f') AS "cde";
+-- Check case where we have a match, but not a subexpression match
+SELECT SUBSTRING('foo' FROM 'foo(bar)?') IS NULL AS t;
 
--- PostgreSQL extension to allow using back reference in replace string;
+-- Check behavior of SIMILAR TO, which uses largely the same regexp variant
+SELECT 'abcdefg' SIMILAR TO '_bcd%' AS true;
+SELECT 'abcdefg' SIMILAR TO 'bcd%' AS false;
+SELECT 'abcdefg' SIMILAR TO '_bcd#%' ESCAPE '#' AS false;
+SELECT 'abcd%' SIMILAR TO '_bcd#%' ESCAPE '#' AS true;
+-- Postgres uses '\' as the default escape character, which is not per spec
+SELECT 'abcdefg' SIMILAR TO '_bcd\%' AS false;
+-- and an empty string to mean "no escape", which is also not per spec
+SELECT 'abcd\efg' SIMILAR TO '_bcd\%' ESCAPE '' AS true;
+-- these behaviors are per spec, though:
+SELECT 'abcdefg' SIMILAR TO '_bcd%' ESCAPE NULL AS null;
+SELECT 'abcdefg' SIMILAR TO '_bcd#%' ESCAPE '##' AS error;
+
+-- Test backslash escapes in regexp_replace's replacement string
 SELECT regexp_replace('1112223333', E'(\\d{3})(\\d{3})(\\d{4})', E'(\\1) \\2-\\3');
+SELECT regexp_replace('foobarrbazz', E'(.)\\1', E'X\\&Y', 'g');
+SELECT regexp_replace('foobarrbazz', E'(.)\\1', E'X\\\\Y', 'g');
+-- not an error, though perhaps it should be:
+SELECT regexp_replace('foobarrbazz', E'(.)\\1', E'X\\Y\\1Z\\');
+
 SELECT regexp_replace('AAA   BBB   CCC   ', E'\\s+', ' ', 'g');
 SELECT regexp_replace('AAA', '^|$', 'Z', 'g');
 SELECT regexp_replace('AAA aaa', 'A+', 'Z', 'gi');
 -- invalid regexp option
 SELECT regexp_replace('AAA aaa', 'A+', 'Z', 'z');
+
+-- extended regexp_replace tests
+SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1);
+SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2);
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 2, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 9, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 7, 0, 'i');
+-- 'g' flag should be ignored when N is specified
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
+-- errors
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', -1, 0, 'i');
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 'i');
+-- erroneous invocation of non-extended form
+SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', '1');
+
+--  regexp_count tests
+SELECT regexp_count('123123123123123', '(12)3');
+SELECT regexp_count('123123123123', '123', 1);
+SELECT regexp_count('123123123123', '123', 3);
+SELECT regexp_count('123123123123', '123', 33);
+SELECT regexp_count('ABCABCABCABC', 'Abc', 1, '');
+SELECT regexp_count('ABCABCABCABC', 'Abc', 1, 'i');
+-- errors
+SELECT regexp_count('123123123123', '123', 0);
+SELECT regexp_count('123123123123', '123', -3);
+
+-- regexp_like tests
+SELECT regexp_like('Steven', '^Ste(v|ph)en$');
+SELECT regexp_like('a'||CHR(10)||'d', 'a.d', 'n');
+SELECT regexp_like('a'||CHR(10)||'d', 'a.d', 's');
+SELECT regexp_like('abc', ' a . c ', 'x');
+SELECT regexp_like('abc', 'a.c', 'g');  -- error
+
+-- regexp_instr tests
+SELECT regexp_instr('abcdefghi', 'd.f');
+SELECT regexp_instr('abcdefghi', 'd.q');
+SELECT regexp_instr('abcabcabc', 'a.c');
+SELECT regexp_instr('abcabcabc', 'a.c', 2);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 3);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 4);
+SELECT regexp_instr('abcabcabc', 'A.C', 1, 2, 0, 'i');
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 0);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 1);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 2);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 3);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 4);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 5);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 0);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 1);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 2);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 3);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 4);
+SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 5);
+-- Check case where we have a match, but not a subexpression match
+SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 0, '', 1);
+-- errors
+SELECT regexp_instr('abcabcabc', 'a.c', 0, 1);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 0);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, -1);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 2);
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 0, 'g');
+SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 0, '', -1);
+
+-- regexp_substr tests
+SELECT regexp_substr('abcdefghi', 'd.f');
+SELECT regexp_substr('abcdefghi', 'd.q') IS NULL AS t;
+SELECT regexp_substr('abcabcabc', 'a.c');
+SELECT regexp_substr('abcabcabc', 'a.c', 2);
+SELECT regexp_substr('abcabcabc', 'a.c', 1, 3);
+SELECT regexp_substr('abcabcabc', 'a.c', 1, 4) IS NULL AS t;
+SELECT regexp_substr('abcabcabc', 'A.C', 1, 2, 'i');
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 0);
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 1);
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 2);
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 3);
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 4);
+SELECT regexp_substr('1234567890', '(123)(4(56)(78))', 1, 1, 'i', 5) IS NULL AS t;
+-- Check case where we have a match, but not a subexpression match
+SELECT regexp_substr('foo', 'foo(bar)?', 1, 1, '', 1) IS NULL AS t;
+-- errors
+SELECT regexp_substr('abcabcabc', 'a.c', 0, 1);
+SELECT regexp_substr('abcabcabc', 'a.c', 1, 0);
+SELECT regexp_substr('abcabcabc', 'a.c', 1, 1, 'g');
+SELECT regexp_substr('abcabcabc', 'a.c', 1, 1, '', -1);
 
 -- set so we can tell NULL from empty string
 \pset null '\\N'
@@ -243,6 +394,12 @@ SELECT 'indio' NOT LIKE 'in__o' AS "false";
 SELECT 'indio' LIKE 'in_o' AS "false";
 SELECT 'indio' NOT LIKE 'in_o' AS "true";
 
+SELECT 'abc'::name LIKE '_b_' AS "true";
+SELECT 'abc'::name NOT LIKE '_b_' AS "false";
+
+SELECT 'abc'::bytea LIKE '_b_'::bytea AS "true";
+SELECT 'abc'::bytea NOT LIKE '_b_'::bytea AS "false";
+
 -- unused escape character
 SELECT 'hawkeye' LIKE 'h%' ESCAPE '#' AS "true";
 SELECT 'hawkeye' NOT LIKE 'h%' ESCAPE '#' AS "false";
@@ -275,6 +432,9 @@ SELECT 'i_dio' NOT LIKE 'i$_nd_o' ESCAPE '$' AS "true";
 
 SELECT 'i_dio' LIKE 'i$_d%o' ESCAPE '$' AS "true";
 SELECT 'i_dio' NOT LIKE 'i$_d%o' ESCAPE '$' AS "false";
+
+SELECT 'a_c'::bytea LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "true";
+SELECT 'a_c'::bytea NOT LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "false";
 
 -- escape character same as pattern character
 SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "true";
@@ -310,6 +470,9 @@ SELECT 'hawkeye' NOT ILIKE 'H%Eye' AS "false";
 SELECT 'Hawkeye' ILIKE 'h%' AS "true";
 SELECT 'Hawkeye' NOT ILIKE 'h%' AS "false";
 
+SELECT 'ABC'::name ILIKE '_b_' AS "true";
+SELECT 'ABC'::name NOT ILIKE '_b_' AS "false";
+
 --
 -- test %/_ combination cases, cf bugs #4821 and #5478
 --
@@ -321,6 +484,19 @@ SELECT 'foo' LIKE '__%' as t, 'foo' LIKE '___%' as t, 'foo' LIKE '____%' as f;
 SELECT 'foo' LIKE '%__' as t, 'foo' LIKE '%___' as t, 'foo' LIKE '%____' as f;
 
 SELECT 'jack' LIKE '%____%' AS t;
+
+
+--
+-- basic tests of LIKE with indexes
+--
+
+CREATE TABLE texttest (a text PRIMARY KEY, b int);
+SELECT * FROM texttest WHERE a LIKE '%1%';
+
+CREATE TABLE byteatest (a bytea PRIMARY KEY, b int);
+SELECT * FROM byteatest WHERE a LIKE '%1%';
+
+DROP TABLE texttest, byteatest;
 
 
 --
@@ -375,7 +551,8 @@ INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
 -- expect >0 blocks
-select 0 = pg_relation_size('pg_toast.pg_toast_'||(select oid from pg_class where relname = 'toasttest'))/current_setting('block_size')::integer as blocks;
+SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
+  FROM pg_class where relname = 'toasttest';
 
 TRUNCATE TABLE toasttest;
 ALTER TABLE toasttest set (toast_tuple_target = 4080);
@@ -384,7 +561,8 @@ INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
 INSERT INTO toasttest values (repeat('1234567890',300));
 -- expect 0 blocks
-select 0 = pg_relation_size('pg_toast.pg_toast_'||(select oid from pg_class where relname = 'toasttest'))/current_setting('block_size')::integer as blocks;
+SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
+  FROM pg_class where relname = 'toasttest';
 
 DROP TABLE toasttest;
 
@@ -448,6 +626,12 @@ SELECT strpos('abcdef', 'cd') AS "pos_3";
 
 SELECT strpos('abcdef', 'xy') AS "pos_0";
 
+SELECT strpos('abcdef', '') AS "pos_1";
+
+SELECT strpos('', 'xy') AS "pos_0";
+
+SELECT strpos('', '') AS "pos_1";
+
 --
 -- test replace
 --
@@ -460,7 +644,23 @@ SELECT replace('yabadoo', 'bad', '') AS "yaoo";
 --
 -- test split_part
 --
+select split_part('','@',1) AS "empty string";
+
+select split_part('','@',-1) AS "empty string";
+
+select split_part('joeuser@mydatabase','',1) AS "joeuser@mydatabase";
+
+select split_part('joeuser@mydatabase','',2) AS "empty string";
+
+select split_part('joeuser@mydatabase','',-1) AS "joeuser@mydatabase";
+
+select split_part('joeuser@mydatabase','',-2) AS "empty string";
+
 select split_part('joeuser@mydatabase','@',0) AS "an error";
+
+select split_part('joeuser@mydatabase','@@',1) AS "joeuser@mydatabase";
+
+select split_part('joeuser@mydatabase','@@',2) AS "empty string";
 
 select split_part('joeuser@mydatabase','@',1) AS "joeuser";
 
@@ -469,6 +669,14 @@ select split_part('joeuser@mydatabase','@',2) AS "mydatabase";
 select split_part('joeuser@mydatabase','@',3) AS "empty string";
 
 select split_part('@joeuser@mydatabase@','@',2) AS "joeuser";
+
+select split_part('joeuser@mydatabase','@',-1) AS "mydatabase";
+
+select split_part('joeuser@mydatabase','@',-2) AS "joeuser";
+
+select split_part('joeuser@mydatabase','@',-3) AS "empty string";
+
+select split_part('@joeuser@mydatabase@','@',-2) AS "mydatabase";
 
 --
 -- test to_hex
@@ -527,6 +735,29 @@ SELECT sha512('');
 SELECT sha512('The quick brown fox jumps over the lazy dog.');
 
 --
+-- encode/decode
+--
+SELECT encode('\x1234567890abcdef00', 'hex');
+SELECT decode('1234567890abcdef00', 'hex');
+SELECT encode(('\x' || repeat('1234567890abcdef0001', 7))::bytea, 'base64');
+SELECT decode(encode(('\x' || repeat('1234567890abcdef0001', 7))::bytea,
+                     'base64'), 'base64');
+SELECT encode('\x1234567890abcdef00', 'escape');
+SELECT decode(encode('\x1234567890abcdef00', 'escape'), 'escape');
+
+--
+-- get_bit/set_bit etc
+--
+SELECT get_bit('\x1234567890abcdef00'::bytea, 43);
+SELECT get_bit('\x1234567890abcdef00'::bytea, 99);  -- error
+SELECT set_bit('\x1234567890abcdef00'::bytea, 43, 0);
+SELECT set_bit('\x1234567890abcdef00'::bytea, 99, 0);  -- error
+SELECT get_byte('\x1234567890abcdef00'::bytea, 3);
+SELECT get_byte('\x1234567890abcdef00'::bytea, 99);  -- error
+SELECT set_byte('\x1234567890abcdef00'::bytea, 7, 11);
+SELECT set_byte('\x1234567890abcdef00'::bytea, 99, 11);  -- error
+
+--
 -- test behavior of escape_string_warning and standard_conforming_strings options
 --
 set escape_string_warning = off;
@@ -555,6 +786,8 @@ select 'a\bcd' as f1, 'a\b''cd' as f2, 'a\b''''cd' as f3, 'abcd\'   as f4, 'ab\'
 set standard_conforming_strings = off;
 
 select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
+
+reset standard_conforming_strings;
 
 
 --
@@ -590,10 +823,33 @@ SELECT chr(0);
 SELECT repeat('Pg', 4);
 SELECT repeat('Pg', -4);
 
+SELECT SUBSTRING('1234567890'::bytea FROM 3) "34567890";
+SELECT SUBSTRING('1234567890'::bytea FROM 4 FOR 3) AS "456";
+SELECT SUBSTRING('string'::bytea FROM 2 FOR 2147483646) AS "tring";
+SELECT SUBSTRING('string'::bytea FROM -10 FOR 2147483646) AS "string";
+SELECT SUBSTRING('string'::bytea FROM -10 FOR -2147483646) AS "error";
+
 SELECT trim(E'\\000'::bytea from E'\\000Tom\\000'::bytea);
+SELECT trim(leading E'\\000'::bytea from E'\\000Tom\\000'::bytea);
+SELECT trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea);
 SELECT btrim(E'\\000trim\\000'::bytea, E'\\000'::bytea);
 SELECT btrim(''::bytea, E'\\000'::bytea);
 SELECT btrim(E'\\000trim\\000'::bytea, ''::bytea);
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'Th\\001omas'::bytea from 2),'escape');
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 8),'escape');
 SELECT encode(overlay(E'Th\\000omas'::bytea placing E'\\002\\003'::bytea from 5 for 3),'escape');
+
+SELECT bit_count('\x1234567890'::bytea);
+
+SELECT unistr('\0064at\+0000610');
+SELECT unistr('d\u0061t\U000000610');
+SELECT unistr('a\\b');
+-- errors:
+SELECT unistr('wrong: \db99');
+SELECT unistr('wrong: \db99\0061');
+SELECT unistr('wrong: \+00db99\+000061');
+SELECT unistr('wrong: \+2FFFFF');
+SELECT unistr('wrong: \udb99\u0061');
+SELECT unistr('wrong: \U0000db99\U00000061');
+SELECT unistr('wrong: \U002FFFFF');
+SELECT unistr('wrong: \xyz');

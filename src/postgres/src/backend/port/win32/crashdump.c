@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * win32_crashdump.c
+ * crashdump.c
  *		   Automatic crash dump creation for PostgreSQL on Windows
  *
  * The crashdump feature traps unhandled win32 exceptions produced by the
@@ -28,7 +28,7 @@
  * be added, though at the cost of a greater chance of the crash dump failing.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32/crashdump.c
@@ -122,7 +122,7 @@ crashDumpHandler(struct _EXCEPTION_POINTERS *pExceptionInfo)
 			return EXCEPTION_CONTINUE_SEARCH;
 		}
 
-		pDump = (MINIDUMPWRITEDUMP) GetProcAddress(hDll, "MiniDumpWriteDump");
+		pDump = (MINIDUMPWRITEDUMP) (pg_funcptr_t) GetProcAddress(hDll, "MiniDumpWriteDump");
 
 		if (pDump == NULL)
 		{

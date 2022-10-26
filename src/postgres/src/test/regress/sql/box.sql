@@ -25,6 +25,9 @@ INSERT INTO BOX_TBL (f1) VALUES ('(2.0,2.0,0.0,0.0)');
 
 INSERT INTO BOX_TBL (f1) VALUES ('(1.0,1.0,3.0,3.0)');
 
+INSERT INTO BOX_TBL (f1) VALUES ('((-8, 2), (-2, -10))');
+
+
 -- degenerate cases where the box is a line or a point
 -- note that lines and points boxes all have zero area
 INSERT INTO BOX_TBL (f1) VALUES ('(2.5, 2.5, 2.5,3.5)');
@@ -34,89 +37,95 @@ INSERT INTO BOX_TBL (f1) VALUES ('(3.0, 3.0,3.0,3.0)');
 -- badly formatted box inputs
 INSERT INTO BOX_TBL (f1) VALUES ('(2.3, 4.5)');
 
+INSERT INTO BOX_TBL (f1) VALUES ('[1, 2, 3, 4)');
+
+INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4]');
+
+INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4) x');
+
 INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
 
 
-SELECT '' AS four, * FROM BOX_TBL;
+SELECT * FROM BOX_TBL;
 
-SELECT '' AS four, b.*, area(b.f1) as barea
+SELECT b.*, area(b.f1) as barea
    FROM BOX_TBL b;
 
 -- overlap
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 && box '(2.5,2.5,1.0,1.0)';
 
 -- left-or-overlap (x only)
-SELECT '' AS two, b1.*
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &< box '(2.0,2.0,2.5,2.5)';
 
 -- right-or-overlap (x only)
-SELECT '' AS two, b1.*
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &> box '(2.0,2.0,2.5,2.5)';
 
 -- left of
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 << box '(3.0,3.0,5.0,5.0)';
 
 -- area <=
-SELECT '' AS four, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 <= box '(3.0,3.0,5.0,5.0)';
 
 -- area <
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 < box '(3.0,3.0,5.0,5.0)';
 
 -- area =
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 = box '(3.0,3.0,5.0,5.0)';
 
 -- area >
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b				-- zero area
    WHERE b.f1 > box '(3.5,3.0,4.5,3.0)';
 
 -- area >=
-SELECT '' AS four, b.f1
+SELECT b.f1
    FROM BOX_TBL b				-- zero area
    WHERE b.f1 >= box '(3.5,3.0,4.5,3.0)';
 
 -- right of
-SELECT '' AS two, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE box '(3.0,3.0,5.0,5.0)' >> b.f1;
 
 -- contained in
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE b.f1 <@ box '(0,0,3,3)';
 
 -- contains
-SELECT '' AS three, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE box '(0,0,3,3)' @> b.f1;
 
 -- box equality
-SELECT '' AS one, b.f1
+SELECT b.f1
    FROM BOX_TBL b
    WHERE box '(1,1,3,3)' ~= b.f1;
 
 -- center of box, left unary operator
-SELECT '' AS four, @@(b1.f1) AS p
+SELECT @@(b1.f1) AS p
    FROM BOX_TBL b1;
 
 -- wholly-contained
-SELECT '' AS one, b1.*, b2.*
+SELECT b1.*, b2.*
    FROM BOX_TBL b1, BOX_TBL b2
    WHERE b1.f1 @> b2.f1 and not b1.f1 ~= b2.f1;
 
-SELECT '' AS four, height(f1), width(f1) FROM BOX_TBL;
+SELECT height(f1), width(f1) FROM BOX_TBL;
 
 --
 -- Test the SP-GiST index
@@ -183,27 +192,40 @@ DROP INDEX box_spgist;
 --
 -- Test the SP-GiST index on the larger volume of data
 --
-CREATE TABLE quad_box_tbl (b box);
+CREATE TABLE quad_box_tbl (id int, b box);
 
 INSERT INTO quad_box_tbl
-	SELECT box(point(x * 10, y * 10), point(x * 10 + 5, y * 10 + 5))
-	FROM generate_series(1, 100) x,
-		 generate_series(1, 100) y;
+  SELECT (x - 1) * 100 + y, box(point(x * 10, y * 10), point(x * 10 + 5, y * 10 + 5))
+  FROM generate_series(1, 100) x,
+       generate_series(1, 100) y;
 
 -- insert repeating data to test allTheSame
 INSERT INTO quad_box_tbl
-	SELECT '((200, 300),(210, 310))'
-	FROM generate_series(1, 1000);
+  SELECT i, '((200, 300),(210, 310))'
+  FROM generate_series(10001, 11000) AS i;
 
 INSERT INTO quad_box_tbl
-	VALUES
-		(NULL),
-		(NULL),
-		('((-infinity,-infinity),(infinity,infinity))'),
-		('((-infinity,100),(-infinity,500))'),
-		('((-infinity,-infinity),(700,infinity))');
+VALUES
+  (11001, NULL),
+  (11002, NULL),
+  (11003, '((-infinity,-infinity),(infinity,infinity))'),
+  (11004, '((-infinity,100),(-infinity,500))'),
+  (11005, '((-infinity,-infinity),(700,infinity))');
 
 CREATE INDEX quad_box_tbl_idx ON quad_box_tbl USING spgist(b);
+
+-- get reference results for ORDER BY distance from seq scan
+SET enable_seqscan = ON;
+SET enable_indexscan = OFF;
+SET enable_bitmapscan = OFF;
+
+CREATE TABLE quad_box_tbl_ord_seq1 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+
+CREATE TABLE quad_box_tbl_ord_seq2 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
 
 SET enable_seqscan = OFF;
 SET enable_indexscan = ON;
@@ -222,6 +244,39 @@ SELECT count(*) FROM quad_box_tbl WHERE b |>> box '((100,200),(300,500))';
 SELECT count(*) FROM quad_box_tbl WHERE b @>  box '((201,301),(202,303))';
 SELECT count(*) FROM quad_box_tbl WHERE b <@  box '((100,200),(300,500))';
 SELECT count(*) FROM quad_box_tbl WHERE b ~=  box '((200,300),(205,305))';
+
+-- test ORDER BY distance
+SET enable_indexscan = ON;
+SET enable_bitmapscan = OFF;
+
+EXPLAIN (COSTS OFF)
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+
+CREATE TEMP TABLE quad_box_tbl_ord_idx1 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl;
+
+SELECT *
+FROM quad_box_tbl_ord_seq1 seq FULL JOIN quad_box_tbl_ord_idx1 idx
+	ON seq.n = idx.n AND seq.id = idx.id AND
+		(seq.dist = idx.dist OR seq.dist IS NULL AND idx.dist IS NULL)
+WHERE seq.id IS NULL OR idx.id IS NULL;
+
+
+EXPLAIN (COSTS OFF)
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
+
+CREATE TEMP TABLE quad_box_tbl_ord_idx2 AS
+SELECT rank() OVER (ORDER BY b <-> point '123,456') n, b <-> point '123,456' dist, id
+FROM quad_box_tbl WHERE b <@ box '((200,300),(500,600))';
+
+SELECT *
+FROM quad_box_tbl_ord_seq2 seq FULL JOIN quad_box_tbl_ord_idx2 idx
+	ON seq.n = idx.n AND seq.id = idx.id AND
+		(seq.dist = idx.dist OR seq.dist IS NULL AND idx.dist IS NULL)
+WHERE seq.id IS NULL OR idx.id IS NULL;
 
 RESET enable_seqscan;
 RESET enable_indexscan;

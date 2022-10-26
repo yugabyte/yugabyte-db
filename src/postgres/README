@@ -1,3 +1,16 @@
+"REL_13_STABLE" branch of this fork, "yb_postgres", will be the lastest version of Postgres that Yugabyte based on.
+The merging effort is still in progress.
+
+Project - Merging Yugabyte with Postgres 13.
+  Start - 9/21/21
+
+  Expected Merge Completion 11/11
+  -- Original Date 10/31
+  -- Delayed as I need to provide customer support for other issues.
+
+  Expected Testing Completion - TBD
+
+
 PostgreSQL Database Management System
 =====================================
 
@@ -11,7 +24,7 @@ and functions.  This distribution also contains C language bindings.
 
 PostgreSQL has many language interfaces, many of which are listed here:
 
-	https://www.postgresql.org/download
+	https://www.postgresql.org/download/
 
 See the file INSTALL for instructions on how to build and install
 PostgreSQL.  That file also lists supported operating systems and

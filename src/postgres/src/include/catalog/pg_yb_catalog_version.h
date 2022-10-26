@@ -29,7 +29,7 @@
  *      should match kPgYbCatalogVersionTableOid.
  * ----------------
  */
-CATALOG(pg_yb_catalog_version,8010,YBCatalogVersionRelationId) BKI_SHARED_RELATION BKI_WITHOUT_OIDS BKI_ROWTYPE_OID(8011,YBCatalogVersionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
+CATALOG(pg_yb_catalog_version,8010,YBCatalogVersionRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(8011,YBCatalogVersionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* Oid of the database this applies to. */
 	Oid        db_oid;

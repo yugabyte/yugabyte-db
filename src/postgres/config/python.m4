@@ -17,6 +17,7 @@
 # newer version.
 AC_DEFUN([PGAC_PATH_PYTHON],
 [PGAC_PATH_PROGS(PYTHON, [python python3 python2])
+AC_ARG_VAR(PYTHON, [Python program])dnl
 if test x"$PYTHON" = x""; then
   AC_MSG_ERROR([Python not found])
 fi
@@ -36,8 +37,8 @@ python_majorversion=`echo "$python_fullversion" | sed '[s/^\([0-9]*\).*/\1/]'`
 python_minorversion=`echo "$python_fullversion" | sed '[s/^[0-9]*\.\([0-9]*\).*/\1/]'`
 python_version=`echo "$python_fullversion" | sed '[s/^\([0-9]*\.[0-9]*\).*/\1/]'`
 # Reject unsupported Python versions as soon as practical.
-if test "$python_majorversion" -lt 3 -a "$python_minorversion" -lt 4; then
-  AC_MSG_ERROR([Python version $python_version is too old (version 2.4 or later is required)])
+if test "$python_majorversion" -lt 3 -a "$python_minorversion" -lt 6; then
+  AC_MSG_ERROR([Python version $python_version is too old (version 2.6 or later is required)])
 fi
 
 AC_MSG_CHECKING([for Python distutils module])

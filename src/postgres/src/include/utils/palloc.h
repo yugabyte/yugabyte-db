@@ -18,7 +18,7 @@
  * everything that should be freed.  See utils/mmgr/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/palloc.h
@@ -111,12 +111,12 @@ extern void *MemoryContextAlloc(MemoryContext context, Size size);
 extern void *MemoryContextAllocZero(MemoryContext context, Size size);
 extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
 extern void *MemoryContextAllocExtended(MemoryContext context,
-						   Size size, int flags);
+										Size size, int flags);
 
 extern void *palloc(Size size);
 extern void *palloc0(Size size);
 extern void *palloc_extended(Size size, int flags);
-extern void *repalloc(void *pointer, Size size);
+extern pg_nodiscard void *repalloc(void *pointer, Size size);
 extern void pfree(void *pointer);
 
 /*
@@ -134,7 +134,7 @@ extern void pfree(void *pointer);
 
 /* Higher-limit allocators. */
 extern void *MemoryContextAllocHuge(MemoryContext context, Size size);
-extern void *repalloc_huge(void *pointer, Size size);
+extern pg_nodiscard void *repalloc_huge(void *pointer, Size size);
 
 /*
  * Although this header file is nominally backend-only, certain frontend
@@ -163,7 +163,7 @@ MemoryContextSwitchTo(MemoryContext context)
 
 /* Registration of memory context reset/delete callbacks */
 extern void MemoryContextRegisterResetCallback(MemoryContext context,
-								   MemoryContextCallback *cb);
+											   MemoryContextCallback *cb);
 
 /*
  * These are like standard strdup() except the copied string is

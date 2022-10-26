@@ -12,6 +12,11 @@ select count(*) >= 0 as ok from pg_available_extension_versions;
 
 select count(*) >= 0 as ok from pg_available_extensions;
 
+-- The entire output of pg_backend_memory_contexts is not stable,
+-- we test only the existance and basic condition of TopMemoryContext.
+select name, ident, parent, level, total_bytes >= free_bytes
+  from pg_backend_memory_contexts where level = 0;
+
 -- At introduction, pg_config had 23 entries; it may grow
 select count(*) > 20 as ok from pg_config;
 
@@ -31,6 +36,12 @@ select count(*) = 0 as ok from pg_prepared_statements;
 
 -- See also prepared_xacts.sql
 select count(*) >= 0 as ok from pg_prepared_xacts;
+
+-- There must be only one record
+select count(*) = 1 as ok from pg_stat_wal;
+
+-- We expect no walreceiver running in this test
+select count(*) = 0 as ok from pg_stat_wal_receiver;
 
 -- This is to record the prevailing planner enable_foo settings during
 -- a regression test run.

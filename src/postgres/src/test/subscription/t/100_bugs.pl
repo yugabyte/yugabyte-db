@@ -1,9 +1,12 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # Tests for various bugs found over time
 use strict;
 use warnings;
 use PostgresNode;
 use TestLib;
-use Test::More tests => 1;
+use Test::More tests => 5;
 
 # Bug #15114
 
@@ -16,11 +19,11 @@ use Test::More tests => 1;
 # fix was to avoid the constant expressions simplification in
 # RelationGetIndexAttrBitmap(), so it's safe to call in more contexts.
 
-my $node_publisher = get_new_node('publisher');
+my $node_publisher = PostgresNode->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
-my $node_subscriber = get_new_node('subscriber');
+my $node_subscriber = PostgresNode->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->start;
 
@@ -30,7 +33,8 @@ $node_publisher->safe_psql('postgres',
 	"CREATE TABLE tab1 (a int PRIMARY KEY, b int)");
 
 $node_publisher->safe_psql('postgres',
-	"CREATE FUNCTION double(x int) RETURNS int IMMUTABLE LANGUAGE SQL AS 'select x * 2'");
+	"CREATE FUNCTION double(x int) RETURNS int IMMUTABLE LANGUAGE SQL AS 'select x * 2'"
+);
 
 # an index with a predicate that lends itself to constant expressions
 # evaluation
@@ -42,7 +46,8 @@ $node_subscriber->safe_psql('postgres',
 	"CREATE TABLE tab1 (a int PRIMARY KEY, b int)");
 
 $node_subscriber->safe_psql('postgres',
-	"CREATE FUNCTION double(x int) RETURNS int IMMUTABLE LANGUAGE SQL AS 'select x * 2'");
+	"CREATE FUNCTION double(x int) RETURNS int IMMUTABLE LANGUAGE SQL AS 'select x * 2'"
+);
 
 $node_subscriber->safe_psql('postgres',
 	"CREATE INDEX ON tab1 (b) WHERE a > double(1)");
@@ -51,15 +56,171 @@ $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION pub1 FOR ALL TABLES");
 
 $node_subscriber->safe_psql('postgres',
-	"CREATE SUBSCRIPTION sub1 CONNECTION '$publisher_connstr application_name=sub1' PUBLICATION pub1");
+	"CREATE SUBSCRIPTION sub1 CONNECTION '$publisher_connstr' PUBLICATION pub1"
+);
 
 $node_publisher->wait_for_catchup('sub1');
 
 # This would crash, first on the publisher, and then (if the publisher
 # is fixed) on the subscriber.
-$node_publisher->safe_psql('postgres',
-	"INSERT INTO tab1 VALUES (1, 2)");
+$node_publisher->safe_psql('postgres', "INSERT INTO tab1 VALUES (1, 2)");
 
 $node_publisher->wait_for_catchup('sub1');
 
 pass('index predicates do not cause crash');
+
+$node_publisher->stop('fast');
+$node_subscriber->stop('fast');
+
+
+# Handling of temporary and unlogged tables with FOR ALL TABLES publications
+
+# If a FOR ALL TABLES publication exists, temporary and unlogged
+# tables are ignored for publishing changes.  The bug was that we
+# would still check in that case that such a table has a replica
+# identity set before accepting updates.  If it did not it would cause
+# an error when an update was attempted.
+
+$node_publisher = PostgresNode->new('publisher2');
+$node_publisher->init(allows_streaming => 'logical');
+$node_publisher->start;
+
+$node_publisher->safe_psql('postgres',
+	"CREATE PUBLICATION pub FOR ALL TABLES");
+
+is( $node_publisher->psql(
+		'postgres',
+		"CREATE TEMPORARY TABLE tt1 AS SELECT 1 AS a; UPDATE tt1 SET a = 2;"),
+	0,
+	'update to temporary table without replica identity with FOR ALL TABLES publication'
+);
+
+is( $node_publisher->psql(
+		'postgres',
+		"CREATE UNLOGGED TABLE tu1 AS SELECT 1 AS a; UPDATE tu1 SET a = 2;"),
+	0,
+	'update to unlogged table without replica identity with FOR ALL TABLES publication'
+);
+
+$node_publisher->stop('fast');
+
+# Bug #16643 - https://postgr.es/m/16643-eaadeb2a1a58d28c@postgresql.org
+#
+# Initial sync doesn't complete; the protocol was not being followed per
+# expectations after commit 07082b08cc5d.
+my $node_twoways = PostgresNode->new('twoways');
+$node_twoways->init(allows_streaming => 'logical');
+$node_twoways->start;
+for my $db (qw(d1 d2))
+{
+	$node_twoways->safe_psql('postgres', "CREATE DATABASE $db");
+	$node_twoways->safe_psql($db,        "CREATE TABLE t (f int)");
+	$node_twoways->safe_psql($db,        "CREATE TABLE t2 (f int)");
+}
+
+my $rows = 3000;
+$node_twoways->safe_psql(
+	'd1', qq{
+	INSERT INTO t SELECT * FROM generate_series(1, $rows);
+	INSERT INTO t2 SELECT * FROM generate_series(1, $rows);
+	CREATE PUBLICATION testpub FOR TABLE t;
+	SELECT pg_create_logical_replication_slot('testslot', 'pgoutput');
+	});
+
+$node_twoways->safe_psql('d2',
+	    "CREATE SUBSCRIPTION testsub CONNECTION \$\$"
+	  . $node_twoways->connstr('d1')
+	  . "\$\$ PUBLICATION testpub WITH (create_slot=false, "
+	  . "slot_name='testslot')");
+$node_twoways->safe_psql(
+	'd1', qq{
+	INSERT INTO t SELECT * FROM generate_series(1, $rows);
+	INSERT INTO t2 SELECT * FROM generate_series(1, $rows);
+	});
+$node_twoways->safe_psql('d1', 'ALTER PUBLICATION testpub ADD TABLE t2');
+$node_twoways->safe_psql('d2',
+	'ALTER SUBSCRIPTION testsub REFRESH PUBLICATION');
+
+# We cannot rely solely on wait_for_catchup() here; it isn't sufficient
+# when tablesync workers might still be running. So in addition to that,
+# verify that tables are synced.
+# XXX maybe this should be integrated in wait_for_catchup() itself.
+$node_twoways->wait_for_catchup('testsub');
+my $synced_query =
+  "SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');";
+$node_twoways->poll_query_until('d2', $synced_query)
+  or die "Timed out while waiting for subscriber to synchronize data";
+
+is($node_twoways->safe_psql('d2', "SELECT count(f) FROM t"),
+	$rows * 2, "2x$rows rows in t");
+is($node_twoways->safe_psql('d2', "SELECT count(f) FROM t2"),
+	$rows * 2, "2x$rows rows in t2");
+
+# Verify table data is synced with cascaded replication setup. This is mainly
+# to test whether the data written by tablesync worker gets replicated.
+my $node_pub = PostgresNode->new('testpublisher1');
+$node_pub->init(allows_streaming => 'logical');
+$node_pub->start;
+
+my $node_pub_sub = PostgresNode->new('testpublisher_subscriber');
+$node_pub_sub->init(allows_streaming => 'logical');
+$node_pub_sub->start;
+
+my $node_sub = PostgresNode->new('testsubscriber1');
+$node_sub->init(allows_streaming => 'logical');
+$node_sub->start;
+
+# Create the tables in all nodes.
+$node_pub->safe_psql('postgres', "CREATE TABLE tab1 (a int)");
+$node_pub_sub->safe_psql('postgres', "CREATE TABLE tab1 (a int)");
+$node_sub->safe_psql('postgres', "CREATE TABLE tab1 (a int)");
+
+# Create a cascaded replication setup like:
+# N1 - Create publication testpub1.
+# N2 - Create publication testpub2 and also include subscriber which subscribes
+#      to testpub1.
+# N3 - Create subscription testsub2 subscribes to testpub2.
+#
+# Note that subscription on N3 needs to be created before subscription on N2 to
+# test whether the data written by tablesync worker of N2 gets replicated.
+$node_pub->safe_psql('postgres',
+	"CREATE PUBLICATION testpub1 FOR TABLE tab1");
+
+$node_pub_sub->safe_psql('postgres',
+	"CREATE PUBLICATION testpub2 FOR TABLE tab1");
+
+my $publisher1_connstr = $node_pub->connstr . ' dbname=postgres';
+my $publisher2_connstr = $node_pub_sub->connstr . ' dbname=postgres';
+
+$node_sub->safe_psql('postgres',
+	"CREATE SUBSCRIPTION testsub2 CONNECTION '$publisher2_connstr' PUBLICATION testpub2"
+);
+
+$node_pub_sub->safe_psql('postgres',
+	"CREATE SUBSCRIPTION testsub1 CONNECTION '$publisher1_connstr' PUBLICATION testpub1"
+);
+
+$node_pub->safe_psql('postgres',
+	"INSERT INTO tab1 values(generate_series(1,10))");
+
+# Verify that the data is cascaded from testpub1 to testsub1 and further from
+# testpub2 (which had testsub1) to testsub2.
+$node_pub->wait_for_catchup('testsub1');
+$node_pub_sub->wait_for_catchup('testsub2');
+
+# Drop subscriptions as we don't need them anymore
+$node_pub_sub->safe_psql('postgres', "DROP SUBSCRIPTION testsub1");
+$node_sub->safe_psql('postgres', "DROP SUBSCRIPTION testsub2");
+
+# Drop publications as we don't need them anymore
+$node_pub->safe_psql('postgres', "DROP PUBLICATION testpub1");
+$node_pub_sub->safe_psql('postgres', "DROP PUBLICATION testpub2");
+
+# Clean up the tables on both publisher and subscriber as we don't need them
+$node_pub->safe_psql('postgres', "DROP TABLE tab1");
+$node_pub_sub->safe_psql('postgres', "DROP TABLE tab1");
+$node_sub->safe_psql('postgres', "DROP TABLE tab1");
+
+$node_pub->stop('fast');
+$node_pub_sub->stop('fast');
+$node_sub->stop('fast');

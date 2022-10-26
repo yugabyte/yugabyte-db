@@ -1,14 +1,16 @@
 # contrib/pg_stat_statements/Makefile
 
 MODULE_big = pg_stat_statements
-OBJS = pg_stat_statements.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	pg_stat_statements.o
 
 EXTENSION = pg_stat_statements
-DATA = pg_stat_statements--1.4.sql pg_stat_statements--1.5--1.6.sql \
-	pg_stat_statements--1.4--1.5.sql pg_stat_statements--1.3--1.4.sql \
-	pg_stat_statements--1.2--1.3.sql pg_stat_statements--1.1--1.2.sql \
-	pg_stat_statements--1.0--1.1.sql \
-	pg_stat_statements--unpackaged--1.0.sql
+DATA = pg_stat_statements--1.4.sql pg_stat_statements--1.8--1.9.sql \
+	pg_stat_statements--1.7--1.8.sql pg_stat_statements--1.6--1.7.sql \
+	pg_stat_statements--1.5--1.6.sql pg_stat_statements--1.4--1.5.sql \
+	pg_stat_statements--1.3--1.4.sql pg_stat_statements--1.2--1.3.sql \
+	pg_stat_statements--1.1--1.2.sql pg_stat_statements--1.0--1.1.sql
 PGFILEDESC = "pg_stat_statements - execution statistics of SQL statements"
 SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process
 

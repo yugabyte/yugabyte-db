@@ -4,10 +4,10 @@
 #include "postgres_fe.h"
 
 #include "ecpg-pthread-win32.h"
-#include "ecpgtype.h"
-#include "ecpglib.h"
 #include "ecpgerrno.h"
-#include "extern.h"
+#include "ecpglib.h"
+#include "ecpglib_extern.h"
+#include "ecpgtype.h"
 #include "sqlca.h"
 
 #ifdef ENABLE_THREAD_SAFETY
@@ -360,8 +360,7 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 
 				/*------
 				 * new style:
-				 *	<tcp|unix>:postgresql://server[:port|:/unixsocket/path:]
-				 *	[/db-name][?options]
+				 *	<tcp|unix>:postgresql://server[:port][/db-name][?options]
 				 *------
 				 */
 				offset += strlen("postgresql://");
@@ -385,46 +384,22 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 				}
 
 				tmp = strrchr(dbname + offset, ':');
-				if (tmp != NULL)	/* port number or Unix socket path given */
+				if (tmp != NULL)	/* port number given */
 				{
-					char	   *tmp2;
-
 					*tmp = '\0';
-					if ((tmp2 = strchr(tmp + 1, ':')) != NULL)
-					{
-						*tmp2 = '\0';
-						host = ecpg_strdup(tmp + 1, lineno);
-						connect_params++;
-						if (strncmp(dbname, "unix:", 5) != 0)
-						{
-							ecpg_log("ECPGconnect: socketname %s given for TCP connection on line %d\n", host, lineno);
-							ecpg_raise(lineno, ECPG_CONNECT, ECPG_SQLSTATE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION, realname ? realname : ecpg_gettext("<DEFAULT>"));
-							if (host)
-								ecpg_free(host);
-
-							/*
-							 * port not set yet if (port) ecpg_free(port);
-							 */
-							if (options)
-								ecpg_free(options);
-							if (realname)
-								ecpg_free(realname);
-							if (dbname)
-								ecpg_free(dbname);
-							free(this);
-							return false;
-						}
-					}
-					else
-					{
-						port = ecpg_strdup(tmp + 1, lineno);
-						connect_params++;
-					}
+					port = ecpg_strdup(tmp + 1, lineno);
+					connect_params++;
 				}
 
 				if (strncmp(dbname, "unix:", 5) == 0)
 				{
-					if (strcmp(dbname + offset, "localhost") != 0 && strcmp(dbname + offset, "127.0.0.1") != 0)
+					/*
+					 * The alternative of using "127.0.0.1" here is deprecated
+					 * and undocumented; we'll keep it for backward
+					 * compatibility's sake, but not extend it to allow IPv6.
+					 */
+					if (strcmp(dbname + offset, "localhost") != 0 &&
+						strcmp(dbname + offset, "127.0.0.1") != 0)
 					{
 						ecpg_log("ECPGconnect: non-localhost access via sockets on line %d\n", lineno);
 						ecpg_raise(lineno, ECPG_CONNECT, ECPG_SQLSTATE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION, realname ? realname : ecpg_gettext("<DEFAULT>"));
@@ -450,7 +425,6 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 						connect_params++;
 					}
 				}
-
 			}
 		}
 		else
@@ -484,6 +458,47 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 	else
 		realname = NULL;
 
+	/*
+	 * Count options for the allocation done below (this may produce an
+	 * overestimate, it's ok).
+	 */
+	if (options)
+		for (i = 0; options[i]; i++)
+			if (options[i] == '=')
+				connect_params++;
+
+	if (user && strlen(user) > 0)
+		connect_params++;
+	if (passwd && strlen(passwd) > 0)
+		connect_params++;
+
+	/*
+	 * Allocate enough space for all connection parameters.  These allocations
+	 * are done before manipulating the list of connections to ease the error
+	 * handling on failure.
+	 */
+	conn_keywords = (const char **) ecpg_alloc((connect_params + 1) * sizeof(char *), lineno);
+	conn_values = (const char **) ecpg_alloc(connect_params * sizeof(char *), lineno);
+	if (conn_keywords == NULL || conn_values == NULL)
+	{
+		if (host)
+			ecpg_free(host);
+		if (port)
+			ecpg_free(port);
+		if (options)
+			ecpg_free(options);
+		if (realname)
+			ecpg_free(realname);
+		if (dbname)
+			ecpg_free(dbname);
+		if (conn_keywords)
+			ecpg_free(conn_keywords);
+		if (conn_values)
+			ecpg_free(conn_values);
+		free(this);
+		return false;
+	}
+
 	/* add connection to our list */
 #ifdef ENABLE_THREAD_SAFETY
 	pthread_mutex_lock(&connections_mutex);
@@ -513,40 +528,6 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 			 port ? (ecpg_internal_regression_mode ? "<REGRESSION_PORT>" : port) : "<DEFAULT>",
 			 options ? "with options " : "", options ? options : "",
 			 (user && strlen(user) > 0) ? "for user " : "", user ? user : "");
-
-	if (options)
-		for (i = 0; options[i]; i++)
-			/* count options */
-			if (options[i] == '=')
-				connect_params++;
-
-	if (user && strlen(user) > 0)
-		connect_params++;
-	if (passwd && strlen(passwd) > 0)
-		connect_params++;
-
-	/* allocate enough space for all connection parameters */
-	conn_keywords = (const char **) ecpg_alloc((connect_params + 1) * sizeof(char *), lineno);
-	conn_values = (const char **) ecpg_alloc(connect_params * sizeof(char *), lineno);
-	if (conn_keywords == NULL || conn_values == NULL)
-	{
-		if (host)
-			ecpg_free(host);
-		if (port)
-			ecpg_free(port);
-		if (options)
-			ecpg_free(options);
-		if (realname)
-			ecpg_free(realname);
-		if (dbname)
-			ecpg_free(dbname);
-		if (conn_keywords)
-			ecpg_free(conn_keywords);
-		if (conn_values)
-			ecpg_free(conn_values);
-		free(this);
-		return false;
-	}
 
 	i = 0;
 	if (realname)
@@ -583,8 +564,12 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 	{
 		char	   *str;
 
-		/* options look like this "option1 = value1 option2 = value2 ... */
-		/* we have to break up the string into single options */
+		/*
+		 * The options string contains "keyword=value" pairs separated by
+		 * '&'s.  We must break this up into keywords and values to pass to
+		 * libpq (it's okay to scribble on the options string).  We ignore
+		 * spaces just before each keyword or value.
+		 */
 		for (str = options; *str;)
 		{
 			int			e,
@@ -592,13 +577,21 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 			char	   *token1,
 					   *token2;
 
-			for (token1 = str; *token1 && *token1 == ' '; token1++);
-			for (e = 0; token1[e] && token1[e] != '='; e++);
+			/* Skip spaces before keyword */
+			for (token1 = str; *token1 == ' '; token1++)
+				 /* skip */ ;
+			/* Find end of keyword */
+			for (e = 0; token1[e] && token1[e] != '='; e++)
+				 /* skip */ ;
 			if (token1[e])		/* found "=" */
 			{
 				token1[e] = '\0';
-				for (token2 = token1 + e + 1; *token2 && *token2 == ' '; token2++);
-				for (a = 0; token2[a] && token2[a] != '&'; a++);
+				/* Skip spaces before value */
+				for (token2 = token1 + e + 1; *token2 == ' '; token2++)
+					 /* skip */ ;
+				/* Find end of value */
+				for (a = 0; token2[a] && token2[a] != '&'; a++)
+					 /* skip */ ;
 				if (token2[a])	/* found "&" => another option follows */
 				{
 					token2[a] = '\0';
@@ -612,11 +605,14 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 				i++;
 			}
 			else
-				/* the parser should not be able to create this invalid option */
+			{
+				/* Bogus options syntax ... ignore trailing garbage */
 				str = token1 + e;
+			}
 		}
-
 	}
+
+	Assert(i <= connect_params);
 	conn_keywords[i] = NULL;	/* terminator */
 
 	this->connection = PQconnectdbParams(conn_keywords, conn_values, 0);
@@ -637,7 +633,8 @@ ECPGconnect(int lineno, int c, const char *name, const char *user, const char *p
 		const char *errmsg = PQerrorMessage(this->connection);
 		const char *db = realname ? realname : ecpg_gettext("<DEFAULT>");
 
-		ecpg_log("ECPGconnect: could not open database: %s\n", errmsg);
+		/* PQerrorMessage's result already has a trailing newline */
+		ecpg_log("ECPGconnect: %s", errmsg);
 
 		ecpg_finish(this);
 #ifdef ENABLE_THREAD_SAFETY

@@ -8,43 +8,6 @@ CREATE TABLE subtransaction_tbl (
     i integer
 );
 
--- Explicit case for Python <2.6
-
-CREATE FUNCTION subtransaction_test(what_error text = NULL) RETURNS text
-AS $$
-import sys
-subxact = plpy.subtransaction()
-subxact.__enter__()
-exc = True
-try:
-    try:
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (1)")
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (2)")
-        if what_error == "SPI":
-            plpy.execute("INSERT INTO subtransaction_tbl VALUES ('oops')")
-        elif what_error == "Python":
-            raise Exception("Python exception")
-    except:
-        exc = False
-        subxact.__exit__(*sys.exc_info())
-        raise
-finally:
-    if exc:
-        subxact.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
-
-SELECT subtransaction_test();
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('SPI');
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('Python');
-SELECT * FROM subtransaction_tbl;
-TRUNCATE subtransaction_tbl;
-
--- Context manager case for Python >=2.6
-
 CREATE FUNCTION subtransaction_ctx_test(what_error text = NULL) RETURNS text
 AS $$
 with plpy.subtransaction():
@@ -77,7 +40,7 @@ with plpy.subtransaction():
         with plpy.subtransaction():
             plpy.execute("INSERT INTO subtransaction_tbl VALUES (3)")
             plpy.execute("error")
-    except plpy.SPIError, e:
+    except plpy.SPIError as e:
         if not swallow:
             raise
         plpy.notice("Swallowed %s(%r)" % (e.__class__.__name__, e.args[0]))
@@ -158,8 +121,11 @@ $$ LANGUAGE plpythonu;
 
 CREATE FUNCTION subtransaction_exit_subtransaction_in_with() RETURNS void
 AS $$
-with plpy.subtransaction() as s:
-    s.__exit__(None, None, None)
+try:
+    with plpy.subtransaction() as s:
+        s.__exit__(None, None, None)
+except ValueError as e:
+    raise ValueError(e)
 $$ LANGUAGE plpythonu;
 
 SELECT subtransaction_exit_without_enter();

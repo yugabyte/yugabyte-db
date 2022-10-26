@@ -3,7 +3,7 @@
  * ip.c
  *	  IPv6-aware network access.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,14 +39,14 @@
 
 
 #ifdef	HAVE_UNIX_SOCKETS
-static int getaddrinfo_unix(const char *path,
-				 const struct addrinfo *hintsp,
-				 struct addrinfo **result);
+static int	getaddrinfo_unix(const char *path,
+							 const struct addrinfo *hintsp,
+							 struct addrinfo **result);
 
-static int getnameinfo_unix(const struct sockaddr_un *sa, int salen,
-				 char *node, int nodelen,
-				 char *service, int servicelen,
-				 int flags);
+static int	getnameinfo_unix(const struct sockaddr_un *sa, int salen,
+							 char *node, int nodelen,
+							 char *service, int servicelen,
+							 int flags);
 #endif
 
 
@@ -217,6 +217,21 @@ getaddrinfo_unix(const char *path, const struct addrinfo *hintsp,
 
 	strcpy(unp->sun_path, path);
 
+	/*
+	 * If the supplied path starts with @, replace that with a zero byte for
+	 * the internal representation.  In that mode, the entire sun_path is the
+	 * address, including trailing zero bytes.  But we set the address length
+	 * to only include the length of the original string.  That way the
+	 * trailing zero bytes won't show up in any network or socket lists of the
+	 * operating system.  This is just a convention, also followed by other
+	 * packages.
+	 */
+	if (path[0] == '@')
+	{
+		unp->sun_path[0] = '\0';
+		aip->ai_addrlen = offsetof(struct sockaddr_un, sun_path) + strlen(path);
+	}
+
 #ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
 	unp->sun_len = sizeof(struct sockaddr_un);
 #endif
@@ -249,7 +264,14 @@ getnameinfo_unix(const struct sockaddr_un *sa, int salen,
 
 	if (service)
 	{
-		ret = snprintf(service, servicelen, "%s", sa->sun_path);
+		/*
+		 * Check whether it looks like an abstract socket, but it could also
+		 * just be an empty string.
+		 */
+		if (sa->sun_path[0] == '\0' && sa->sun_path[1] != '\0')
+			ret = snprintf(service, servicelen, "@%s", sa->sun_path + 1);
+		else
+			ret = snprintf(service, servicelen, "%s", sa->sun_path);
 		if (ret < 0 || ret >= servicelen)
 			return EAI_MEMORY;
 	}

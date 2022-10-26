@@ -8,10 +8,10 @@
  * and only the receiver may receive.  This is intended to allow a user
  * backend to communicate with worker backends that it has registered.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/storage/shm_mq.h
+ * src/backend/storage/ipc/shm_mq.c
  *
  *-------------------------------------------------------------------------
  */
@@ -20,10 +20,12 @@
 
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "port/pg_bitutils.h"
 #include "postmaster/bgworker.h"
 #include "storage/procsignal.h"
 #include "storage/shm_mq.h"
 #include "storage/spin.h"
+#include "utils/memutils.h"
 
 /*
  * This structure represents the actual queue, stored in shared memory.
@@ -144,14 +146,14 @@ struct shm_mq_handle
 
 static void shm_mq_detach_internal(shm_mq *mq);
 static shm_mq_result shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes,
-				  const void *data, bool nowait, Size *bytes_written);
+									   const void *data, bool nowait, Size *bytes_written);
 static shm_mq_result shm_mq_receive_bytes(shm_mq_handle *mqh,
-					 Size bytes_needed, bool nowait, Size *nbytesp,
-					 void **datap);
+										  Size bytes_needed, bool nowait, Size *nbytesp,
+										  void **datap);
 static bool shm_mq_counterparty_gone(shm_mq *mq,
-						 BackgroundWorkerHandle *handle);
+									 BackgroundWorkerHandle *handle);
 static bool shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr,
-					 BackgroundWorkerHandle *handle);
+								 BackgroundWorkerHandle *handle);
 static void shm_mq_inc_bytes_read(shm_mq *mq, Size n);
 static void shm_mq_inc_bytes_written(shm_mq *mq, Size n);
 static void shm_mq_detach_callback(dsm_segment *seg, Datum arg);
@@ -359,6 +361,13 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait)
 	/* Compute total size of write. */
 	for (i = 0; i < iovcnt; ++i)
 		nbytes += iov[i].len;
+
+	/* Prevent writing messages overwhelming the receiver. */
+	if (nbytes > MaxAllocSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("cannot send a message of size %zu via shared memory queue",
+						nbytes)));
 
 	/* Try to write, or finish writing, the length word into the buffer. */
 	while (!mqh->mqh_length_word_complete)
@@ -675,6 +684,17 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 	}
 	nbytes = mqh->mqh_expected_bytes;
 
+	/*
+	 * Should be disallowed on the sending side already, but better check and
+	 * error out on the receiver side as well rather than trying to read a
+	 * prohibitively large message.
+	 */
+	if (nbytes > MaxAllocSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("invalid message size %zu in shared memory queue",
+						nbytes)));
+
 	if (mqh->mqh_partial_bytes == 0)
 	{
 		/*
@@ -701,10 +721,14 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 		 */
 		if (mqh->mqh_buflen < nbytes)
 		{
-			Size		newbuflen = Max(mqh->mqh_buflen, MQH_INITIAL_BUFSIZE);
+			Size		newbuflen;
 
-			while (newbuflen < nbytes)
-				newbuflen *= 2;
+			/*
+			 * Increase size to the next power of 2 that's >= nbytes, but
+			 * limit to MaxAllocSize.
+			 */
+			newbuflen = pg_nextpower2_size_t(nbytes);
+			newbuflen = Min(newbuflen, MaxAllocSize);
 
 			if (mqh->mqh_buffer != NULL)
 			{
@@ -949,7 +973,8 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 * at top of loop, because setting an already-set latch is much
 			 * cheaper than setting one that has been reset.
 			 */
-			WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_SEND);
+			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+							 WAIT_EVENT_MQ_SEND);
 
 			/* Reset the latch so we don't spin. */
 			ResetLatch(MyLatch);
@@ -1093,7 +1118,8 @@ shm_mq_receive_bytes(shm_mq_handle *mqh, Size bytes_needed, bool nowait,
 		 * loop, because setting an already-set latch is much cheaper than
 		 * setting one that has been reset.
 		 */
-		WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_RECEIVE);
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+						 WAIT_EVENT_MQ_RECEIVE);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);
@@ -1180,8 +1206,9 @@ shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr, BackgroundWorkerHandle *handle)
 			}
 		}
 
-		/* Wait to be signalled. */
-		WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_INTERNAL);
+		/* Wait to be signaled. */
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+						 WAIT_EVENT_MQ_INTERNAL);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);
@@ -1235,7 +1262,7 @@ shm_mq_inc_bytes_written(shm_mq *mq, Size n)
 	/*
 	 * Separate prior reads of mq_ring from the write of mq_bytes_written
 	 * which we're about to do.  Pairs with the read barrier found in
-	 * shm_mq_get_receive_bytes.
+	 * shm_mq_receive_bytes.
 	 */
 	pg_write_barrier();
 
@@ -1248,7 +1275,7 @@ shm_mq_inc_bytes_written(shm_mq *mq, Size n)
 						pg_atomic_read_u64(&mq->mq_bytes_written) + n);
 }
 
-/* Shim for on_dsm_callback. */
+/* Shim for on_dsm_detach callback. */
 static void
 shm_mq_detach_callback(dsm_segment *seg, Datum arg)
 {

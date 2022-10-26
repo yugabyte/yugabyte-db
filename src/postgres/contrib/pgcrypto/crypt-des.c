@@ -11,7 +11,7 @@
  *	binaries of libcrypt exportable from the USA
  *
  * Adapted for FreeBSD-4.0 by Mark R V Murray
- *	this file should now *only* export crypt_des(), in order to make
+ *	this file should now *only* export px_crypt_des(), in order to make
  *	a module that can be optionally included in libcrypt.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -720,7 +720,7 @@ px_crypt_des(const char *key, const char *setting)
 			if (des_setkey((char *) keybuf))
 				return NULL;
 		}
-		StrNCpy(output, setting, 10);
+		strlcpy(output, setting, 10);
 
 		/*
 		 * Double check that we weren't given a short setting. If we were, the

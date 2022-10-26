@@ -3,7 +3,7 @@
  * geqo_selection.c
  *	  linear selection scheme for the genetic query optimizer
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/optimizer/geqo/geqo_selection.c
@@ -91,7 +91,7 @@ geqo_selection(PlannerInfo *root, Chromosome *momma, Chromosome *daddy,
 static int
 linear_rand(PlannerInfo *root, int pool_size, double bias)
 {
-	double		index;			/* index between 0 and pop_size */
+	double		index;			/* index between 0 and pool_size */
 	double		max = (double) pool_size;
 
 	/*

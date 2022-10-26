@@ -7,7 +7,7 @@
  * accessed via the extended FE/BE query protocol.
  *
  *
- * Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/prepare.c
@@ -46,15 +46,16 @@
 static HTAB *prepared_queries = NULL;
 
 static void InitQueryHashTable(void);
-static ParamListInfo EvaluateParams(PreparedStatement *pstmt, List *params,
-			   const char *queryString, EState *estate);
+static ParamListInfo EvaluateParams(ParseState *pstate,
+									PreparedStatement *pstmt, List *params,
+									EState *estate);
 static Datum build_regtype_array(Oid *param_types, int num_params);
 
 /*
  * Implements the 'PREPARE' utility statement.
  */
 void
-PrepareQuery(PrepareStmt *stmt, const char *queryString,
+PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
 			 int stmt_location, int stmt_len)
 {
 	RawStmt    *rawstmt;
@@ -77,12 +78,9 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	/*
 	 * Need to wrap the contained statement in a RawStmt node to pass it to
 	 * parse analysis.
-	 *
-	 * Because parse analysis scribbles on the raw querytree, we must make a
-	 * copy to ensure we don't modify the passed-in tree.  FIXME someday.
 	 */
 	rawstmt = makeNode(RawStmt);
-	rawstmt->stmt = (Node *) copyObject(stmt->query);
+	rawstmt->stmt = stmt->query;
 	rawstmt->stmt_location = stmt_location;
 	rawstmt->stmt_len = stmt_len;
 
@@ -90,7 +88,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	 * Create the CachedPlanSource before we do parse analysis, since it needs
 	 * to see the unmodified raw parse tree.
 	 */
-	plansource = CreateCachedPlan(rawstmt, queryString,
+	plansource = CreateCachedPlan(rawstmt, pstate->p_sourcetext,
 								  CreateCommandTag(stmt->query));
 
 	/* Transform list of TypeNames to array of type OIDs */
@@ -98,15 +96,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 
 	if (nargs)
 	{
-		ParseState *pstate;
 		ListCell   *l;
-
-		/*
-		 * typenameTypeId wants a ParseState to carry the source query string.
-		 * Is it worth refactoring its API to avoid this?
-		 */
-		pstate = make_parsestate(NULL);
-		pstate->p_sourcetext = queryString;
 
 		argtypes = (Oid *) palloc(nargs * sizeof(Oid));
 		i = 0;
@@ -125,7 +115,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	 * passed in from above us will not be visible to it), allowing
 	 * information about unknown parameters to be deduced from context.
 	 */
-	query = parse_analyze_varparams(rawstmt, queryString,
+	query = parse_analyze_varparams(rawstmt, pstate->p_sourcetext,
 									&argtypes, &nargs);
 
 	/*
@@ -143,7 +133,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
 	}
 
 	/*
-	 * grammar only allows OptimizableStmt, so this check should be redundant
+	 * grammar only allows PreparableStmt, so this check should be redundant
 	 */
 	switch (query->commandType)
 	{
@@ -189,17 +179,12 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString,
  * indicated by passing a non-null intoClause.  The DestReceiver is already
  * set up correctly for CREATE TABLE AS, but we still have to make a few
  * other adjustments here.
- *
- * Note: this is one of very few places in the code that needs to deal with
- * two query strings at once.  The passed-in queryString is that of the
- * EXECUTE, which we might need for error reporting while processing the
- * parameter expressions.  The query_string that we copy from the plan
- * source is that of the original PREPARE.
  */
 void
-ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
-			 const char *queryString, ParamListInfo params,
-			 DestReceiver *dest, char *completionTag)
+ExecuteQuery(ParseState *pstate,
+			 ExecuteStmt *stmt, IntoClause *intoClause,
+			 ParamListInfo params,
+			 DestReceiver *dest, QueryCompletion *qc)
 {
 	PreparedStatement *entry;
 	CachedPlan *cplan;
@@ -237,8 +222,7 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 		 */
 		estate = CreateExecutorState();
 		estate->es_param_list_info = params;
-		paramLI = EvaluateParams(entry, stmt->params,
-								 queryString, estate);
+		paramLI = EvaluateParams(pstate, entry, stmt->params, estate);
 	}
 
 	/* Create a new portal to run the query in */
@@ -251,7 +235,7 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 									   entry->plansource->query_string);
 
 	/* Replan if needed, and increment plan refcount for portal */
-	cplan = GetCachedPlan(entry->plansource, paramLI, false, NULL);
+	cplan = GetCachedPlan(entry->plansource, paramLI, NULL, NULL);
 	plan_list = cplan->stmt_list;
 
 	/*
@@ -313,7 +297,7 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	 */
 	PortalStart(portal, paramLI, eflags, GetActiveSnapshot());
 
-	(void) PortalRun(portal, count, false, true, dest, dest, completionTag);
+	(void) PortalRun(portal, count, false, true, dest, dest, qc);
 
 	PortalDrop(portal, false);
 
@@ -326,9 +310,9 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 /*
  * EvaluateParams: evaluate a list of parameters.
  *
+ * pstate: parse state
  * pstmt: statement we are getting parameters for.
  * params: list of given parameter expressions (raw parser output!)
- * queryString: source text for error messages.
  * estate: executor state to use.
  *
  * Returns a filled-in ParamListInfo -- this can later be passed to
@@ -336,13 +320,12 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
  * during query execution.
  */
 static ParamListInfo
-EvaluateParams(PreparedStatement *pstmt, List *params,
-			   const char *queryString, EState *estate)
+EvaluateParams(ParseState *pstate, PreparedStatement *pstmt, List *params,
+			   EState *estate)
 {
 	Oid		   *param_types = pstmt->plansource->param_types;
 	int			num_params = pstmt->plansource->num_params;
 	int			nparams = list_length(params);
-	ParseState *pstate;
 	ParamListInfo paramLI;
 	List	   *exprstates;
 	ListCell   *l;
@@ -365,9 +348,6 @@ EvaluateParams(PreparedStatement *pstmt, List *params,
 	 * not cool about scribbling on its input, copy first.
 	 */
 	params = copyObject(params);
-
-	pstate = make_parsestate(NULL);
-	pstate->p_sourcetext = queryString;
 
 	i = 0;
 	foreach(l, params)
@@ -393,7 +373,8 @@ EvaluateParams(PreparedStatement *pstmt, List *params,
 							i + 1,
 							format_type_be(given_type_id),
 							format_type_be(expected_type_id)),
-					 errhint("You will need to rewrite or cast the expression.")));
+					 errhint("You will need to rewrite or cast the expression."),
+					 parser_errposition(pstate, exprLocation(lfirst(l)))));
 
 		/* Take care of collations in the finished expression. */
 		assign_expr_collations(pstate, expr);
@@ -405,17 +386,7 @@ EvaluateParams(PreparedStatement *pstmt, List *params,
 	/* Prepare the expressions for execution */
 	exprstates = ExecPrepareExprList(params, estate);
 
-	paramLI = (ParamListInfo)
-		palloc(offsetof(ParamListInfoData, params) +
-			   num_params * sizeof(ParamExternData));
-	/* we have static list of params, so no hooks needed */
-	paramLI->paramFetch = NULL;
-	paramLI->paramFetchArg = NULL;
-	paramLI->paramCompile = NULL;
-	paramLI->paramCompileArg = NULL;
-	paramLI->parserSetup = NULL;
-	paramLI->parserSetupArg = NULL;
-	paramLI->numParams = num_params;
+	paramLI = makeParamList(num_params);
 
 	i = 0;
 	foreach(l, exprstates)
@@ -444,15 +415,13 @@ InitQueryHashTable(void)
 {
 	HASHCTL		hash_ctl;
 
-	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
-
 	hash_ctl.keysize = NAMEDATALEN;
 	hash_ctl.entrysize = sizeof(PreparedStatement);
 
 	prepared_queries = hash_create("Prepared Queries",
 								   32,
 								   &hash_ctl,
-								   HASH_ELEM);
+								   HASH_ELEM | HASH_STRINGS);
 }
 
 /*
@@ -654,7 +623,11 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	EState	   *estate = NULL;
 	instr_time	planstart;
 	instr_time	planduration;
+	BufferUsage bufusage_start,
+				bufusage;
 
+	if (es->buffers)
+		bufusage_start = pgBufferUsage;
 	INSTR_TIME_SET_CURRENT(planstart);
 
 	/* Look it up in the hash table */
@@ -669,6 +642,11 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	/* Evaluate parameters, if any */
 	if (entry->plansource->num_params)
 	{
+		ParseState *pstate;
+
+		pstate = make_parsestate(NULL);
+		pstate->p_sourcetext = queryString;
+
 		/*
 		 * Need an EState to evaluate parameters; must not delete it till end
 		 * of query, in case parameters are pass-by-reference.  Note that the
@@ -677,15 +655,23 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 		 */
 		estate = CreateExecutorState();
 		estate->es_param_list_info = params;
-		paramLI = EvaluateParams(entry, execstmt->params,
-								 queryString, estate);
+
+		paramLI = EvaluateParams(pstate, entry, execstmt->params, estate);
 	}
 
 	/* Replan if needed, and acquire a transient refcount */
-	cplan = GetCachedPlan(entry->plansource, paramLI, true, queryEnv);
+	cplan = GetCachedPlan(entry->plansource, paramLI,
+						  CurrentResourceOwner, queryEnv);
 
 	INSTR_TIME_SET_CURRENT(planduration);
 	INSTR_TIME_SUBTRACT(planduration, planstart);
+
+	/* calc differences of buffer counters. */
+	if (es->buffers)
+	{
+		memset(&bufusage, 0, sizeof(BufferUsage));
+		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
+	}
 
 	plan_list = cplan->stmt_list;
 
@@ -696,7 +682,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 
 		if (pstmt->commandType != CMD_UTILITY)
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
-						   &planduration);
+						   &planduration, (es->buffers ? &bufusage : NULL));
 		else
 			ExplainOneUtility(pstmt->utilityStmt, into, es, query_string,
 							  paramLI, queryEnv);
@@ -704,19 +690,20 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 		/* No need for CommandCounterIncrement, as ExplainOnePlan did it */
 
 		/* Separate plans with an appropriate separator */
-		if (lnext(p) != NULL)
+		if (lnext(plan_list, p) != NULL)
 			ExplainSeparatePlans(es);
 	}
 
 	if (estate)
 		FreeExecutorState(estate);
 
-	ReleaseCachedPlan(cplan, true);
+	ReleaseCachedPlan(cplan, CurrentResourceOwner);
 }
 
 /*
  * This set returning function reads all the prepared statements and
- * returns a set of (name, statement, prepare_time, param_types, from_sql).
+ * returns a set of (name, statement, prepare_time, param_types, from_sql,
+ * generic_plans, custom_plans).
  */
 Datum
 pg_prepared_statement(PG_FUNCTION_ARGS)
@@ -735,8 +722,7 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 	if (!(rsinfo->allowedModes & SFRM_Materialize))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
+				 errmsg("materialize mode required, but it is not allowed in this context")));
 
 	/* need to build tuplestore in query context */
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
@@ -746,7 +732,7 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 	 * build tupdesc for result tuples. This must match the definition of the
 	 * pg_prepared_statements view in system_views.sql
 	 */
-	tupdesc = CreateTemplateTupleDesc(5, false);
+	tupdesc = CreateTemplateTupleDesc(7);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
 					   TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "statement",
@@ -757,6 +743,10 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 					   REGTYPEARRAYOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "from_sql",
 					   BOOLOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "generic_plans",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "custom_plans",
+					   INT8OID, -1, 0);
 
 	/*
 	 * We put all the tuples into a tuplestore in one scan of the hashtable.
@@ -778,8 +768,8 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 		hash_seq_init(&hash_seq, prepared_queries);
 		while ((prep_stmt = hash_seq_search(&hash_seq)) != NULL)
 		{
-			Datum		values[5];
-			bool		nulls[5];
+			Datum		values[7];
+			bool		nulls[7];
 
 			MemSet(nulls, 0, sizeof(nulls));
 
@@ -789,6 +779,8 @@ pg_prepared_statement(PG_FUNCTION_ARGS)
 			values[3] = build_regtype_array(prep_stmt->plansource->param_types,
 											prep_stmt->plansource->num_params);
 			values[4] = BoolGetDatum(prep_stmt->from_sql);
+			values[5] = Int64GetDatumFast(prep_stmt->plansource->num_generic_plans);
+			values[6] = Int64GetDatumFast(prep_stmt->plansource->num_custom_plans);
 
 			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 		}
@@ -822,6 +814,7 @@ build_regtype_array(Oid *param_types, int num_params)
 		tmp_ary[i] = ObjectIdGetDatum(param_types[i]);
 
 	/* XXX: this hardcodes assumptions about the regtype type */
-	result = construct_array(tmp_ary, num_params, REGTYPEOID, 4, true, 'i');
+	result = construct_array(tmp_ary, num_params, REGTYPEOID,
+							 4, true, TYPALIGN_INT);
 	return PointerGetDatum(result);
 }

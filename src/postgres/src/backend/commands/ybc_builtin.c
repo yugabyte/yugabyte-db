@@ -79,7 +79,7 @@ yb_getrusage(PG_FUNCTION_ARGS)
 	getrusage(RUSAGE_SELF, &r);
 
 	// Create tuple descriptor.
-	tupdesc = CreateTemplateTupleDesc(arg_count, false);
+	tupdesc = CreateTemplateTupleDesc(arg_count);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "user cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "system cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "maxrss", INT8OID, -1, 0);

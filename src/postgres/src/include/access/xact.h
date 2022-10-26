@@ -4,7 +4,7 @@
  *	  postgres transaction system definitions
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xact.h
@@ -14,12 +14,13 @@
 #ifndef XACT_H
 #define XACT_H
 
+#include "access/transam.h"
 #include "access/xlogreader.h"
+#include "datatype/timestamp.h"
 #include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 #include "storage/relfilenode.h"
 #include "storage/sinval.h"
-#include "utils/datetime.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -58,6 +59,9 @@ extern PGDLLIMPORT int XactIsoLevel;
 extern bool DefaultXactReadOnly;
 extern bool XactReadOnly;
 
+/* flag for logging statements in this transaction */
+extern bool xact_is_sampled;
+
 /*
  * Xact is deferrable -- only meaningful (currently) for read only
  * SERIALIZABLE transactions
@@ -72,7 +76,8 @@ typedef enum
 	SYNCHRONOUS_COMMIT_REMOTE_WRITE,	/* wait for local flush and remote
 										 * write */
 	SYNCHRONOUS_COMMIT_REMOTE_FLUSH,	/* wait for local and remote flush */
-	SYNCHRONOUS_COMMIT_REMOTE_APPLY /* wait for local flush and remote apply */
+	SYNCHRONOUS_COMMIT_REMOTE_APPLY /* wait for local and remote flush and
+									 * remote apply */
 }			SyncCommitLevel;
 
 /* Define the default setting for synchronous_commit */
@@ -80,6 +85,10 @@ typedef enum
 
 /* Synchronous commit level */
 extern int	synchronous_commit;
+
+/* used during logical streaming of a transaction */
+extern PGDLLIMPORT TransactionId CheckXidAlive;
+extern PGDLLIMPORT bool bsysscan;
 
 /*
  * Miscellaneous flag bits to record events which occur on the top level
@@ -91,22 +100,16 @@ extern int	synchronous_commit;
 extern int	MyXactFlags;
 
 /*
- * XACT_FLAGS_ACCESSEDTEMPREL - set when a temporary relation is accessed. We
- * don't allow PREPARE TRANSACTION in that case.
+ * XACT_FLAGS_ACCESSEDTEMPNAMESPACE - set when a temporary object is accessed.
+ * We don't allow PREPARE TRANSACTION in that case.
  */
-#define XACT_FLAGS_ACCESSEDTEMPREL				(1U << 0)
+#define XACT_FLAGS_ACCESSEDTEMPNAMESPACE		(1U << 0)
 
 /*
  * XACT_FLAGS_ACQUIREDACCESSEXCLUSIVELOCK - records whether the top level xact
  * logged any Access Exclusive Locks.
  */
 #define XACT_FLAGS_ACQUIREDACCESSEXCLUSIVELOCK	(1U << 1)
-
-/*
- * XACT_FLAGS_ACCESSEDTEMPNAMESPACE - set when a temporary namespace is
- * accessed.  We don't allow PREPARE TRANSACTION in that case.
- */
-#define XACT_FLAGS_ACCESSEDTEMPNAMESPACE		(1U << 2)
 
 /*
  *	start- and end-of-transaction callbacks for dynamically loaded modules
@@ -152,7 +155,7 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XLOG_XACT_COMMIT_PREPARED	0x30
 #define XLOG_XACT_ABORT_PREPARED	0x40
 #define XLOG_XACT_ASSIGNMENT		0x50
-/* free opcode 0x60 */
+#define XLOG_XACT_INVALIDATIONS		0x60
 /* free opcode 0x70 */
 
 /* mask for filtering opcodes out of xl_info */
@@ -210,7 +213,7 @@ typedef struct xl_xact_assignment
  *
  * A minimal commit/abort record only consists of a xl_xact_commit/abort
  * struct. The presence of additional information is indicated by bits set in
- * 'xl_xact_xinfo->xinfo'. The presence of the xinfo field itself is signalled
+ * 'xl_xact_xinfo->xinfo'. The presence of the xinfo field itself is signaled
  * by a set XLOG_XACT_HAS_INFO bit in the xl_info field.
  *
  * NB: All the individual data chunks should be sized to multiples of
@@ -245,7 +248,7 @@ typedef struct xl_xact_subxacts
 
 typedef struct xl_xact_relfilenodes
 {
-	int			nrels;			/* number of subtransaction XIDs */
+	int			nrels;			/* number of relations */
 	RelFileNode xnodes[FLEXIBLE_ARRAY_MEMBER];
 } xl_xact_relfilenodes;
 #define MinSizeOfXactRelfilenodes offsetof(xl_xact_relfilenodes, xnodes)
@@ -297,6 +300,24 @@ typedef struct xl_xact_abort
 	/* xl_xact_origin follows if XINFO_HAS_ORIGIN, stored unaligned! */
 } xl_xact_abort;
 #define MinSizeOfXactAbort sizeof(xl_xact_abort)
+
+typedef struct xl_xact_prepare
+{
+	uint32		magic;			/* format identifier */
+	uint32		total_len;		/* actual file length */
+	TransactionId xid;			/* original transaction XID */
+	Oid			database;		/* OID of database it was in */
+	TimestampTz prepared_at;	/* time of preparation */
+	Oid			owner;			/* user running the transaction */
+	int32		nsubxacts;		/* number of following subxact XIDs */
+	int32		ncommitrels;	/* number of delete-on-commit rels */
+	int32		nabortrels;		/* number of delete-on-abort rels */
+	int32		ninvalmsgs;		/* number of cache invalidation messages */
+	bool		initfileinval;	/* does relcache init file need invalidation? */
+	uint16		gidlen;			/* length of the GID - GID follows the header */
+	XLogRecPtr	origin_lsn;		/* lsn of this record at origin node */
+	TimestampTz origin_timestamp;	/* time of prepare at origin node */
+} xl_xact_prepare;
 
 /*
  * Commit/Abort records in the above form are a bit verbose to parse, so
@@ -365,6 +386,10 @@ extern TransactionId GetCurrentTransactionId(void);
 extern TransactionId GetCurrentTransactionIdIfAny(void);
 extern TransactionId GetStableLatestTransactionId(void);
 extern SubTransactionId GetCurrentSubTransactionId(void);
+extern FullTransactionId GetTopFullTransactionId(void);
+extern FullTransactionId GetTopFullTransactionIdIfAny(void);
+extern FullTransactionId GetCurrentFullTransactionId(void);
+extern FullTransactionId GetCurrentFullTransactionIdIfAny(void);
 extern void MarkCurrentTransactionIdLoggedIfAny(void);
 extern bool SubTransactionIsActive(SubTransactionId subxid);
 extern CommandId GetCurrentCommandId(bool used);
@@ -383,15 +408,17 @@ extern void YBInitializeTransaction(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void StartTransactionCommand(void);
+extern void SaveTransactionCharacteristics(void);
+extern void RestoreTransactionCharacteristics(void);
 extern void YBCRestartWriteTransaction(void);
 extern void SetTxnWithPGRel(void);
 extern bool IsCurrentTxnWithPGRel(void);
 extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
 extern void BeginTransactionBlock(void);
-extern bool EndTransactionBlock(void);
+extern bool EndTransactionBlock(bool chain);
 extern bool PrepareTransactionBlock(const char *gid);
-extern void UserAbortTransactionBlock(void);
+extern void UserAbortTransactionBlock(bool chain);
 extern void BeginImplicitTransactionBlock(void);
 extern void EndImplicitTransactionBlock(void);
 extern void ReleaseSavepoint(const char *name);
@@ -419,22 +446,25 @@ extern void UnregisterXactCallback(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
+extern bool IsSubTransactionAssignmentPending(void);
+extern void MarkSubTransactionAssigned(void);
+
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
 extern XLogRecPtr XactLogCommitRecord(TimestampTz commit_time,
-					int nsubxacts, TransactionId *subxacts,
-					int nrels, RelFileNode *rels,
-					int nmsgs, SharedInvalidationMessage *msgs,
-					bool relcacheInval, bool forceSync,
-					int xactflags,
-					TransactionId twophase_xid,
-					const char *twophase_gid);
+									  int nsubxacts, TransactionId *subxacts,
+									  int nrels, RelFileNode *rels,
+									  int nmsgs, SharedInvalidationMessage *msgs,
+									  bool relcacheInval,
+									  int xactflags,
+									  TransactionId twophase_xid,
+									  const char *twophase_gid);
 
 extern XLogRecPtr XactLogAbortRecord(TimestampTz abort_time,
-				   int nsubxacts, TransactionId *subxacts,
-				   int nrels, RelFileNode *rels,
-				   int xactflags, TransactionId twophase_xid,
-				   const char *twophase_gid);
+									 int nsubxacts, TransactionId *subxacts,
+									 int nrels, RelFileNode *rels,
+									 int xactflags, TransactionId twophase_xid,
+									 const char *twophase_gid);
 extern void xact_redo(XLogReaderState *record);
 
 /* xactdesc.c */
@@ -444,6 +474,7 @@ extern const char *xact_identify(uint8 info);
 /* also in xactdesc.c, so they can be shared between front/backend code */
 extern void ParseCommitRecord(uint8 info, xl_xact_commit *xlrec, xl_xact_parsed_commit *parsed);
 extern void ParseAbortRecord(uint8 info, xl_xact_abort *xlrec, xl_xact_parsed_abort *parsed);
+extern void ParsePrepareRecord(uint8 info, xl_xact_prepare *xlrec, xl_xact_parsed_prepare *parsed);
 
 extern void EnterParallelMode(void);
 extern void ExitParallelMode(void);

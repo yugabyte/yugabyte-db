@@ -24,10 +24,10 @@
 #define YBCPLAN_H
 
 #include "postgres.h"
+#include "access/relation.h"
 #include "nodes/plannodes.h"
-#include "nodes/relation.h"
 #include "utils/rel.h"
-
+#include "commands/explain.h"
 
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 

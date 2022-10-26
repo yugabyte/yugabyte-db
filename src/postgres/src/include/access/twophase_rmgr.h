@@ -4,7 +4,7 @@
  *	  Two-phase-commit resource managers definition
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/twophase_rmgr.h
@@ -35,6 +35,6 @@ extern const TwoPhaseCallback twophase_standby_recover_callbacks[];
 
 
 extern void RegisterTwoPhaseRecord(TwoPhaseRmgrId rmid, uint16 info,
-					   const void *data, uint32 len);
+								   const void *data, uint32 len);
 
 #endif							/* TWOPHASE_RMGR_H */

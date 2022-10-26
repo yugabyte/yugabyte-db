@@ -8,29 +8,25 @@
 
 #include "access/xact.h"
 #include "mb/pg_wchar.h"
-#include "utils/builtins.h"
-#include "utils/snapmgr.h"
-
-#include "plpython.h"
-
-#include "plpy_plpymodule.h"
-
 #include "plpy_cursorobject.h"
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
+#include "plpy_plpymodule.h"
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
 #include "plpy_subxactobject.h"
-
+#include "plpython.h"
+#include "utils/builtins.h"
+#include "utils/snapmgr.h"
 
 HTAB	   *PLy_spi_exceptions = NULL;
 
 
 static void PLy_add_exceptions(PyObject *plpy);
 static PyObject *PLy_create_exception(char *name,
-					 PyObject *base, PyObject *dict,
-					 const char *modname, PyObject *mod);
+									  PyObject *base, PyObject *dict,
+									  const char *modname, PyObject *mod);
 static void PLy_generate_spi_exceptions(PyObject *mod, PyObject *base);
 
 /* module functions */
@@ -65,13 +61,13 @@ static PyMethodDef PLy_methods[] = {
 	/*
 	 * logging methods
 	 */
-	{"debug", (PyCFunction) PLy_debug, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"log", (PyCFunction) PLy_log, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"info", (PyCFunction) PLy_info, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"notice", (PyCFunction) PLy_notice, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"warning", (PyCFunction) PLy_warning, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"error", (PyCFunction) PLy_error, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"fatal", (PyCFunction) PLy_fatal, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"debug", (PyCFunction) (pg_funcptr_t) PLy_debug, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"log", (PyCFunction) (pg_funcptr_t) PLy_log, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"info", (PyCFunction) (pg_funcptr_t) PLy_info, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"notice", (PyCFunction) (pg_funcptr_t) PLy_notice, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"warning", (PyCFunction) (pg_funcptr_t) PLy_warning, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"error", (PyCFunction) (pg_funcptr_t) PLy_error, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"fatal", (PyCFunction) (pg_funcptr_t) PLy_fatal, METH_VARARGS | METH_KEYWORDS, NULL},
 
 	/*
 	 * create a stored plan
@@ -115,23 +111,17 @@ static PyMethodDef PLy_exc_methods[] = {
 
 #if PY_MAJOR_VERSION >= 3
 static PyModuleDef PLy_module = {
-	PyModuleDef_HEAD_INIT,		/* m_base */
-	"plpy",						/* m_name */
-	NULL,						/* m_doc */
-	-1,							/* m_size */
-	PLy_methods,				/* m_methods */
+	PyModuleDef_HEAD_INIT,
+	.m_name = "plpy",
+	.m_size = -1,
+	.m_methods = PLy_methods,
 };
 
 static PyModuleDef PLy_exc_module = {
-	PyModuleDef_HEAD_INIT,		/* m_base */
-	"spiexceptions",			/* m_name */
-	NULL,						/* m_doc */
-	-1,							/* m_size */
-	PLy_exc_methods,			/* m_methods */
-	NULL,						/* m_reload */
-	NULL,						/* m_traverse */
-	NULL,						/* m_clear */
-	NULL						/* m_free */
+	PyModuleDef_HEAD_INIT,
+	.m_name = "spiexceptions",
+	.m_size = -1,
+	.m_methods = PLy_exc_methods,
 };
 
 /*
@@ -224,7 +214,6 @@ PLy_add_exceptions(PyObject *plpy)
 	PLy_exc_spi_error = PLy_create_exception("plpy.SPIError", NULL, NULL,
 											 "SPIError", plpy);
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(int);
 	hash_ctl.entrysize = sizeof(PLyExceptionEntry);
 	PLy_spi_exceptions = hash_create("PL/Python SPI exceptions", 256,
@@ -304,7 +293,7 @@ PLy_generate_spi_exceptions(PyObject *mod, PyObject *base)
  * don't confuse these with PLy_elog
  */
 static PyObject *PLy_output(volatile int level, PyObject *self,
-		   PyObject *args, PyObject *kw);
+							PyObject *args, PyObject *kw);
 
 static PyObject *
 PLy_debug(PyObject *self, PyObject *args, PyObject *kw)
@@ -594,8 +583,6 @@ PLy_commit(PyObject *self, PyObject *args)
 {
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
-	HoldPinnedPortals();
-
 	SPI_commit();
 	SPI_start_transaction();
 
@@ -609,8 +596,6 @@ static PyObject *
 PLy_rollback(PyObject *self, PyObject *args)
 {
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
-
-	HoldPinnedPortals();
 
 	SPI_rollback();
 	SPI_start_transaction();

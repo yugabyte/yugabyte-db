@@ -4,7 +4,7 @@
  *		Database resource manager XLOG definitions (create/drop database).
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/dbcommands_xlog.h
@@ -32,10 +32,11 @@ typedef struct xl_dbase_create_rec
 
 typedef struct xl_dbase_drop_rec
 {
-	/* Records dropping of a single subdirectory incl. contents */
 	Oid			db_id;
-	Oid			tablespace_id;
+	int			ntablespaces;	/* number of tablespace IDs */
+	Oid			tablespace_ids[FLEXIBLE_ARRAY_MEMBER];
 } xl_dbase_drop_rec;
+#define MinSizeOfDbaseDropRec offsetof(xl_dbase_drop_rec, tablespace_ids)
 
 extern void dbase_redo(XLogReaderState *rptr);
 extern void dbase_desc(StringInfo buf, XLogReaderState *rptr);

@@ -1,3 +1,6 @@
+-- deal with numeric instability of ts_rank
+SET extra_float_digits = 0;
+
 --Base tsvector test
 
 SELECT '1'::tsvector;
@@ -98,6 +101,18 @@ SELECT 'a b:89  ca:23A,64b d:34c'::tsvector @@ 'd:AC & c:*CB' as "true";
 SELECT 'a b:89  ca:23A,64b cb:80c d:34c'::tsvector @@ 'd:AC & c:*C' as "true";
 SELECT 'a b:89  ca:23A,64c cb:80b d:34c'::tsvector @@ 'd:AC & c:*C' as "true";
 SELECT 'a b:89  ca:23A,64c cb:80b d:34c'::tsvector @@ 'd:AC & c:*B' as "true";
+SELECT 'wa:1D wb:2A'::tsvector @@ 'w:*D & w:*A'::tsquery as "true";
+SELECT 'wa:1D wb:2A'::tsvector @@ 'w:*D <-> w:*A'::tsquery as "true";
+SELECT 'wa:1A wb:2D'::tsvector @@ 'w:*D <-> w:*A'::tsquery as "false";
+SELECT 'wa:1A'::tsvector @@ 'w:*A'::tsquery as "true";
+SELECT 'wa:1A'::tsvector @@ 'w:*D'::tsquery as "false";
+SELECT 'wa:1A'::tsvector @@ '!w:*A'::tsquery as "false";
+SELECT 'wa:1A'::tsvector @@ '!w:*D'::tsquery as "true";
+-- historically, a stripped tsvector matches queries ignoring weights:
+SELECT strip('wa:1A'::tsvector) @@ 'w:*A'::tsquery as "true";
+SELECT strip('wa:1A'::tsvector) @@ 'w:*D'::tsquery as "true";
+SELECT strip('wa:1A'::tsvector) @@ '!w:*A'::tsquery as "false";
+SELECT strip('wa:1A'::tsvector) @@ '!w:*D'::tsquery as "false";
 
 SELECT 'supernova'::tsvector @@ 'super'::tsquery AS "false";
 SELECT 'supeanova supernova'::tsvector @@ 'super'::tsquery AS "false";
@@ -144,7 +159,20 @@ select to_tsvector('simple', 'y y q') @@ '(x | y <-> !z) <-> q' AS "true";
 select to_tsvector('simple', 'x q') @@ '(x | y <-> !z) <-> q' AS "true";
 select to_tsvector('simple', 'x q') @@ '(!x | y <-> z) <-> q' AS "false";
 select to_tsvector('simple', 'z q') @@ '(!x | y <-> z) <-> q' AS "true";
+select to_tsvector('simple', 'x y q') @@ '(!x | y) <-> y <-> q' AS "false";
+select to_tsvector('simple', 'x y q') @@ '(!x | !y) <-> y <-> q' AS "true";
+select to_tsvector('simple', 'x y q') @@ '(x | !y) <-> y <-> q' AS "true";
+select to_tsvector('simple', 'x y q') @@ '(x | !!z) <-> y <-> q' AS "true";
 select to_tsvector('simple', 'x y q y') @@ '!x <-> y' AS "true";
+select to_tsvector('simple', 'x y q y') @@ '!x <-> !y' AS "true";
+select to_tsvector('simple', 'x y q y') @@ '!x <-> !!y' AS "true";
+select to_tsvector('simple', 'x y q y') @@ '!(x <-> y)' AS "false";
+select to_tsvector('simple', 'x y q y') @@ '!(x <2> y)' AS "true";
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> y' AS "false";
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> !y' AS "false";
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> !!y' AS "false";
+select strip(to_tsvector('simple', 'x y q y')) @@ '!(x <-> y)' AS "true";
+select strip(to_tsvector('simple', 'x y q y')) @@ '!(x <2> y)' AS "true";
 select to_tsvector('simple', 'x y q y') @@ '!foo' AS "true";
 select to_tsvector('simple', '') @@ '!foo' AS "true";
 

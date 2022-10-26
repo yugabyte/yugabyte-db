@@ -59,12 +59,38 @@ create aggregate aggfns(integer,integer,text) (
    sfunc = aggfns_trans, stype = aggtype[], sspace = 10000,
    initcond = '{}'
 );
--- variadic aggregate
+-- check error cases that would require run-time type coercion
+create function least_accum(int8, int8) returns int8 language sql as
+  'select least($1, $2)';
+create aggregate least_agg(int4) (
+  stype = int8, sfunc = least_accum
+);  -- fails
+ERROR:  function least_accum(bigint, bigint) requires run-time type coercion
+drop function least_accum(int8, int8);
+create function least_accum(anycompatible, anycompatible)
+returns anycompatible language sql as
+  'select least($1, $2)';
+create aggregate least_agg(int4) (
+  stype = int8, sfunc = least_accum
+);  -- fails
+ERROR:  function least_accum(bigint, bigint) requires run-time type coercion
+create aggregate least_agg(int8) (
+  stype = int8, sfunc = least_accum
+);
+drop function least_accum(anycompatible, anycompatible) cascade;
+NOTICE:  drop cascades to function least_agg(bigint)
+-- variadic aggregates
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
   'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
 create aggregate least_agg(variadic items anyarray) (
   stype = anyelement, sfunc = least_accum
+);
+create function cleast_accum(anycompatible, variadic anycompatiblearray)
+returns anycompatible language sql as
+  'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+create aggregate cleast_agg(variadic items anycompatiblearray) (
+  stype = anycompatible, sfunc = cleast_accum
 );
 -- test ordered-set aggs using built-in support functions
 create aggregate my_percentile_disc(float8 ORDER BY anyelement) (
@@ -160,6 +186,77 @@ WHERE aggfnoid = 'myavg'::REGPROC;
  myavg    | numeric_avg_accum | numeric_avg_combine | internal     | numeric_avg_serialize | numeric_avg_deserialize | s
 (1 row)
 
+DROP AGGREGATE myavg (numeric);
+-- create or replace aggregate
+CREATE AGGREGATE myavg (numeric)
+(
+	stype = internal,
+	sfunc = numeric_avg_accum,
+	finalfunc = numeric_avg
+);
+CREATE OR REPLACE AGGREGATE myavg (numeric)
+(
+	stype = internal,
+	sfunc = numeric_avg_accum,
+	finalfunc = numeric_avg,
+	serialfunc = numeric_avg_serialize,
+	deserialfunc = numeric_avg_deserialize,
+	combinefunc = numeric_avg_combine,
+	finalfunc_modify = shareable  -- just to test a non-default setting
+);
+-- Ensure all these functions made it into the catalog again
+SELECT aggfnoid, aggtransfn, aggcombinefn, aggtranstype::regtype,
+       aggserialfn, aggdeserialfn, aggfinalmodify
+FROM pg_aggregate
+WHERE aggfnoid = 'myavg'::REGPROC;
+ aggfnoid |    aggtransfn     |    aggcombinefn     | aggtranstype |      aggserialfn      |      aggdeserialfn      | aggfinalmodify 
+----------+-------------------+---------------------+--------------+-----------------------+-------------------------+----------------
+ myavg    | numeric_avg_accum | numeric_avg_combine | internal     | numeric_avg_serialize | numeric_avg_deserialize | s
+(1 row)
+
+-- can change stype:
+CREATE OR REPLACE AGGREGATE myavg (numeric)
+(
+	stype = numeric,
+	sfunc = numeric_add
+);
+SELECT aggfnoid, aggtransfn, aggcombinefn, aggtranstype::regtype,
+       aggserialfn, aggdeserialfn, aggfinalmodify
+FROM pg_aggregate
+WHERE aggfnoid = 'myavg'::REGPROC;
+ aggfnoid | aggtransfn  | aggcombinefn | aggtranstype | aggserialfn | aggdeserialfn | aggfinalmodify 
+----------+-------------+--------------+--------------+-------------+---------------+----------------
+ myavg    | numeric_add | -            | numeric      | -           | -             | r
+(1 row)
+
+-- can't change return type:
+CREATE OR REPLACE AGGREGATE myavg (numeric)
+(
+	stype = numeric,
+	sfunc = numeric_add,
+	finalfunc = numeric_out
+);
+ERROR:  cannot change return type of existing function
+HINT:  Use DROP AGGREGATE myavg(numeric) first.
+-- can't change to a different kind:
+CREATE OR REPLACE AGGREGATE myavg (order by numeric)
+(
+	stype = numeric,
+	sfunc = numeric_add
+);
+ERROR:  cannot change routine kind
+DETAIL:  "myavg" is an ordinary aggregate function.
+-- can't change plain function to aggregate:
+create function sum4(int8,int8,int8,int8) returns int8 as
+'select $1 + $2 + $3 + $4' language sql strict immutable;
+CREATE OR REPLACE AGGREGATE sum3 (int8,int8,int8)
+(
+	stype = int8,
+	sfunc = sum4
+);
+ERROR:  cannot change routine kind
+DETAIL:  "sum3" is a function.
+drop function sum4(int8,int8,int8,int8);
 DROP AGGREGATE myavg (numeric);
 -- invalid: bad parallel-safety marking
 CREATE AGGREGATE mysum (int)

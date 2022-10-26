@@ -20,7 +20,7 @@ SELECT p1.oid, p1.typname
 FROM pg_type as p1
 WHERE p1.typnamespace = 0 OR
     (p1.typlen <= 0 AND p1.typlen != -1 AND p1.typlen != -2) OR
-    (p1.typtype not in ('b', 'c', 'd', 'e', 'p', 'r')) OR
+    (p1.typtype not in ('b', 'c', 'd', 'e', 'p', 'r', 'm')) OR
     NOT p1.typisdefined OR
     (p1.typalign not in ('c', 's', 'i', 'd')) OR
     (p1.typstorage not in ('p', 'x', 'e', 'm'));
@@ -50,25 +50,26 @@ FROM pg_type as p1
 WHERE (p1.typtype = 'c' AND p1.typrelid = 0) OR
     (p1.typtype != 'c' AND p1.typrelid != 0);
 
--- Look for types that should have an array type according to their typtype,
--- but don't.  We exclude composites here because we have not bothered to
--- make array types corresponding to the system catalogs' rowtypes.
--- NOTE: as of v10, this check finds pg_node_tree, pg_ndistinct, smgr.
+-- Look for types that should have an array type but don't.
+-- Generally anything that's not a pseudotype should have an array type.
+-- However, we do have a small number of exceptions.
 
 SELECT p1.oid, p1.typname
 FROM pg_type as p1
-WHERE p1.typtype not in ('c','d','p') AND p1.typname NOT LIKE E'\\_%'
+WHERE p1.typtype not in ('p') AND p1.typname NOT LIKE E'\\_%'
     AND NOT EXISTS
     (SELECT 1 FROM pg_type as p2
      WHERE p2.typname = ('_' || p1.typname)::name AND
-           p2.typelem = p1.oid and p1.typarray = p2.oid);
+           p2.typelem = p1.oid and p1.typarray = p2.oid)
+ORDER BY p1.oid;
 
--- Make sure typarray points to a varlena array type of our own base
+-- Make sure typarray points to a "true" array type of our own base
 SELECT p1.oid, p1.typname as basetype, p2.typname as arraytype,
-       p2.typelem, p2.typlen
+       p2.typsubscript
 FROM   pg_type p1 LEFT JOIN pg_type p2 ON (p1.typarray = p2.oid)
 WHERE  p1.typarray <> 0 AND
-       (p2.oid IS NULL OR p2.typelem <> p1.oid OR p2.typlen <> -1);
+       (p2.oid IS NULL OR
+        p2.typsubscript <> 'array_subscript_handler'::regproc);
 
 -- Look for range types that do not have a pg_range entry
 SELECT p1.oid, p1.typname
@@ -106,15 +107,17 @@ WHERE p1.typinput = p2.oid AND NOT
 
 -- Check for type of the variadic array parameter's elements.
 -- provariadic should be ANYOID if the type of the last element is ANYOID,
--- ANYELEMENTOID if the type of the last element is ANYARRAYOID, and otherwise
--- the element type corresponding to the array type.
+-- ANYELEMENTOID if the type of the last element is ANYARRAYOID,
+-- ANYCOMPATIBLEOID if the type of the last element is ANYCOMPATIBLEARRAYOID,
+-- and otherwise the element type corresponding to the array type.
 
 SELECT oid::regprocedure, provariadic::regtype, proargtypes::regtype[]
 FROM pg_proc
 WHERE provariadic != 0
 AND case proargtypes[array_length(proargtypes, 1)-1]
-    WHEN 2276 THEN 2276 -- any -> any
-	WHEN 2277 THEN 2283 -- anyarray -> anyelement
+	WHEN '"any"'::regtype THEN '"any"'::regtype
+	WHEN 'anyarray'::regtype THEN 'anyelement'::regtype
+	WHEN 'anycompatiblearray'::regtype THEN 'anycompatible'::regtype
 	ELSE (SELECT t.oid
 		  FROM pg_type t
 		  WHERE t.typarray = proargtypes[array_length(proargtypes, 1)-1])
@@ -151,7 +154,7 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typinput = p2.oid AND p2.provolatile NOT IN ('i', 's');
 
--- Composites, domains, enums, ranges should all use the same input routines
+-- Composites, domains, enums, multiranges, ranges should all use the same input routines
 SELECT DISTINCT typtype, typinput
 FROM pg_type AS p1
 WHERE p1.typtype not in ('b', 'p')
@@ -180,7 +183,7 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typoutput = p2.oid AND p2.provolatile NOT IN ('i', 's');
 
--- Composites, enums, ranges should all use the same output routines
+-- Composites, enums, multiranges, ranges should all use the same output routines
 SELECT DISTINCT typtype, typoutput
 FROM pg_type AS p1
 WHERE p1.typtype not in ('b', 'd', 'p')
@@ -232,7 +235,7 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typreceive = p2.oid AND p2.provolatile NOT IN ('i', 's');
 
--- Composites, domains, enums, ranges should all use the same receive routines
+-- Composites, domains, enums, multiranges, ranges should all use the same receive routines
 SELECT DISTINCT typtype, typreceive
 FROM pg_type AS p1
 WHERE p1.typtype not in ('b', 'p')
@@ -261,7 +264,7 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typsend = p2.oid AND p2.provolatile NOT IN ('i', 's');
 
--- Composites, enums, ranges should all use the same send routines
+-- Composites, enums, multiranges, ranges should all use the same send routines
 SELECT DISTINCT typtype, typsend
 FROM pg_type AS p1
 WHERE p1.typtype not in ('b', 'd', 'p')
@@ -321,6 +324,26 @@ WHERE p1.typarray = p2.oid AND
     p2.typalign != (CASE WHEN p1.typalign = 'd' THEN 'd'::"char"
                          ELSE 'i'::"char" END);
 
+-- Check for typelem set without a handler
+
+SELECT p1.oid, p1.typname, p1.typelem
+FROM pg_type AS p1
+WHERE p1.typelem != 0 AND p1.typsubscript = 0;
+
+-- Check for misuse of standard subscript handlers
+
+SELECT p1.oid, p1.typname,
+       p1.typelem, p1.typlen, p1.typbyval
+FROM pg_type AS p1
+WHERE p1.typsubscript = 'array_subscript_handler'::regproc AND NOT
+    (p1.typelem != 0 AND p1.typlen = -1 AND NOT p1.typbyval);
+
+SELECT p1.oid, p1.typname,
+       p1.typelem, p1.typlen, p1.typbyval
+FROM pg_type AS p1
+WHERE p1.typsubscript = 'raw_array_subscript_handler'::regproc AND NOT
+    (p1.typelem != 0 AND p1.typlen > 0 AND NOT p1.typbyval);
+
 -- Check for bogus typanalyze routines
 
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
@@ -354,7 +377,7 @@ SELECT t.oid, t.typname, t.typanalyze
 FROM pg_type t
 WHERE t.typbasetype = 0 AND
     (t.typanalyze = 'array_typanalyze'::regproc) !=
-    (typelem != 0 AND typlen < 0)
+    (t.typsubscript = 'array_subscript_handler'::regproc)
 ORDER BY 1;
 
 -- **************** pg_class ****************
@@ -367,12 +390,29 @@ WHERE relkind NOT IN ('r', 'i', 'S', 't', 'v', 'm', 'c', 'f', 'p') OR
     relpersistence NOT IN ('p', 'u', 't') OR
     relreplident NOT IN ('d', 'n', 'f', 'i');
 
--- Indexes should have an access method, others not.
-
+-- All tables and indexes should have an access method.
 SELECT p1.oid, p1.relname
 FROM pg_class as p1
-WHERE (p1.relkind = 'i' AND p1.relam = 0) OR
-    (p1.relkind != 'i' AND p1.relam != 0);
+WHERE p1.relkind NOT IN ('S', 'v', 'f', 'c') and
+    p1.relam = 0;
+
+-- Conversely, sequences, views, types shouldn't have them
+SELECT p1.oid, p1.relname
+FROM pg_class as p1
+WHERE p1.relkind IN ('S', 'v', 'f', 'c') and
+    p1.relam != 0;
+
+-- Indexes should have AMs of type 'i'
+SELECT pc.oid, pc.relname, pa.amname, pa.amtype
+FROM pg_class as pc JOIN pg_am AS pa ON (pc.relam = pa.oid)
+WHERE pc.relkind IN ('i') and
+    pa.amtype != 'i';
+
+-- Tables, matviews etc should have AMs of type 't'
+SELECT pc.oid, pc.relname, pa.amname, pa.amtype
+FROM pg_class as pc JOIN pg_am AS pa ON (pc.relam = pa.oid)
+WHERE pc.relkind IN ('r', 't', 'm') and
+    pa.amtype != 't';
 
 -- **************** pg_attribute ****************
 
@@ -425,7 +465,7 @@ FROM pg_range p1 JOIN pg_type t ON t.oid = p1.rngsubtype
 WHERE (rngcollation = 0) != (typcollation = 0);
 
 -- opclass had better be a btree opclass accepting the subtype.
--- We must allow anyarray matches, cf opr_sanity's binary_coercible()
+-- We must allow anyarray matches, cf IsBinaryCoercible()
 
 SELECT p1.rngtypid, p1.rngsubtype, o.opcmethod, o.opcname
 FROM pg_range p1 JOIN pg_opclass o ON o.oid = p1.rngsubopc
@@ -433,7 +473,8 @@ WHERE o.opcmethod != 403 OR
     ((o.opcintype != p1.rngsubtype) AND NOT
      (o.opcintype = 'pg_catalog.anyarray'::regtype AND
       EXISTS(select 1 from pg_catalog.pg_type where
-             oid = p1.rngsubtype and typelem != 0 and typlen = -1)));
+             oid = p1.rngsubtype and typelem != 0 and
+             typsubscript = 'array_subscript_handler'::regproc)));
 
 -- canonical function, if any, had better match the range type
 
@@ -448,3 +489,9 @@ FROM pg_range p1 JOIN pg_proc p ON p.oid = p1.rngsubdiff
 WHERE pronargs != 2
     OR proargtypes[0] != rngsubtype OR proargtypes[1] != rngsubtype
     OR prorettype != 'pg_catalog.float8'::regtype;
+
+-- every range should have a valid multirange
+
+SELECT p1.rngtypid, p1.rngsubtype, p1.rngmultitypid
+FROM pg_range p1
+WHERE p1.rngmultitypid IS NULL OR p1.rngmultitypid = 0;

@@ -3,7 +3,7 @@
  * pruneheap.c
  *	  heap page pruning and HOT-chain management code
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,8 +16,8 @@
 
 #include "access/heapam.h"
 #include "access/heapam_xlog.h"
-#include "access/transam.h"
 #include "access/htup_details.h"
+#include "access/transam.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "miscadmin.h"
@@ -25,11 +25,28 @@
 #include "storage/bufmgr.h"
 #include "utils/snapmgr.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
+#include "utils/snapmgr.h"
 
 /* Working data for heap_page_prune and subroutines */
 typedef struct
 {
+	Relation	rel;
+
+	/* tuple visibility test, initialized for the relation */
+	GlobalVisState *vistest;
+
+	/*
+	 * Thresholds set by TransactionIdLimitedForOldSnapshots() if they have
+	 * been computed (done on demand, and only if
+	 * OldSnapshotThresholdActive()). The first time a tuple is about to be
+	 * removed based on the limited horizon, old_snap_used is set to true, and
+	 * SetOldSnapshotThresholdTimestamp() is called. See
+	 * heap_prune_satisfies_vacuum().
+	 */
+	TimestampTz old_snap_ts;
+	TransactionId old_snap_xmin;
+	bool		old_snap_used;
+
 	TransactionId new_prune_xid;	/* new prune hint value for page */
 	TransactionId latestRemovedXid; /* latest xid to be removed by this prune */
 	int			nredirected;	/* numbers of entries in arrays below */
@@ -44,13 +61,12 @@ typedef struct
 } PruneState;
 
 /* Local functions */
-static int heap_prune_chain(Relation relation, Buffer buffer,
-				 OffsetNumber rootoffnum,
-				 TransactionId OldestXmin,
-				 PruneState *prstate);
+static int	heap_prune_chain(Buffer buffer,
+							 OffsetNumber rootoffnum,
+							 PruneState *prstate);
 static void heap_prune_record_prunable(PruneState *prstate, TransactionId xid);
 static void heap_prune_record_redirect(PruneState *prstate,
-						   OffsetNumber offnum, OffsetNumber rdoffnum);
+									   OffsetNumber offnum, OffsetNumber rdoffnum);
 static void heap_prune_record_dead(PruneState *prstate, OffsetNumber offnum);
 static void heap_prune_record_unused(PruneState *prstate, OffsetNumber offnum);
 
@@ -66,57 +82,75 @@ static void heap_prune_record_unused(PruneState *prstate, OffsetNumber offnum);
  * if there's not any use in pruning.
  *
  * Caller must have pin on the buffer, and must *not* have a lock on it.
- *
- * OldestXmin is the cutoff XID used to distinguish whether tuples are DEAD
- * or RECENTLY_DEAD (see HeapTupleSatisfiesVacuum).
  */
 void
 heap_page_prune_opt(Relation relation, Buffer buffer)
 {
 	Page		page = BufferGetPage(buffer);
+	TransactionId prune_xid;
+	GlobalVisState *vistest;
+	TransactionId limited_xmin = InvalidTransactionId;
+	TimestampTz limited_ts = 0;
 	Size		minfree;
-	TransactionId OldestXmin;
 
 	/*
 	 * We can't write WAL in recovery mode, so there's no point trying to
-	 * clean the page. The master will likely issue a cleaning WAL record soon
-	 * anyway, so this is no particular loss.
+	 * clean the page. The primary will likely issue a cleaning WAL record
+	 * soon anyway, so this is no particular loss.
 	 */
 	if (RecoveryInProgress())
 		return;
 
 	/*
-	 * Use the appropriate xmin horizon for this relation. If it's a proper
-	 * catalog relation or a user defined, additional, catalog relation, we
-	 * need to use the horizon that includes slots, otherwise the data-only
-	 * horizon can be used. Note that the toast relation of user defined
-	 * relations are *not* considered catalog relations.
+	 * XXX: Magic to keep old_snapshot_threshold tests appear "working". They
+	 * currently are broken, and discussion of what to do about them is
+	 * ongoing. See
+	 * https://www.postgresql.org/message-id/20200403001235.e6jfdll3gh2ygbuc%40alap3.anarazel.de
+	 */
+	if (old_snapshot_threshold == 0)
+		SnapshotTooOldMagicForTest();
+
+	/*
+	 * First check whether there's any chance there's something to prune,
+	 * determining the appropriate horizon is a waste if there's no prune_xid
+	 * (i.e. no updates/deletes left potentially dead tuples around).
+	 */
+	prune_xid = ((PageHeader) page)->pd_prune_xid;
+	if (!TransactionIdIsValid(prune_xid))
+		return;
+
+	/*
+	 * Check whether prune_xid indicates that there may be dead rows that can
+	 * be cleaned up.
 	 *
-	 * It is OK to apply the old snapshot limit before acquiring the cleanup
+	 * It is OK to check the old snapshot limit before acquiring the cleanup
 	 * lock because the worst that can happen is that we are not quite as
 	 * aggressive about the cleanup (by however many transaction IDs are
 	 * consumed between this point and acquiring the lock).  This allows us to
 	 * save significant overhead in the case where the page is found not to be
 	 * prunable.
-	 */
-	if (IsCatalogRelation(relation) ||
-		RelationIsAccessibleInLogicalDecoding(relation))
-		OldestXmin = RecentGlobalXmin;
-	else
-		OldestXmin =
-			TransactionIdLimitedForOldSnapshots(RecentGlobalDataXmin,
-												relation);
-
-	Assert(TransactionIdIsValid(OldestXmin));
-
-	/*
-	 * Let's see if we really need pruning.
 	 *
-	 * Forget it if page is not hinted to contain something prunable that's
-	 * older than OldestXmin.
+	 * Even if old_snapshot_threshold is set, we first check whether the page
+	 * can be pruned without. Both because
+	 * TransactionIdLimitedForOldSnapshots() is not cheap, and because not
+	 * unnecessarily relying on old_snapshot_threshold avoids causing
+	 * conflicts.
 	 */
-	if (!PageIsPrunable(page, OldestXmin))
-		return;
+	vistest = GlobalVisTestFor(relation);
+
+	if (!GlobalVisTestIsRemovableXid(vistest, prune_xid))
+	{
+		if (!OldSnapshotThresholdActive())
+			return;
+
+		if (!TransactionIdLimitedForOldSnapshots(GlobalVisTestNonRemovableHorizon(vistest),
+												 relation,
+												 &limited_xmin, &limited_ts))
+			return;
+
+		if (!TransactionIdPrecedes(prune_xid, limited_xmin))
+			return;
+	}
 
 	/*
 	 * We prune when a previous UPDATE failed to find enough space on the page
@@ -148,11 +182,10 @@ heap_page_prune_opt(Relation relation, Buffer buffer)
 		 */
 		if (PageIsFull(page) || PageGetHeapFreeSpace(page) < minfree)
 		{
-			TransactionId ignore = InvalidTransactionId;	/* return value not
-															 * needed */
-
 			/* OK to prune */
-			(void) heap_page_prune(relation, buffer, OldestXmin, true, &ignore);
+			(void) heap_page_prune(relation, buffer, vistest,
+								   limited_xmin, limited_ts,
+								   true, NULL);
 		}
 
 		/* And release buffer lock */
@@ -166,20 +199,29 @@ heap_page_prune_opt(Relation relation, Buffer buffer)
  *
  * Caller must have pin and buffer cleanup lock on the page.
  *
- * OldestXmin is the cutoff XID used to distinguish whether tuples are DEAD
- * or RECENTLY_DEAD (see HeapTupleSatisfiesVacuum).
+ * vistest is used to distinguish whether tuples are DEAD or RECENTLY_DEAD
+ * (see heap_prune_satisfies_vacuum and
+ * HeapTupleSatisfiesVacuum). old_snap_xmin / old_snap_ts need to
+ * either have been set by TransactionIdLimitedForOldSnapshots, or
+ * InvalidTransactionId/0 respectively.
  *
  * If report_stats is true then we send the number of reclaimed heap-only
  * tuples to pgstats.  (This must be false during vacuum, since vacuum will
  * send its own new total to pgstats, and we don't want this delta applied
  * on top of that.)
  *
- * Returns the number of tuples deleted from the page and sets
- * latestRemovedXid.
+ * off_loc is the offset location required by the caller to use in error
+ * callback.
+ *
+ * Returns the number of tuples deleted from the page during this call.
  */
 int
-heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
-				bool report_stats, TransactionId *latestRemovedXid)
+heap_page_prune(Relation relation, Buffer buffer,
+				GlobalVisState *vistest,
+				TransactionId old_snap_xmin,
+				TimestampTz old_snap_ts,
+				bool report_stats,
+				OffsetNumber *off_loc)
 {
 	int			ndeleted = 0;
 	Page		page = BufferGetPage(buffer);
@@ -199,7 +241,12 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
 	 * initialize the rest of our working state.
 	 */
 	prstate.new_prune_xid = InvalidTransactionId;
-	prstate.latestRemovedXid = *latestRemovedXid;
+	prstate.rel = relation;
+	prstate.vistest = vistest;
+	prstate.old_snap_xmin = old_snap_xmin;
+	prstate.old_snap_ts = old_snap_ts;
+	prstate.old_snap_used = false;
+	prstate.latestRemovedXid = InvalidTransactionId;
 	prstate.nredirected = prstate.ndead = prstate.nunused = 0;
 	memset(prstate.marked, 0, sizeof(prstate.marked));
 
@@ -215,16 +262,25 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
 		if (prstate.marked[offnum])
 			continue;
 
+		/*
+		 * Set the offset number so that we can display it along with any
+		 * error that occurred while processing this tuple.
+		 */
+		if (off_loc)
+			*off_loc = offnum;
+
 		/* Nothing to do if slot is empty or already dead */
 		itemid = PageGetItemId(page, offnum);
 		if (!ItemIdIsUsed(itemid) || ItemIdIsDead(itemid))
 			continue;
 
 		/* Process this item or chain of items */
-		ndeleted += heap_prune_chain(relation, buffer, offnum,
-									 OldestXmin,
-									 &prstate);
+		ndeleted += heap_prune_chain(buffer, offnum, &prstate);
 	}
+
+	/* Clear the offset information once we have processed the given page. */
+	if (off_loc)
+		*off_loc = InvalidOffsetNumber;
 
 	/* Any error while applying the changes is critical */
 	START_CRIT_SECTION();
@@ -257,17 +313,41 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
 		MarkBufferDirty(buffer);
 
 		/*
-		 * Emit a WAL XLOG_HEAP2_CLEAN record showing what we did
+		 * Emit a WAL XLOG_HEAP2_PRUNE record showing what we did
 		 */
 		if (RelationNeedsWAL(relation))
 		{
+			xl_heap_prune xlrec;
 			XLogRecPtr	recptr;
 
-			recptr = log_heap_clean(relation, buffer,
-									prstate.redirected, prstate.nredirected,
-									prstate.nowdead, prstate.ndead,
-									prstate.nowunused, prstate.nunused,
-									prstate.latestRemovedXid);
+			xlrec.latestRemovedXid = prstate.latestRemovedXid;
+			xlrec.nredirected = prstate.nredirected;
+			xlrec.ndead = prstate.ndead;
+
+			XLogBeginInsert();
+			XLogRegisterData((char *) &xlrec, SizeOfHeapPrune);
+
+			XLogRegisterBuffer(0, buffer, REGBUF_STANDARD);
+
+			/*
+			 * The OffsetNumber arrays are not actually in the buffer, but we
+			 * pretend that they are.  When XLogInsert stores the whole
+			 * buffer, the offset arrays need not be stored too.
+			 */
+			if (prstate.nredirected > 0)
+				XLogRegisterBufData(0, (char *) prstate.redirected,
+									prstate.nredirected *
+									sizeof(OffsetNumber) * 2);
+
+			if (prstate.ndead > 0)
+				XLogRegisterBufData(0, (char *) prstate.nowdead,
+									prstate.ndead * sizeof(OffsetNumber));
+
+			if (prstate.nunused > 0)
+				XLogRegisterBufData(0, (char *) prstate.nowunused,
+									prstate.nunused * sizeof(OffsetNumber));
+
+			recptr = XLogInsert(RM_HEAP2_ID, XLOG_HEAP2_PRUNE);
 
 			PageSetLSN(BufferGetPage(buffer), recptr);
 		}
@@ -302,8 +382,6 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
 	if (report_stats && ndeleted > prstate.ndead)
 		pgstat_update_heap_dead_tuples(relation, ndeleted - prstate.ndead);
 
-	*latestRemovedXid = prstate.latestRemovedXid;
-
 	/*
 	 * XXX Should we update the FSM information of this page ?
 	 *
@@ -325,7 +403,86 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
 
 
 /*
- * Prune specified item pointer or a HOT chain originating at that item.
+ * Perform visibility checks for heap pruning.
+ *
+ * This is more complicated than just using GlobalVisTestIsRemovableXid()
+ * because of old_snapshot_threshold. We only want to increase the threshold
+ * that triggers errors for old snapshots when we actually decide to remove a
+ * row based on the limited horizon.
+ *
+ * Due to its cost we also only want to call
+ * TransactionIdLimitedForOldSnapshots() if necessary, i.e. we might not have
+ * done so in heap_hot_prune_opt() if pd_prune_xid was old enough. But we
+ * still want to be able to remove rows that are too new to be removed
+ * according to prstate->vistest, but that can be removed based on
+ * old_snapshot_threshold. So we call TransactionIdLimitedForOldSnapshots() on
+ * demand in here, if appropriate.
+ */
+static HTSV_Result
+heap_prune_satisfies_vacuum(PruneState *prstate, HeapTuple tup, Buffer buffer)
+{
+	HTSV_Result res;
+	TransactionId dead_after;
+
+	res = HeapTupleSatisfiesVacuumHorizon(tup, buffer, &dead_after);
+
+	if (res != HEAPTUPLE_RECENTLY_DEAD)
+		return res;
+
+	/*
+	 * If we are already relying on the limited xmin, there is no need to
+	 * delay doing so anymore.
+	 */
+	if (prstate->old_snap_used)
+	{
+		Assert(TransactionIdIsValid(prstate->old_snap_xmin));
+
+		if (TransactionIdPrecedes(dead_after, prstate->old_snap_xmin))
+			res = HEAPTUPLE_DEAD;
+		return res;
+	}
+
+	/*
+	 * First check if GlobalVisTestIsRemovableXid() is sufficient to find the
+	 * row dead. If not, and old_snapshot_threshold is enabled, try to use the
+	 * lowered horizon.
+	 */
+	if (GlobalVisTestIsRemovableXid(prstate->vistest, dead_after))
+		res = HEAPTUPLE_DEAD;
+	else if (OldSnapshotThresholdActive())
+	{
+		/* haven't determined limited horizon yet, requests */
+		if (!TransactionIdIsValid(prstate->old_snap_xmin))
+		{
+			TransactionId horizon =
+			GlobalVisTestNonRemovableHorizon(prstate->vistest);
+
+			TransactionIdLimitedForOldSnapshots(horizon, prstate->rel,
+												&prstate->old_snap_xmin,
+												&prstate->old_snap_ts);
+		}
+
+		if (TransactionIdIsValid(prstate->old_snap_xmin) &&
+			TransactionIdPrecedes(dead_after, prstate->old_snap_xmin))
+		{
+			/*
+			 * About to remove row based on snapshot_too_old. Need to raise
+			 * the threshold so problematic accesses would error.
+			 */
+			Assert(!prstate->old_snap_used);
+			SetOldSnapshotThresholdTimestamp(prstate->old_snap_ts,
+											 prstate->old_snap_xmin);
+			prstate->old_snap_used = true;
+			res = HEAPTUPLE_DEAD;
+		}
+	}
+
+	return res;
+}
+
+
+/*
+ * Prune specified line pointer or a HOT chain originating at line pointer.
  *
  * If the item is an index-referenced tuple (i.e. not a heap-only tuple),
  * the HOT chain is pruned by removing all DEAD tuples at the start of the HOT
@@ -350,9 +507,7 @@ heap_page_prune(Relation relation, Buffer buffer, TransactionId OldestXmin,
  * Returns the number of tuples (to be) deleted from the page.
  */
 static int
-heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
-				 TransactionId OldestXmin,
-				 PruneState *prstate)
+heap_prune_chain(Buffer buffer, OffsetNumber rootoffnum, PruneState *prstate)
 {
 	int			ndeleted = 0;
 	Page		dp = (Page) BufferGetPage(buffer);
@@ -367,7 +522,7 @@ heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
 				i;
 	HeapTupleData tup;
 
-	tup.t_tableOid = RelationGetRelid(relation);
+	tup.t_tableOid = RelationGetRelid(prstate->rel);
 
 	rootlp = PageGetItemId(dp, rootoffnum);
 
@@ -402,7 +557,7 @@ heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
 			 * either here or while following a chain below.  Whichever path
 			 * gets there first will mark the tuple unused.
 			 */
-			if (HeapTupleSatisfiesVacuum(&tup, OldestXmin, buffer)
+			if (heap_prune_satisfies_vacuum(prstate, &tup, buffer)
 				== HEAPTUPLE_DEAD && !HeapTupleHeaderIsHotUpdated(htup))
 			{
 				heap_prune_record_unused(prstate, rootoffnum);
@@ -455,7 +610,7 @@ heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
 		}
 
 		/*
-		 * Likewise, a dead item pointer can't be part of the chain. (We
+		 * Likewise, a dead line pointer can't be part of the chain. (We
 		 * already eliminated the case of dead root tuple outside this
 		 * function.)
 		 */
@@ -486,7 +641,7 @@ heap_prune_chain(Relation relation, Buffer buffer, OffsetNumber rootoffnum,
 		 */
 		tupdead = recent_dead = false;
 
-		switch (HeapTupleSatisfiesVacuum(&tup, OldestXmin, buffer))
+		switch (heap_prune_satisfies_vacuum(prstate, &tup, buffer))
 		{
 			case HEAPTUPLE_DEAD:
 				tupdead = true;
@@ -631,7 +786,7 @@ heap_prune_record_prunable(PruneState *prstate, TransactionId xid)
 		prstate->new_prune_xid = xid;
 }
 
-/* Record item pointer to be redirected */
+/* Record line pointer to be redirected */
 static void
 heap_prune_record_redirect(PruneState *prstate,
 						   OffsetNumber offnum, OffsetNumber rdoffnum)
@@ -646,7 +801,7 @@ heap_prune_record_redirect(PruneState *prstate,
 	prstate->marked[rdoffnum] = true;
 }
 
-/* Record item pointer to be marked dead */
+/* Record line pointer to be marked dead */
 static void
 heap_prune_record_dead(PruneState *prstate, OffsetNumber offnum)
 {
@@ -657,7 +812,7 @@ heap_prune_record_dead(PruneState *prstate, OffsetNumber offnum)
 	prstate->marked[offnum] = true;
 }
 
-/* Record item pointer to be marked unused */
+/* Record line pointer to be marked unused */
 static void
 heap_prune_record_unused(PruneState *prstate, OffsetNumber offnum)
 {
@@ -671,12 +826,8 @@ heap_prune_record_unused(PruneState *prstate, OffsetNumber offnum)
 
 /*
  * Perform the actual page changes needed by heap_page_prune.
- * It is expected that the caller has suitable pin and lock on the
- * buffer, and is inside a critical section.
- *
- * This is split out because it is also used by heap_xlog_clean()
- * to replay the WAL record when needed after a crash.  Note that the
- * arguments are identical to those of log_heap_clean().
+ * It is expected that the caller has a super-exclusive lock on the
+ * buffer.
  */
 void
 heap_page_prune_execute(Buffer buffer,
@@ -687,6 +838,9 @@ heap_page_prune_execute(Buffer buffer,
 	Page		page = (Page) BufferGetPage(buffer);
 	OffsetNumber *offnum;
 	int			i;
+
+	/* Shouldn't be called unless there's something to do */
+	Assert(nredirected > 0 || ndead > 0 || nunused > 0);
 
 	/* Update all redirected line pointers */
 	offnum = redirected;
@@ -733,7 +887,7 @@ heap_page_prune_execute(Buffer buffer,
  * root_offsets[k - 1] = j.
  *
  * The passed-in root_offsets array must have MaxHeapTuplesPerPage entries.
- * We zero out all unused entries.
+ * Unused entries are filled with InvalidOffsetNumber (zero).
  *
  * The function must be called with at least share lock on the buffer, to
  * prevent concurrent prune operations.
@@ -748,7 +902,8 @@ heap_get_root_tuples(Page page, OffsetNumber *root_offsets)
 	OffsetNumber offnum,
 				maxoff;
 
-	MemSet(root_offsets, 0, MaxHeapTuplesPerPage * sizeof(OffsetNumber));
+	MemSet(root_offsets, InvalidOffsetNumber,
+		   MaxHeapTuplesPerPage * sizeof(OffsetNumber));
 
 	maxoff = PageGetMaxOffsetNumber(page);
 	for (offnum = FirstOffsetNumber; offnum <= maxoff; offnum = OffsetNumberNext(offnum))
@@ -807,6 +962,10 @@ heap_get_root_tuples(Page page, OffsetNumber *root_offsets)
 		 */
 		for (;;)
 		{
+			/* Sanity check */
+			if (nextoffnum < FirstOffsetNumber || nextoffnum > maxoff)
+				break;
+
 			lp = PageGetItemId(page, nextoffnum);
 
 			/* Check for broken chains */

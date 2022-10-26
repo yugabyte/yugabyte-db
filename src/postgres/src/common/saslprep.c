@@ -12,7 +12,7 @@
  *	  http://www.ietf.org/rfc/rfc4013.txt
  *
  *
- * Portions Copyright (c) 2017-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2021, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/common/saslprep.c
@@ -26,20 +26,9 @@
 #endif
 
 #include "common/saslprep.h"
+#include "common/string.h"
 #include "common/unicode_norm.h"
-
-/*
- * Note: The functions in this file depend on functions from
- * src/backend/utils/mb/wchar.c, so in order to use this in frontend
- * code, you will need to link that in, too.
- */
 #include "mb/pg_wchar.h"
-
-/*
- * Limit on how large password's we will try to process.  A password
- * larger than this will be treated the same as out-of-memory.
- */
-#define MAX_PASSWORD_LENGTH		1024
 
 /*
  * In backend, we will use palloc/pfree.  In frontend, use malloc, and
@@ -59,7 +48,6 @@
 static int	codepoint_range_cmp(const void *a, const void *b);
 static bool is_code_in_table(pg_wchar code, const pg_wchar *map, int mapsize);
 static int	pg_utf8_string_len(const char *source);
-static bool pg_is_ascii_string(const char *p);
 
 /*
  * Stringprep Mapping Tables.
@@ -1031,21 +1019,6 @@ pg_utf8_string_len(const char *source)
 	return num_chars;
 }
 
-/*
- * Returns true if the input string is pure ASCII.
- */
-static bool
-pg_is_ascii_string(const char *p)
-{
-	while (*p)
-	{
-		if (IS_HIGHBIT_SET(*p))
-			return false;
-		p++;
-	}
-	return true;
-}
-
 
 /*
  * pg_saslprep - Normalize a password with SASLprep.
@@ -1084,23 +1057,11 @@ pg_saslprep(const char *input, char **output)
 	/* Ensure we return *output as NULL on failure */
 	*output = NULL;
 
-	/* Check that the password isn't stupendously long */
-	if (strlen(input) > MAX_PASSWORD_LENGTH)
-	{
-#ifndef FRONTEND
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("password too long")));
-#else
-		return SASLPREP_OOM;
-#endif
-	}
-
 	/*
 	 * Quick check if the input is pure ASCII.  An ASCII string requires no
 	 * further processing.
 	 */
-	if (pg_is_ascii_string(input))
+	if (pg_is_ascii(input))
 	{
 		*output = STRDUP(input);
 		if (!(*output))
@@ -1162,7 +1123,7 @@ pg_saslprep(const char *input, char **output)
 	 * 2) Normalize -- Normalize the result of step 1 using Unicode
 	 * normalization.
 	 */
-	output_chars = unicode_normalize_kc(input_chars);
+	output_chars = unicode_normalize(UNICODE_NFKC, input_chars);
 	if (!output_chars)
 		goto oom;
 

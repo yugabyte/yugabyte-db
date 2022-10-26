@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # A simple 'tee' implementation, using perl tie.
 #
 # Whenever you print to the handle, it gets forwarded to a list of
@@ -9,6 +12,7 @@
 
 package SimpleTee;
 use strict;
+use warnings;
 
 sub TIEHANDLE
 {

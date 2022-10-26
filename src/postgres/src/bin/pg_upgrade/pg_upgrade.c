@@ -3,7 +3,7 @@
  *
  *	main source file
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2021, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.c
  */
 
@@ -28,23 +28,25 @@
  *	We control all assignments of pg_enum.oid because these oids are stored
  *	in user tables as enum values.
  *
- *	We control all assignments of pg_authid.oid because these oids are stored
- *	in pg_largeobject_metadata.
+ *	We control all assignments of pg_authid.oid for historical reasons (the
+ *	oids used to be stored in pg_largeobject_metadata, which is now copied via
+ *	SQL commands), that might change at some point in the future.
  */
 
 
 
 #include "postgres_fe.h"
 
-#include "pg_upgrade.h"
-#include "catalog/pg_class_d.h"
-#include "common/file_perm.h"
-#include "common/restricted_token.h"
-#include "fe_utils/string_utils.h"
-
 #ifdef HAVE_LANGINFO_H
 #include <langinfo.h>
 #endif
+
+#include "catalog/pg_class_d.h"
+#include "common/file_perm.h"
+#include "common/logging.h"
+#include "common/restricted_token.h"
+#include "fe_utils/string_utils.h"
+#include "pg_upgrade.h"
 
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
@@ -73,10 +75,10 @@ char	   *output_files[] = {
 int
 main(int argc, char **argv)
 {
-	char	   *analyze_script_file_name = NULL;
 	char	   *deletion_script_file_name = NULL;
 	bool		live_check = false;
 
+	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_upgrade"));
 
 	/* Set default restrictive mask until new cluster permissions are read */
@@ -84,7 +86,7 @@ main(int argc, char **argv)
 
 	parseCommandLine(argc, argv);
 
-	get_restricted_token(os_info.progname);
+	get_restricted_token();
 
 	adjust_data_dir(&old_cluster);
 	adjust_data_dir(&new_cluster);
@@ -102,11 +104,8 @@ main(int argc, char **argv)
 
 	/* Set mask based on PGDATA permissions */
 	if (!GetDataDirectoryCreatePerm(new_cluster.pgdata))
-	{
-		pg_log(PG_FATAL, "could not read permissions of directory \"%s\": %s\n",
-			   new_cluster.pgdata, strerror(errno));
-		exit(1);
-	}
+		pg_fatal("could not read permissions of directory \"%s\": %s\n",
+				 new_cluster.pgdata, strerror(errno));
 
 	umask(pg_mode_mask);
 
@@ -176,7 +175,6 @@ main(int argc, char **argv)
 			  new_cluster.pgdata);
 	check_ok();
 
-	create_script_for_cluster_analyze(&analyze_script_file_name);
 	create_script_for_old_cluster_deletion(&deletion_script_file_name);
 
 	issue_warnings_and_set_wal_level();
@@ -186,10 +184,8 @@ main(int argc, char **argv)
 		   "Upgrade Complete\n"
 		   "----------------\n");
 
-	output_completion_banner(analyze_script_file_name,
-							 deletion_script_file_name);
+	output_completion_banner(deletion_script_file_name);
 
-	pg_free(analyze_script_file_name);
 	pg_free(deletion_script_file_name);
 
 	cleanup();
@@ -201,13 +197,28 @@ main(int argc, char **argv)
 static void
 setup(char *argv0, bool *live_check)
 {
-	char		exec_path[MAXPGPATH];	/* full path to my executable */
-
 	/*
 	 * make sure the user has a clean environment, otherwise, we may confuse
 	 * libpq when we connect to one (or both) of the servers.
 	 */
 	check_pghost_envvar();
+
+	/*
+	 * In case the user hasn't specified the directory for the new binaries
+	 * with -B, default to using the path of the currently executed pg_upgrade
+	 * binary.
+	 */
+	if (!new_cluster.bindir)
+	{
+		char		exec_path[MAXPGPATH];
+
+		if (find_my_exec(argv0, exec_path) < 0)
+			pg_fatal("%s: could not find own program executable\n", argv0);
+		/* Trim off program name and keep just path */
+		*last_dir_separator(exec_path) = '\0';
+		canonicalize_path(exec_path);
+		new_cluster.bindir = pg_strdup(exec_path);
+	}
 
 	verify_directories();
 
@@ -244,15 +255,6 @@ setup(char *argv0, bool *live_check)
 			pg_fatal("There seems to be a postmaster servicing the new cluster.\n"
 					 "Please shutdown that postmaster and try again.\n");
 	}
-
-	/* get path to pg_upgrade executable */
-	if (find_my_exec(argv0, exec_path) < 0)
-		pg_fatal("%s: could not find own program executable\n", argv0);
-
-	/* Trim off program name and keep just path */
-	*last_dir_separator(exec_path) = '\0';
-	canonicalize_path(exec_path);
-	os_info.exec_path = pg_strdup(exec_path);
 }
 
 
@@ -261,7 +263,7 @@ prepare_new_cluster(void)
 {
 	/*
 	 * It would make more sense to freeze after loading the schema, but that
-	 * would cause us to lose the frozenids restored by the load. We use
+	 * would cause us to lose the frozenxids restored by the load. We use
 	 * --analyze so autovacuum doesn't update statistics later
 	 */
 	prep_status("Analyzing all rows in the new cluster");
@@ -335,10 +337,9 @@ create_new_objects(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		/*
-		 * template1 and postgres databases will already exist in the target
-		 * installation, so tell pg_restore to drop and recreate them;
-		 * otherwise we would fail to propagate their database-level
-		 * properties.
+		 * template1 database will already exist in the target installation,
+		 * so tell pg_restore to drop and recreate it; otherwise we would fail
+		 * to propagate its database-level properties.
 		 */
 		create_opts = "--clean --create";
 
@@ -372,10 +373,9 @@ create_new_objects(void)
 		snprintf(log_file_name, sizeof(log_file_name), DB_DUMP_LOG_FILE_MASK, old_db->db_oid);
 
 		/*
-		 * template1 and postgres databases will already exist in the target
-		 * installation, so tell pg_restore to drop and recreate them;
-		 * otherwise we would fail to propagate their database-level
-		 * properties.
+		 * postgres database will already exist in the target installation, so
+		 * tell pg_restore to drop and recreate it; otherwise we would fail to
+		 * propagate its database-level properties.
 		 */
 		if (strcmp(old_db->db_name, "postgres") == 0)
 			create_opts = "--clean --create";
@@ -403,7 +403,7 @@ create_new_objects(void)
 	 * We don't have minmxids for databases or relations in pre-9.3 clusters,
 	 * so set those after we have restored the schema.
 	 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) < 903)
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 902)
 		set_frozenxids(true);
 
 	/* update new_cluster info now that we have objects in the databases */
@@ -462,10 +462,17 @@ copy_xact_xlog_xid(void)
 	 * Copy old commit logs to new data dir. pg_clog has been renamed to
 	 * pg_xact in post-10 clusters.
 	 */
-	copy_subdir_files(GET_MAJOR_VERSION(old_cluster.major_version) < 1000 ?
+	copy_subdir_files(GET_MAJOR_VERSION(old_cluster.major_version) <= 906 ?
 					  "pg_clog" : "pg_xact",
-					  GET_MAJOR_VERSION(new_cluster.major_version) < 1000 ?
+					  GET_MAJOR_VERSION(new_cluster.major_version) <= 906 ?
 					  "pg_clog" : "pg_xact");
+
+	prep_status("Setting oldest XID for new cluster");
+	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
+			  "\"%s/pg_resetwal\" -f -u %u \"%s\"",
+			  new_cluster.bindir, old_cluster.controldata.chkpnt_oldstxid,
+			  new_cluster.pgdata);
+	check_ok();
 
 	/* set the next transaction id and epoch of the new cluster */
 	prep_status("Setting next transaction ID and epoch for new cluster");

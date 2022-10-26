@@ -3,18 +3,17 @@
  *
  *	relfilenode functions
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2021, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/relfilenode.c
  */
 
 #include "postgres_fe.h"
 
-#include "pg_upgrade.h"
-
 #include <sys/stat.h>
-#include "catalog/pg_class_d.h"
-#include "access/transam.h"
 
+#include "access/transam.h"
+#include "catalog/pg_class_d.h"
+#include "pg_upgrade.h"
 
 static void transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace);
 static void transfer_relfile(FileNameMap *map, const char *suffix, bool vm_must_add_frozenbit);
@@ -30,10 +29,18 @@ void
 transfer_all_new_tablespaces(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr,
 							 char *old_pgdata, char *new_pgdata)
 {
-	if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
-		pg_log(PG_REPORT, "Linking user relation files\n");
-	else
-		pg_log(PG_REPORT, "Copying user relation files\n");
+	switch (user_opts.transfer_mode)
+	{
+		case TRANSFER_MODE_CLONE:
+			pg_log(PG_REPORT, "Cloning user relation files\n");
+			break;
+		case TRANSFER_MODE_COPY:
+			pg_log(PG_REPORT, "Copying user relation files\n");
+			break;
+		case TRANSFER_MODE_LINK:
+			pg_log(PG_REPORT, "Linking user relation files\n");
+			break;
+	}
 
 	/*
 	 * Transferring files by tablespace is tricky because a single database
@@ -66,8 +73,6 @@ transfer_all_new_tablespaces(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr,
 
 	end_progress_output();
 	check_ok();
-
-	return;
 }
 
 
@@ -121,8 +126,6 @@ transfer_all_new_dbs(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr,
 		/* We allocate something even for n_maps == 0 */
 		pg_free(mappings);
 	}
-
-	return;
 }
 
 /*
@@ -160,16 +163,12 @@ transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace)
 			/* transfer primary file */
 			transfer_relfile(&maps[mapnum], "", vm_must_add_frozenbit);
 
-			/* fsm/vm files added in PG 8.4 */
-			if (GET_MAJOR_VERSION(old_cluster.major_version) >= 804)
-			{
-				/*
-				 * Copy/link any fsm and vm files, if they exist
-				 */
-				transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
-				if (vm_crashsafe_match)
-					transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
-			}
+			/*
+			 * Copy/link any fsm and vm files, if they exist
+			 */
+			transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
+			if (vm_crashsafe_match)
+				transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
 		}
 	}
 }
@@ -250,17 +249,23 @@ transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_fro
 				   old_file, new_file);
 			rewriteVisibilityMap(old_file, new_file, map->nspname, map->relname);
 		}
-		else if (user_opts.transfer_mode == TRANSFER_MODE_COPY)
-		{
-			pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"\n",
-				   old_file, new_file);
-			copyFile(old_file, new_file, map->nspname, map->relname);
-		}
 		else
-		{
-			pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"\n",
-				   old_file, new_file);
-			linkFile(old_file, new_file, map->nspname, map->relname);
-		}
+			switch (user_opts.transfer_mode)
+			{
+				case TRANSFER_MODE_CLONE:
+					pg_log(PG_VERBOSE, "cloning \"%s\" to \"%s\"\n",
+						   old_file, new_file);
+					cloneFile(old_file, new_file, map->nspname, map->relname);
+					break;
+				case TRANSFER_MODE_COPY:
+					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"\n",
+						   old_file, new_file);
+					copyFile(old_file, new_file, map->nspname, map->relname);
+					break;
+				case TRANSFER_MODE_LINK:
+					pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"\n",
+						   old_file, new_file);
+					linkFile(old_file, new_file, map->nspname, map->relname);
+			}
 	}
 }

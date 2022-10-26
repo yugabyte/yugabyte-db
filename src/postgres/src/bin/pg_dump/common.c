@@ -4,7 +4,7 @@
  *	Catalog routines used by pg_dump; long ago these were shared
  *	by another dump tool, but not anymore.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,22 +15,20 @@
  */
 #include "postgres_fe.h"
 
-#include "pg_backup_archiver.h"
-#include "pg_backup_utils.h"
-#include "pg_dump.h"
-
 #include <ctype.h>
 
 #include "catalog/pg_class_d.h"
 #include "fe_utils/string_utils.h"
-
+#include "pg_backup_archiver.h"
+#include "pg_backup_utils.h"
+#include "pg_dump.h"
 
 /*
  * Variables for mapping DumpId to DumpableObject
  */
 static DumpableObject **dumpIdMap = NULL;
 static int	allocedDumpIds = 0;
-static DumpId lastDumpId = 0;
+static DumpId lastDumpId = 0;	/* Note: 0 is InvalidDumpId */
 
 /*
  * Variables for mapping CatalogId to DumpableObject
@@ -55,6 +53,7 @@ static DumpableObject **collinfoindex;
 static DumpableObject **nspinfoindex;
 static DumpableObject **extinfoindex;
 static DumpableObject **tblgrpinfoindex;
+static DumpableObject **pubinfoindex;
 static int	numTables;
 static int	numTablegroups;
 static int	numTypes;
@@ -63,24 +62,25 @@ static int	numOperators;
 static int	numCollations;
 static int	numNamespaces;
 static int	numExtensions;
+static int	numPublications;
 
 /* This is an array of object identities, not actual DumpableObjects */
 static ExtensionMemberId *extmembers;
 static int	numextmembers;
 
 static void flagInhTables(Archive *fout, TableInfo *tbinfo, int numTables,
-			  InhInfo *inhinfo, int numInherits);
+						  InhInfo *inhinfo, int numInherits);
 static void flagInhIndexes(Archive *fout, TableInfo *tblinfo, int numTables);
 static void flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables);
 static DumpableObject **buildIndexArray(void *objArray, int numObjs,
-				Size objSize);
+										Size objSize);
 static int	DOCatalogIdCompare(const void *p1, const void *p2);
 static int	ExtensionMemberIdCompare(const void *p1, const void *p2);
 static void findParentsByOid(TableInfo *self,
-				 InhInfo *inhinfo, int numInherits);
+							 InhInfo *inhinfo, int numInherits);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
 static IndxInfo *findIndexByOid(Oid oid, DumpableObject **idxinfoindex,
-			   int numIndexes);
+								int numIndexes);
 
 
 /*
@@ -97,6 +97,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	CollInfo   *collinfo;
 	NamespaceInfo *nspinfo;
 	ExtensionInfo *extinfo;
+	PublicationInfo *pubinfo;
 	InhInfo    *inhinfo;
 	TablegroupInfo *tblgrpinfo;
 	int			numAggregates;
@@ -123,17 +124,14 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	 * extension membership needs to be consultable during decisions about
 	 * whether other objects are to be dumped.
 	 */
-	if (g_verbose)
-		write_msg(NULL, "reading extensions\n");
+	pg_log_info("reading extensions");
 	extinfo = getExtensions(fout, &numExtensions);
 	extinfoindex = buildIndexArray(extinfo, numExtensions, sizeof(ExtensionInfo));
 
-	if (g_verbose)
-		write_msg(NULL, "identifying extension members\n");
+	pg_log_info("identifying extension members");
 	getExtensionMembership(fout, extinfo, numExtensions);
 
-	if (g_verbose)
-		write_msg(NULL, "reading schemas\n");
+	pg_log_info("reading schemas");
 	nspinfo = getNamespaces(fout, &numNamespaces);
 	nspinfoindex = buildIndexArray(nspinfo, numNamespaces, sizeof(NamespaceInfo));
 
@@ -143,41 +141,34 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	 * However, we have to do getNamespaces first because the tables get
 	 * linked to their containing namespaces during getTables.
 	 */
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined tables\n");
+	pg_log_info("reading user-defined tables");
 	tblinfo = getTables(fout, &numTables);
 	tblinfoindex = buildIndexArray(tblinfo, numTables, sizeof(TableInfo));
 
 	/* Do this after we've built tblinfoindex */
 	getOwnedSeqs(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined functions\n");
+	pg_log_info("reading user-defined functions");
 	funinfo = getFuncs(fout, &numFuncs);
 	funinfoindex = buildIndexArray(funinfo, numFuncs, sizeof(FuncInfo));
 
 	/* this must be after getTables and getFuncs */
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined types\n");
+	pg_log_info("reading user-defined types");
 	typinfo = getTypes(fout, &numTypes);
 	typinfoindex = buildIndexArray(typinfo, numTypes, sizeof(TypeInfo));
 
 	/* this must be after getFuncs, too */
-	if (g_verbose)
-		write_msg(NULL, "reading procedural languages\n");
+	pg_log_info("reading procedural languages");
 	getProcLangs(fout, &numProcLangs);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined aggregate functions\n");
+	pg_log_info("reading user-defined aggregate functions");
 	getAggregates(fout, &numAggregates);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined operators\n");
+	pg_log_info("reading user-defined operators");
 	oprinfo = getOperators(fout, &numOperators);
 	oprinfoindex = buildIndexArray(oprinfo, numOperators, sizeof(OprInfo));
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined access methods\n");
+	pg_log_info("reading user-defined access methods");
 	getAccessMethods(fout, &numAccessMethods);
 
 	if (g_verbose)
@@ -185,123 +176,96 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	tblgrpinfo = getTablegroups(fout, &numTablegroups);
 	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined operator classes\n");
+	pg_log_info("reading user-defined operator classes");
 	getOpclasses(fout, &numOpclasses);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined operator families\n");
+	pg_log_info("reading user-defined operator families");
 	getOpfamilies(fout, &numOpfamilies);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined text search parsers\n");
+	pg_log_info("reading user-defined text search parsers");
 	getTSParsers(fout, &numTSParsers);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined text search templates\n");
+	pg_log_info("reading user-defined text search templates");
 	getTSTemplates(fout, &numTSTemplates);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined text search dictionaries\n");
+	pg_log_info("reading user-defined text search dictionaries");
 	getTSDictionaries(fout, &numTSDicts);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined text search configurations\n");
+	pg_log_info("reading user-defined text search configurations");
 	getTSConfigurations(fout, &numTSConfigs);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined foreign-data wrappers\n");
+	pg_log_info("reading user-defined foreign-data wrappers");
 	getForeignDataWrappers(fout, &numForeignDataWrappers);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined foreign servers\n");
+	pg_log_info("reading user-defined foreign servers");
 	getForeignServers(fout, &numForeignServers);
 
-	if (g_verbose)
-		write_msg(NULL, "reading default privileges\n");
+	pg_log_info("reading default privileges");
 	getDefaultACLs(fout, &numDefaultACLs);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined collations\n");
+	pg_log_info("reading user-defined collations");
 	collinfo = getCollations(fout, &numCollations);
 	collinfoindex = buildIndexArray(collinfo, numCollations, sizeof(CollInfo));
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined conversions\n");
+	pg_log_info("reading user-defined conversions");
 	getConversions(fout, &numConversions);
 
-	if (g_verbose)
-		write_msg(NULL, "reading type casts\n");
+	pg_log_info("reading type casts");
 	getCasts(fout, &numCasts);
 
-	if (g_verbose)
-		write_msg(NULL, "reading transforms\n");
+	pg_log_info("reading transforms");
 	getTransforms(fout, &numTransforms);
 
-	if (g_verbose)
-		write_msg(NULL, "reading table inheritance information\n");
+	pg_log_info("reading table inheritance information");
 	inhinfo = getInherits(fout, &numInherits);
 
-	if (g_verbose)
-		write_msg(NULL, "reading event triggers\n");
+	pg_log_info("reading event triggers");
 	getEventTriggers(fout, &numEventTriggers);
 
 	/* Identify extension configuration tables that should be dumped */
-	if (g_verbose)
-		write_msg(NULL, "finding extension tables\n");
+	pg_log_info("finding extension tables");
 	processExtensionTables(fout, extinfo, numExtensions);
 
 	/* Link tables to parents, mark parents of target tables interesting */
-	if (g_verbose)
-		write_msg(NULL, "finding inheritance relationships\n");
+	pg_log_info("finding inheritance relationships");
 	flagInhTables(fout, tblinfo, numTables, inhinfo, numInherits);
 
-	if (g_verbose)
-		write_msg(NULL, "reading column info for interesting tables\n");
+	pg_log_info("reading column info for interesting tables");
 	getTableAttrs(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "flagging inherited columns in subtables\n");
+	pg_log_info("flagging inherited columns in subtables");
 	flagInhAttrs(fout->dopt, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading indexes\n");
+	pg_log_info("reading indexes");
 	getIndexes(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "flagging indexes in partitioned tables\n");
+	pg_log_info("flagging indexes in partitioned tables");
 	flagInhIndexes(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading extended statistics\n");
+	pg_log_info("reading extended statistics");
 	getExtendedStatistics(fout);
 
-	if (g_verbose)
-		write_msg(NULL, "reading constraints\n");
+	pg_log_info("reading constraints");
 	getConstraints(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading triggers\n");
+	pg_log_info("reading triggers");
 	getTriggers(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading rewrite rules\n");
+	pg_log_info("reading rewrite rules");
 	getRules(fout, &numRules);
 
-	if (g_verbose)
-		write_msg(NULL, "reading policies\n");
+	pg_log_info("reading policies");
 	getPolicies(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading publications\n");
-	getPublications(fout);
+	pg_log_info("reading publications");
+	pubinfo = getPublications(fout, &numPublications);
+	pubinfoindex = buildIndexArray(pubinfo, numPublications,
+								   sizeof(PublicationInfo));
 
-	if (g_verbose)
-		write_msg(NULL, "reading publication membership\n");
+	pg_log_info("reading publication membership");
 	getPublicationTables(fout, tblinfo, numTables);
 
-	if (g_verbose)
-		write_msg(NULL, "reading subscriptions\n");
+	pg_log_info("reading subscriptions");
 	getSubscriptions(fout);
 
 	*numTablesPtr = numTables;
@@ -310,7 +274,9 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 
 /* flagInhTables -
  *	 Fill in parent link fields of tables for which we need that information,
- *	 and mark parents of target tables as interesting
+ *	 mark parents of target tables as interesting, and create
+ *	 TableAttachInfo objects for partitioned tables with appropriate
+ *	 dependency links.
  *
  * Note that only direct ancestors of targets are marked interesting.
  * This is sufficient; we don't much care whether they inherited their
@@ -369,12 +335,46 @@ flagInhTables(Archive *fout, TableInfo *tblinfo, int numTables,
 			for (j = 0; j < numParents; j++)
 				parents[j]->interesting = true;
 		}
+
+		/* Create TableAttachInfo object if needed */
+		if (tblinfo[i].dobj.dump && tblinfo[i].ispartition)
+		{
+			TableAttachInfo *attachinfo;
+
+			/* With partitions there can only be one parent */
+			if (tblinfo[i].numParents != 1)
+				fatal("invalid number of parents %d for table \"%s\"",
+					  tblinfo[i].numParents,
+					  tblinfo[i].dobj.name);
+
+			attachinfo = (TableAttachInfo *) palloc(sizeof(TableAttachInfo));
+			attachinfo->dobj.objType = DO_TABLE_ATTACH;
+			attachinfo->dobj.catId.tableoid = 0;
+			attachinfo->dobj.catId.oid = 0;
+			AssignDumpId(&attachinfo->dobj);
+			attachinfo->dobj.name = pg_strdup(tblinfo[i].dobj.name);
+			attachinfo->dobj.namespace = tblinfo[i].dobj.namespace;
+			attachinfo->parentTbl = tblinfo[i].parents[0];
+			attachinfo->partitionTbl = &tblinfo[i];
+
+			/*
+			 * We must state the DO_TABLE_ATTACH object's dependencies
+			 * explicitly, since it will not match anything in pg_depend.
+			 *
+			 * Give it dependencies on both the partition table and the parent
+			 * table, so that it will not be executed till both of those
+			 * exist.  (There's no need to care what order those are created
+			 * in.)
+			 */
+			addObjectDependency(&attachinfo->dobj, tblinfo[i].dobj.dumpId);
+			addObjectDependency(&attachinfo->dobj, tblinfo[i].parents[0]->dobj.dumpId);
+		}
 	}
 }
 
 /*
  * flagInhIndexes -
- *	 Create AttachIndexInfo objects for partitioned indexes, and add
+ *	 Create IndexAttachInfo objects for partitioned indexes, and add
  *	 appropriate dependency links.
  */
 static void
@@ -459,6 +459,9 @@ flagInhIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 			addObjectDependency(&attachinfo[k].dobj,
 								parentidx->indextable->dobj.dumpId);
 
+			/* keep track of the list of partitions in the parent index */
+			simple_ptr_list_append(&parentidx->partattaches, &attachinfo[k].dobj);
+
 			k++;
 		}
 	}
@@ -472,12 +475,24 @@ flagInhIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 /* flagInhAttrs -
  *	 for each dumpable table in tblinfo, flag its inherited attributes
  *
- * What we need to do here is detect child columns that inherit NOT NULL
- * bits from their parents (so that we needn't specify that again for the
- * child) and child columns that have DEFAULT NULL when their parents had
- * some non-null default.  In the latter case, we make up a dummy AttrDefInfo
- * object so that we'll correctly emit the necessary DEFAULT NULL clause;
- * otherwise the backend will apply an inherited default to the column.
+ * What we need to do here is:
+ *
+ * - Detect child columns that inherit NOT NULL bits from their parents, so
+ *   that we needn't specify that again for the child.
+ *
+ * - Detect child columns that have DEFAULT NULL when their parents had some
+ *   non-null default.  In this case, we make up a dummy AttrDefInfo object so
+ *   that we'll correctly emit the necessary DEFAULT NULL clause; otherwise
+ *   the backend will apply an inherited default to the column.
+ *
+ * - Detect child columns that have a generation expression when their parents
+ *   also have one.  Generation expressions are always inherited, so there is
+ *   no need to set them again in child tables, and there is no syntax for it
+ *   either.  Exceptions: If it's a partition or we are in binary upgrade
+ *   mode, we dump them because in those cases inherited tables are recreated
+ *   standalone first and then reattached to the parent.  (See also the logic
+ *   in dumpTableSchema().)  In that situation, the generation expressions
+ *   must match the parent, enforced by ALTER TABLE.
  *
  * modifies tblinfo
  */
@@ -515,6 +530,7 @@ flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables)
 		{
 			bool		foundNotNull;	/* Attr was NOT NULL in a parent */
 			bool		foundDefault;	/* Found a default in a parent */
+			bool		foundGenerated; /* Found a generated in a parent */
 
 			/* no point in examining dropped columns */
 			if (tbinfo->attisdropped[j])
@@ -522,6 +538,7 @@ flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables)
 
 			foundNotNull = false;
 			foundDefault = false;
+			foundGenerated = false;
 			for (k = 0; k < numParents; k++)
 			{
 				TableInfo  *parent = parents[k];
@@ -533,7 +550,8 @@ flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables)
 				if (inhAttrInd >= 0)
 				{
 					foundNotNull |= parent->notnull[inhAttrInd];
-					foundDefault |= (parent->attrdefs[inhAttrInd] != NULL);
+					foundDefault |= (parent->attrdefs[inhAttrInd] != NULL && !parent->attgenerated[inhAttrInd]);
+					foundGenerated |= parent->attgenerated[inhAttrInd];
 				}
 			}
 
@@ -575,6 +593,10 @@ flagInhAttrs(DumpOptions *dopt, TableInfo *tblinfo, int numTables)
 
 				tbinfo->attrdefs[j] = attrDef;
 			}
+
+			/* Remove generation expression from child */
+			if (foundGenerated && !tbinfo->ispartition && !dopt->binary_upgrade)
+				tbinfo->attrdefs[j] = NULL;
 		}
 	}
 }
@@ -594,7 +616,9 @@ AssignDumpId(DumpableObject *dobj)
 	dobj->name = NULL;			/* must be set later */
 	dobj->namespace = NULL;		/* may be set later */
 	dobj->dump = DUMP_COMPONENT_ALL;	/* default assumption */
+	dobj->dump_contains = DUMP_COMPONENT_ALL;	/* default assumption */
 	dobj->ext_member = false;	/* default assumption */
+	dobj->depends_on_ext = false;	/* default assumption */
 	dobj->dependencies = NULL;
 	dobj->nDeps = 0;
 	dobj->allocDeps = 0;
@@ -763,6 +787,9 @@ buildIndexArray(void *objArray, int numObjs, Size objSize)
 {
 	DumpableObject **ptrs;
 	int			i;
+
+	if (numObjs <= 0)
+		return NULL;
 
 	ptrs = (DumpableObject **) pg_malloc(numObjs * sizeof(DumpableObject *));
 	for (i = 0; i < numObjs; i++)
@@ -954,6 +981,17 @@ findTablegroupByOid(Oid oid)
 }
 
 /*
+ * findPublicationByOid
+ *	  finds the entry (in pubinfo) of the publication with the given oid
+ *	  returns NULL if not found
+ */
+PublicationInfo *
+findPublicationByOid(Oid oid)
+{
+	return (PublicationInfo *) findObjectByOid(oid, pubinfoindex, numPublications);
+}
+
+/*
  * findIndexByOid
  *		find the entry of the index with the given oid
  *
@@ -1078,10 +1116,10 @@ findParentsByOid(TableInfo *self,
 				parent = findTableByOid(inhinfo[i].inhparent);
 				if (parent == NULL)
 				{
-					write_msg(NULL, "failed sanity check, parent OID %u of table \"%s\" (OID %u) not found\n",
-							  inhinfo[i].inhparent,
-							  self->dobj.name,
-							  oid);
+					pg_log_error("failed sanity check, parent OID %u of table \"%s\" (OID %u) not found",
+								 inhinfo[i].inhparent,
+								 self->dobj.name,
+								 oid);
 					exit_nicely(1);
 				}
 				self->parents[j++] = parent;
@@ -1120,7 +1158,7 @@ parseOidArray(const char *str, Oid *array, int arraysize)
 			{
 				if (argNum >= arraysize)
 				{
-					write_msg(NULL, "could not parse numeric array \"%s\": too many numbers\n", str);
+					pg_log_error("could not parse numeric array \"%s\": too many numbers", str);
 					exit_nicely(1);
 				}
 				temp[j] = '\0';
@@ -1135,7 +1173,7 @@ parseOidArray(const char *str, Oid *array, int arraysize)
 			if (!(isdigit((unsigned char) s) || s == '-') ||
 				j >= sizeof(temp) - 1)
 			{
-				write_msg(NULL, "could not parse numeric array \"%s\": invalid character in number\n", str);
+				pg_log_error("could not parse numeric array \"%s\": invalid character in number", str);
 				exit_nicely(1);
 			}
 			temp[j++] = s;

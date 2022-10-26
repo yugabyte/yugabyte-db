@@ -133,18 +133,26 @@ PostgreSQL documentation
       <listitem>
        <para>
         Prints the value of the named run-time parameter, and exits.
-        (See the <option>-c</option> option above for details.)  This can
-        be used on a running server, and returns values from
+        (See the <option>-c</option> option above for details.)  This
+        returns values from
         <filename>postgresql.conf</filename>, modified by any parameters
         supplied in this invocation.  It does not reflect parameters
         supplied when the cluster was started.
        </para>
 
        <para>
+        This can be used on a running server for most parameters.  However,
+        the server must be shut down for some runtime-computed parameters
+        (e.g., <xref linkend="guc-shared-memory-size"/>,
+        <xref linkend="guc-shared-memory-size-in-huge-pages"/>, and
+        <xref linkend="guc-wal-segment-size"/>).
+       </para>
+
+       <para>
         This option is meant for other programs that interact with a server
         instance, such as <xref linkend="app-pg-ctl"/>, to query configuration
-        parameter values.  User-facing applications should instead use <xref
-        linkend="sql-show"/> or the <structname>pg_settings</structname> view.
+        parameter values.  User-facing applications should instead use <link
+        linkend="sql-show"><command>SHOW</command></link> or the <structname>pg_settings</structname> view.
        </para>
       </listitem>
      </varlistentry>
@@ -281,32 +289,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-o <replaceable class="parameter">extra-options</replaceable></option></term>
-      <listitem>
-       <para>
-        The command-line-style arguments specified in <replaceable
-        class="parameter">extra-options</replaceable> are passed to
-        all server processes started by this
-        <command>postgres</command> process.
-       </para>
-
-       <para>
-        Spaces within <replaceable class="parameter">extra-options</replaceable> are
-        considered to separate arguments, unless escaped with a backslash
-        (<literal>\</literal>); write <literal>\\</literal> to represent a literal
-        backslash.  Multiple arguments can also be specified via multiple
-        uses of <option>-o</option>.
-       </para>
-
-       <para>
-        The use of this option is obsolete; all command-line options
-        for server processes can be specified directly on the
-        <command>postgres</command> command line.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
       <listitem>
        <para>
@@ -338,10 +320,10 @@ PostgreSQL documentation
       <term><option>-S</option> <replaceable class="parameter">work-mem</replaceable></term>
       <listitem>
        <para>
-        Specifies the amount of memory to be used by internal sorts and hashes
-        before resorting to temporary disk files.  See the description of the
-        <varname>work_mem</varname> configuration parameter in <xref
-        linkend="runtime-config-resource-memory"/>.
+        Specifies the base amount of memory to be used by sorts and
+        hash tables before resorting to temporary disk files.  See the
+        description of the <varname>work_mem</varname> configuration
+        parameter in <xref linkend="runtime-config-resource-memory"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -391,7 +373,7 @@ PostgreSQL documentation
    </refsect2>
 
    <refsect2>
-    <title>Semi-internal Options</title>
+    <title>Semi-Internal Options</title>
 
     <para>
      The options described here are used
@@ -530,8 +512,7 @@ PostgreSQL documentation
 
     <para>
      The following options only apply to the single-user mode
-     (see <xref linkend="app-postgres-single-user"
-     endterm="app-postgres-single-user-title"/>).
+     (see <xref linkend="app-postgres-single-user"/> below).
     </para>
 
     <variablelist>
@@ -753,8 +734,8 @@ PostgreSQL documentation
   </para>
  </refsect1>
 
- <refsect1 id="app-postgres-single-user">
-  <title id="app-postgres-single-user-title">Single-User Mode</title>
+ <refsect1 id="app-postgres-single-user" xreflabel="Single-User Mode">
+  <title>Single-User Mode</title>
 
    <para>
     To start a single-user mode server, use a command like
@@ -822,7 +803,7 @@ PostgreSQL documentation
 
   <para>
    To start <command>postgres</command> with a specific
-   port, e.g. 1234:
+   port, e.g., 1234:
 <screen>
 <prompt>$</prompt> <userinput>postgres -p 1234</userinput>
 </screen>

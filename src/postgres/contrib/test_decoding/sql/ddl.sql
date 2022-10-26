@@ -9,7 +9,7 @@ SELECT 'init' FROM pg_create_logical_replication_slot('Invalid Name', 'test_deco
 
 -- fail twice because of an invalid parameter values
 SELECT 'init' FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', 'frakbar');
-SELECT 'init' FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nonexistant-option', 'frakbar');
+SELECT 'init' FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nonexistent-option', 'frakbar');
 SELECT 'init' FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', 'frakbar');
 
 -- succeed once
@@ -220,6 +220,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
 -- test whether a known, but not yet logged toplevel xact, followed by a
 -- subxact commit is handled correctly
 BEGIN;
+SELECT pg_current_xact_id() != '0'; -- so no fixed xid apears in the outfile
 SAVEPOINT a;
 INSERT INTO tr_sub(path) VALUES ('4-top-1-#1');
 RELEASE SAVEPOINT a;
@@ -232,6 +233,19 @@ SAVEPOINT a;
 INSERT INTO tr_sub(path) VALUES ('5-top-1-#1');
 COMMIT;
 
+
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+
+-- check that DDL in aborted subtransactions handled correctly
+CREATE TABLE tr_sub_ddl(data int);
+BEGIN;
+SAVEPOINT a;
+ALTER TABLE tr_sub_ddl ALTER COLUMN data TYPE text;
+INSERT INTO tr_sub_ddl VALUES ('blah-blah');
+ROLLBACK TO SAVEPOINT a;
+ALTER TABLE tr_sub_ddl ALTER COLUMN data TYPE bigint;
+INSERT INTO tr_sub_ddl VALUES(43);
+COMMIT;
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
 
@@ -331,6 +345,37 @@ UPDATE table_with_unique_not_null SET id = -id;
 UPDATE table_with_unique_not_null SET id = -id;
 DELETE FROM table_with_unique_not_null WHERE data = 3;
 
+-- check tables with dropped indexes used in REPLICA IDENTITY
+-- table with primary key
+CREATE TABLE table_dropped_index_with_pk (a int PRIMARY KEY, b int, c int);
+CREATE UNIQUE INDEX table_dropped_index_with_pk_idx
+  ON table_dropped_index_with_pk(a);
+ALTER TABLE table_dropped_index_with_pk REPLICA IDENTITY
+  USING INDEX table_dropped_index_with_pk_idx;
+DROP INDEX table_dropped_index_with_pk_idx;
+INSERT INTO table_dropped_index_with_pk VALUES (1,1,1), (2,2,2), (3,3,3);
+UPDATE table_dropped_index_with_pk SET a = 4 WHERE a = 1;
+UPDATE table_dropped_index_with_pk SET b = 5 WHERE a = 2;
+UPDATE table_dropped_index_with_pk SET b = 6, c = 7 WHERE a = 3;
+DELETE FROM table_dropped_index_with_pk WHERE b = 1;
+DELETE FROM table_dropped_index_with_pk WHERE a = 3;
+DROP TABLE table_dropped_index_with_pk;
+
+-- table without primary key
+CREATE TABLE table_dropped_index_no_pk (a int NOT NULL, b int, c int);
+CREATE UNIQUE INDEX table_dropped_index_no_pk_idx
+  ON table_dropped_index_no_pk(a);
+ALTER TABLE table_dropped_index_no_pk REPLICA IDENTITY
+  USING INDEX table_dropped_index_no_pk_idx;
+DROP INDEX table_dropped_index_no_pk_idx;
+INSERT INTO table_dropped_index_no_pk VALUES (1,1,1), (2,2,2), (3,3,3);
+UPDATE table_dropped_index_no_pk SET a = 4 WHERE a = 1;
+UPDATE table_dropped_index_no_pk SET b = 5 WHERE a = 2;
+UPDATE table_dropped_index_no_pk SET b = 6, c = 7 WHERE a = 3;
+DELETE FROM table_dropped_index_no_pk WHERE b = 1;
+DELETE FROM table_dropped_index_no_pk WHERE a = 3;
+DROP TABLE table_dropped_index_no_pk;
+
 -- check toast support
 BEGIN;
 CREATE SEQUENCE toasttable_rand_seq START 79 INCREMENT 1499; -- portable "random"
@@ -373,4 +418,6 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
 SELECT pg_drop_replication_slot('regression_slot');
 
 /* check that the slot is gone */
+\x
 SELECT * FROM pg_replication_slots;
+\x

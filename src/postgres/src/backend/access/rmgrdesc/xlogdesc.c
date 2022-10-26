@@ -3,7 +3,7 @@
  * xlogdesc.c
  *	  rmgr descriptor routines for access/transam/xlog.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/transam.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
@@ -48,11 +49,12 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 "oldest xid %u in DB %u; oldest multi %u in DB %u; "
 						 "oldest/newest commit timestamp xid: %u/%u; "
 						 "oldest running xid %u; %s",
-						 (uint32) (checkpoint->redo >> 32), (uint32) checkpoint->redo,
+						 LSN_FORMAT_ARGS(checkpoint->redo),
 						 checkpoint->ThisTimeLineID,
 						 checkpoint->PrevTimeLineID,
 						 checkpoint->fullPageWrites ? "true" : "false",
-						 checkpoint->nextXidEpoch, checkpoint->nextXid,
+						 EpochFromFullTransactionId(checkpoint->nextXid),
+						 XidFromFullTransactionId(checkpoint->nextXid),
 						 checkpoint->nextOid,
 						 checkpoint->nextMulti,
 						 checkpoint->nextMultiOffset,
@@ -87,8 +89,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		XLogRecPtr	startpoint;
 
 		memcpy(&startpoint, rec, sizeof(XLogRecPtr));
-		appendStringInfo(buf, "%X/%X",
-						 (uint32) (startpoint >> 32), (uint32) startpoint);
+		appendStringInfo(buf, "%X/%X", LSN_FORMAT_ARGS(startpoint));
 	}
 	else if (info == XLOG_PARAMETER_CHANGE)
 	{
@@ -110,11 +111,12 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		}
 
 		appendStringInfo(buf, "max_connections=%d max_worker_processes=%d "
-						 "max_prepared_xacts=%d max_locks_per_xact=%d "
-						 "wal_level=%s wal_log_hints=%s "
-						 "track_commit_timestamp=%s",
+						 "max_wal_senders=%d max_prepared_xacts=%d "
+						 "max_locks_per_xact=%d wal_level=%s "
+						 "wal_log_hints=%s track_commit_timestamp=%s",
 						 xlrec.MaxConnections,
 						 xlrec.max_worker_processes,
+						 xlrec.max_wal_senders,
 						 xlrec.max_prepared_xacts,
 						 xlrec.max_locks_per_xact,
 						 wal_level_str,

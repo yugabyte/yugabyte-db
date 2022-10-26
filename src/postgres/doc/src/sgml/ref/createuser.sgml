@@ -44,12 +44,12 @@ PostgreSQL documentation
    If you wish to create a new superuser, you must connect as a
    superuser, not merely with <literal>CREATEROLE</literal> privilege.
    Being a superuser implies the ability to bypass all access permission
-   checks within the database, so superuserdom should not be granted lightly.
+   checks within the database, so superuser access should not be granted lightly.
   </para>
 
   <para>
    <application>createuser</application> is a wrapper around the
-   <acronym>SQL</acronym> command <xref linkend="sql-createrole"/>.
+   <acronym>SQL</acronym> command <link linkend="sql-createrole"><command>CREATE ROLE</command></link>.
    There is no effective difference between creating users via
    this utility and via other methods for accessing the server.
   </para>
@@ -397,6 +397,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

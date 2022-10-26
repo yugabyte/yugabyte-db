@@ -99,7 +99,7 @@
 
   <para>
    A <firstterm>publication</firstterm> can be defined on any physical
-   replication master.  The node where a publication is defined is referred to
+   replication primary.  The node where a publication is defined is referred to
    as <firstterm>publisher</firstterm>.  A publication is a set of changes
    generated from a table or a group of tables, and might also be described as
    a change set or replication set.  Each publication exists in only one database.
@@ -133,7 +133,7 @@
    fallback if no other solution is possible.  If a replica identity other
    than <quote>full</quote> is set on the publisher side, a replica identity
    comprising the same or fewer columns must also be set on the subscriber
-   side.  See <xref linkend="sql-createtable-replica-identity"/> for details on
+   side.  See <xref linkend="sql-altertable-replica-identity"/> for details on
    how to set the replica identity.  If a table without a replica identity is
    added to a publication that replicates <command>UPDATE</command>
    or <command>DELETE</command> operations then
@@ -147,13 +147,13 @@
   </para>
 
   <para>
-   A publication is created using the <xref linkend="sql-createpublication"/>
+   A publication is created using the <link linkend="sql-createpublication"><command>CREATE PUBLICATION</command></link>
    command and may later be altered or dropped using corresponding commands.
   </para>
 
   <para>
    The individual tables can be added and removed dynamically using
-   <xref linkend="sql-alterpublication"/>.  Both the <literal>ADD
+   <link linkend="sql-alterpublication"><command>ALTER PUBLICATION</command></link>.  Both the <literal>ADD
    TABLE</literal> and <literal>DROP TABLE</literal> operations are
    transactional; so the table will start or stop replicating at the correct
    snapshot once the transaction has committed.
@@ -186,9 +186,10 @@
 
   <para>
    Each subscription will receive changes via one replication slot (see
-   <xref linkend="streaming-replication-slots"/>).  Additional temporary
-   replication slots may be required for the initial data synchronization
-   of pre-existing table data.
+   <xref linkend="streaming-replication-slots"/>).  Additional replication
+   slots may be required for the initial data synchronization of
+   pre-existing table data and those will be dropped at the end of data
+   synchronization.
   </para>
 
   <para>
@@ -207,10 +208,10 @@
   </para>
 
   <para>
-   The subscription is added using <xref linkend="sql-createsubscription"/> and
+   The subscription is added using <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link> and
    can be stopped/resumed at any time using the
-   <xref linkend="sql-altersubscription"/> command and removed using
-   <xref linkend="sql-dropsubscription"/>.
+   <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION</command></link> command and removed using
+   <link linkend="sql-dropsubscription"><command>DROP SUBSCRIPTION</command></link>.
   </para>
 
   <para>
@@ -232,10 +233,15 @@
   </para>
 
   <para>
-   Columns of a table are also matched by name.  A different order of columns
-   in the target table is allowed, but the column types have to match.  The
-   target table can have additional columns not provided by the published
-   table.  Those will be filled with their default values.
+   Columns of a table are also matched by name.  The order of columns in the
+   subscriber table does not need to match that of the publisher.  The data
+   types of the columns do not need to match, as long as the text
+   representation of the data can be converted to the target type.  For
+   example, you can replicate from a column of type <type>integer</type> to a
+   column of type <type>bigint</type>.  The target table can also have
+   additional columns not provided by the published table.  Any such columns
+   will be filled with the default value as specified in the definition of the
+   target table.
   </para>
 
   <sect2 id="logical-replication-subscription-slot">
@@ -243,13 +249,23 @@
 
    <para>
     As mentioned earlier, each (active) subscription receives changes from a
-    replication slot on the remote (publishing) side.  Normally, the remote
-    replication slot is created automatically when the subscription is created
-    using <command>CREATE SUBSCRIPTION</command> and it is dropped
-    automatically when the subscription is dropped using <command>DROP
-    SUBSCRIPTION</command>.  In some situations, however, it can be useful or
-    necessary to manipulate the subscription and the underlying replication
-    slot separately.  Here are some scenarios:
+    replication slot on the remote (publishing) side.
+   </para>
+   <para>
+    Additional table synchronization slots are normally transient, created
+    internally to perform initial table synchronization and dropped
+    automatically when they are no longer needed. These table synchronization
+    slots have generated names: <quote><literal>pg_%u_sync_%u_%llu</literal></quote>
+    (parameters: Subscription <parameter>oid</parameter>,
+    Table <parameter>relid</parameter>, system identifier <parameter>sysid</parameter>)
+   </para>
+   <para>
+    Normally, the remote replication slot is created automatically when the
+    subscription is created using <command>CREATE SUBSCRIPTION</command> and it
+    is dropped automatically when the subscription is dropped using
+    <command>DROP SUBSCRIPTION</command>.  In some situations, however, it can
+    be useful or necessary to manipulate the subscription and the underlying
+    replication slot separately.  Here are some scenarios:
 
     <itemizedlist>
      <listitem>
@@ -289,8 +305,9 @@
        using <command>ALTER SUBSCRIPTION</command> before attempting to drop
        the subscription.  If the remote database instance no longer exists, no
        further action is then necessary.  If, however, the remote database
-       instance is just unreachable, the replication slot should then be
-       dropped manually; otherwise it would continue to reserve WAL and might
+       instance is just unreachable, the replication slot (and any still
+       remaining table synchronization slots) should then be
+       dropped manually; otherwise it/they would continue to reserve WAL and might
        eventually cause the disk to fill up.  Such cases should be carefully
        investigated.
       </para>
@@ -397,13 +414,23 @@
 
    <listitem>
     <para>
-     Replication is only possible from base tables to base tables.  That is,
-     the tables on the publication and on the subscription side must be normal
-     tables, not views, materialized views, partition root tables, or foreign
-     tables.  In the case of partitions, you can therefore replicate a
-     partition hierarchy one-to-one, but you cannot currently replicate to a
-     differently partitioned setup.  Attempts to replicate tables other than
-     base tables will result in an error.
+     Replication is only supported by tables, including partitioned tables.
+     Attempts to replicate other types of relations, such as views, materialized
+     views, or foreign tables, will result in an error.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     When replicating between partitioned tables, the actual replication
+     originates, by default, from the leaf partitions on the publisher, so
+     partitions on the publisher must also exist on the subscriber as valid
+     target tables. (They could either be leaf partitions themselves, or they
+     could be further subpartitioned, or they could even be independent
+     tables.)  Publications can also specify that changes are to be replicated
+     using the identity and schema of the partitioned root table instead of
+     that of the individual leaf partitions in which the changes actually
+     originate (see <link linkend="sql-createpublication"><command>CREATE PUBLICATION</command></link>).
     </para>
    </listitem>
   </itemizedlist>
@@ -453,16 +480,19 @@
   <sect2 id="logical-replication-snapshot">
     <title>Initial Snapshot</title>
     <para>
-      The initial data in existing subscribed tables are snapshotted and
-      copied in a parallel instance of a special kind of apply process.
-      This process will create its own temporary replication slot and
-      copy the existing data. Once existing data is copied, the worker
-      enters synchronization mode, which ensures that the table is brought
-      up to a synchronized state with the main apply process by streaming
-      any changes that happened during the initial data copy using standard
-      logical replication. Once the synchronization is done, the control
-      of the replication of the table is given back to the main apply
-      process where the replication continues as normal.
+     The initial data in existing subscribed tables are snapshotted and
+     copied in a parallel instance of a special kind of apply process.
+     This process will create its own replication slot and copy the existing
+     data.  As soon as the copy is finished the table contents will become
+     visible to other backends.  Once existing data is copied, the worker
+     enters synchronization mode, which ensures that the table is brought
+     up to a synchronized state with the main apply process by streaming
+     any changes that happened during the initial data copy using standard
+     logical replication.  During this synchronization phase, the changes
+     are applied and committed in the same order as they happened on the
+     publisher.  Once synchronization is done, control of the
+     replication of the table is given back to the main apply process where
+     replication continues as normal.
     </para>
   </sect2>
  </sect1>
@@ -474,13 +504,14 @@
    Because logical replication is based on a similar architecture as
    <link linkend="streaming-replication">physical streaming replication</link>,
    the monitoring on a publication node is similar to monitoring of a
-   physical replication master
+   physical replication primary
    (see <xref linkend="streaming-replication-monitoring"/>).
   </para>
 
   <para>
    The monitoring information about subscription is visible in
-   <link linkend="pg-stat-subscription"><literal>pg_stat_subscription</literal></link>.
+   <link linkend="monitoring-pg-stat-subscription">
+   <structname>pg_stat_subscription</structname></link>.
    This view contains one row for every subscription worker.  A subscription
    can have zero or more active subscription workers depending on its state.
   </para>
@@ -498,10 +529,26 @@
   <title>Security</title>
 
   <para>
+   A user able to modify the schema of subscriber-side tables can execute
+   arbitrary code as a superuser.  Limit ownership
+   and <literal>TRIGGER</literal> privilege on such tables to roles that
+   superusers trust.  Moreover, if untrusted users can create tables, use only
+   publications that list tables explicitly.  That is to say, create a
+   subscription <literal>FOR ALL TABLES</literal> only when superusers trust
+   every user permitted to create a non-temp table on the publisher or the
+   subscriber.
+  </para>
+
+  <para>
    The role used for the replication connection must have
-   the <literal>REPLICATION</literal> attribute (or be a superuser).  Access for the role must be
-   configured in <filename>pg_hba.conf</filename> and it must have the
-   <literal>LOGIN</literal> attribute.
+   the <literal>REPLICATION</literal> attribute (or be a superuser).  If the
+   role lacks <literal>SUPERUSER</literal> and <literal>BYPASSRLS</literal>,
+   publisher row security policies can execute.  If the role does not trust
+   all table owners, include <literal>options=-crow_security=off</literal> in
+   the connection string; if a table owner then adds a row security policy,
+   that setting will cause replication to halt rather than execute the policy.
+   Access for the role must be configured in <filename>pg_hba.conf</filename>
+   and it must have the <literal>LOGIN</literal> attribute.
   </para>
 
   <para>
@@ -555,11 +602,11 @@
   </para>
 
   <para>
-   The subscriber also requires the <varname>max_replication_slots</varname>
-   to be set.  In this case it should be set to at least the number of
-   subscriptions that will be added to the subscriber.
-   <varname>max_logical_replication_workers</varname> must be set to at
-   least the number of subscriptions, again plus some reserve for the table
+   <varname>max_replication_slots</varname> must also be set on the subscriber.
+   It should be set to at least the number of subscriptions that will be added
+   to the subscriber, plus some reserve for table synchronization.
+   <varname>max_logical_replication_workers</varname> must be set to at least
+   the number of subscriptions, again plus some reserve for the table
    synchronization.  Additionally the <varname>max_worker_processes</varname>
    may need to be adjusted to accommodate for replication workers, at least
    (<varname>max_logical_replication_workers</varname>

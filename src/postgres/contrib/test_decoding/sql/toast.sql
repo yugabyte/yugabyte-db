@@ -279,6 +279,11 @@ ALTER TABLE toasted_several ALTER COLUMN toasted_key SET STORAGE EXTERNAL;
 ALTER TABLE toasted_several ALTER COLUMN toasted_col1 SET STORAGE EXTERNAL;
 ALTER TABLE toasted_several ALTER COLUMN toasted_col2 SET STORAGE EXTERNAL;
 
+-- Change the storage of the index back to EXTENDED, separately from
+-- the table.  This is currently not doable via DDL, but it is
+-- supported internally.
+UPDATE pg_attribute SET attstorage = 'x' WHERE attrelid = 'toasted_several_pkey'::regclass AND attname = 'toasted_key';
+
 INSERT INTO toasted_several(toasted_key) VALUES(repeat('9876543210', 10000));
 SELECT pg_column_size(toasted_key) > 2^16 FROM toasted_several;
 
@@ -303,4 +308,20 @@ DROP TABLE toasted_several;
 
 SELECT regexp_replace(data, '^(.{100}).*(.{100})$', '\1..\2') FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1')
 WHERE data NOT LIKE '%INSERT: %';
+
+/*
+ * Test decoding relation rewrite with toast. The insert into tbl2 within the
+ * same transaction is there to check that there is no remaining toast_hash not
+ * being reset.
+ */
+CREATE TABLE tbl1 (a INT, b TEXT);
+CREATE TABLE tbl2 (a INT);
+ALTER TABLE tbl1 ALTER COLUMN b SET STORAGE EXTERNAL;
+BEGIN;
+INSERT INTO tbl1 VALUES(1, repeat('a', 4000)) ;
+ALTER TABLE tbl1 ADD COLUMN id serial primary key;
+INSERT INTO tbl2 VALUES(1);
+commit;
+SELECT substr(data, 1, 200) FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+
 SELECT pg_drop_replication_slot('regression_slot');

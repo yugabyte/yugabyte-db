@@ -19,7 +19,6 @@ static void AppendJumble(pgssJumbleState *jstate,
 			 const unsigned char *item, Size size);
 static void JumbleQuery(pgssJumbleState *jstate, Query *query);
 static void JumbleRangeTable(pgssJumbleState *jstate, List *rtable);
-static void JumbleExpr(pgssJumbleState *jstate, Node *node);
 static void RecordConstLocation(pgssJumbleState *jstate, int location);
 static char *generate_normalized_query(pgssJumbleState *jstate, const char *query,
 						  int query_loc, int *query_len_p, int encoding);
@@ -159,6 +158,11 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 	}
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil@yugabyte)
+ * - Delete this code.
+ * - This function has been moved to utils/misc/queryjumble.c
+ */
 /*
  * Jumble an expression tree
  *
@@ -253,7 +257,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, (Node *) expr->aggfilter);
 			}
 			break;
-		case T_ArrayRef:
+		case T_SubscriptingRef:
 			{
 				ArrayRef   *aref = (ArrayRef *) node;
 
@@ -645,6 +649,7 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 			break;
 	}
 }
+#endif
 
 /*
  * Record location of constant within query string of query tree

@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pgbench.sgml -->
+<!--
+doc/src/sgml/ref/pgbench.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="pgbench">
  <indexterm zone="pgbench">
@@ -56,8 +59,10 @@ number of threads: 1
 number of transactions per client: 1000
 number of transactions actually processed: 10000/10000
 maximum number of tries: 1
-tps = 85.184871 (including connections establishing)
-tps = 85.296346 (excluding connections establishing)
+latency average = 11.013 ms
+latency stddev = 7.351 ms
+initial connection time = 45.758 ms
+tps = 896.967014 (without initial connection time)
 </screen>
 
   The first six lines and the eighth line report some of the most important
@@ -68,8 +73,7 @@ tps = 85.296346 (excluding connections establishing)
   <option>-T</option> mode, only the actual number of transactions is printed.)
   (see <xref linkend="errors-and-retries" endterm="errors-and-retries-title"/>
   for more information)
-  The last two lines report the number of transactions per second,
-  figured with and without counting the time to start database sessions.
+  The last line reports the number of transactions per second.
  </para>
 
   <para>
@@ -152,6 +156,18 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
     <variablelist>
 
      <varlistentry>
+      <term><replaceable class="parameter">dbname</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to test in. If this is
+        not specified, the environment variable
+        <envar>PGDATABASE</envar> is used. If that is not set, the
+        user name specified for the connection is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-i</option></term>
       <term><option>--initialize</option></term>
       <listitem>
@@ -196,11 +212,36 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
           </listitem>
          </varlistentry>
          <varlistentry>
-          <term><literal>g</literal> (Generate data)</term>
+          <term><literal>g</literal> or <literal>G</literal> (Generate data, client-side or server-side)</term>
           <listitem>
            <para>
             Generate data and load it into the standard tables,
             replacing any data already present.
+           </para>
+           <para>
+            With <literal>g</literal> (client-side data generation),
+            data is generated in <command>pgbench</command> client and then
+            sent to the server. This uses the client/server bandwidth
+            extensively through a <command>COPY</command>.
+            <command>pgbench</command> uses the FREEZE option with 14 or later
+            versions of <productname>PostgreSQL</productname> to speed up
+            subsequent <command>VACUUM</command>, unless partitions are enabled.
+            Using <literal>g</literal> causes logging to print one message
+            every 100,000 rows while generating data for the
+            <structname>pgbench_accounts</structname> table.
+           </para>
+           <para>
+            With <literal>G</literal> (server-side data generation),
+            only small queries are sent from the <command>pgbench</command>
+            client and then data is actually generated in the server.
+            No significant bandwidth is required for this variant, but
+            the server will do more work.
+            Using <literal>G</literal> causes logging not to print any progress
+            message while generating data.
+           </para>
+           <para>
+            The default initialization behavior uses client-side data
+            generation (equivalent to <literal>g</literal>).
            </para>
           </listitem>
          </varlistentry>
@@ -229,8 +270,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
            </para>
           </listitem>
          </varlistentry>
-        </variablelist>
-       </para>
+        </variablelist></para>
       </listitem>
      </varlistentry>
 
@@ -265,8 +305,12 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <listitem>
        <para>
         Switch logging to quiet mode, producing only one progress message per 5
-        seconds. The default logging prints one message each 100000 rows, which
+        seconds. The default logging prints one message each 100,000 rows, which
         often outputs many lines per second (especially on good hardware).
+       </para>
+       <para>
+        This setting has no effect if <literal>G</literal> is specified
+        in <option>-I</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -310,6 +354,31 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
      </varlistentry>
 
      <varlistentry>
+      <term><option>--partition-method=<replaceable>NAME</replaceable></option></term>
+      <listitem>
+       <para>
+        Create a partitioned <literal>pgbench_accounts</literal> table with
+        <replaceable>NAME</replaceable> method.
+        Expected values are <literal>range</literal> or <literal>hash</literal>.
+        This option requires that <option>--partitions</option> is set to non-zero.
+        If unspecified, default is <literal>range</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--partitions=<replaceable>NUM</replaceable></option></term>
+      <listitem>
+       <para>
+        Create a partitioned <literal>pgbench_accounts</literal> table with
+        <replaceable>NUM</replaceable> partitions of nearly equal size for
+        the scaled number of accounts.
+        Default is <literal>0</literal>, meaning no partitioning.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--tablespace=<replaceable>tablespace</replaceable></option></term>
       <listitem>
        <para>
@@ -346,18 +415,21 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--builtin</option>=<replaceable>scriptname[@weight]</replaceable></term>
       <listitem>
        <para>
-        Add the specified built-in script to the list of executed scripts.
-        An optional integer weight after <literal>@</literal> allows to adjust the
-        probability of drawing the script.  If not specified, it is set to 1.
+        Add the specified built-in script to the list of scripts to be executed.
         Available built-in scripts are: <literal>tpcb-like</literal>,
         <literal>simple-update</literal> and <literal>select-only</literal>.
         Unambiguous prefixes of built-in names are accepted.
-        With special name <literal>list</literal>, show the list of built-in scripts
+        With the special name <literal>list</literal>, show the list of built-in scripts
         and exit immediately.
+       </para>
+       <para>
+        Optionally, write an integer weight after <literal>@</literal> to
+        adjust the probability of selecting this script versus other ones.
+        The default weight is 1.
+        See below for details.
        </para>
       </listitem>
      </varlistentry>
-
 
      <varlistentry>
       <term><option>-c</option> <replaceable>clients</replaceable></term>
@@ -425,10 +497,16 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--file=</option><replaceable>filename[@weight]</replaceable></term>
       <listitem>
        <para>
-        Add a transaction script read from <replaceable>filename</replaceable> to
-        the list of executed scripts.
-        An optional integer weight after <literal>@</literal> allows to adjust the
-        probability of drawing the test.
+        Add a transaction script read from <replaceable>filename</replaceable>
+        to the list of scripts to be executed.
+       </para>
+       <para>
+        Optionally, write an integer weight after <literal>@</literal> to
+        adjust the probability of selecting this script versus other ones.
+        The default weight is 1.
+        (To use a script file name that includes an <literal>@</literal>
+        character, append a weight so that there is no ambiguity, for
+        example <literal>filen@me@1</literal>.)
         See below for details.
        </para>
       </listitem>
@@ -463,7 +541,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--latency-limit=</option><replaceable>limit</replaceable></term>
       <listitem>
        <para>
-        Transaction which last more than <replaceable>limit</replaceable> milliseconds
+        Transactions that last more than <replaceable>limit</replaceable> milliseconds
         are counted and reported separately, as <firstterm>late</firstterm>.
        </para>
        <para>
@@ -503,6 +581,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
             <para><literal>prepared</literal>: use extended query protocol with prepared statements.</para>
            </listitem>
           </itemizedlist>
+
+        In the <literal>prepared</literal> mode, <application>pgbench</application>
+        reuses the parse analysis result starting from the second query
+        iteration, so <application>pgbench</application> runs faster
+        than in other modes.
+       </para>
+       <para>
         The default is simple query protocol.  (See <xref linkend="protocol"/>
         for more information.)
        </para>
@@ -604,7 +689,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         transaction to finish. The wait time is called the schedule lag time,
         and its average and maximum are also reported separately. The
         transaction latency with respect to the actual transaction start time,
-        i.e. the time spent executing the transaction in the database, can be
+        i.e., the time spent executing the transaction in the database, can be
         computed by subtracting the schedule lag time from the reported
         latency.
        </para>
@@ -741,13 +826,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
      </varlistentry>
 
      <varlistentry>
-      <term><option>--random-seed=</option><replaceable>SEED</replaceable></term>
+      <term><option>--random-seed=</option><replaceable>seed</replaceable></term>
       <listitem>
        <para>
         Set random generator seed.  Seeds the system random number generator,
         which then produces a sequence of initial generator states, one for
         each thread.
-        Values for <replaceable>SEED</replaceable> may be:
+        Values for <replaceable>seed</replaceable> may be:
         <literal>time</literal> (the default, the seed is based on the current time),
         <literal>rand</literal> (use a strong random source, failing if none
         is available), or an unsigned decimal integer value.
@@ -755,7 +840,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         (<literal>random...</literal> functions) or implicitly (for instance option
         <option>--rate</option> uses it to schedule transactions).
         When explicitly set, the value used for seeding is shown on the terminal.
-        Any value allowed for <replaceable>SEED</replaceable> may also be
+        Any value allowed for <replaceable>seed</replaceable> may also be
         provided through the environment variable
         <literal>PGBENCH_RANDOM_SEED</literal>.
         To ensure that the provided seed impacts all possible uses, put this option
@@ -769,7 +854,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         client per thread and there are no external or data dependencies.
         From a statistical viewpoint reproducing runs exactly is a bad idea because
         it can hide the performance variability or improve performance unduly,
-        e.g. by hitting the same pages as a previous run.
+        e.g., by hitting the same pages as a previous run.
         However, it may also be of great help for debugging, for instance
         re-running a tricky case which leads to an error.
         Use wisely.
@@ -789,8 +874,18 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
        <para>
         Remember to take the sampling rate into account when processing the
         log file. For example, when computing TPS values, you need to multiply
-        the numbers accordingly (e.g. with 0.01 sample rate, you'll only get
+        the numbers accordingly (e.g., with 0.01 sample rate, you'll only get
         1/100 of the actual TPS).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--show-script=</option><replaceable>scriptname</replaceable></term>
+      <listitem>
+       <para>
+        Show the actual code of builtin script <replaceable>scriptname</replaceable>
+        on stderr, and exit immediately.
        </para>
       </listitem>
      </varlistentry>
@@ -804,8 +899,8 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <title>Common Options</title>
 
    <para>
-    <application>pgbench</application> accepts the following command-line
-    common arguments:
+    <application>pgbench</application> also accepts the following common command-line
+    arguments for connection parameters:
 
     <variablelist>
 
@@ -866,6 +961,50 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
  </refsect1>
 
  <refsect1>
+  <title>Exit Status</title>
+
+  <para>
+   A successful run will exit with status 0.  Exit status 1 indicates static
+   problems such as invalid command-line options.  Errors during the run such
+   as database errors or problems in the script will result in exit status 2.
+   In the latter case, <application>pgbench</application> will print partial
+   results.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATABASE</envar></term>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
   <title>Notes</title>
 
  <refsect2 id="transactions-and-scripts">
@@ -874,10 +1013,10 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <para>
    <application>pgbench</application> executes test scripts chosen randomly
    from a specified list.
-   They include built-in scripts with <option>-b</option> and
-   user-provided custom scripts with <option>-f</option>.
-   Each script may be given a relative weight specified after a
-   <literal>@</literal> so as to change its drawing probability.
+   The scripts may include built-in scripts specified with <option>-b</option>
+   and user-provided scripts specified with <option>-f</option>.
+   Each script may be given a relative weight specified after an
+   <literal>@</literal> so as to change its selection probability.
    The default weight is <literal>1</literal>.
    Scripts with a weight of <literal>0</literal> are ignored.
  </para>
@@ -885,7 +1024,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <para>
    The default built-in transaction script (also invoked with <option>-b tpcb-like</option>)
    issues seven commands per transaction over randomly chosen <literal>aid</literal>,
-   <literal>tid</literal>, <literal>bid</literal> and <literal>balance</literal>.
+   <literal>tid</literal>, <literal>bid</literal> and <literal>delta</literal>.
    The scenario is inspired by the TPC-B benchmark, but is not actually TPC-B,
    hence the name.
   </para>
@@ -937,7 +1076,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
     Before <productname>PostgreSQL</productname> 9.6, SQL commands in script files
     were terminated by newlines, and so they could not be continued across
     lines.  Now a semicolon is <emphasis>required</emphasis> to separate consecutive
-    SQL commands (though a SQL command does not need one if it is followed
+    SQL commands (though an SQL command does not need one if it is followed
     by a meta command).  If you need to create a script file that works with
     both old and new versions of <application>pgbench</application>, be sure to write
     each SQL command on a single line ending with a semicolon.
@@ -947,7 +1086,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <para>
    There is a simple variable-substitution facility for script files.
    Variable names must consist of letters (including non-Latin letters),
-   digits, and underscores.
+   digits, and underscores, with the first character not being a digit.
    Variables can be set by the command-line <option>-D</option> option,
    explained above, or by the meta commands explained below.
    In addition to any variables preset by <option>-D</option> command-line options,
@@ -955,14 +1094,18 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
    <xref linkend="pgbench-automatic-variables"/>. A value specified for these
    variables using <option>-D</option> takes precedence over the automatic presets.
    Once set, a variable's
-   value can be inserted into a SQL command by writing
+   value can be inserted into an SQL command by writing
    <literal>:</literal><replaceable>variablename</replaceable>.  When running more than
    one client session, each session has its own set of variables.
+   <application>pgbench</application> supports up to 255 variable uses in one
+   statement.
   </para>
 
    <table id="pgbench-automatic-variables">
-    <title>Automatic Variables</title>
+    <title>pgbench Automatic Variables</title>
     <tgroup cols="2">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="2*"/>
      <thead>
       <row>
        <entry>Variable</entry>
@@ -978,7 +1121,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
 
       <row>
        <entry> <literal>default_seed</literal> </entry>
-       <entry>seed used in hash functions by default</entry>
+       <entry>seed used in hash and pseudorandom permutation functions by default</entry>
       </row>
 
       <row>
@@ -1003,6 +1146,61 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   </para>
 
   <variablelist>
+   <varlistentry id='pgbench-metacommand-gset'>
+    <term>
+     <literal>\gset [<replaceable>prefix</replaceable>]</literal>
+     <literal>\aset [<replaceable>prefix</replaceable>]</literal>
+    </term>
+
+    <listitem>
+     <para>
+      These commands may be used to end SQL queries, taking the place of the
+      terminating semicolon (<literal>;</literal>).
+     </para>
+
+     <para>
+      When the <literal>\gset</literal> command is used, the preceding SQL query is
+      expected to return one row, the columns of which are stored into variables
+      named after column names, and prefixed with <replaceable>prefix</replaceable>
+      if provided.
+     </para>
+
+     <para>
+      When the <literal>\aset</literal> command is used, all combined SQL queries
+      (separated by <literal>\;</literal>) have their columns stored into variables
+      named after column names, and prefixed with <replaceable>prefix</replaceable>
+      if provided. If a query returns no row, no assignment is made and the variable
+      can be tested for existence to detect this. If a query returns more than one
+      row, the last value is kept.
+     </para>
+
+     <para>
+      <literal>\gset</literal> and <literal>\aset</literal> cannot be used in
+      pipeline mode, since the query results are not yet available by the time
+      the commands would need them.
+     </para>
+
+     <para>
+      The following example puts the final account balance from the first query
+      into variable <replaceable>abalance</replaceable>, and fills variables
+      <replaceable>p_two</replaceable> and <replaceable>p_three</replaceable>
+      with integers from the third query.
+      The result of the second query is discarded.
+      The result of the two last combined queries are stored in variables
+      <replaceable>four</replaceable> and <replaceable>five</replaceable>.
+<programlisting>
+UPDATE pgbench_accounts
+  SET abalance = abalance + :delta
+  WHERE aid = :aid
+  RETURNING abalance \gset
+-- compound of two queries
+SELECT 1 \;
+SELECT 2 AS two, 3 AS three \gset p_
+SELECT 4 AS four \; SELECT 5 AS five \aset
+</programlisting></para>
+    </listitem>
+   </varlistentry>
+
    <varlistentry>
     <term><literal>\if</literal> <replaceable class="parameter">expression</replaceable></term>
     <term><literal>\elif</literal> <replaceable class="parameter">expression</replaceable></term>
@@ -1048,6 +1246,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       For conditional purposes, non zero numerical values are
       <literal>TRUE</literal>, zero numerical values and <literal>NULL</literal>
       are <literal>FALSE</literal>.
+     </para>
+
+     <para>
+      Too large or small integer and double constants, as well as
+      integer arithmetic operators (<literal>+</literal>,
+      <literal>-</literal>, <literal>*</literal> and <literal>/</literal>)
+      raise errors on overflows.
      </para>
 
      <para>
@@ -1135,178 +1340,395 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
 </programlisting></para>
     </listitem>
    </varlistentry>
+
+   <varlistentry id='pgbench-metacommand-pipeline'>
+    <term><literal>\startpipeline</literal></term>
+    <term><literal>\endpipeline</literal></term>
+
+    <listitem>
+      <para>
+        These commands delimit the start and end of a pipeline of SQL
+        statements.  In pipeline mode, statements are sent to the server
+        without waiting for the results of previous statements.  See
+        <xref linkend="libpq-pipeline-mode"/> for more details.
+        Pipeline mode requires the use of extended query protocol.
+     </para>
+    </listitem>
+   </varlistentry>
+
   </variablelist>
  </refsect2>
 
  <refsect2 id="pgbench-builtin-operators">
-  <title>Built-In Operators</title>
+  <title>Built-in Operators</title>
 
   <para>
    The arithmetic, bitwise, comparison and logical operators listed in
    <xref linkend="pgbench-operators"/> are built into <application>pgbench</application>
    and may be used in expressions appearing in
    <link linkend="pgbench-metacommand-set"><literal>\set</literal></link>.
+   The operators are listed in increasing precedence order.
+   Except as noted, operators taking two numeric inputs will produce
+   a double value if either input is double, otherwise they produce
+   an integer result.
   </para>
 
-  <table id="pgbench-operators">
-   <title>pgbench Operators by increasing precedence</title>
-   <tgroup cols="4">
-    <thead>
-     <row>
-      <entry>Operator</entry>
-      <entry>Description</entry>
-      <entry>Example</entry>
-      <entry>Result</entry>
-     </row>
-    </thead>
-    <tbody>
-     <row>
-      <entry><literal>OR</literal></entry>
-      <entry>logical or</entry>
-      <entry><literal>5 or 0</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>AND</literal></entry>
-      <entry>logical and</entry>
-      <entry><literal>3 and 0</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>NOT</literal></entry>
-      <entry>logical not</entry>
-      <entry><literal>not false</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>IS [NOT] (NULL|TRUE|FALSE)</literal></entry>
-      <entry>value tests</entry>
-      <entry><literal>1 is null</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>ISNULL|NOTNULL</literal></entry>
-      <entry>null tests</entry>
-      <entry><literal>1 notnull</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>=</literal></entry>
-      <entry>is equal</entry>
-      <entry><literal>5 = 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;&gt;</literal></entry>
-      <entry>is not equal</entry>
-      <entry><literal>5 &lt;&gt; 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>!=</literal></entry>
-      <entry>is not equal</entry>
-      <entry><literal>5 != 5</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;</literal></entry>
-      <entry>lower than</entry>
-      <entry><literal>5 &lt; 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;=</literal></entry>
-      <entry>lower or equal</entry>
-      <entry><literal>5 &lt;= 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;</literal></entry>
-      <entry>greater than</entry>
-      <entry><literal>5 &gt; 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;=</literal></entry>
-      <entry>greater or equal</entry>
-      <entry><literal>5 &gt;= 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>|</literal></entry>
-      <entry>integer bitwise OR</entry>
-      <entry><literal>1 | 2</literal></entry>
-      <entry><literal>3</literal></entry>
-     </row>
-     <row>
-      <entry><literal>#</literal></entry>
-      <entry>integer bitwise XOR</entry>
-      <entry><literal>1 # 3</literal></entry>
-      <entry><literal>2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&amp;</literal></entry>
-      <entry>integer bitwise AND</entry>
-      <entry><literal>1 &amp; 3</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>~</literal></entry>
-      <entry>integer bitwise NOT</entry>
-      <entry><literal>~ 1</literal></entry>
-      <entry><literal>-2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;&lt;</literal></entry>
-      <entry>integer bitwise shift left</entry>
-      <entry><literal>1 &lt;&lt; 2</literal></entry>
-      <entry><literal>4</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;&gt;</literal></entry>
-      <entry>integer bitwise shift right</entry>
-      <entry><literal>8 &gt;&gt; 2</literal></entry>
-      <entry><literal>2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>+</literal></entry>
-      <entry>addition</entry>
-      <entry><literal>5 + 4</literal></entry>
-      <entry><literal>9</literal></entry>
-     </row>
-     <row>
-      <entry><literal>-</literal></entry>
-      <entry>subtraction</entry>
-      <entry><literal>3 - 2.0</literal></entry>
-      <entry><literal>1.0</literal></entry>
-     </row>
-     <row>
-      <entry><literal>*</literal></entry>
-      <entry>multiplication</entry>
-      <entry><literal>5 * 4</literal></entry>
-      <entry><literal>20</literal></entry>
-     </row>
-     <row>
-      <entry><literal>/</literal></entry>
-      <entry>division (integer truncates the results)</entry>
-      <entry><literal>5 / 3</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>%</literal></entry>
-      <entry>modulo</entry>
-      <entry><literal>3 % 2</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>-</literal></entry>
-      <entry>opposite</entry>
-      <entry><literal>- 2.0</literal></entry>
-      <entry><literal>-2.0</literal></entry>
-     </row>
-    </tbody>
-   </tgroup>
-  </table>
+   <table id="pgbench-operators">
+    <title>pgbench Operators</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Operator
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>OR</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical OR
+       </para>
+       <para>
+        <literal>5 or 0</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>AND</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical AND
+       </para>
+       <para>
+        <literal>3 and 0</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>NOT</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical NOT
+       </para>
+       <para>
+        <literal>not false</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>IS [NOT] (NULL|TRUE|FALSE)</literal>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Boolean value tests
+       </para>
+       <para>
+        <literal>1 is null</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>value</replaceable> <literal>ISNULL|NOTNULL</literal>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Nullness tests
+       </para>
+       <para>
+        <literal>1 notnull</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Equal
+       </para>
+       <para>
+        <literal>5 = 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;&gt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Not equal
+       </para>
+       <para>
+        <literal>5 &lt;&gt; 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>!=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Not equal
+       </para>
+       <para>
+        <literal>5 != 5</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Less than
+       </para>
+       <para>
+        <literal>5 &lt; 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Less than or equal to
+       </para>
+       <para>
+        <literal>5 &lt;= 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&gt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Greater than
+       </para>
+       <para>
+        <literal>5 &gt; 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&gt;=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Greater than or equal to
+       </para>
+       <para>
+        <literal>5 &gt;= 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>|</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise OR
+       </para>
+       <para>
+        <literal>1 | 2</literal>
+        <returnvalue>3</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>#</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise XOR
+       </para>
+       <para>
+        <literal>1 # 3</literal>
+        <returnvalue>2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&amp;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise AND
+       </para>
+       <para>
+        <literal>1 &amp; 3</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>~</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise NOT
+       </para>
+       <para>
+        <literal>~ 1</literal>
+        <returnvalue>-2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&lt;&lt;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise shift left
+       </para>
+       <para>
+        <literal>1 &lt;&lt; 2</literal>
+        <returnvalue>4</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&gt;&gt;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise shift right
+       </para>
+       <para>
+        <literal>8 &gt;&gt; 2</literal>
+        <returnvalue>2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>+</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Addition
+       </para>
+       <para>
+        <literal>5 + 4</literal>
+        <returnvalue>9</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>-</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Subtraction
+       </para>
+       <para>
+        <literal>3 - 2.0</literal>
+        <returnvalue>1.0</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>*</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Multiplication
+       </para>
+       <para>
+        <literal>5 * 4</literal>
+        <returnvalue>20</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>/</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Division (truncates the result towards zero if both inputs are integers)
+       </para>
+       <para>
+        <literal>5 / 3</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>%</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Modulo (remainder)
+       </para>
+       <para>
+        <literal>3 % 2</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>-</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Negation
+       </para>
+       <para>
+        <literal>- 2.0</literal>
+        <returnvalue>-2.0</returnvalue>
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
  </refsect2>
 
  <refsect2 id="pgbench-builtin-functions">
@@ -1321,156 +1743,316 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
    <!-- list pgbench functions in alphabetical order -->
    <table id="pgbench-functions">
     <title>pgbench Functions</title>
-    <tgroup cols="5">
+    <tgroup cols="1">
      <thead>
       <row>
-       <entry>Function</entry>
-       <entry>Return Type</entry>
-       <entry>Description</entry>
-       <entry>Example</entry>
-       <entry>Result</entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
       </row>
      </thead>
+
      <tbody>
       <row>
-       <entry><literal><function>abs(<replaceable>a</replaceable>)</function></literal></entry>
-       <entry>same as <replaceable>a</replaceable></entry>
-       <entry>absolute value</entry>
-       <entry><literal>abs(-17)</literal></entry>
-       <entry><literal>17</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>abs</function> ( <replaceable>number</replaceable> )
+        <returnvalue></returnvalue> same type as input
+       </para>
+       <para>
+        Absolute value
+       </para>
+       <para>
+        <literal>abs(-17)</literal>
+        <returnvalue>17</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>debug(<replaceable>a</replaceable>)</function></literal></entry>
-       <entry>same as <replaceable>a</replaceable> </entry>
-       <entry>print <replaceable>a</replaceable> to <systemitem>stderr</systemitem>,
-        and return <replaceable>a</replaceable></entry>
-       <entry><literal>debug(5432.1)</literal></entry>
-       <entry><literal>5432.1</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>debug</function> ( <replaceable>number</replaceable> )
+        <returnvalue></returnvalue> same type as input
+       </para>
+       <para>
+        Prints the argument to <systemitem>stderr</systemitem>,
+        and returns the argument.
+       </para>
+       <para>
+        <literal>debug(5432.1)</literal>
+        <returnvalue>5432.1</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>double(<replaceable>i</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>cast to double</entry>
-       <entry><literal>double(5432)</literal></entry>
-       <entry><literal>5432.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>double</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Casts to double.
+       </para>
+       <para>
+        <literal>double(5432)</literal>
+        <returnvalue>5432.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>exp(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>exponential</entry>
-       <entry><literal>exp(1.0)</literal></entry>
-       <entry><literal>2.718281828459045</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>exp</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Exponential (<literal>e</literal> raised to the given power)
+       </para>
+       <para>
+        <literal>exp(1.0)</literal>
+        <returnvalue>2.718281828459045</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>greatest(<replaceable>a</replaceable> [, <replaceable>...</replaceable> ] )</function></literal></entry>
-       <entry>double if any <replaceable>a</replaceable> is double, else integer</entry>
-       <entry>largest value among arguments</entry>
-       <entry><literal>greatest(5, 4, 3, 2)</literal></entry>
-       <entry><literal>5</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>greatest</function> ( <replaceable>number</replaceable> <optional>, <literal>...</literal> </optional> )
+        <returnvalue></returnvalue> <type>double</type> if any argument is double, else <type>integer</type>
+       </para>
+       <para>
+        Selects the largest value among the arguments.
+       </para>
+       <para>
+        <literal>greatest(5, 4, 3, 2)</literal>
+        <returnvalue>5</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry>alias for <literal>hash_murmur2()</literal></entry>
-       <entry><literal>hash(10, 5432)</literal></entry>
-       <entry><literal>-5817877081768721676</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        This is an alias for <function>hash_murmur2</function>.
+       </para>
+       <para>
+        <literal>hash(10, 5432)</literal>
+        <returnvalue>-5817877081768721676</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash_fnv1a(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry><ulink url="https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function">FNV-1a hash</ulink></entry>
-       <entry><literal>hash_fnv1a(10, 5432)</literal></entry>
-       <entry><literal>-7793829335365542153</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash_fnv1a</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes <ulink url="https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function">FNV-1a hash</ulink>.
+       </para>
+       <para>
+        <literal>hash_fnv1a(10, 5432)</literal>
+        <returnvalue>-7793829335365542153</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash_murmur2(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry><ulink url="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash2 hash</ulink></entry>
-       <entry><literal>hash_murmur2(10, 5432)</literal></entry>
-       <entry><literal>-5817877081768721676</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash_murmur2</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes <ulink url="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash2 hash</ulink>.
+       </para>
+       <para>
+        <literal>hash_murmur2(10, 5432)</literal>
+        <returnvalue>-5817877081768721676</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>int(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>cast to int</entry>
-       <entry><literal>int(5.4 + 3.8)</literal></entry>
-       <entry><literal>9</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>int</function> ( <replaceable>number</replaceable> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Casts to integer.
+       </para>
+       <para>
+        <literal>int(5.4 + 3.8)</literal>
+        <returnvalue>9</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>least(<replaceable>a</replaceable> [, <replaceable>...</replaceable> ] )</function></literal></entry>
-       <entry>double if any <replaceable>a</replaceable> is double, else integer</entry>
-       <entry>smallest value among arguments</entry>
-       <entry><literal>least(5, 4, 3, 2.1)</literal></entry>
-       <entry><literal>2.1</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>least</function> ( <replaceable>number</replaceable> <optional>, <literal>...</literal> </optional> )
+        <returnvalue></returnvalue> <type>double</type> if any argument is double, else <type>integer</type>
+       </para>
+       <para>
+        Selects the smallest value among the arguments.
+       </para>
+       <para>
+        <literal>least(5, 4, 3, 2.1)</literal>
+        <returnvalue>2.1</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>ln(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>natural logarithm</entry>
-       <entry><literal>ln(2.718281828459045)</literal></entry>
-       <entry><literal>1.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>ln</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Natural logarithm
+       </para>
+       <para>
+        <literal>ln(2.718281828459045)</literal>
+        <returnvalue>1.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>mod(<replaceable>i</replaceable>, <replaceable>j</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>modulo</entry>
-       <entry><literal>mod(54, 32)</literal></entry>
-       <entry><literal>22</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+<function>mod</function> ( <replaceable>integer</replaceable>, <replaceable>integer</replaceable> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Modulo (remainder)
+       </para>
+       <para>
+        <literal>mod(54, 32)</literal>
+        <returnvalue>22</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>pi()</function></literal></entry>
-       <entry>double</entry>
-       <entry>value of the constant PI</entry>
-       <entry><literal>pi()</literal></entry>
-       <entry><literal>3.14159265358979323846</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>permute</function> ( <parameter>i</parameter>, <parameter>size</parameter> [, <parameter>seed</parameter> ] )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Permuted value of <parameter>i</parameter>, in the range
+        <literal>[0, size)</literal>.  This is the new position of
+        <parameter>i</parameter> (modulo <parameter>size</parameter>) in a
+        pseudorandom permutation of the integers <literal>0...size-1</literal>,
+        parameterized by <parameter>seed</parameter>, see below.
+       </para>
+       <para>
+        <literal>permute(0, 4)</literal>
+        <returnvalue>an integer between 0 and 3</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>pow(<replaceable>x</replaceable>, <replaceable>y</replaceable>)</function>, <function>power(<replaceable>x</replaceable>, <replaceable>y</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>exponentiation</entry>
-       <entry><literal>pow(2.0, 10)</literal>, <literal>power(2.0, 10)</literal></entry>
-       <entry><literal>1024.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>pi</function> ()
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Approximate value of <phrase role="symbol_font">&pi;</phrase>
+       </para>
+       <para>
+        <literal>pi()</literal>
+        <returnvalue>3.14159265358979323846</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>uniformly-distributed random integer in <literal>[lb, ub]</literal></entry>
-       <entry><literal>random(1, 10)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>pow</function> ( <parameter>x</parameter>, <parameter>y</parameter> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>power</function> ( <parameter>x</parameter>, <parameter>y</parameter> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        <parameter>x</parameter> raised to the power of <parameter>y</parameter>
+       </para>
+       <para>
+        <literal>pow(2.0, 10)</literal>
+        <returnvalue>1024.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_exponential(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>exponentially-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_exponential(1, 10, 3.0)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random</function> ( <parameter>lb</parameter>, <parameter>ub</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a uniformly-distributed random integer in <literal>[lb,
+        ub]</literal>.
+       </para>
+       <para>
+        <literal>random(1, 10)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_gaussian(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>Gaussian-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_gaussian(1, 10, 2.5)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_exponential</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes an exponentially-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_exponential(1, 10, 3.0)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_zipfian(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>Zipfian-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_zipfian(1, 10, 1.5)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_gaussian</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a Gaussian-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_gaussian(1, 10, 2.5)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>sqrt(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>square root</entry>
-       <entry><literal>sqrt(2.0)</literal></entry>
-       <entry><literal>1.414213562</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_zipfian</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a Zipfian-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_zipfian(1, 10, 1.5)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>sqrt</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Square root
+       </para>
+       <para>
+        <literal>sqrt(2.0)</literal>
+        <returnvalue>1.414213562</returnvalue>
+       </para></entry>
       </row>
      </tbody>
-     </tgroup>
+    </tgroup>
    </table>
 
    <para>
@@ -1537,32 +2119,20 @@ f(x) = PHI(2.0 * parameter * (x - mu) / (max - min + 1)) /
       <literal>2.0 / parameter</literal>, that is a relative
       <literal>1.0 / parameter</literal> around the mean; for instance, if
       <replaceable>parameter</replaceable> is 4.0, 67% of values are drawn from the
-      middle quarter (1.0 / 4.0) of the interval (i.e. from
+      middle quarter (1.0 / 4.0) of the interval (i.e., from
       <literal>3.0 / 8.0</literal> to <literal>5.0 / 8.0</literal>) and 95% from
       the middle half (<literal>2.0 / 4.0</literal>) of the interval (second and third
-      quartiles). The minimum <replaceable>parameter</replaceable> is 2.0 for performance
-      of the Box-Muller transform.
+      quartiles). The minimum allowed <replaceable>parameter</replaceable>
+      value is 2.0.
      </para>
     </listitem>
     <listitem>
      <para>
-      <literal>random_zipfian</literal> generates an approximated bounded Zipfian
-      distribution. For <replaceable>parameter</replaceable> in (0, 1), an
-      approximated algorithm is taken from
-      "Quickly Generating Billion-Record Synthetic Databases",
-      Jim Gray et al, SIGMOD 1994. For <replaceable>parameter</replaceable>
-      in (1, 1000), a rejection method is used, based on
-      "Non-Uniform Random Variate Generation", Luc Devroye, p. 550-551,
-      Springer 1986. The distribution is not defined when the parameter's
-      value is 1.0. The function's performance is poor for parameter values
-      close and above 1.0 and on a small range.
-     </para>
-     <para>
+      <literal>random_zipfian</literal> generates a bounded Zipfian
+      distribution.
       <replaceable>parameter</replaceable> defines how skewed the distribution
       is. The larger the <replaceable>parameter</replaceable>, the more
       frequently values closer to the beginning of the interval are drawn.
-      The closer to 0 <replaceable>parameter</replaceable> is,
-      the flatter (more uniform) the output distribution.
       The distribution is such that, assuming the range starts from 1,
       the ratio of the probability of drawing <replaceable>k</replaceable>
       versus drawing <replaceable>k+1</replaceable> is
@@ -1570,35 +2140,83 @@ f(x) = PHI(2.0 * parameter * (x - mu) / (max - min + 1)) /
       For example, <literal>random_zipfian(1, ..., 2.5)</literal> produces
       the value <literal>1</literal> about <literal>(2/1)**2.5 =
       5.66</literal> times more frequently than <literal>2</literal>, which
-      itself is produced <literal>(3/2)*2.5 = 2.76</literal> times more
+      itself is produced <literal>(3/2)**2.5 = 2.76</literal> times more
       frequently than <literal>3</literal>, and so on.
+     </para>
+     <para>
+      <application>pgbench</application>'s implementation is based on
+      "Non-Uniform Random Variate Generation", Luc Devroye, p. 550-551,
+      Springer 1986.  Due to limitations of that algorithm,
+      the <replaceable>parameter</replaceable> value is restricted to
+      the range [1.001, 1000].
      </para>
     </listitem>
    </itemizedlist>
+
+   <note>
+    <para>
+      When designing a benchmark which selects rows non-uniformly, be aware
+      that the rows chosen may be correlated with other data such as IDs from
+      a sequence or the physical row ordering, which may skew performance
+      measurements.
+    </para>
+    <para>
+      To avoid this, you may wish to use the <function>permute</function>
+      function, or some other additional step with similar effect, to shuffle
+      the selected rows and remove such correlations.
+    </para>
+   </note>
 
   <para>
     Hash functions <literal>hash</literal>, <literal>hash_murmur2</literal> and
     <literal>hash_fnv1a</literal> accept an input value and an optional seed parameter.
     In case the seed isn't provided the value of <literal>:default_seed</literal>
     is used, which is initialized randomly unless set by the command-line
-    <literal>-D</literal> option. Hash functions can be used to scatter the
-    distribution of random functions such as <literal>random_zipfian</literal> or
-    <literal>random_exponential</literal>. For instance, the following pgbench
-    script simulates possible real world workload typical for social media and
-    blogging platforms where few accounts generate excessive load:
+    <literal>-D</literal> option.
+  </para>
+
+  <para>
+    <literal>permute</literal> accepts an input value, a size, and an optional
+    seed parameter.  It generates a pseudorandom permutation of integers in
+    the range <literal>[0, size)</literal>, and returns the index of the input
+    value in the permuted values.  The permutation chosen is parameterized by
+    the seed, which defaults to <literal>:default_seed</literal>, if not
+    specified.  Unlike the hash functions, <literal>permute</literal> ensures
+    that there are no collisions or holes in the output values.  Input values
+    outside the interval are interpreted modulo the size.  The function raises
+    an error if the size is not positive.  <function>permute</function> can be
+    used to scatter the distribution of non-uniform random functions such as
+    <literal>random_zipfian</literal> or <literal>random_exponential</literal>
+    so that values drawn more often are not trivially correlated.  For
+    instance, the following <application>pgbench</application> script
+    simulates a possible real world workload typical for social media and
+    blogging platforms where a few accounts generate excessive load:
 
 <programlisting>
-\set r random_zipfian(0, 100000000, 1.07)
-\set k abs(hash(:r)) % 1000000
+\set size 1000000
+\set r random_zipfian(1, :size, 1.07)
+\set k 1 + permute(:r, :size)
 </programlisting>
 
     In some cases several distinct distributions are needed which don't correlate
-    with each other and this is when implicit seed parameter comes in handy:
+    with each other and this is when the optional seed parameter comes in handy:
 
 <programlisting>
-\set k1 abs(hash(:r, :default_seed + 123)) % 1000000
-\set k2 abs(hash(:r, :default_seed + 321)) % 1000000
+\set k1 1 + permute(:r, :size, :default_seed + 123)
+\set k2 1 + permute(:r, :size, :default_seed + 321)
 </programlisting>
+
+    A similar behavior can also be approximated with <function>hash</function>:
+
+<programlisting>
+\set size 1000000
+\set r random_zipfian(1, 100 * :size, 1.07)
+\set k 1 + abs(hash(:r)) % :size
+</programlisting>
+
+    However, since <function>hash</function> generates collisions, some values
+    will not be reachable and others will be more frequent than expected from
+    the original distribution.
   </para>
 
   <para>
@@ -1746,7 +2364,7 @@ END;
    format is used for the log files:
 
 <synopsis>
-<replaceable>interval_start</replaceable> <replaceable>num_transactions</replaceable> <replaceable>sum_latency</replaceable> <replaceable>sum_latency_2</replaceable> <replaceable>min_latency</replaceable> <replaceable>max_latency</replaceable> <replaceable>failed_tx</replaceable> <replaceable>in_failed_tx</replaceable> <optional> <replaceable>sum_lag</replaceable> <replaceable>sum_lag_2</replaceable> <replaceable>min_lag</replaceable> <replaceable>max_lag</replaceable> <optional> <replaceable>skipped</replaceable> </optional> </optional> <optional> <replaceable>retried_tx</replaceable> <replaceable>retries</replaceable> </optional>
+<replaceable>interval_start</replaceable> <replaceable>num_transactions</replaceable>&zwsp; <replaceable>sum_latency</replaceable> <replaceable>sum_latency_2</replaceable> <replaceable>min_latency</replaceable> <replaceable>max_latency</replaceable>&zwsp; <replaceable>failed_tx</replaceable> <replaceable>in_failed_tx</replaceable> <optional> <replaceable>sum_lag</replaceable> <replaceable>sum_lag_2</replaceable> <replaceable>min_lag</replaceable> <replaceable>max_lag</replaceable> <optional> <replaceable>skipped</replaceable> </optional> </optional> <optional> <replaceable>retried_tx</replaceable> <replaceable>retries</replaceable> </optional>
 </synopsis>
 
    where
@@ -1772,7 +2390,7 @@ END;
    and <replaceable>max_lag</replaceable>, are only present if the <option>--rate</option>
    option is used.
    They provide statistics about the time each transaction had to wait for the
-   previous one to finish, i.e. the difference between each transaction's
+   previous one to finish, i.e., the difference between each transaction's
    scheduled start time and the time it actually started.
    The next field, <replaceable>skipped</replaceable>,
    is only present if the <option>--latency-limit</option> option is used, too.
@@ -1867,22 +2485,22 @@ number of threads: 1
 number of transactions per client: 1000
 number of transactions actually processed: 10000/10000
 maximum number of tries: 1
-latency average = 15.844 ms
-latency stddev = 2.715 ms
-tps = 618.764555 (including connections establishing)
-tps = 622.977698 (excluding connections establishing)
+latency average = 10.870 ms
+latency stddev = 7.341 ms
+initial connection time = 30.954 ms
+tps = 907.949122 (without initial connection time)
 statement latencies in milliseconds:
-        0.002  \set aid random(1, 100000 * :scale)
-        0.005  \set bid random(1, 1 * :scale)
-        0.002  \set tid random(1, 10 * :scale)
-        0.001  \set delta random(-5000, 5000)
-        0.326  BEGIN;
-        0.603  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
-        0.454  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
-        5.528  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
-        7.335  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
-        0.371  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
-        1.212  END;
+    0.001  \set aid random(1, 100000 * :scale)
+    0.001  \set bid random(1, 1 * :scale)
+    0.001  \set tid random(1, 10 * :scale)
+    0.000  \set delta random(-5000, 5000)
+    0.046  BEGIN;
+    0.151  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+    0.107  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+    4.241  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+    5.245  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+    0.102  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+    0.974  END;
 </screen>
 
    Another example of output for the default script using serializable default

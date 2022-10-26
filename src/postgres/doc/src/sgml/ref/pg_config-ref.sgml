@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pg_config-ref.sgml -->
+<!--
+doc/src/sgml/ref/pg_config-ref.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="app-pgconfig">
  <indexterm zone="app-pgconfig">
@@ -6,7 +9,7 @@
  </indexterm>
 
  <refmeta>
-  <refentrytitle>pg_config</refentrytitle>
+  <refentrytitle><application>pg_config</application></refentrytitle>
   <manvolnum>1</manvolnum>
   <refmiscinfo>Application</refmiscinfo>
  </refmeta>

@@ -63,12 +63,14 @@ SELECT lag(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHER
 SELECT lag(ten, four) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
 SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lag(ten, four, 0.7) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten;
 
 SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
 SELECT lead(ten * 2, 1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
 SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lead(ten * 2, 1, -1.4) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten;
 
 SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
 
@@ -469,6 +471,72 @@ from
 window w as
   (order by x desc nulls last range between 2 preceding and 2 following);
 
+-- There is a syntactic ambiguity in the SQL standard.  Since
+-- UNBOUNDED is a non-reserved word, it could be the name of a
+-- function parameter and be used as an expression.  There is a
+-- grammar hack to resolve such cases as the keyword.  The following
+-- tests record this behavior.
+
+CREATE FUNCTION unbounded_syntax_test1a(x int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+BEGIN ATOMIC
+  SELECT sum(unique1) over (rows between x preceding and x following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+END;
+
+CREATE FUNCTION unbounded_syntax_test1b(x int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+AS $$
+  SELECT sum(unique1) over (rows between x preceding and x following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+$$;
+
+-- These will apply the argument to the window specification inside the function.
+SELECT * FROM unbounded_syntax_test1a(2);
+SELECT * FROM unbounded_syntax_test1b(2);
+
+CREATE FUNCTION unbounded_syntax_test2a(unbounded int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+BEGIN ATOMIC
+  SELECT sum(unique1) over (rows between unbounded preceding and unbounded following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+END;
+
+CREATE FUNCTION unbounded_syntax_test2b(unbounded int) RETURNS TABLE (a int, b int, c int)
+LANGUAGE SQL
+AS $$
+  SELECT sum(unique1) over (rows between unbounded preceding and unbounded following),
+         unique1, four
+  FROM tenk1 WHERE unique1 < 10;
+$$;
+
+-- These will not apply the argument but instead treat UNBOUNDED as a keyword.
+SELECT * FROM unbounded_syntax_test2a(2);
+SELECT * FROM unbounded_syntax_test2b(2);
+
+DROP FUNCTION unbounded_syntax_test1a, unbounded_syntax_test1b,
+              unbounded_syntax_test2a, unbounded_syntax_test2b;
+
+-- Other tests with token UNBOUNDED in potentially problematic position
+CREATE FUNCTION unbounded(x int) RETURNS int LANGUAGE SQL IMMUTABLE RETURN x;
+
+SELECT sum(unique1) over (rows between 1 preceding and 1 following),
+       unique1, four
+FROM tenk1 WHERE unique1 < 10;
+
+SELECT sum(unique1) over (rows between unbounded(1) preceding and unbounded(1) following),
+       unique1, four
+FROM tenk1 WHERE unique1 < 10;
+
+SELECT sum(unique1) over (rows between unbounded.x preceding and unbounded.x following),
+       unique1, four
+FROM tenk1, (values (1)) as unbounded(x) WHERE unique1 < 10;
+
+DROP FUNCTION unbounded;
+
 -- Check overflow behavior for various integer sizes
 
 select x, last_value(x) over (order by x::smallint range between current row and 2147450884 following)
@@ -499,7 +567,7 @@ create temp table numerics(
 );
 
 insert into numerics values
-(0, '-infinity', '-infinity', '-1000'),  -- numeric type lacks infinities
+(0, '-infinity', '-infinity', '-infinity'),
 (1, -3, -3, -3),
 (2, -1, -1, -1),
 (3, 0, 0, 0),
@@ -507,7 +575,7 @@ insert into numerics values
 (5, 1.12, 1.12, 1.12),
 (6, 2, 2, 2),
 (7, 100, 100, 100),
-(8, 'infinity', 'infinity', '1000'),
+(8, 'infinity', 'infinity', 'infinity'),
 (9, 'NaN', 'NaN', 'NaN');
 
 select id, f_float4, first_value(id) over w, last_value(id) over w
@@ -522,6 +590,14 @@ select id, f_float4, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_float4 range between
              'inf' preceding and 'inf' following);
+select id, f_float4, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float4 range between
+             'inf' preceding and 'inf' preceding);
+select id, f_float4, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float4 range between
+             'inf' following and 'inf' following);
 select id, f_float4, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_float4 range between
@@ -542,6 +618,14 @@ window w as (order by f_float8 range between
 select id, f_float8, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_float8 range between
+             'inf' preceding and 'inf' preceding);
+select id, f_float8, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float8 range between
+             'inf' following and 'inf' following);
+select id, f_float8, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_float8 range between
              1.1 preceding and 'NaN' following);  -- error, NaN disallowed
 
 select id, f_numeric, first_value(id) over w, last_value(id) over w
@@ -556,6 +640,18 @@ select id, f_numeric, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_numeric range between
              1 preceding and 1.1::float8 following);  -- currently unsupported
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' preceding and 'inf' following);
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' preceding and 'inf' preceding);
+select id, f_numeric, first_value(id) over w, last_value(id) over w
+from numerics
+window w as (order by f_numeric range between
+             'inf' following and 'inf' following);
 select id, f_numeric, first_value(id) over w, last_value(id) over w
 from numerics
 window w as (order by f_numeric range between
@@ -891,6 +987,44 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
+
+-- Test Sort node collapsing
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          sum(salary) OVER (PARTITION BY depname order by empno) depsalary,
+          min(salary) OVER (PARTITION BY depname, empno order by enroll_date) depminsalary
+   FROM empsalary) emp
+WHERE depname = 'sales';
+
+-- Test Sort node reordering
+EXPLAIN (COSTS OFF)
+SELECT
+  lead(1) OVER (PARTITION BY depname ORDER BY salary, enroll_date),
+  lag(1) OVER (PARTITION BY depname ORDER BY salary,enroll_date,empno)
+FROM empsalary;
+
+-- Test incremental sorting
+EXPLAIN (COSTS OFF)
+SELECT * FROM
+  (SELECT depname,
+          empno,
+          salary,
+          enroll_date,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date) AS first_emp,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
+   FROM empsalary) emp
+WHERE first_emp = 1 OR last_emp = 1;
+
+SELECT * FROM
+  (SELECT depname,
+          empno,
+          salary,
+          enroll_date,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date) AS first_emp,
+          row_number() OVER (PARTITION BY depname ORDER BY enroll_date DESC) AS last_emp
+   FROM empsalary) emp
+WHERE first_emp = 1 OR last_emp = 1;
 
 -- cleanup
 DROP TABLE empsalary;
@@ -1241,3 +1375,22 @@ SELECT to_char(SUM(n::float8) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND 1 FO
 SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
   FROM (VALUES (1,true), (2,true), (3,false), (4,false), (5,true)) v(i,b)
   WINDOW w AS (ORDER BY i ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING);
+
+-- Tests for problems with failure to walk or mutate expressions
+-- within window frame clauses.
+
+-- test walker (fails with collation error if expressions are not walked)
+SELECT array_agg(i) OVER w
+  FROM generate_series(1,5) i
+WINDOW w AS (ORDER BY i ROWS BETWEEN (('foo' < 'foobar')::integer) PRECEDING AND CURRENT ROW);
+
+-- test mutator (fails when inlined if expressions are not mutated)
+CREATE FUNCTION pg_temp.f(group_size BIGINT) RETURNS SETOF integer[]
+AS $$
+    SELECT array_agg(s) OVER w
+      FROM generate_series(1,5) s
+    WINDOW w AS (ORDER BY s ROWS BETWEEN CURRENT ROW AND GROUP_SIZE FOLLOWING)
+$$ LANGUAGE SQL STABLE;
+
+EXPLAIN (costs off) SELECT * FROM pg_temp.f(2);
+SELECT * FROM pg_temp.f(2);

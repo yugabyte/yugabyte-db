@@ -128,13 +128,30 @@
 
 
 /*
+ * known character classes
+ */
+enum char_classes
+{
+	CC_ALNUM, CC_ALPHA, CC_ASCII, CC_BLANK, CC_CNTRL, CC_DIGIT, CC_GRAPH,
+	CC_LOWER, CC_PRINT, CC_PUNCT, CC_SPACE, CC_UPPER, CC_XDIGIT, CC_WORD
+};
+
+#define NUM_CCLASSES 14
+
+
+/*
  * As soon as possible, we map chrs into equivalence classes -- "colors" --
  * which are of much more manageable number.
+ *
+ * To further reduce the number of arcs in NFAs and DFAs, we also have a
+ * special RAINBOW "color" that can be assigned to an arc.  This is not a
+ * real color, in that it has no entry in color maps.
  */
 typedef short color;			/* colors of characters */
 
 #define MAX_COLOR	32767		/* max color (must fit in 'color' datatype) */
 #define COLORLESS	(-1)		/* impossible color */
+#define RAINBOW		(-2)		/* represents all colors except pseudocolors */
 #define WHITE		0			/* default color, parent of all others */
 /* Note: various places in the code know that WHITE is zero */
 
@@ -159,11 +176,13 @@ struct colordesc
 #define  NOSUB	 COLORLESS		/* value of "sub" when no open subcolor */
 	struct arc *arcs;			/* chain of all arcs of this color */
 	chr			firstchr;		/* simple char first assigned to this color */
-	int			flags;			/* bit values defined next */
+	int			flags;			/* bitmask of the following flags: */
 #define  FREECOL 01				/* currently free */
 #define  PSEUDO  02				/* pseudocolor, no real chars */
-#define  UNUSEDCOLOR(cd) ((cd)->flags & FREECOL)
+#define  COLMARK 04				/* temporary marker used in some functions */
 };
+
+#define  UNUSEDCOLOR(cd) ((cd)->flags & FREECOL)
 
 /*
  * The color map itself
@@ -193,8 +212,6 @@ struct colordesc
  * The colormapranges are required to be nonempty, nonoverlapping, and to
  * appear in increasing chr-value order.
  */
-
-#define NUM_CCLASSES 13			/* must match data in regc_locale.c */
 
 typedef struct colormaprange
 {
@@ -267,50 +284,61 @@ struct cvec
 
 /*
  * definitions for NFA internal representation
- *
- * Having a "from" pointer within each arc may seem redundant, but it
- * saves a lot of hassle.
  */
 struct state;
 
 struct arc
 {
 	int			type;			/* 0 if free, else an NFA arc type code */
-	color		co;
-	struct state *from;			/* where it's from (and contained within) */
+	color		co;				/* color the arc matches (possibly RAINBOW) */
+	struct state *from;			/* where it's from */
 	struct state *to;			/* where it's to */
 	struct arc *outchain;		/* link in *from's outs chain or free chain */
 	struct arc *outchainRev;	/* back-link in *from's outs chain */
 #define  freechain	outchain	/* we do not maintain "freechainRev" */
 	struct arc *inchain;		/* link in *to's ins chain */
 	struct arc *inchainRev;		/* back-link in *to's ins chain */
+	/* these fields are not used when co == RAINBOW: */
 	struct arc *colorchain;		/* link in color's arc chain */
 	struct arc *colorchainRev;	/* back-link in color's arc chain */
 };
 
 struct arcbatch
 {								/* for bulk allocation of arcs */
-	struct arcbatch *next;
-#define  ABSIZE  10
-	struct arc	a[ABSIZE];
+	struct arcbatch *next;		/* chain link */
+	size_t		narcs;			/* number of arcs allocated in this arcbatch */
+	struct arc	a[FLEXIBLE_ARRAY_MEMBER];
 };
+#define  ARCBATCHSIZE(n)  ((n) * sizeof(struct arc) + offsetof(struct arcbatch, a))
+/* first batch will have FIRSTABSIZE arcs; then double it until MAXABSIZE */
+#define  FIRSTABSIZE	64
+#define  MAXABSIZE		1024
 
 struct state
 {
-	int			no;
+	int			no;				/* state number, zero and up; or FREESTATE */
 #define  FREESTATE	 (-1)
 	char		flag;			/* marks special states */
 	int			nins;			/* number of inarcs */
-	struct arc *ins;			/* chain of inarcs */
 	int			nouts;			/* number of outarcs */
+	struct arc *ins;			/* chain of inarcs */
 	struct arc *outs;			/* chain of outarcs */
-	struct arc *free;			/* chain of free arcs */
 	struct state *tmp;			/* temporary for traversal algorithms */
-	struct state *next;			/* chain for traversing all */
-	struct state *prev;			/* back chain */
-	struct arcbatch oas;		/* first arcbatch, avoid malloc in easy case */
-	int			noas;			/* number of arcs used in first arcbatch */
+	struct state *next;			/* chain for traversing all live states */
+	/* the "next" field is also used to chain free states together */
+	struct state *prev;			/* back-link in chain of all live states */
 };
+
+struct statebatch
+{								/* for bulk allocation of states */
+	struct statebatch *next;	/* chain link */
+	size_t		nstates;		/* number of states allocated in this batch */
+	struct state s[FLEXIBLE_ARRAY_MEMBER];
+};
+#define  STATEBATCHSIZE(n)  ((n) * sizeof(struct state) + offsetof(struct statebatch, s))
+/* first batch will have FIRSTSBSIZE states; then double it until MAXSBSIZE */
+#define  FIRSTSBSIZE	32
+#define  MAXSBSIZE		1024
 
 struct nfa
 {
@@ -319,12 +347,20 @@ struct nfa
 	struct state *final;		/* final state */
 	struct state *post;			/* post-final state */
 	int			nstates;		/* for numbering states */
-	struct state *states;		/* state-chain header */
+	struct state *states;		/* chain of live states */
 	struct state *slast;		/* tail of the chain */
-	struct state *free;			/* free list */
+	struct state *freestates;	/* chain of free states */
+	struct arc *freearcs;		/* chain of free arcs */
+	struct statebatch *lastsb;	/* chain of statebatches */
+	struct arcbatch *lastab;	/* chain of arcbatches */
+	size_t		lastsbused;		/* number of states consumed from *lastsb */
+	size_t		lastabused;		/* number of arcs consumed from *lastab */
 	struct colormap *cm;		/* the color map */
 	color		bos[2];			/* colors, if any, assigned to BOS and BOL */
 	color		eos[2];			/* colors, if any, assigned to EOS and EOL */
+	int			flags;			/* flags to pass forward to cNFA */
+	int			minmatchall;	/* min number of chrs to match, if matchall */
+	int			maxmatchall;	/* max number of chrs to match, or DUPINF */
 	struct vars *v;				/* simplifies compile error reporting */
 	struct nfa *parent;			/* parent NFA, if any */
 };
@@ -344,6 +380,17 @@ struct nfa
  * Plain arcs just store the transition color number as "co".  LACON arcs
  * store the lookaround constraint number plus cnfa.ncolors as "co".  LACON
  * arcs can be distinguished from plain by testing for co >= cnfa.ncolors.
+ *
+ * Note that in a plain arc, "co" can be RAINBOW; since that's negative,
+ * it doesn't break the rule about how to recognize LACON arcs.
+ *
+ * We have special markings for "trivial" NFAs that can match any string
+ * (possibly with limits on the number of characters therein).  In such a
+ * case, flags & MATCHALL is set (and HASLACONS can't be set).  Then the
+ * fields minmatchall and maxmatchall give the minimum and maximum numbers
+ * of characters to match.  For example, ".*" produces minmatchall = 0
+ * and maxmatchall = DUPINF, while ".+" produces minmatchall = 1 and
+ * maxmatchall = DUPINF.
  */
 struct carc
 {
@@ -355,8 +402,9 @@ struct cnfa
 {
 	int			nstates;		/* number of states */
 	int			ncolors;		/* number of colors (max color in use + 1) */
-	int			flags;
+	int			flags;			/* bitmask of the following flags: */
 #define  HASLACONS	01			/* uses lookaround constraints */
+#define  MATCHALL	02			/* matches all strings of a range of lengths */
 	int			pre;			/* setup state number */
 	int			post;			/* teardown state number */
 	color		bos[2];			/* colors, if any, assigned to BOS and BOL */
@@ -366,9 +414,20 @@ struct cnfa
 	struct carc **states;		/* vector of pointers to outarc lists */
 	/* states[n] are pointers into a single malloc'd array of arcs */
 	struct carc *arcs;			/* the area for the lists */
+	/* these fields are used only in a MATCHALL NFA (else they're -1): */
+	int			minmatchall;	/* min number of chrs to match */
+	int			maxmatchall;	/* max number of chrs to match, or DUPINF */
 };
 
+/*
+ * When debugging, it's helpful if an un-filled CNFA is all-zeroes.
+ * In production, though, we only require nstates to be zero.
+ */
+#ifdef REG_DEBUG
+#define ZAPCNFA(cnfa)	memset(&(cnfa), 0, sizeof(cnfa))
+#else
 #define ZAPCNFA(cnfa)	((cnfa).nstates = 0)
+#endif
 #define NULLCNFA(cnfa)	((cnfa).nstates == 0)
 
 /*
@@ -378,10 +437,12 @@ struct cnfa
  * transient data is generally not large enough to notice compared to those.
  * Note that we do not charge anything for the final output data structures
  * (the compacted NFA and the colormap).
+ * The scaling here is based on an empirical measurement that very large
+ * NFAs tend to have about 4 arcs/state.
  */
 #ifndef REG_MAX_COMPILE_SPACE
 #define REG_MAX_COMPILE_SPACE  \
-	(100000 * sizeof(struct state) + 100000 * sizeof(struct arcbatch))
+	(500000 * (sizeof(struct state) + 4 * sizeof(struct arc)))
 #endif
 
 /*
@@ -390,16 +451,18 @@ struct cnfa
  * "op" is one of:
  *		'='  plain regex without interesting substructure (implemented as DFA)
  *		'b'  back-reference (has no substructure either)
- *		'('  capture node: captures the match of its single child
- *		'.'  concatenation: matches a match for left, then a match for right
- *		'|'  alternation: matches a match for left or a match for right
+ *		'('  no-op capture node: captures the match of its single child
+ *		'.'  concatenation: matches a match for first child, then second child
+ *		'|'  alternation: matches a match for any of its children
  *		'*'  iteration: matches some number of matches of its single child
  *
- * Note: the right child of an alternation must be another alternation or
- * NULL; hence, an N-way branch requires N alternation nodes, not N-1 as you
- * might expect.  This could stand to be changed.  Actually I'd rather see
- * a single alternation node with N children, but that will take revising
- * the representation of struct subre.
+ * An alternation node can have any number of children (but at least two),
+ * linked through their sibling fields.
+ *
+ * A concatenation node must have exactly two children.  It might be useful
+ * to support more, but that would complicate the executor.  Note that it is
+ * the first child's greediness that determines the node's preference for
+ * where to split a match.
  *
  * Note: when a backref is directly quantified, we stick the min/max counts
  * into the backref rather than plastering an iteration node on top.  This is
@@ -412,24 +475,26 @@ struct subre
 #define  LONGER  01				/* prefers longer match */
 #define  SHORTER 02				/* prefers shorter match */
 #define  MIXED	 04				/* mixed preference below */
-#define  CAP	 010			/* capturing parens below */
-#define  BACKR	 020			/* back reference below */
+#define  CAP	 010			/* capturing parens here or below */
+#define  BACKR	 020			/* back reference here or below */
+#define  BRUSE	 040			/* is referenced by a back reference */
 #define  INUSE	 0100			/* in use in final tree */
-#define  NOPROP  03				/* bits which may not propagate up */
+#define  UPPROP  (MIXED|CAP|BACKR)	/* flags which should propagate up */
 #define  LMIX(f) ((f)<<2)		/* LONGER -> MIXED */
 #define  SMIX(f) ((f)<<1)		/* SHORTER -> MIXED */
-#define  UP(f)	 (((f)&~NOPROP) | (LMIX(f) & SMIX(f) & MIXED))
+#define  UP(f)	 (((f)&UPPROP) | (LMIX(f) & SMIX(f) & MIXED))
 #define  MESSY(f)	 ((f)&(MIXED|CAP|BACKR))
-#define  PREF(f) ((f)&NOPROP)
+#define  PREF(f)	 ((f)&(LONGER|SHORTER))
 #define  PREF2(f1, f2)	 ((PREF(f1) != 0) ? PREF(f1) : PREF(f2))
 #define  COMBINE(f1, f2) (UP((f1)|(f2)) | PREF2(f1, f2))
-	short		id;				/* ID of subre (1..ntree-1) */
-	int			subno;			/* subexpression number for 'b' and '(', or
-								 * LATYPE code for lookaround constraint */
+	char		latype;			/* LATYPE code, if lookaround constraint */
+	int			id;				/* ID of subre (1..ntree-1) */
+	int			capno;			/* if capture node, subno to capture into */
+	int			backno;			/* if backref node, subno it refers to */
 	short		min;			/* min repetitions for iteration or backref */
 	short		max;			/* max repetitions for iteration or backref */
-	struct subre *left;			/* left child, if any (also freelist chain) */
-	struct subre *right;		/* right child, if any */
+	struct subre *child;		/* first child, if any (also freelist chain) */
+	struct subre *sibling;		/* next child of same parent, if any */
 	struct state *begin;		/* outarcs from here... */
 	struct state *end;			/* ...ending in inarcs here */
 	struct cnfa cnfa;			/* compacted NFA, if any */

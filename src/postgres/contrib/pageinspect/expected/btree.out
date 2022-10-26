@@ -3,16 +3,19 @@ INSERT INTO test1 VALUES (72057594037927937, 'text');
 CREATE INDEX test1_a_idx ON test1 USING btree (a);
 \x
 SELECT * FROM bt_metap('test1_a_idx');
--[ RECORD 1 ]-----------+-------
-magic                   | 340322
-version                 | 3
-root                    | 1
-level                   | 0
-fastroot                | 1
-fastlevel               | 0
-oldest_xact             | 0
-last_cleanup_num_tuples | -1
+-[ RECORD 1 ]-------------+-------
+magic                     | 340322
+version                   | 4
+root                      | 1
+level                     | 0
+fastroot                  | 1
+fastlevel                 | 0
+last_cleanup_num_delpages | 0
+last_cleanup_num_tuples   | -1
+allequalimage             | t
 
+SELECT * FROM bt_page_stats('test1_a_idx', -1);
+ERROR:  invalid block number
 SELECT * FROM bt_page_stats('test1_a_idx', 0);
 ERROR:  block 0 is a meta page
 SELECT * FROM bt_page_stats('test1_a_idx', 1);
@@ -26,11 +29,13 @@ page_size     | 8192
 free_size     | 8128
 btpo_prev     | 0
 btpo_next     | 0
-btpo          | 0
+btpo_level    | 0
 btpo_flags    | 3
 
 SELECT * FROM bt_page_stats('test1_a_idx', 2);
 ERROR:  block number out of range
+SELECT * FROM bt_page_items('test1_a_idx', -1);
+ERROR:  invalid block number
 SELECT * FROM bt_page_items('test1_a_idx', 0);
 ERROR:  block 0 is a meta page
 SELECT * FROM bt_page_items('test1_a_idx', 1);
@@ -41,9 +46,14 @@ itemlen    | 16
 nulls      | f
 vars       | f
 data       | 01 00 00 00 00 00 00 01
+dead       | f
+htid       | (0,1)
+tids       | 
 
 SELECT * FROM bt_page_items('test1_a_idx', 2);
 ERROR:  block number out of range
+SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', -1));
+ERROR:  invalid block number
 SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 0));
 ERROR:  block is a meta page
 SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 1));
@@ -54,6 +64,9 @@ itemlen    | 16
 nulls      | f
 vars       | f
 data       | 01 00 00 00 00 00 00 01
+dead       | f
+htid       | (0,1)
+tids       | 
 
 SELECT * FROM bt_page_items(get_raw_page('test1_a_idx', 2));
 ERROR:  block number 2 is out of range for relation "test1_a_idx"

@@ -22,7 +22,7 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable>
-    [ OWNER { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER } ]
+    [ OWNER { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER } ]
     LOCATION '<replaceable class="parameter">directory</replaceable>'
     [ WITH ( <replaceable class="parameter">tablespace_option</replaceable> = <replaceable class="parameter">value</replaceable> [, ... ] ) ]
 </synopsis>
@@ -92,7 +92,8 @@ CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable>
       <listitem>
        <para>
         The directory that will be used for the tablespace. The directory
-        should be empty and must be owned by the
+        must exist (<command>CREATE TABLESPACE</command> will not create it),
+        should be empty, and must be owned by the
         <productname>PostgreSQL</productname> system user.  The directory must be
         specified by an absolute path name.
        </para>
@@ -105,13 +106,16 @@ CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable>
        <para>
         A tablespace parameter to be set or reset.  Currently, the only
         available parameters are <varname>seq_page_cost</varname>,
-        <varname>random_page_cost</varname> and <varname>effective_io_concurrency</varname>.
-        Setting either value for a particular tablespace will override the
+        <varname>random_page_cost</varname>, <varname>effective_io_concurrency</varname>
+        and <varname>maintenance_io_concurrency</varname>.
+        Setting these values for a particular tablespace will override the
         planner's usual estimate of the cost of reading pages from tables in
-        that tablespace, as established by the configuration parameters of the
+        that tablespace, and the executor's prefetching behavior, as established
+        by the configuration parameters of the
         same name (see <xref linkend="guc-seq-page-cost"/>,
         <xref linkend="guc-random-page-cost"/>,
-        <xref linkend="guc-effective-io-concurrency"/>).  This may be useful if
+        <xref linkend="guc-effective-io-concurrency"/>,
+        <xref linkend="guc-maintenance-io-concurrency"/>).  This may be useful if
         one tablespace is located on a disk which is faster or slower than the
         remainder of the I/O subsystem.
        </para>
@@ -137,15 +141,23 @@ CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable>
   <title>Examples</title>
 
   <para>
-   Create a tablespace <literal>dbspace</literal> at <literal>/data/dbs</literal>:
+   To create a tablespace <literal>dbspace</literal> at file system location
+   <literal>/data/dbs</literal>, first create the directory using operating
+   system facilities and set the correct ownership:
+<programlisting>
+mkdir /data/dbs
+chown postgres:postgres /data/dbs
+</programlisting>
+   Then issue the tablespace creation command inside
+   <productname>PostgreSQL</productname>:
 <programlisting>
 CREATE TABLESPACE dbspace LOCATION '/data/dbs';
 </programlisting>
   </para>
 
   <para>
-   Create a tablespace <literal>indexspace</literal> at <literal>/data/indexes</literal>
-   owned by user <literal>genevieve</literal>:
+   To create a tablespace owned by a different database user, use a command
+   like this:
 <programlisting>
 CREATE TABLESPACE indexspace OWNER genevieve LOCATION '/data/indexes';
 </programlisting></para>

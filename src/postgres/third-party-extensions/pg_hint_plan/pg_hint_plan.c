@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "postgres.h"
+#include "access/relation.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
 #include "commands/prepare.h"
@@ -17,7 +18,6 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/params.h"
-#include "nodes/relation.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -3868,7 +3868,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 
 				parentrel_oid =
 					root->simple_rte_array[current_hint_state->parent_relid]->relid;
-				parent_rel = heap_open(parentrel_oid, NoLock);
+				parent_rel = table_open(parentrel_oid, NoLock);
 
 				/* Search the parent relation for indexes match the hint spec */
 				foreach(l, RelationGetIndexList(parent_rel))
@@ -3892,7 +3892,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 						lappend(current_hint_state->parent_index_infos,
 								parent_index_info);
 				}
-				heap_close(parent_rel, NoLock);
+				table_close(parent_rel, NoLock);
 			}
 		}
 	}

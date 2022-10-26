@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # Single-node test: value can be set, and is still present after recovery
 
 use strict;
@@ -7,7 +10,7 @@ use TestLib;
 use Test::More tests => 2;
 use PostgresNode;
 
-my $node = get_new_node('foxtrot');
+my $node = PostgresNode->new('foxtrot');
 $node->init;
 $node->append_conf('postgresql.conf', 'track_commit_timestamp = on');
 $node->start;

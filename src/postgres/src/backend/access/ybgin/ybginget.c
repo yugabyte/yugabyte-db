@@ -287,7 +287,16 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 		elog(ERROR, "no < operator for opfamily %u", opfamily);
 	fmgr_info(get_opcode(oproid), &ltproc);
 	prefix_const = text_to_const(prefix, colloid);
+#ifdef YB_TODO
+	/* YB_TODO(jasonk@yugabyte)
+	 * Postgres has stopped calling make_greater_string() in all backend executions. Need to
+	 * investigate if this call is the right thing to do.
+	 */
 	return make_greater_string(prefix_const, &ltproc, colloid);
+#else
+	/* This code is only for the compilation to proceed without errors */
+	return prefix_const;
+#endif
 }
 
 static void
@@ -615,9 +624,12 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+#ifdef YB_TODO
+		/* YB_TODO(jasonk@yugabyte) Set & get OID is no longer valid */
 		if (syscols.oid != InvalidOid)
 			HeapTupleSetOid(tuple, syscols.oid);
+#endif
 	}
 	pfree(values);
 	pfree(nulls);
@@ -642,12 +654,12 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	/* fetch */
-	scan->xs_ctup.t_ybctid = 0;
+	YbItemPointerSetInvalid(&scan->xs_heaptid);
 	while (HeapTupleIsValid(tup = ybginFetchNextHeapTuple(scan)))
 	{
 		if (true)				/* TODO(jason): don't assume a match. */
 		{
-			scan->xs_ctup.t_ybctid = tup->t_ybctid;
+			YbItemPointerYbctid(&scan->xs_heaptid) = HEAPTUPLE_YBCTID(tup);
 			scan->xs_hitup = tup;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 
@@ -659,5 +671,5 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 		heap_freetuple(tup);
 	}
 
-	return scan->xs_ctup.t_ybctid != 0;
+	return YbItemPointerYbctid(&scan->xs_heaptid) != 0;
 }

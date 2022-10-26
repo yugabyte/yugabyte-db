@@ -77,8 +77,11 @@ struct dfa
 	chr		   *lastpost;		/* location of last cache-flushed success */
 	chr		   *lastnopr;		/* location of last cache-flushed NOPROGRESS */
 	struct sset *search;		/* replacement-search-pointer memory */
-	int			cptsmalloced;	/* were the areas individually malloced? */
-	char	   *mallocarea;		/* self, or master malloced area, or NULL */
+	int			backno;			/* if DFA for a backref, subno it refers to */
+	short		backmin;		/* min repetitions for backref */
+	short		backmax;		/* max repetitions for backref */
+	bool		ismalloced;		/* should this struct dfa be freed? */
+	bool		arraysmalloced; /* should its subsidiary arrays be freed? */
 };
 
 #define WORK	1				/* number of work bitvectors needed */
@@ -88,7 +91,7 @@ struct dfa
 #define FEWCOLORS	15
 struct smalldfa
 {
-	struct dfa	dfa;
+	struct dfa	dfa;			/* must be first */
 	struct sset ssets[FEWSTATES * 2];
 	unsigned	statesarea[FEWSTATES * 2 + WORK];
 	struct sset *outsarea[FEWSTATES * 2 * FEWCOLORS];
@@ -154,6 +157,7 @@ static int	creviterdissect(struct vars *, struct subre *, chr *, chr *);
 static chr *longest(struct vars *, struct dfa *, chr *, chr *, int *);
 static chr *shortest(struct vars *, struct dfa *, chr *, chr *, chr *, chr **, int *);
 static int	matchuntil(struct vars *, struct dfa *, chr *, struct sset **, chr **);
+static chr *dfa_backref(struct vars *, struct dfa *, chr *, chr *, chr *, bool);
 static chr *lastcold(struct vars *, struct dfa *);
 static struct dfa *newdfa(struct vars *, struct cnfa *, struct colormap *, struct smalldfa *);
 static void freedfa(struct dfa *);
@@ -196,6 +200,8 @@ pg_regexec(regex_t *re,
 		return REG_INVARG;
 	if (re->re_csize != sizeof(chr))
 		return REG_MIXED;
+	if (search_start > len)
+		return REG_NOMATCH;
 
 	/* Initialize locale-dependent support */
 	pg_set_regex_collation(re->re_collation);
@@ -209,23 +215,30 @@ pg_regexec(regex_t *re,
 		return REG_NOMATCH;
 	backref = (v->g->info & REG_UBACKREF) ? 1 : 0;
 	v->eflags = flags;
-	if (v->g->cflags & REG_NOSUB)
-		nmatch = 0;				/* override client */
-	v->nmatch = nmatch;
-	if (backref)
+	if (backref && nmatch <= v->g->nsub)
 	{
-		/* need work area */
-		if (v->g->nsub + 1 <= LOCALMAT)
+		/* need larger work area */
+		v->nmatch = v->g->nsub + 1;
+		if (v->nmatch <= LOCALMAT)
 			v->pmatch = mat;
 		else
-			v->pmatch = (regmatch_t *) MALLOC((v->g->nsub + 1) *
-											  sizeof(regmatch_t));
+			v->pmatch = (regmatch_t *) MALLOC(v->nmatch * sizeof(regmatch_t));
 		if (v->pmatch == NULL)
 			return REG_ESPACE;
-		v->nmatch = v->g->nsub + 1;
+		zapallsubs(v->pmatch, v->nmatch);
 	}
 	else
+	{
+		/* we can store results directly in caller's array */
 		v->pmatch = pmatch;
+		/* ensure any extra entries in caller's array are filled with -1 */
+		if (nmatch > 0)
+			zapallsubs(pmatch, nmatch);
+		/* then forget about extra entries, to avoid useless work in find() */
+		if (nmatch > v->g->nsub + 1)
+			nmatch = v->g->nsub + 1;
+		v->nmatch = nmatch;
+	}
 	v->details = details;
 	v->start = (chr *) string;
 	v->search_start = (chr *) string + search_start;
@@ -286,12 +299,20 @@ pg_regexec(regex_t *re,
 	else
 		st = find(v, &v->g->tree->cnfa, &v->g->cmap);
 
-	/* copy (portion of) match vector over if necessary */
-	if (st == REG_OKAY && v->pmatch != pmatch && nmatch > 0)
+	/* on success, ensure caller's match vector is filled correctly */
+	if (st == REG_OKAY && nmatch > 0)
 	{
-		zapallsubs(pmatch, nmatch);
-		n = (nmatch < v->nmatch) ? nmatch : v->nmatch;
-		memcpy(VS(pmatch), VS(v->pmatch), n * sizeof(regmatch_t));
+		if (v->pmatch != pmatch)
+		{
+			/* copy portion of match vector over from (larger) work area */
+			assert(nmatch <= v->nmatch);
+			memcpy(VS(pmatch), VS(v->pmatch), nmatch * sizeof(regmatch_t));
+		}
+		if (v->g->cflags & REG_NOSUB)
+		{
+			/* don't expose possibly-partial sub-match results to caller */
+			zapallsubs(pmatch, nmatch);
+		}
 	}
 
 	/* clean up */
@@ -324,6 +345,11 @@ cleanup:
 	if (v->lblastcp != NULL)
 		FREE(v->lblastcp);
 
+#ifdef REG_DEBUG
+	if (v->eflags & (REG_FTRACE | REG_MTRACE))
+		fflush(stdout);
+#endif
+
 	return st;
 }
 
@@ -337,13 +363,23 @@ static struct dfa *
 getsubdfa(struct vars *v,
 		  struct subre *t)
 {
-	if (v->subdfas[t->id] == NULL)
+	struct dfa *d = v->subdfas[t->id];
+
+	if (d == NULL)
 	{
-		v->subdfas[t->id] = newdfa(v, &t->cnfa, &v->g->cmap, DOMALLOC);
-		if (ISERR())
+		d = newdfa(v, &t->cnfa, &v->g->cmap, DOMALLOC);
+		if (d == NULL)
 			return NULL;
+		/* set up additional info if this is a backref node */
+		if (t->op == 'b')
+		{
+			d->backno = t->backno;
+			d->backmin = t->min;
+			d->backmax = t->max;
+		}
+		v->subdfas[t->id] = d;
 	}
-	return v->subdfas[t->id];
+	return d;
 }
 
 /*
@@ -362,8 +398,7 @@ getladfa(struct vars *v,
 		struct subre *sub = &v->g->lacons[n];
 
 		v->ladfas[n] = newdfa(v, &sub->cnfa, &v->g->cmap, DOMALLOC);
-		if (ISERR())
-			return NULL;
+		/* a LACON can't contain a backref, so nothing else to do */
 	}
 	return v->ladfas[n];
 }
@@ -388,8 +423,8 @@ find(struct vars *v,
 
 	/* first, a shot with the search RE */
 	s = newdfa(v, &v->g->search, cm, &v->dfa1);
-	assert(!(ISERR() && s != NULL));
-	NOERR();
+	if (s == NULL)
+		return v->err;
 	MDEBUG(("\nsearch at %ld\n", LOFF(v->start)));
 	cold = NULL;
 	close = shortest(v, s, v->search_start, v->search_start, v->stop,
@@ -416,8 +451,8 @@ find(struct vars *v,
 	cold = NULL;
 	MDEBUG(("between %ld and %ld\n", LOFF(open), LOFF(close)));
 	d = newdfa(v, cnfa, cm, &v->dfa1);
-	assert(!(ISERR() && d != NULL));
-	NOERR();
+	if (d == NULL)
+		return v->err;
 	for (begin = open; begin <= close; begin++)
 	{
 		MDEBUG(("\nfind trying at %ld\n", LOFF(begin)));
@@ -455,7 +490,6 @@ find(struct vars *v,
 		return REG_OKAY;
 
 	/* find submatches */
-	zapallsubs(v->pmatch, v->nmatch);
 	return cdissect(v, v->g->tree, begin, end);
 }
 
@@ -473,11 +507,11 @@ cfind(struct vars *v,
 	int			ret;
 
 	s = newdfa(v, &v->g->search, cm, &v->dfa1);
-	NOERR();
+	if (s == NULL)
+		return v->err;
 	d = newdfa(v, cnfa, cm, &v->dfa2);
-	if (ISERR())
+	if (d == NULL)
 	{
-		assert(d == NULL);
 		freedfa(s);
 		return v->err;
 	}
@@ -566,7 +600,6 @@ cfindloop(struct vars *v,
 					break;		/* no match with this begin point, try next */
 				MDEBUG(("tentative end %ld\n", LOFF(end)));
 				/* Dissect the potential match to see if it really matches */
-				zapallsubs(v->pmatch, v->nmatch);
 				er = cdissect(v, v->g->tree, begin, end);
 				if (er == REG_OKAY)
 				{
@@ -614,6 +647,8 @@ cfindloop(struct vars *v,
 
 /*
  * zapallsubs - initialize all subexpression matches to "no match"
+ *
+ * Note that p[0], the overall-match location, is not touched.
  */
 static void
 zapallsubs(regmatch_t *p,
@@ -635,11 +670,11 @@ static void
 zaptreesubs(struct vars *v,
 			struct subre *t)
 {
-	if (t->op == '(')
-	{
-		int			n = t->subno;
+	int			n = t->capno;
+	struct subre *t2;
 
-		assert(n > 0);
+	if (n > 0)
+	{
 		if ((size_t) n < v->nmatch)
 		{
 			v->pmatch[n].rm_so = -1;
@@ -647,10 +682,8 @@ zaptreesubs(struct vars *v,
 		}
 	}
 
-	if (t->left != NULL)
-		zaptreesubs(v, t->left);
-	if (t->right != NULL)
-		zaptreesubs(v, t->right);
+	for (t2 = t->child; t2 != NULL; t2 = t2->sibling)
+		zaptreesubs(v, t2);
 }
 
 /*
@@ -662,13 +695,13 @@ subset(struct vars *v,
 	   chr *begin,
 	   chr *end)
 {
-	int			n = sub->subno;
+	int			n = sub->capno;
 
 	assert(n > 0);
 	if ((size_t) n >= v->nmatch)
 		return;
 
-	MDEBUG(("setting %d\n", n));
+	MDEBUG(("%d: setting %d = %ld-%ld\n", sub->id, n, LOFF(begin), LOFF(end)));
 	v->pmatch[n].rm_so = OFF(begin);
 	v->pmatch[n].rm_eo = OFF(end);
 }
@@ -685,8 +718,30 @@ subset(struct vars *v,
  * DFA and found that the proposed substring satisfies the DFA.  (We make
  * the caller do that because in concatenation and iteration nodes, it's
  * much faster to check all the substrings against the child DFAs before we
- * recurse.)  Also, caller must have cleared subexpression match data via
- * zaptreesubs (or zapallsubs at the top level).
+ * recurse.)
+ *
+ * A side-effect of a successful match is to save match locations for
+ * capturing subexpressions in v->pmatch[].  This is a little bit tricky,
+ * so we make the following rules:
+ * 1. Before initial entry to cdissect, all match data must have been
+ *    cleared (this is seen to by zapallsubs).
+ * 2. Before any recursive entry to cdissect, the match data for that
+ *    subexpression tree must be guaranteed clear (see zaptreesubs).
+ * 3. When returning REG_OKAY, each level of cdissect will have saved
+ *    any relevant match locations.
+ * 4. When returning REG_NOMATCH, each level of cdissect will guarantee
+ *    that its subexpression match locations are again clear.
+ * 5. No guarantees are made for error cases (i.e., other result codes).
+ * 6. When a level of cdissect abandons a successful sub-match, it will
+ *    clear that subtree's match locations with zaptreesubs before trying
+ *    any new DFA match or cdissect call for that subtree or any subtree
+ *    to its right (that is, any subtree that could have a backref into the
+ *    abandoned match).
+ * This may seem overly complicated, but it's difficult to simplify it
+ * because of the provision that match locations must be reset before
+ * any fresh DFA match (a rule that is needed to make dfa_backref safe).
+ * That means it won't work to just reset relevant match locations at the
+ * start of each cdissect level.
  */
 static int						/* regexec return code */
 cdissect(struct vars *v,
@@ -697,7 +752,7 @@ cdissect(struct vars *v,
 	int			er;
 
 	assert(t != NULL);
-	MDEBUG(("cdissect %ld-%ld %c\n", LOFF(begin), LOFF(end), t->op));
+	MDEBUG(("%d: cdissect %c %ld-%ld\n", t->id, t->op, LOFF(begin), LOFF(end)));
 
 	/* handy place to check for operation cancel */
 	if (CANCEL_REQUESTED(v->re))
@@ -709,37 +764,34 @@ cdissect(struct vars *v,
 	switch (t->op)
 	{
 		case '=':				/* terminal node */
-			assert(t->left == NULL && t->right == NULL);
+			assert(t->child == NULL);
 			er = REG_OKAY;		/* no action, parent did the work */
 			break;
 		case 'b':				/* back reference */
-			assert(t->left == NULL && t->right == NULL);
+			assert(t->child == NULL);
 			er = cbrdissect(v, t, begin, end);
 			break;
 		case '.':				/* concatenation */
-			assert(t->left != NULL && t->right != NULL);
-			if (t->left->flags & SHORTER)	/* reverse scan */
+			assert(t->child != NULL);
+			if (t->child->flags & SHORTER)	/* reverse scan */
 				er = crevcondissect(v, t, begin, end);
 			else
 				er = ccondissect(v, t, begin, end);
 			break;
 		case '|':				/* alternation */
-			assert(t->left != NULL);
+			assert(t->child != NULL);
 			er = caltdissect(v, t, begin, end);
 			break;
 		case '*':				/* iteration */
-			assert(t->left != NULL);
-			if (t->left->flags & SHORTER)	/* reverse scan */
+			assert(t->child != NULL);
+			if (t->child->flags & SHORTER)	/* reverse scan */
 				er = creviterdissect(v, t, begin, end);
 			else
 				er = citerdissect(v, t, begin, end);
 			break;
-		case '(':				/* capturing */
-			assert(t->left != NULL && t->right == NULL);
-			assert(t->subno > 0);
-			er = cdissect(v, t->left, begin, end);
-			if (er == REG_OKAY)
-				subset(v, t, begin, end);
+		case '(':				/* no-op capture node */
+			assert(t->child != NULL);
+			er = cdissect(v, t->child, begin, end);
 			break;
 		default:
 			er = REG_ASSERT;
@@ -753,6 +805,12 @@ cdissect(struct vars *v,
 	 */
 	assert(er != REG_NOMATCH || (t->flags & BACKR));
 
+	/*
+	 * If this node is marked as capturing, save successful match's location.
+	 */
+	if (t->capno > 0 && er == REG_OKAY)
+		subset(v, t, begin, end);
+
 	return er;
 }
 
@@ -765,28 +823,31 @@ ccondissect(struct vars *v,
 			chr *begin,			/* beginning of relevant substring */
 			chr *end)			/* end of same */
 {
+	struct subre *left = t->child;
+	struct subre *right = left->sibling;
 	struct dfa *d;
 	struct dfa *d2;
 	chr		   *mid;
 	int			er;
 
 	assert(t->op == '.');
-	assert(t->left != NULL && t->left->cnfa.nstates > 0);
-	assert(t->right != NULL && t->right->cnfa.nstates > 0);
-	assert(!(t->left->flags & SHORTER));
+	assert(left != NULL && left->cnfa.nstates > 0);
+	assert(right != NULL && right->cnfa.nstates > 0);
+	assert(right->sibling == NULL);
+	assert(!(left->flags & SHORTER));
 
-	d = getsubdfa(v, t->left);
+	d = getsubdfa(v, left);
 	NOERR();
-	d2 = getsubdfa(v, t->right);
+	d2 = getsubdfa(v, right);
 	NOERR();
-	MDEBUG(("cconcat %d\n", t->id));
+	MDEBUG(("%d: ccondissect %ld-%ld\n", t->id, LOFF(begin), LOFF(end)));
 
 	/* pick a tentative midpoint */
 	mid = longest(v, d, begin, end, (int *) NULL);
 	NOERR();
 	if (mid == NULL)
 		return REG_NOMATCH;
-	MDEBUG(("tentative midpoint %ld\n", LOFF(mid)));
+	MDEBUG(("%d: tentative midpoint %ld\n", t->id, LOFF(mid)));
 
 	/* iterate until satisfaction or failure */
 	for (;;)
@@ -794,16 +855,18 @@ ccondissect(struct vars *v,
 		/* try this midpoint on for size */
 		if (longest(v, d2, mid, end, (int *) NULL) == end)
 		{
-			er = cdissect(v, t->left, begin, mid);
+			er = cdissect(v, left, begin, mid);
 			if (er == REG_OKAY)
 			{
-				er = cdissect(v, t->right, mid, end);
+				er = cdissect(v, right, mid, end);
 				if (er == REG_OKAY)
 				{
 					/* satisfaction */
-					MDEBUG(("successful\n"));
+					MDEBUG(("%d: successful\n", t->id));
 					return REG_OKAY;
 				}
+				/* Reset left's matches (right should have done so itself) */
+				zaptreesubs(v, left);
 			}
 			if (er != REG_NOMATCH)
 				return er;
@@ -814,7 +877,7 @@ ccondissect(struct vars *v,
 		if (mid == begin)
 		{
 			/* all possibilities exhausted */
-			MDEBUG(("%d no midpoint\n", t->id));
+			MDEBUG(("%d: no midpoint\n", t->id));
 			return REG_NOMATCH;
 		}
 		mid = longest(v, d, begin, mid - 1, (int *) NULL);
@@ -822,12 +885,10 @@ ccondissect(struct vars *v,
 		if (mid == NULL)
 		{
 			/* failed to find a new one */
-			MDEBUG(("%d failed midpoint\n", t->id));
+			MDEBUG(("%d: failed midpoint\n", t->id));
 			return REG_NOMATCH;
 		}
 		MDEBUG(("%d: new midpoint %ld\n", t->id, LOFF(mid)));
-		zaptreesubs(v, t->left);
-		zaptreesubs(v, t->right);
 	}
 
 	/* can't get here */
@@ -843,28 +904,31 @@ crevcondissect(struct vars *v,
 			   chr *begin,		/* beginning of relevant substring */
 			   chr *end)		/* end of same */
 {
+	struct subre *left = t->child;
+	struct subre *right = left->sibling;
 	struct dfa *d;
 	struct dfa *d2;
 	chr		   *mid;
 	int			er;
 
 	assert(t->op == '.');
-	assert(t->left != NULL && t->left->cnfa.nstates > 0);
-	assert(t->right != NULL && t->right->cnfa.nstates > 0);
-	assert(t->left->flags & SHORTER);
+	assert(left != NULL && left->cnfa.nstates > 0);
+	assert(right != NULL && right->cnfa.nstates > 0);
+	assert(right->sibling == NULL);
+	assert(left->flags & SHORTER);
 
-	d = getsubdfa(v, t->left);
+	d = getsubdfa(v, left);
 	NOERR();
-	d2 = getsubdfa(v, t->right);
+	d2 = getsubdfa(v, right);
 	NOERR();
-	MDEBUG(("crevcon %d\n", t->id));
+	MDEBUG(("%d: crevcondissect %ld-%ld\n", t->id, LOFF(begin), LOFF(end)));
 
 	/* pick a tentative midpoint */
 	mid = shortest(v, d, begin, begin, end, (chr **) NULL, (int *) NULL);
 	NOERR();
 	if (mid == NULL)
 		return REG_NOMATCH;
-	MDEBUG(("tentative midpoint %ld\n", LOFF(mid)));
+	MDEBUG(("%d: tentative midpoint %ld\n", t->id, LOFF(mid)));
 
 	/* iterate until satisfaction or failure */
 	for (;;)
@@ -872,16 +936,18 @@ crevcondissect(struct vars *v,
 		/* try this midpoint on for size */
 		if (longest(v, d2, mid, end, (int *) NULL) == end)
 		{
-			er = cdissect(v, t->left, begin, mid);
+			er = cdissect(v, left, begin, mid);
 			if (er == REG_OKAY)
 			{
-				er = cdissect(v, t->right, mid, end);
+				er = cdissect(v, right, mid, end);
 				if (er == REG_OKAY)
 				{
 					/* satisfaction */
-					MDEBUG(("successful\n"));
+					MDEBUG(("%d: successful\n", t->id));
 					return REG_OKAY;
 				}
+				/* Reset left's matches (right should have done so itself) */
+				zaptreesubs(v, left);
 			}
 			if (er != REG_NOMATCH)
 				return er;
@@ -892,7 +958,7 @@ crevcondissect(struct vars *v,
 		if (mid == end)
 		{
 			/* all possibilities exhausted */
-			MDEBUG(("%d no midpoint\n", t->id));
+			MDEBUG(("%d: no midpoint\n", t->id));
 			return REG_NOMATCH;
 		}
 		mid = shortest(v, d, begin, mid + 1, end, (chr **) NULL, (int *) NULL);
@@ -900,12 +966,10 @@ crevcondissect(struct vars *v,
 		if (mid == NULL)
 		{
 			/* failed to find a new one */
-			MDEBUG(("%d failed midpoint\n", t->id));
+			MDEBUG(("%d: failed midpoint\n", t->id));
 			return REG_NOMATCH;
 		}
 		MDEBUG(("%d: new midpoint %ld\n", t->id, LOFF(mid)));
-		zaptreesubs(v, t->left);
-		zaptreesubs(v, t->right);
 	}
 
 	/* can't get here */
@@ -914,6 +978,9 @@ crevcondissect(struct vars *v,
 
 /*
  * cbrdissect - dissect match for backref node
+ *
+ * The backref match might already have been verified by dfa_backref(),
+ * but we don't know that for sure so must check it here.
  */
 static int						/* regexec return code */
 cbrdissect(struct vars *v,
@@ -921,7 +988,7 @@ cbrdissect(struct vars *v,
 		   chr *begin,			/* beginning of relevant substring */
 		   chr *end)			/* end of same */
 {
-	int			n = t->subno;
+	int			n = t->backno;
 	size_t		numreps;
 	size_t		tlen;
 	size_t		brlen;
@@ -935,7 +1002,8 @@ cbrdissect(struct vars *v,
 	assert(n >= 0);
 	assert((size_t) n < v->nmatch);
 
-	MDEBUG(("cbackref n%d %d{%d-%d}\n", t->id, n, min, max));
+	MDEBUG(("%d: cbrdissect %d{%d-%d} %ld-%ld\n", t->id, n, min, max,
+			LOFF(begin), LOFF(end)));
 
 	/* get the backreferenced string */
 	if (v->pmatch[n].rm_so == -1)
@@ -952,7 +1020,7 @@ cbrdissect(struct vars *v,
 		 */
 		if (begin == end && min <= max)
 		{
-			MDEBUG(("cbackref matched trivially\n"));
+			MDEBUG(("%d: backref matched trivially\n", t->id));
 			return REG_OKAY;
 		}
 		return REG_NOMATCH;
@@ -962,7 +1030,7 @@ cbrdissect(struct vars *v,
 		/* matches only if zero repetitions are okay */
 		if (min == 0)
 		{
-			MDEBUG(("cbackref matched trivially\n"));
+			MDEBUG(("%d: backref matched trivially\n", t->id));
 			return REG_OKAY;
 		}
 		return REG_NOMATCH;
@@ -989,7 +1057,7 @@ cbrdissect(struct vars *v,
 		p += brlen;
 	}
 
-	MDEBUG(("cbackref matched\n"));
+	MDEBUG(("%d: backref matched\n", t->id));
 	return REG_OKAY;
 }
 
@@ -1005,26 +1073,30 @@ caltdissect(struct vars *v,
 	struct dfa *d;
 	int			er;
 
-	/* We loop, rather than tail-recurse, to handle a chain of alternatives */
+	assert(t->op == '|');
+
+	t = t->child;
+	/* there should be at least 2 alternatives */
+	assert(t != NULL && t->sibling != NULL);
+
 	while (t != NULL)
 	{
-		assert(t->op == '|');
-		assert(t->left != NULL && t->left->cnfa.nstates > 0);
+		assert(t->cnfa.nstates > 0);
 
-		MDEBUG(("calt n%d\n", t->id));
+		MDEBUG(("%d: caltdissect %ld-%ld\n", t->id, LOFF(begin), LOFF(end)));
 
-		d = getsubdfa(v, t->left);
+		d = getsubdfa(v, t);
 		NOERR();
 		if (longest(v, d, begin, end, (int *) NULL) == end)
 		{
-			MDEBUG(("calt matched\n"));
-			er = cdissect(v, t->left, begin, end);
+			MDEBUG(("%d: caltdissect matched\n", t->id));
+			er = cdissect(v, t, begin, end);
 			if (er != REG_NOMATCH)
 				return er;
 		}
 		NOERR();
 
-		t = t->right;
+		t = t->sibling;
 	}
 
 	return REG_NOMATCH;
@@ -1050,9 +1122,11 @@ citerdissect(struct vars *v,
 	int			er;
 
 	assert(t->op == '*');
-	assert(t->left != NULL && t->left->cnfa.nstates > 0);
-	assert(!(t->left->flags & SHORTER));
+	assert(t->child != NULL && t->child->cnfa.nstates > 0);
+	assert(!(t->child->flags & SHORTER));
 	assert(begin <= end);
+
+	MDEBUG(("%d: citerdissect %ld-%ld\n", t->id, LOFF(begin), LOFF(end)));
 
 	/*
 	 * For the moment, assume the minimum number of matches is 1.  If zero
@@ -1086,13 +1160,12 @@ citerdissect(struct vars *v,
 		return REG_ESPACE;
 	endpts[0] = begin;
 
-	d = getsubdfa(v, t->left);
+	d = getsubdfa(v, t->child);
 	if (ISERR())
 	{
 		FREE(endpts);
 		return v->err;
 	}
-	MDEBUG(("citer %d\n", t->id));
 
 	/*
 	 * Our strategy is to first find a set of sub-match endpoints that are
@@ -1165,8 +1238,9 @@ citerdissect(struct vars *v,
 
 		for (i = nverified + 1; i <= k; i++)
 		{
-			zaptreesubs(v, t->left);
-			er = cdissect(v, t->left, endpts[i - 1], endpts[i]);
+			/* zap any match data from a non-last iteration */
+			zaptreesubs(v, t->child);
+			er = cdissect(v, t->child, endpts[i - 1], endpts[i]);
 			if (er == REG_OKAY)
 			{
 				nverified = i;
@@ -1182,7 +1256,7 @@ citerdissect(struct vars *v,
 		if (i > k)
 		{
 			/* satisfaction */
-			MDEBUG(("%d successful\n", t->id));
+			MDEBUG(("%d: successful\n", t->id));
 			FREE(endpts);
 			return REG_OKAY;
 		}
@@ -1224,11 +1298,11 @@ backtrack:
 	 */
 	if (t->min == 0 && begin == end)
 	{
-		MDEBUG(("%d allowing zero matches\n", t->id));
+		MDEBUG(("%d: allowing zero matches\n", t->id));
 		return REG_OKAY;
 	}
 
-	MDEBUG(("%d failed\n", t->id));
+	MDEBUG(("%d: failed\n", t->id));
 	return REG_NOMATCH;
 }
 
@@ -1252,9 +1326,11 @@ creviterdissect(struct vars *v,
 	int			er;
 
 	assert(t->op == '*');
-	assert(t->left != NULL && t->left->cnfa.nstates > 0);
-	assert(t->left->flags & SHORTER);
+	assert(t->child != NULL && t->child->cnfa.nstates > 0);
+	assert(t->child->flags & SHORTER);
 	assert(begin <= end);
+
+	MDEBUG(("%d: creviterdissect %ld-%ld\n", t->id, LOFF(begin), LOFF(end)));
 
 	/*
 	 * If zero matches are allowed, and target string is empty, just declare
@@ -1265,7 +1341,10 @@ creviterdissect(struct vars *v,
 	if (min_matches <= 0)
 	{
 		if (begin == end)
+		{
+			MDEBUG(("%d: allowing zero matches\n", t->id));
 			return REG_OKAY;
+		}
 		min_matches = 1;
 	}
 
@@ -1288,13 +1367,12 @@ creviterdissect(struct vars *v,
 		return REG_ESPACE;
 	endpts[0] = begin;
 
-	d = getsubdfa(v, t->left);
+	d = getsubdfa(v, t->child);
 	if (ISERR())
 	{
 		FREE(endpts);
 		return v->err;
 	}
-	MDEBUG(("creviter %d\n", t->id));
 
 	/*
 	 * Our strategy is to first find a set of sub-match endpoints that are
@@ -1373,8 +1451,9 @@ creviterdissect(struct vars *v,
 
 		for (i = nverified + 1; i <= k; i++)
 		{
-			zaptreesubs(v, t->left);
-			er = cdissect(v, t->left, endpts[i - 1], endpts[i]);
+			/* zap any match data from a non-last iteration */
+			zaptreesubs(v, t->child);
+			er = cdissect(v, t->child, endpts[i - 1], endpts[i]);
 			if (er == REG_OKAY)
 			{
 				nverified = i;
@@ -1390,7 +1469,7 @@ creviterdissect(struct vars *v,
 		if (i > k)
 		{
 			/* satisfaction */
-			MDEBUG(("%d successful\n", t->id));
+			MDEBUG(("%d: successful\n", t->id));
 			FREE(endpts);
 			return REG_OKAY;
 		}
@@ -1417,7 +1496,7 @@ backtrack:
 	}
 
 	/* all possibilities exhausted */
-	MDEBUG(("%d failed\n", t->id));
+	MDEBUG(("%d: failed\n", t->id));
 	FREE(endpts);
 	return REG_NOMATCH;
 }

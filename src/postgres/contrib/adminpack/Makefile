@@ -1,11 +1,13 @@
 # contrib/adminpack/Makefile
 
 MODULE_big = adminpack
-OBJS = adminpack.o $(WIN32RES)
-PG_CPPFLAGS = -I$(libpq_srcdir)
+OBJS = \
+	$(WIN32RES) \
+	adminpack.o
 
 EXTENSION = adminpack
-DATA = adminpack--1.0.sql adminpack--1.0--1.1.sql adminpack--1.1--2.0.sql
+DATA = adminpack--1.0.sql adminpack--1.0--1.1.sql adminpack--1.1--2.0.sql\
+	adminpack--2.0--2.1.sql
 PGFILEDESC = "adminpack - support functions for pgAdmin"
 
 REGRESS = adminpack

@@ -35,6 +35,7 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/yb_scan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeYbSeqscan.h"
 #include "utils/rel.h"
@@ -55,7 +56,7 @@ static TupleTableSlot *YbSeqNext(YbSeqScanState *node);
 static TupleTableSlot *
 YbSeqNext(YbSeqScanState *node)
 {
-	HeapScanDesc scandesc;
+	TableScanDesc tsdesc;
 	EState	   *estate;
 	TupleTableSlot *slot;
 	ExprContext *econtext;
@@ -65,7 +66,7 @@ YbSeqNext(YbSeqScanState *node)
 	/*
 	 * get information from the estate and scan state
 	 */
-	scandesc = node->ss.ss_currentScanDesc;
+	tsdesc = node->ss.ss_currentScanDesc;
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
@@ -75,16 +76,16 @@ YbSeqNext(YbSeqScanState *node)
 	 * The scan only needs its ybscan field, so eventually we may use it
 	 * directly and ignore the ss_currentScanDesc.
 	 */
-	if (scandesc == NULL)
+	if (tsdesc == NULL)
 	{
 		YbSeqScan *plan = (YbSeqScan *) node->ss.ps.plan;
 		PushdownExprs *remote =
 			YbInstantiateRemoteParams(&plan->remote, estate);
-		scandesc = ybc_remote_beginscan(node->ss.ss_currentRelation,
+		tsdesc = ybc_remote_beginscan(node->ss.ss_currentRelation,
 										estate->es_snapshot,
 										(Scan *) plan,
 										remote);
-		node->ss.ss_currentScanDesc = scandesc;
+		node->ss.ss_currentScanDesc = tsdesc;
 	}
 
 	/*
@@ -95,7 +96,7 @@ YbSeqNext(YbSeqScanState *node)
 	 * However, it is kinda convenient to safely assign ybScan here and use to
 	 * execute and fetch the statement, so we make use of the flag.
 	 */
-	ybScan = scandesc->ybscan;
+	ybScan = (YbScanDesc)tsdesc;
 	if (!ybScan->is_exec_done)
 	{
 		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
@@ -188,8 +189,12 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 							 eflags);
 
 	/* and create slot with the appropriate rowtype */
+	/* YB_TODO(amartsinchyk@yugabyte)
+	 * Verify that passing NULL for tts_op is a correct choice.
+	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
-						  RelationGetDescr(scanstate->ss.ss_currentRelation));
+						  RelationGetDescr(scanstate->ss.ss_currentRelation),
+						  NULL);
 
 	/*
 	 * Initialize result type and projection.
@@ -215,14 +220,12 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 void
 ExecEndYbSeqScan(YbSeqScanState *node)
 {
-	Relation	relation;
-	HeapScanDesc scanDesc;
+	TableScanDesc tsdesc;
 
 	/*
 	 * get information from node
 	 */
-	relation = node->ss.ss_currentRelation;
-	scanDesc = node->ss.ss_currentScanDesc;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * Free the exprcontext
@@ -239,13 +242,14 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	/*
 	 * close heap scan
 	 */
-	if (scanDesc != NULL)
-		ybc_heap_endscan(scanDesc);
+	if (tsdesc != NULL)
+		ybc_heap_endscan(tsdesc);
 
 	/*
-	 * close the heap relation.
+	 * close heap scan
 	 */
-	ExecCloseScanRelation(relation);
+	if (tsdesc != NULL)
+		table_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------
@@ -262,15 +266,15 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 void
 ExecReScanYbSeqScan(YbSeqScanState *node)
 {
-	HeapScanDesc scanDesc;
+	TableScanDesc tsdesc;
 
 	/*
 	 * End previous YB scan to reinit it upon the next fetch.
 	 */
-	scanDesc = node->ss.ss_currentScanDesc;
-	if (scanDesc != NULL)
+	tsdesc = node->ss.ss_currentScanDesc;
+	if (tsdesc != NULL)
 	{
-		ybc_heap_endscan(scanDesc);
+		ybc_heap_endscan(tsdesc);
 		node->ss.ss_currentScanDesc = NULL;
 	}
 

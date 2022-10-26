@@ -47,15 +47,11 @@ PostgreSQL documentation
       <term><option>--dbname=<replaceable class="parameter">dbname</replaceable></option></term>
       <listitem>
       <para>
-       Specifies the name of the database to connect to.
-      </para>
-      <para>
-       If this parameter contains an <symbol>=</symbol> sign or starts
-       with a valid <acronym>URI</acronym> prefix
-       (<literal>postgresql://</literal>
-       or <literal>postgres://</literal>), it is treated as a
-       <parameter>conninfo</parameter> string. See <xref
-       linkend="libpq-connstring"/> for more information.
+       Specifies the name of the database to connect to. The
+       <replaceable>dbname</replaceable> can be a <link
+       linkend="libpq-connstring">connection string</link>.  If so,
+       connection string parameters will override any conflicting command
+       line options.
       </para>
       </listitem>
     </varlistentry>
@@ -163,6 +159,13 @@ PostgreSQL documentation
    utilities,
    also uses the environment variables supported by <application>libpq</application>
    (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
   </para>
  </refsect1>
 

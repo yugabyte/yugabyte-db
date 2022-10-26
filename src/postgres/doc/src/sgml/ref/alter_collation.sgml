@@ -24,7 +24,7 @@ PostgreSQL documentation
 ALTER COLLATION <replaceable>name</replaceable> REFRESH VERSION
 
 ALTER COLLATION <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
-ALTER COLLATION <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER COLLATION <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 ALTER COLLATION <replaceable>name</replaceable> SET SCHEMA <replaceable>new_schema</replaceable>
 </synopsis>
  </refsynopsisdiv>
@@ -93,16 +93,15 @@ ALTER COLLATION <replaceable>name</replaceable> SET SCHEMA <replaceable>new_sche
     <listitem>
      <para>
       Update the collation's version.
-      See <xref linkend="sql-altercollation-notes"
-      endterm="sql-altercollation-notes-title"/> below.
+      See <xref linkend="sql-altercollation-notes"/> below.
      </para>
     </listitem>
    </varlistentry>
   </variablelist>
  </refsect1>
 
- <refsect1 id="sql-altercollation-notes">
-  <title id="sql-altercollation-notes-title">Notes</title>
+ <refsect1 id="sql-altercollation-notes" xreflabel="Notes">
+  <title>Notes</title>
 
   <para>
    When using collations provided by the ICU library, the ICU-specific version
@@ -129,6 +128,28 @@ HINT:  Rebuild all objects affected by this collation and run ALTER COLLATION pg
    does not actually check whether all affected objects have been rebuilt
    correctly.
   </para>
+  <para>
+   When using collations provided by <literal>libc</literal>, version
+   information is recorded on systems using the GNU C library (most Linux
+   systems), FreeBSD and Windows.
+  </para>
+  <note>
+   <para>
+    When using the GNU C library for collations, the C library's version
+    is used as a proxy for the collation version.  Many Linux distributions
+    change collation definitions only when upgrading the C library, but this
+    approach is imperfect as maintainers are free to back-port newer
+    collation definitions to older C library releases.
+   </para>
+   <para>
+    When using Windows for collations, version information is only available
+    for collations defined with BCP 47 language tags such as
+    <literal>en-US</literal>. 
+   </para>
+  </note>
+  <para>
+   Currently, there is no version tracking for the database default collation.
+  </para>
 
   <para>
    The following query can be used to identify all collations in the current
@@ -140,8 +161,7 @@ SELECT pg_describe_object(refclassid, refobjid, refobjsubid) AS "Collation",
        ON refclassid = 'pg_collation'::regclass AND refobjid = c.oid
   WHERE c.collversion <> pg_collation_actual_version(c.oid)
   ORDER BY 1, 2;
-]]></programlisting>
-  </para>
+]]></programlisting></para>
  </refsect1>
 
  <refsect1>

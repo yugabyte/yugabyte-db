@@ -6,7 +6,7 @@
  * The bgwriter process used to handle checkpointing duties too.  Now
  * there is a separate process, but we did not bother to split this header.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  * src/include/postmaster/bgwriter.h
  *
@@ -17,6 +17,8 @@
 
 #include "storage/block.h"
 #include "storage/relfilenode.h"
+#include "storage/smgr.h"
+#include "storage/sync.h"
 
 
 /* GUC options */
@@ -31,9 +33,9 @@ extern void CheckpointerMain(void) pg_attribute_noreturn();
 extern void RequestCheckpoint(int flags);
 extern void CheckpointWriteDelay(int flags, double progress);
 
-extern bool ForwardFsyncRequest(RelFileNode rnode, ForkNumber forknum,
-					BlockNumber segno);
-extern void AbsorbFsyncRequests(void);
+extern bool ForwardSyncRequest(const FileTag *ftag, SyncRequestType type);
+
+extern void AbsorbSyncRequests(void);
 
 extern Size CheckpointerShmemSize(void);
 extern void CheckpointerShmemInit(void);

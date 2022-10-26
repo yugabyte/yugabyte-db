@@ -7,25 +7,15 @@
 
 #include <ctype.h>
 
+#include "crc32.h"
+#include "libpq/pqformat.h"
 #include "ltree.h"
 #include "utils/memutils.h"
-#include "crc32.h"
-
-PG_FUNCTION_INFO_V1(ltree_in);
-PG_FUNCTION_INFO_V1(ltree_out);
-PG_FUNCTION_INFO_V1(lquery_in);
-PG_FUNCTION_INFO_V1(lquery_out);
-
-
-#define UNCHAR ereport(ERROR, \
-					   (errcode(ERRCODE_SYNTAX_ERROR), \
-						errmsg("syntax error at position %d", \
-						pos)));
 
 
 typedef struct
 {
-	char	   *start;
+	const char *start;
 	int			len;			/* length in bytes */
 	int			flag;
 	int			wlen;			/* length in characters */
@@ -34,11 +24,18 @@ typedef struct
 #define LTPRS_WAITNAME	0
 #define LTPRS_WAITDELIM 1
 
-Datum
-ltree_in(PG_FUNCTION_ARGS)
+static void finish_nodeitem(nodeitem *lptr, const char *ptr,
+							bool is_lquery, int pos);
+
+
+/*
+ * expects a null terminated string
+ * returns an ltree
+ */
+static ltree *
+parse_ltree(const char *buf)
 {
-	char	   *buf = (char *) PG_GETARG_POINTER(0);
-	char	   *ptr;
+	const char *ptr;
 	nodeitem   *list,
 			   *lptr;
 	int			num = 0,
@@ -47,62 +44,59 @@ ltree_in(PG_FUNCTION_ARGS)
 	ltree	   *result;
 	ltree_level *curlevel;
 	int			charlen;
-	int			pos = 0;
+	int			pos = 1;		/* character position for error messages */
+
+#define UNCHAR ereport(ERROR, \
+					   errcode(ERRCODE_SYNTAX_ERROR), \
+					   errmsg("ltree syntax error at character %d", \
+							  pos))
 
 	ptr = buf;
 	while (*ptr)
 	{
 		charlen = pg_mblen(ptr);
-		if (charlen == 1 && t_iseq(ptr, '.'))
+		if (t_iseq(ptr, '.'))
 			num++;
 		ptr += charlen;
 	}
 
-	if (num + 1 > MaxAllocSize / sizeof(nodeitem))
+	if (num + 1 > LTREE_MAX_LEVELS)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("number of levels (%d) exceeds the maximum allowed (%d)",
-						num + 1, (int) (MaxAllocSize / sizeof(nodeitem)))));
+				 errmsg("number of ltree labels (%d) exceeds the maximum allowed (%d)",
+						num + 1, LTREE_MAX_LEVELS)));
 	list = lptr = (nodeitem *) palloc(sizeof(nodeitem) * (num + 1));
 	ptr = buf;
 	while (*ptr)
 	{
 		charlen = pg_mblen(ptr);
 
-		if (state == LTPRS_WAITNAME)
+		switch (state)
 		{
-			if (ISALNUM(ptr))
-			{
-				lptr->start = ptr;
-				lptr->wlen = 0;
-				state = LTPRS_WAITDELIM;
-			}
-			else
-				UNCHAR;
+			case LTPRS_WAITNAME:
+				if (ISALNUM(ptr))
+				{
+					lptr->start = ptr;
+					lptr->wlen = 0;
+					state = LTPRS_WAITDELIM;
+				}
+				else
+					UNCHAR;
+				break;
+			case LTPRS_WAITDELIM:
+				if (t_iseq(ptr, '.'))
+				{
+					finish_nodeitem(lptr, ptr, false, pos);
+					totallen += MAXALIGN(lptr->len + LEVEL_HDRSIZE);
+					lptr++;
+					state = LTPRS_WAITNAME;
+				}
+				else if (!ISALNUM(ptr))
+					UNCHAR;
+				break;
+			default:
+				elog(ERROR, "internal error in ltree parser");
 		}
-		else if (state == LTPRS_WAITDELIM)
-		{
-			if (charlen == 1 && t_iseq(ptr, '.'))
-			{
-				lptr->len = ptr - lptr->start;
-				if (lptr->wlen > 255)
-					ereport(ERROR,
-							(errcode(ERRCODE_NAME_TOO_LONG),
-							 errmsg("name of level is too long"),
-							 errdetail("Name length is %d, must "
-									   "be < 256, in position %d.",
-									   lptr->wlen, pos)));
-
-				totallen += MAXALIGN(lptr->len + LEVEL_HDRSIZE);
-				lptr++;
-				state = LTPRS_WAITNAME;
-			}
-			else if (!ISALNUM(ptr))
-				UNCHAR;
-		}
-		else
-			/* internal error */
-			elog(ERROR, "internal error in parser");
 
 		ptr += charlen;
 		lptr->wlen++;
@@ -111,23 +105,15 @@ ltree_in(PG_FUNCTION_ARGS)
 
 	if (state == LTPRS_WAITDELIM)
 	{
-		lptr->len = ptr - lptr->start;
-		if (lptr->wlen > 255)
-			ereport(ERROR,
-					(errcode(ERRCODE_NAME_TOO_LONG),
-					 errmsg("name of level is too long"),
-					 errdetail("Name length is %d, must "
-							   "be < 256, in position %d.",
-							   lptr->wlen, pos)));
-
+		finish_nodeitem(lptr, ptr, false, pos);
 		totallen += MAXALIGN(lptr->len + LEVEL_HDRSIZE);
 		lptr++;
 	}
 	else if (!(state == LTPRS_WAITNAME && lptr == list))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("syntax error"),
-				 errdetail("Unexpected end of line.")));
+				 errmsg("ltree syntax error"),
+				 errdetail("Unexpected end of input.")));
 
 	result = (ltree *) palloc0(LTREE_HDRSIZE + totallen);
 	SET_VARSIZE(result, LTREE_HDRSIZE + totallen);
@@ -143,13 +129,18 @@ ltree_in(PG_FUNCTION_ARGS)
 	}
 
 	pfree(list);
-	PG_RETURN_POINTER(result);
+	return result;
+
+#undef UNCHAR
 }
 
-Datum
-ltree_out(PG_FUNCTION_ARGS)
+/*
+ * expects an ltree
+ * returns a null terminated string
+ */
+static char *
+deparse_ltree(const ltree *in)
 {
-	ltree	   *in = PG_GETARG_LTREE_P(0);
 	char	   *buf,
 			   *ptr;
 	int			i;
@@ -170,10 +161,83 @@ ltree_out(PG_FUNCTION_ARGS)
 	}
 
 	*ptr = '\0';
-	PG_FREE_IF_COPY(in, 0);
-
-	PG_RETURN_POINTER(buf);
+	return buf;
 }
+
+/*
+ * Basic ltree I/O functions
+ */
+PG_FUNCTION_INFO_V1(ltree_in);
+Datum
+ltree_in(PG_FUNCTION_ARGS)
+{
+	char	   *buf = (char *) PG_GETARG_POINTER(0);
+
+	PG_RETURN_POINTER(parse_ltree(buf));
+}
+
+PG_FUNCTION_INFO_V1(ltree_out);
+Datum
+ltree_out(PG_FUNCTION_ARGS)
+{
+	ltree	   *in = PG_GETARG_LTREE_P(0);
+
+	PG_RETURN_POINTER(deparse_ltree(in));
+}
+
+/*
+ * ltree type send function
+ *
+ * The type is sent as text in binary mode, so this is almost the same
+ * as the output function, but it's prefixed with a version number so we
+ * can change the binary format sent in future if necessary. For now,
+ * only version 1 is supported.
+ */
+PG_FUNCTION_INFO_V1(ltree_send);
+Datum
+ltree_send(PG_FUNCTION_ARGS)
+{
+	ltree	   *in = PG_GETARG_LTREE_P(0);
+	StringInfoData buf;
+	int			version = 1;
+	char	   *res = deparse_ltree(in);
+
+	pq_begintypsend(&buf);
+	pq_sendint8(&buf, version);
+	pq_sendtext(&buf, res, strlen(res));
+	pfree(res);
+
+	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+/*
+ * ltree type recv function
+ *
+ * The type is sent as text in binary mode, so this is almost the same
+ * as the input function, but it's prefixed with a version number so we
+ * can change the binary format sent in future if necessary. For now,
+ * only version 1 is supported.
+ */
+PG_FUNCTION_INFO_V1(ltree_recv);
+Datum
+ltree_recv(PG_FUNCTION_ARGS)
+{
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+	int			version = pq_getmsgint(buf, 1);
+	char	   *str;
+	int			nbytes;
+	ltree	   *res;
+
+	if (version != 1)
+		elog(ERROR, "unsupported ltree version number %d", version);
+
+	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
+	res = parse_ltree(str);
+	pfree(str);
+
+	PG_RETURN_POINTER(res);
+}
+
 
 #define LQPRS_WAITLEVEL 0
 #define LQPRS_WAITDELIM 1
@@ -190,11 +254,14 @@ ltree_out(PG_FUNCTION_ARGS)
 #define ITEMSIZE	MAXALIGN(LQL_HDRSIZE+sizeof(nodeitem*))
 #define NEXTLEV(x) ( (lquery_level*)( ((char*)(x)) + ITEMSIZE) )
 
-Datum
-lquery_in(PG_FUNCTION_ARGS)
+/*
+ * expects a null terminated string
+ * returns an lquery
+ */
+static lquery *
+parse_lquery(const char *buf)
 {
-	char	   *buf = (char *) PG_GETARG_POINTER(0);
-	char	   *ptr;
+	const char *ptr;
 	int			num = 0,
 				totallen = 0,
 				numOR = 0;
@@ -208,208 +275,208 @@ lquery_in(PG_FUNCTION_ARGS)
 	bool		hasnot = false;
 	bool		wasbad = false;
 	int			charlen;
-	int			pos = 0;
+	int			pos = 1;		/* character position for error messages */
+
+#define UNCHAR ereport(ERROR, \
+					   errcode(ERRCODE_SYNTAX_ERROR), \
+					   errmsg("lquery syntax error at character %d", \
+							  pos))
 
 	ptr = buf;
 	while (*ptr)
 	{
 		charlen = pg_mblen(ptr);
 
-		if (charlen == 1)
-		{
-			if (t_iseq(ptr, '.'))
-				num++;
-			else if (t_iseq(ptr, '|'))
-				numOR++;
-		}
+		if (t_iseq(ptr, '.'))
+			num++;
+		else if (t_iseq(ptr, '|'))
+			numOR++;
 
 		ptr += charlen;
 	}
 
 	num++;
-	if (num > MaxAllocSize / ITEMSIZE)
+	if (num > LQUERY_MAX_LEVELS)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("number of levels (%d) exceeds the maximum allowed (%d)",
-						num, (int) (MaxAllocSize / ITEMSIZE))));
+				 errmsg("number of lquery items (%d) exceeds the maximum allowed (%d)",
+						num, LQUERY_MAX_LEVELS)));
 	curqlevel = tmpql = (lquery_level *) palloc0(ITEMSIZE * num);
 	ptr = buf;
 	while (*ptr)
 	{
 		charlen = pg_mblen(ptr);
 
-		if (state == LQPRS_WAITLEVEL)
+		switch (state)
 		{
-			if (ISALNUM(ptr))
-			{
-				GETVAR(curqlevel) = lptr = (nodeitem *) palloc0(sizeof(nodeitem) * (numOR + 1));
-				lptr->start = ptr;
-				state = LQPRS_WAITDELIM;
-				curqlevel->numvar = 1;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '!'))
-			{
-				GETVAR(curqlevel) = lptr = (nodeitem *) palloc0(sizeof(nodeitem) * (numOR + 1));
-				lptr->start = ptr + 1;
-				state = LQPRS_WAITDELIM;
-				curqlevel->numvar = 1;
-				curqlevel->flag |= LQL_NOT;
-				hasnot = true;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '*'))
-				state = LQPRS_WAITOPEN;
-			else
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITVAR)
-		{
-			if (ISALNUM(ptr))
-			{
-				lptr++;
-				lptr->start = ptr;
-				state = LQPRS_WAITDELIM;
-				curqlevel->numvar++;
-			}
-			else
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITDELIM)
-		{
-			if (charlen == 1 && t_iseq(ptr, '@'))
-			{
-				if (lptr->start == ptr)
+			case LQPRS_WAITLEVEL:
+				if (ISALNUM(ptr))
+				{
+					GETVAR(curqlevel) = lptr = (nodeitem *) palloc0(sizeof(nodeitem) * (numOR + 1));
+					lptr->start = ptr;
+					state = LQPRS_WAITDELIM;
+					curqlevel->numvar = 1;
+				}
+				else if (t_iseq(ptr, '!'))
+				{
+					GETVAR(curqlevel) = lptr = (nodeitem *) palloc0(sizeof(nodeitem) * (numOR + 1));
+					lptr->start = ptr + 1;
+					lptr->wlen = -1;	/* compensate for counting ! below */
+					state = LQPRS_WAITDELIM;
+					curqlevel->numvar = 1;
+					curqlevel->flag |= LQL_NOT;
+					hasnot = true;
+				}
+				else if (t_iseq(ptr, '*'))
+					state = LQPRS_WAITOPEN;
+				else
 					UNCHAR;
-				lptr->flag |= LVAR_INCASE;
-				curqlevel->flag |= LVAR_INCASE;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '*'))
-			{
-				if (lptr->start == ptr)
+				break;
+			case LQPRS_WAITVAR:
+				if (ISALNUM(ptr))
+				{
+					lptr++;
+					lptr->start = ptr;
+					state = LQPRS_WAITDELIM;
+					curqlevel->numvar++;
+				}
+				else
 					UNCHAR;
-				lptr->flag |= LVAR_ANYEND;
-				curqlevel->flag |= LVAR_ANYEND;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '%'))
-			{
-				if (lptr->start == ptr)
+				break;
+			case LQPRS_WAITDELIM:
+				if (t_iseq(ptr, '@'))
+				{
+					lptr->flag |= LVAR_INCASE;
+					curqlevel->flag |= LVAR_INCASE;
+				}
+				else if (t_iseq(ptr, '*'))
+				{
+					lptr->flag |= LVAR_ANYEND;
+					curqlevel->flag |= LVAR_ANYEND;
+				}
+				else if (t_iseq(ptr, '%'))
+				{
+					lptr->flag |= LVAR_SUBLEXEME;
+					curqlevel->flag |= LVAR_SUBLEXEME;
+				}
+				else if (t_iseq(ptr, '|'))
+				{
+					finish_nodeitem(lptr, ptr, true, pos);
+					state = LQPRS_WAITVAR;
+				}
+				else if (t_iseq(ptr, '{'))
+				{
+					finish_nodeitem(lptr, ptr, true, pos);
+					curqlevel->flag |= LQL_COUNT;
+					state = LQPRS_WAITFNUM;
+				}
+				else if (t_iseq(ptr, '.'))
+				{
+					finish_nodeitem(lptr, ptr, true, pos);
+					state = LQPRS_WAITLEVEL;
+					curqlevel = NEXTLEV(curqlevel);
+				}
+				else if (ISALNUM(ptr))
+				{
+					/* disallow more chars after a flag */
+					if (lptr->flag)
+						UNCHAR;
+				}
+				else
 					UNCHAR;
-				lptr->flag |= LVAR_SUBLEXEME;
-				curqlevel->flag |= LVAR_SUBLEXEME;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '|'))
-			{
-				lptr->len = ptr - lptr->start -
-					((lptr->flag & LVAR_SUBLEXEME) ? 1 : 0) -
-					((lptr->flag & LVAR_INCASE) ? 1 : 0) -
-					((lptr->flag & LVAR_ANYEND) ? 1 : 0);
-				if (lptr->wlen > 255)
-					ereport(ERROR,
-							(errcode(ERRCODE_NAME_TOO_LONG),
-							 errmsg("name of level is too long"),
-							 errdetail("Name length is %d, must "
-									   "be < 256, in position %d.",
-									   lptr->wlen, pos)));
+				break;
+			case LQPRS_WAITOPEN:
+				if (t_iseq(ptr, '{'))
+					state = LQPRS_WAITFNUM;
+				else if (t_iseq(ptr, '.'))
+				{
+					/* We only get here for '*', so these are correct defaults */
+					curqlevel->low = 0;
+					curqlevel->high = LTREE_MAX_LEVELS;
+					curqlevel = NEXTLEV(curqlevel);
+					state = LQPRS_WAITLEVEL;
+				}
+				else
+					UNCHAR;
+				break;
+			case LQPRS_WAITFNUM:
+				if (t_iseq(ptr, ','))
+					state = LQPRS_WAITSNUM;
+				else if (t_isdigit(ptr))
+				{
+					int			low = atoi(ptr);
 
-				state = LQPRS_WAITVAR;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '.'))
-			{
-				lptr->len = ptr - lptr->start -
-					((lptr->flag & LVAR_SUBLEXEME) ? 1 : 0) -
-					((lptr->flag & LVAR_INCASE) ? 1 : 0) -
-					((lptr->flag & LVAR_ANYEND) ? 1 : 0);
-				if (lptr->wlen > 255)
-					ereport(ERROR,
-							(errcode(ERRCODE_NAME_TOO_LONG),
-							 errmsg("name of level is too long"),
-							 errdetail("Name length is %d, must "
-									   "be < 256, in position %d.",
-									   lptr->wlen, pos)));
+					if (low < 0 || low > LTREE_MAX_LEVELS)
+						ereport(ERROR,
+								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+								 errmsg("lquery syntax error"),
+								 errdetail("Low limit (%d) exceeds the maximum allowed (%d), at character %d.",
+										   low, LTREE_MAX_LEVELS, pos)));
 
-				state = LQPRS_WAITLEVEL;
-				curqlevel = NEXTLEV(curqlevel);
-			}
-			else if (ISALNUM(ptr))
-			{
-				if (lptr->flag)
+					curqlevel->low = (uint16) low;
+					state = LQPRS_WAITND;
+				}
+				else
 					UNCHAR;
-			}
-			else
-				UNCHAR;
+				break;
+			case LQPRS_WAITSNUM:
+				if (t_isdigit(ptr))
+				{
+					int			high = atoi(ptr);
+
+					if (high < 0 || high > LTREE_MAX_LEVELS)
+						ereport(ERROR,
+								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+								 errmsg("lquery syntax error"),
+								 errdetail("High limit (%d) exceeds the maximum allowed (%d), at character %d.",
+										   high, LTREE_MAX_LEVELS, pos)));
+					else if (curqlevel->low > high)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("lquery syntax error"),
+								 errdetail("Low limit (%d) is greater than high limit (%d), at character %d.",
+										   curqlevel->low, high, pos)));
+
+					curqlevel->high = (uint16) high;
+					state = LQPRS_WAITCLOSE;
+				}
+				else if (t_iseq(ptr, '}'))
+				{
+					curqlevel->high = LTREE_MAX_LEVELS;
+					state = LQPRS_WAITEND;
+				}
+				else
+					UNCHAR;
+				break;
+			case LQPRS_WAITCLOSE:
+				if (t_iseq(ptr, '}'))
+					state = LQPRS_WAITEND;
+				else if (!t_isdigit(ptr))
+					UNCHAR;
+				break;
+			case LQPRS_WAITND:
+				if (t_iseq(ptr, '}'))
+				{
+					curqlevel->high = curqlevel->low;
+					state = LQPRS_WAITEND;
+				}
+				else if (t_iseq(ptr, ','))
+					state = LQPRS_WAITSNUM;
+				else if (!t_isdigit(ptr))
+					UNCHAR;
+				break;
+			case LQPRS_WAITEND:
+				if (t_iseq(ptr, '.'))
+				{
+					state = LQPRS_WAITLEVEL;
+					curqlevel = NEXTLEV(curqlevel);
+				}
+				else
+					UNCHAR;
+				break;
+			default:
+				elog(ERROR, "internal error in lquery parser");
 		}
-		else if (state == LQPRS_WAITOPEN)
-		{
-			if (charlen == 1 && t_iseq(ptr, '{'))
-				state = LQPRS_WAITFNUM;
-			else if (charlen == 1 && t_iseq(ptr, '.'))
-			{
-				curqlevel->low = 0;
-				curqlevel->high = 0xffff;
-				curqlevel = NEXTLEV(curqlevel);
-				state = LQPRS_WAITLEVEL;
-			}
-			else
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITFNUM)
-		{
-			if (charlen == 1 && t_iseq(ptr, ','))
-				state = LQPRS_WAITSNUM;
-			else if (t_isdigit(ptr))
-			{
-				curqlevel->low = atoi(ptr);
-				state = LQPRS_WAITND;
-			}
-			else
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITSNUM)
-		{
-			if (t_isdigit(ptr))
-			{
-				curqlevel->high = atoi(ptr);
-				state = LQPRS_WAITCLOSE;
-			}
-			else if (charlen == 1 && t_iseq(ptr, '}'))
-			{
-				curqlevel->high = 0xffff;
-				state = LQPRS_WAITEND;
-			}
-			else
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITCLOSE)
-		{
-			if (charlen == 1 && t_iseq(ptr, '}'))
-				state = LQPRS_WAITEND;
-			else if (!t_isdigit(ptr))
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITND)
-		{
-			if (charlen == 1 && t_iseq(ptr, '}'))
-			{
-				curqlevel->high = curqlevel->low;
-				state = LQPRS_WAITEND;
-			}
-			else if (charlen == 1 && t_iseq(ptr, ','))
-				state = LQPRS_WAITSNUM;
-			else if (!t_isdigit(ptr))
-				UNCHAR;
-		}
-		else if (state == LQPRS_WAITEND)
-		{
-			if (charlen == 1 && t_iseq(ptr, '.'))
-			{
-				state = LQPRS_WAITLEVEL;
-				curqlevel = NEXTLEV(curqlevel);
-			}
-			else
-				UNCHAR;
-		}
-		else
-			/* internal error */
-			elog(ERROR, "internal error in parser");
 
 		ptr += charlen;
 		if (state == LQPRS_WAITDELIM)
@@ -418,38 +485,14 @@ lquery_in(PG_FUNCTION_ARGS)
 	}
 
 	if (state == LQPRS_WAITDELIM)
-	{
-		if (lptr->start == ptr)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("syntax error"),
-					 errdetail("Unexpected end of line.")));
-
-		lptr->len = ptr - lptr->start -
-			((lptr->flag & LVAR_SUBLEXEME) ? 1 : 0) -
-			((lptr->flag & LVAR_INCASE) ? 1 : 0) -
-			((lptr->flag & LVAR_ANYEND) ? 1 : 0);
-		if (lptr->len == 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("syntax error"),
-					 errdetail("Unexpected end of line.")));
-
-		if (lptr->wlen > 255)
-			ereport(ERROR,
-					(errcode(ERRCODE_NAME_TOO_LONG),
-					 errmsg("name of level is too long"),
-					 errdetail("Name length is %d, must "
-							   "be < 256, in position %d.",
-							   lptr->wlen, pos)));
-	}
+		finish_nodeitem(lptr, ptr, true, pos);
 	else if (state == LQPRS_WAITOPEN)
-		curqlevel->high = 0xffff;
+		curqlevel->high = LTREE_MAX_LEVELS;
 	else if (state != LQPRS_WAITEND)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("syntax error"),
-				 errdetail("Unexpected end of line.")));
+				 errmsg("lquery syntax error"),
+				 errdetail("Unexpected end of input.")));
 
 	curqlevel = tmpql;
 	totallen = LQUERY_HDRSIZE;
@@ -465,13 +508,6 @@ lquery_in(PG_FUNCTION_ARGS)
 				lptr++;
 			}
 		}
-		else if (curqlevel->low > curqlevel->high)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("syntax error"),
-					 errdetail("Low limit(%d) is greater than upper(%d).",
-							   curqlevel->low, curqlevel->high)));
-
 		curqlevel = NEXTLEV(curqlevel);
 	}
 
@@ -504,24 +540,78 @@ lquery_in(PG_FUNCTION_ARGS)
 			}
 			pfree(GETVAR(curqlevel));
 			if (cur->numvar > 1 || cur->flag != 0)
+			{
+				/* Not a simple match */
 				wasbad = true;
+			}
 			else if (wasbad == false)
+			{
+				/* count leading simple matches */
 				(result->firstgood)++;
+			}
 		}
 		else
+		{
+			/* '*', so this isn't a simple match */
 			wasbad = true;
+		}
 		curqlevel = NEXTLEV(curqlevel);
 		cur = LQL_NEXT(cur);
 	}
 
 	pfree(tmpql);
-	PG_RETURN_POINTER(result);
+	return result;
+
+#undef UNCHAR
 }
 
-Datum
-lquery_out(PG_FUNCTION_ARGS)
+/*
+ * Close out parsing an ltree or lquery nodeitem:
+ * compute the correct length, and complain if it's not OK
+ */
+static void
+finish_nodeitem(nodeitem *lptr, const char *ptr, bool is_lquery, int pos)
 {
-	lquery	   *in = PG_GETARG_LQUERY_P(0);
+	if (is_lquery)
+	{
+		/*
+		 * Back up over any flag characters, and discount them from length and
+		 * position.
+		 */
+		while (ptr > lptr->start && strchr("@*%", ptr[-1]) != NULL)
+		{
+			ptr--;
+			lptr->wlen--;
+			pos--;
+		}
+	}
+
+	/* Now compute the byte length, which we weren't tracking before. */
+	lptr->len = ptr - lptr->start;
+
+	/* Complain if it's empty or too long */
+	if (lptr->len == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 is_lquery ?
+				 errmsg("lquery syntax error at character %d", pos) :
+				 errmsg("ltree syntax error at character %d", pos),
+				 errdetail("Empty labels are not allowed.")));
+	if (lptr->wlen > LTREE_LABEL_MAX_CHARS)
+		ereport(ERROR,
+				(errcode(ERRCODE_NAME_TOO_LONG),
+				 errmsg("label string is too long"),
+				 errdetail("Label length is %d, must be at most %d, at character %d.",
+						   lptr->wlen, LTREE_LABEL_MAX_CHARS, pos)));
+}
+
+/*
+ * expects an lquery
+ * returns a null terminated string
+ */
+static char *
+deparse_lquery(const lquery *in)
+{
 	char	   *buf,
 			   *ptr;
 	int			i,
@@ -535,7 +625,11 @@ lquery_out(PG_FUNCTION_ARGS)
 	{
 		totallen++;
 		if (curqlevel->numvar)
+		{
 			totallen += 1 + (curqlevel->numvar * 4) + curqlevel->totallen;
+			if (curqlevel->flag & LQL_COUNT)
+				totallen += 2 * 11 + 3;
+		}
 		else
 			totallen += 2 * 11 + 4;
 		curqlevel = LQL_NEXT(curqlevel);
@@ -587,26 +681,37 @@ lquery_out(PG_FUNCTION_ARGS)
 		}
 		else
 		{
+			*ptr = '*';
+			ptr++;
+		}
+
+		if ((curqlevel->flag & LQL_COUNT) || curqlevel->numvar == 0)
+		{
 			if (curqlevel->low == curqlevel->high)
 			{
-				sprintf(ptr, "*{%d}", curqlevel->low);
+				sprintf(ptr, "{%d}", curqlevel->low);
 			}
 			else if (curqlevel->low == 0)
 			{
-				if (curqlevel->high == 0xffff)
+				if (curqlevel->high == LTREE_MAX_LEVELS)
 				{
-					*ptr = '*';
-					*(ptr + 1) = '\0';
+					if (curqlevel->numvar == 0)
+					{
+						/* This is default for '*', so print nothing */
+						*ptr = '\0';
+					}
+					else
+						sprintf(ptr, "{,}");
 				}
 				else
-					sprintf(ptr, "*{,%d}", curqlevel->high);
+					sprintf(ptr, "{,%d}", curqlevel->high);
 			}
-			else if (curqlevel->high == 0xffff)
+			else if (curqlevel->high == LTREE_MAX_LEVELS)
 			{
-				sprintf(ptr, "*{%d,}", curqlevel->low);
+				sprintf(ptr, "{%d,}", curqlevel->low);
 			}
 			else
-				sprintf(ptr, "*{%d,%d}", curqlevel->low, curqlevel->high);
+				sprintf(ptr, "{%d,%d}", curqlevel->low, curqlevel->high);
 			ptr = strchr(ptr, '\0');
 		}
 
@@ -614,7 +719,79 @@ lquery_out(PG_FUNCTION_ARGS)
 	}
 
 	*ptr = '\0';
-	PG_FREE_IF_COPY(in, 0);
+	return buf;
+}
 
-	PG_RETURN_POINTER(buf);
+/*
+ * Basic lquery I/O functions
+ */
+PG_FUNCTION_INFO_V1(lquery_in);
+Datum
+lquery_in(PG_FUNCTION_ARGS)
+{
+	char	   *buf = (char *) PG_GETARG_POINTER(0);
+
+	PG_RETURN_POINTER(parse_lquery(buf));
+}
+
+PG_FUNCTION_INFO_V1(lquery_out);
+Datum
+lquery_out(PG_FUNCTION_ARGS)
+{
+	lquery	   *in = PG_GETARG_LQUERY_P(0);
+
+	PG_RETURN_POINTER(deparse_lquery(in));
+}
+
+/*
+ * lquery type send function
+ *
+ * The type is sent as text in binary mode, so this is almost the same
+ * as the output function, but it's prefixed with a version number so we
+ * can change the binary format sent in future if necessary. For now,
+ * only version 1 is supported.
+ */
+PG_FUNCTION_INFO_V1(lquery_send);
+Datum
+lquery_send(PG_FUNCTION_ARGS)
+{
+	lquery	   *in = PG_GETARG_LQUERY_P(0);
+	StringInfoData buf;
+	int			version = 1;
+	char	   *res = deparse_lquery(in);
+
+	pq_begintypsend(&buf);
+	pq_sendint8(&buf, version);
+	pq_sendtext(&buf, res, strlen(res));
+	pfree(res);
+
+	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+/*
+ * lquery type recv function
+ *
+ * The type is sent as text in binary mode, so this is almost the same
+ * as the input function, but it's prefixed with a version number so we
+ * can change the binary format sent in future if necessary. For now,
+ * only version 1 is supported.
+ */
+PG_FUNCTION_INFO_V1(lquery_recv);
+Datum
+lquery_recv(PG_FUNCTION_ARGS)
+{
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+	int			version = pq_getmsgint(buf, 1);
+	char	   *str;
+	int			nbytes;
+	lquery	   *res;
+
+	if (version != 1)
+		elog(ERROR, "unsupported lquery version number %d", version);
+
+	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
+	res = parse_lquery(str);
+	pfree(str);
+
+	PG_RETURN_POINTER(res);
 }

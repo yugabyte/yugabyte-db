@@ -1,6 +1,6 @@
 # contrib/pgcrypto/Makefile
 
-INT_SRCS = md5.c sha1.c internal.c internal-sha2.c blf.c rijndael.c \
+INT_SRCS = internal.c internal-sha2.c blf.c rijndael.c \
 		pgp-mpi-internal.c imath.c
 INT_TESTS = sha2
 
@@ -10,24 +10,43 @@ OSSL_TESTS = sha2 des 3des cast5
 ZLIB_TST = pgp-compression
 ZLIB_OFF_TST = pgp-zlib-DISABLED
 
-CF_SRCS = $(if $(subst no,,$(with_openssl)), $(OSSL_SRCS), $(INT_SRCS))
-CF_TESTS = $(if $(subst no,,$(with_openssl)), $(OSSL_TESTS), $(INT_TESTS))
+CF_SRCS = $(if $(subst openssl,,$(with_ssl)), $(INT_SRCS), $(OSSL_SRCS))
+CF_TESTS = $(if $(subst openssl,,$(with_ssl)), $(INT_TESTS), $(OSSL_TESTS))
 CF_PGP_TESTS = $(if $(subst no,,$(with_zlib)), $(ZLIB_TST), $(ZLIB_OFF_TST))
 
-SRCS		= pgcrypto.c px.c px-hmac.c px-crypt.c \
-		crypt-gensalt.c crypt-blowfish.c crypt-des.c \
-		crypt-md5.c $(CF_SRCS) \
-		mbuf.c pgp.c pgp-armor.c pgp-cfb.c pgp-compress.c \
-		pgp-decrypt.c pgp-encrypt.c pgp-info.c pgp-mpi.c \
-		pgp-pubdec.c pgp-pubenc.c pgp-pubkey.c pgp-s2k.c \
-		pgp-pgsql.c
+SRCS = \
+	$(CF_SRCS) \
+	crypt-blowfish.c \
+	crypt-des.c \
+	crypt-gensalt.c \
+	crypt-md5.c \
+	mbuf.c \
+	pgcrypto.c \
+	pgp-armor.c \
+	pgp-cfb.c \
+	pgp-compress.c \
+	pgp-decrypt.c \
+	pgp-encrypt.c \
+	pgp-info.c \
+	pgp-mpi.c \
+	pgp-pgsql.c \
+	pgp-pubdec.c \
+	pgp-pubenc.c \
+	pgp-pubkey.c \
+	pgp-s2k.c \
+	pgp.c \
+	px-crypt.c \
+	px-hmac.c \
+	px.c
 
 MODULE_big	= pgcrypto
-OBJS		= $(SRCS:.c=.o) $(WIN32RES)
+OBJS = \
+	$(SRCS:.c=.o) \
+	$(WIN32RES)
 
 EXTENSION = pgcrypto
 DATA = pgcrypto--1.3.sql pgcrypto--1.2--1.3.sql pgcrypto--1.1--1.2.sql \
-	pgcrypto--1.0--1.1.sql pgcrypto--unpackaged--1.0.sql
+	pgcrypto--1.0--1.1.sql
 PGFILEDESC = "pgcrypto - cryptographic functions"
 
 REGRESS = init md5 sha1 hmac-md5 hmac-sha1 blowfish rijndael \
@@ -58,6 +77,9 @@ SHLIB_LINK += $(filter -leay32, $(LIBS))
 # those must be at the end
 SHLIB_LINK += -lws2_32
 endif
+
+# Upstream uses a larger subset of C99.
+imath.o: CFLAGS+=$(PERMIT_DECLARATION_AFTER_STATEMENT)
 
 rijndael.o: rijndael.tbl
 

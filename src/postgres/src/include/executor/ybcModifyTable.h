@@ -60,10 +60,12 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
  * If non-zero, it will be used instead of generation, otherwise it will be set
  * to the generated value.
  */
-extern Oid YBCHeapInsert(TupleTableSlot *slot,
+extern Oid YBCHeapInsert(ResultRelInfo *resultRelInfo,
+						 TupleTableSlot *slot,
                          HeapTuple tuple,
                          EState *estate);
-extern Oid YBCHeapInsertForDb(Oid dboid,
+extern Oid YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
+							  Oid dboid,
                               TupleTableSlot *slot,
                               HeapTuple tuple,
                               EState *estate,
@@ -113,7 +115,7 @@ extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
 extern void YBCExecuteInsertIndex(Relation rel,
 								  Datum *values,
 								  bool *isnull,
-								  Datum ybctid,
+								  ItemPointer tid,
 								  const uint64_t* backfill_write_time,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
@@ -121,7 +123,7 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
 									   Relation rel,
 									   Datum* values,
 									   bool* isnull,
-									   Datum ybctid,
+									   ItemPointer tid,
 									   const uint64_t* backfill_write_time,
 									   yb_bind_for_write_function callback,
 									   void *indexstate);
@@ -144,9 +146,9 @@ extern bool YBCExecuteDelete(Relation rel,
  * index's backing YugaByte index table.
  */
 extern void YBCExecuteDeleteIndex(Relation index,
-								  Datum *values,
-								  bool *isnull,
-								  Datum ybctid,
+                                  Datum *values,
+                                  bool *isnull,
+                                  Datum ybctid,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
 
@@ -157,6 +159,7 @@ extern void YBCExecuteDeleteIndex(Relation index,
  * it is a single row op.
  */
 extern bool YBCExecuteUpdate(Relation rel,
+							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *slot,
 							 HeapTuple tuple,
 							 EState *estate,

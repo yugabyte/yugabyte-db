@@ -1,19 +1,55 @@
-# TestLib, low-level routines and actions regression tests.
-#
-# This module contains a set of routines dedicated to environment setup for
-# a PostgreSQL regression test run and includes some low-level routines
-# aimed at controlling command execution, logging and test functions. This
-# module should never depend on any other PostgreSQL regression test modules.
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
+=pod
+
+=head1 NAME
+
+TestLib - helper module for writing PostgreSQL's C<prove> tests.
+
+=head1 SYNOPSIS
+
+  use TestLib;
+
+  # Test basic output of a command
+  program_help_ok('initdb');
+  program_version_ok('initdb');
+  program_options_handling_ok('initdb');
+
+  # Test option combinations
+  command_fails(['initdb', '--invalid-option'],
+              'command fails with invalid option');
+  my $tempdir = TestLib::tempdir;
+  command_ok('initdb', '-D', $tempdir);
+
+  # Miscellanea
+  print "on Windows" if $TestLib::windows_os;
+  my $path = TestLib::perl2host($backup_dir);
+  ok(check_mode_recursive($stream_dir, 0700, 0600),
+    "check stream dir permissions");
+  TestLib::system_log('pg_ctl', 'kill', 'QUIT', $slow_pid);
+
+=head1 DESCRIPTION
+
+C<TestLib> contains a set of routines dedicated to environment setup for
+a PostgreSQL regression test run and includes some low-level routines
+aimed at controlling command execution, logging and test functions.
+
+=cut
+
+# This module should never depend on any other PostgreSQL regression test
+# modules.
 
 package TestLib;
 
 use strict;
 use warnings;
 
+use Carp;
 use Config;
 use Cwd;
 use Exporter 'import';
-use Fcntl qw(:mode);
+use Fcntl qw(:mode :seek);
 use File::Basename;
 use File::Find;
 use File::Spec;
@@ -22,7 +58,8 @@ use File::Temp ();
 use IPC::Run;
 use SimpleTee;
 
-# specify a recent enough version of Test::More to support the done_testing() function
+# specify a recent enough version of Test::More to support the
+# done_testing() function
 use Test::More 0.87;
 
 our @EXPORT = qw(
@@ -33,9 +70,11 @@ our @EXPORT = qw(
   check_mode_recursive
   chmod_recursive
   check_pg_config
+  dir_symlink
   system_or_bail
   system_log
   run_log
+  run_command
 
   command_ok
   command_fails
@@ -49,9 +88,12 @@ our @EXPORT = qw(
   command_checks_all
 
   $windows_os
+  $is_msys2
+  $use_unix_sockets
 );
 
-our ($windows_os, $tmp_check, $log_path, $test_logfile);
+our ($windows_os, $is_msys2, $use_unix_sockets, $tmp_check, $log_path,
+	$test_logfile);
 
 BEGIN
 {
@@ -62,22 +104,78 @@ BEGIN
 	delete $ENV{LC_ALL};
 	$ENV{LC_MESSAGES} = 'C';
 
-	delete $ENV{PGCONNECT_TIMEOUT};
-	delete $ENV{PGDATA};
-	delete $ENV{PGDATABASE};
-	delete $ENV{PGHOSTADDR};
-	delete $ENV{PGREQUIRESSL};
-	delete $ENV{PGSERVICE};
-	delete $ENV{PGSSLMODE};
-	delete $ENV{PGUSER};
-	delete $ENV{PGPORT};
-	delete $ENV{PGHOST};
+	# This list should be kept in sync with pg_regress.c.
+	my @envkeys = qw (
+	  PGCHANNELBINDING
+	  PGCLIENTENCODING
+	  PGCONNECT_TIMEOUT
+	  PGDATA
+	  PGDATABASE
+	  PGGSSENCMODE
+	  PGGSSLIB
+	  PGHOSTADDR
+	  PGKRBSRVNAME
+	  PGPASSFILE
+	  PGPASSWORD
+	  PGREQUIREPEER
+	  PGREQUIRESSL
+	  PGSERVICE
+	  PGSERVICEFILE
+	  PGSSLCERT
+	  PGSSLCRL
+	  PGSSLCRLDIR
+	  PGSSLKEY
+	  PGSSLMAXPROTOCOLVERSION
+	  PGSSLMINPROTOCOLVERSION
+	  PGSSLMODE
+	  PGSSLROOTCERT
+	  PGSSLSNI
+	  PGTARGETSESSIONATTRS
+	  PGUSER
+	  PGPORT
+	  PGHOST
+	  PG_COLOR
+	);
+	delete @ENV{@envkeys};
 
 	$ENV{PGAPPNAME} = basename($0);
 
 	# Must be set early
 	$windows_os = $Config{osname} eq 'MSWin32' || $Config{osname} eq 'msys';
+	# Check if this environment is MSYS2.
+	$is_msys2 = $^O eq 'msys' && `uname -or` =~ /^[2-9].*Msys/;
+
+	if ($windows_os)
+	{
+		require Win32API::File;
+		Win32API::File->import(
+			qw(createFile OsFHandleOpen CloseHandle setFilePointer));
+	}
+
+	# Specifies whether to use Unix sockets for test setups.  On
+	# Windows we don't use them by default since it's not universally
+	# supported, but it can be overridden if desired.
+	$use_unix_sockets =
+	  (!$windows_os || defined $ENV{PG_TEST_USE_UNIX_SOCKETS});
 }
+
+=pod
+
+=head1 EXPORTED VARIABLES
+
+=over
+
+=item C<$windows_os>
+
+Set to true when running under Windows, except on Cygwin.
+
+=item C<$is_msys2>
+
+Set to true when running under MSYS2.
+
+=back
+
+=cut
 
 INIT
 {
@@ -129,13 +227,29 @@ INIT
 END
 {
 
-	# Preserve temporary directory for this test on failure
-	$File::Temp::KEEP_ALL = 1 unless all_tests_passing();
+	# Test files have several ways of causing prove_check to fail:
+	# 1. Exit with a non-zero status.
+	# 2. Call ok(0) or similar, indicating that a constituent test failed.
+	# 3. Deviate from the planned number of tests.
+	#
+	# Preserve temporary directories after (1) and after (2).
+	$File::Temp::KEEP_ALL = 1 unless $? == 0 && all_tests_passing();
 }
+
+=pod
+
+=head1 ROUTINES
+
+=over
+
+=item all_tests_passing()
+
+Return 1 if all the tests run so far have passed. Otherwise, return 0.
+
+=cut
 
 sub all_tests_passing
 {
-	my $fail_count = 0;
 	foreach my $status (Test::More->builder->summary)
 	{
 		return 0 unless $status;
@@ -143,9 +257,19 @@ sub all_tests_passing
 	return 1;
 }
 
-#
-# Helper functions
-#
+=pod
+
+=item tempdir(prefix)
+
+Securely create a temporary directory inside C<$tmp_check>, like C<mkdtemp>,
+and return its name.  The directory will be removed automatically at the
+end of the tests.
+
+If C<prefix> is given, the new directory is templated as C<${prefix}_XXXX>.
+Otherwise the template is C<tmp_test_XXXX>.
+
+=cut
+
 sub tempdir
 {
 	my ($prefix) = @_;
@@ -156,31 +280,84 @@ sub tempdir
 		CLEANUP => 1);
 }
 
+=pod
+
+=item tempdir_short()
+
+As above, but the directory is outside the build tree so that it has a short
+name, to avoid path length issues.
+
+=cut
+
 sub tempdir_short
 {
 
-	# Use a separate temp dir outside the build tree for the
-	# Unix-domain socket, to avoid file name length issues.
 	return File::Temp::tempdir(CLEANUP => 1);
 }
 
-# Return the real directory for a virtual path directory under msys.
-# The directory  must exist. If it's not an existing directory or we're
-# not under msys, return the input argument unchanged.
-sub real_dir
+=pod
+
+=item perl2host()
+
+Translate a virtual file name to a host file name.  Currently, this is a no-op
+except for the case of Perl=msys and host=mingw32.  The subject need not
+exist, but its parent or grandparent directory must exist unless cygpath is
+available.
+
+The returned path uses forward slashes but has no trailing slash.
+
+=cut
+
+sub perl2host
 {
-	my $dir = "$_[0]";
-	return $dir unless -d $dir;
-	return $dir unless $Config{osname} eq 'msys';
+	my ($subject) = @_;
+	return $subject unless $Config{osname} eq 'msys';
+	if ($is_msys2)
+	{
+		# get absolute, windows type path
+		my $path = qx{cygpath -a -m "$subject"};
+		if (!$?)
+		{
+			chomp $path;
+			$path =~ s!/$!!;
+			return $path if $path;
+		}
+		# fall through if this didn't work.
+	}
 	my $here = cwd;
-	chdir $dir;
+	my $leaf;
+	if (chdir $subject)
+	{
+		$leaf = '';
+	}
+	else
+	{
+		$leaf = '/' . basename $subject;
+		my $parent = dirname $subject;
+		if (!chdir $parent)
+		{
+			$leaf   = '/' . basename($parent) . $leaf;
+			$parent = dirname $parent;
+			chdir $parent or die "could not chdir \"$parent\": $!";
+		}
+	}
 
 	# this odd way of calling 'pwd -W' is the only way that seems to work.
-	$dir = qx{sh -c "pwd -W"};
+	my $dir = qx{sh -c "pwd -W"};
 	chomp $dir;
+	$dir =~ s!/$!!;
 	chdir $here;
-	return $dir;
+	return $dir . $leaf;
 }
+
+=pod
+
+=item system_log(@cmd)
+
+Run (via C<system()>) the command passed as argument; the return
+value is passed through.
+
+=cut
 
 sub system_log
 {
@@ -188,14 +365,53 @@ sub system_log
 	return system(@_);
 }
 
+=pod
+
+=item system_or_bail(@cmd)
+
+Run (via C<system()>) the command passed as argument, and returns
+if the command is successful.
+On failure, abandon further tests and exit the program.
+
+=cut
+
 sub system_or_bail
 {
 	if (system_log(@_) != 0)
 	{
-		BAIL_OUT("system $_[0] failed");
+		if ($? == -1)
+		{
+			BAIL_OUT(
+				sprintf(
+					"failed to execute command \"%s\": $!", join(" ", @_)));
+		}
+		elsif ($? & 127)
+		{
+			BAIL_OUT(
+				sprintf(
+					"command \"%s\" died with signal %d",
+					join(" ", @_),
+					$? & 127));
+		}
+		else
+		{
+			BAIL_OUT(
+				sprintf(
+					"command \"%s\" exited with value %d",
+					join(" ", @_),
+					$? >> 8));
+		}
 	}
-	return;
 }
+
+=pod
+
+=item run_log(@cmd)
+
+Run the given command via C<IPC::Run::run()>, noting it in the log.
+The return value from the command is passed through.
+
+=cut
 
 sub run_log
 {
@@ -203,7 +419,35 @@ sub run_log
 	return IPC::Run::run(@_);
 }
 
-# Generate a string made of the given range of ASCII characters
+=pod
+
+=item run_command(cmd)
+
+Run (via C<IPC::Run::run()>) the command passed as argument.
+The return value from the command is ignored.
+The return value is C<($stdout, $stderr)>.
+
+=cut
+
+sub run_command
+{
+	my ($cmd) = @_;
+	my ($stdout, $stderr);
+	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
+	foreach ($stderr, $stdout) { s/\r\n/\n/g if $Config{osname} eq 'msys'; }
+	chomp($stdout);
+	chomp($stderr);
+	return ($stdout, $stderr);
+}
+
+=pod
+
+=item generate_ascii_string(from_char, to_char)
+
+Generate a string made of the given range of ASCII characters.
+
+=cut
+
 sub generate_ascii_string
 {
 	my ($from_char, $to_char) = @_;
@@ -216,40 +460,97 @@ sub generate_ascii_string
 	return $res;
 }
 
+=pod
+
+=item slurp_dir(dir)
+
+Return the complete list of entries in the specified directory.
+
+=cut
+
 sub slurp_dir
 {
 	my ($dir) = @_;
 	opendir(my $dh, $dir)
-	  or die "could not opendir \"$dir\": $!";
+	  or croak "could not opendir \"$dir\": $!";
 	my @direntries = readdir $dh;
 	closedir $dh;
 	return @direntries;
 }
 
+=pod
+
+=item slurp_file(filename [, $offset])
+
+Return the full contents of the specified file, beginning from an
+offset position if specified.
+
+=cut
+
 sub slurp_file
 {
-	my ($filename) = @_;
+	my ($filename, $offset) = @_;
 	local $/;
-	open(my $in, '<', $filename)
-	  or die "could not read \"$filename\": $!";
-	my $contents = <$in>;
-	close $in;
-	$contents =~ s/\r//g if $Config{osname} eq 'msys';
+	my $contents;
+	if ($Config{osname} ne 'MSWin32')
+	{
+		open(my $in, '<', $filename)
+		  or croak "could not read \"$filename\": $!";
+		if (defined($offset))
+		{
+			seek($in, $offset, SEEK_SET)
+			  or croak "could not seek \"$filename\": $!";
+		}
+		$contents = <$in>;
+		close $in;
+	}
+	else
+	{
+		my $fHandle = createFile($filename, "r", "rwd")
+		  or croak "could not open \"$filename\": $^E";
+		OsFHandleOpen(my $fh = IO::Handle->new(), $fHandle, 'r')
+		  or croak "could not read \"$filename\": $^E\n";
+		if (defined($offset))
+		{
+			setFilePointer($fh, $offset, qw(FILE_BEGIN))
+			  or croak "could not seek \"$filename\": $^E\n";
+		}
+		$contents = <$fh>;
+		CloseHandle($fHandle)
+		  or croak "could not close \"$filename\": $^E\n";
+	}
+	$contents =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	return $contents;
 }
+
+=pod
+
+=item append_to_file(filename, str)
+
+Append a string at the end of a given file.  (Note: no newline is appended at
+end of file.)
+
+=cut
 
 sub append_to_file
 {
 	my ($filename, $str) = @_;
 	open my $fh, ">>", $filename
-	  or die "could not write \"$filename\": $!";
+	  or croak "could not write \"$filename\": $!";
 	print $fh $str;
 	close $fh;
 	return;
 }
 
-# Check that all file/dir modes in a directory match the expected values,
-# ignoring the mode of any specified files.
+=pod
+
+=item check_mode_recursive(dir, expected_dir_mode, expected_file_mode, ignore_list)
+
+Check that all file/dir modes in a directory match the expected values,
+ignoring files in C<ignore_list> (basename only).
+
+=cut
+
 sub check_mode_recursive
 {
 	my ($dir, $expected_dir_mode, $expected_file_mode, $ignore_list) = @_;
@@ -276,7 +577,7 @@ sub check_mode_recursive
 				unless (defined($file_stat))
 				{
 					my $is_ENOENT = $!{ENOENT};
-					my $msg = "unable to stat $File::Find::name: $!";
+					my $msg       = "unable to stat $File::Find::name: $!";
 					if ($is_ENOENT)
 					{
 						warn $msg;
@@ -332,7 +633,14 @@ sub check_mode_recursive
 	return $result;
 }
 
-# Change mode recursively on a directory
+=pod
+
+=item chmod_recursive(dir, dir_mode, file_mode)
+
+C<chmod> recursively each file and directory within the given directory.
+
+=cut
+
 sub chmod_recursive
 {
 	my ($dir, $dir_mode, $file_mode) = @_;
@@ -356,9 +664,15 @@ sub chmod_recursive
 	return;
 }
 
-# Check presence of a given regexp within pg_config.h for the installation
-# where tests are running, returning a match status result depending on
-# that.
+=pod
+
+=item check_pg_config(regexp)
+
+Return the number of matches of the given regular expression
+within the installation's C<pg_config.h>.
+
+=cut
+
 sub check_pg_config
 {
 	my ($regexp) = @_;
@@ -367,6 +681,7 @@ sub check_pg_config
 	  \$stdout, '2>', \$stderr
 	  or die "could not execute pg_config";
 	chomp($stdout);
+	$stdout =~ s/\r$//;
 
 	open my $pg_config_h, '<', "$stdout/pg_config.h" or die "$!";
 	my $match = (grep { /^$regexp/ } <$pg_config_h>);
@@ -374,27 +689,91 @@ sub check_pg_config
 	return $match;
 }
 
-#
-# Test functions
-#
+=pod
+
+=item dir_symlink(oldname, newname)
+
+Portably create a symlink for a directory. On Windows this creates a junction
+point. Elsewhere it just calls perl's builtin symlink.
+
+=cut
+
+sub dir_symlink
+{
+	my $oldname = shift;
+	my $newname = shift;
+	if ($windows_os)
+	{
+		$oldname = perl2host($oldname);
+		$newname = perl2host($newname);
+		$oldname =~ s,/,\\,g;
+		$newname =~ s,/,\\,g;
+		my $cmd = qq{mklink /j "$newname" "$oldname"};
+		if ($Config{osname} eq 'msys')
+		{
+			# need some indirection on msys
+			$cmd = qq{echo '$cmd' | \$COMSPEC /Q};
+		}
+		system($cmd);
+	}
+	else
+	{
+		symlink $oldname, $newname;
+	}
+	die "No $newname" unless -e $newname;
+}
+
+=pod
+
+=back
+
+=head1 Test::More-LIKE METHODS
+
+=over
+
+=item command_ok(cmd, test_name)
+
+Check that the command runs (via C<run_log>) successfully.
+
+=cut
+
 sub command_ok
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd, $test_name) = @_;
 	my $result = run_log($cmd);
 	ok($result, $test_name);
 	return;
 }
 
+=pod
+
+=item command_fails(cmd, test_name)
+
+Check that the command fails (when run via C<run_log>).
+
+=cut
+
 sub command_fails
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd, $test_name) = @_;
 	my $result = run_log($cmd);
 	ok(!$result, $test_name);
 	return;
 }
 
+=pod
+
+=item command_exit_is(cmd, expected, test_name)
+
+Check that the command exit code matches the expected exit code.
+
+=cut
+
 sub command_exit_is
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd, $expected, $test_name) = @_;
 	print("# Running: " . join(" ", @{$cmd}) . "\n");
 	my $h = IPC::Run::start $cmd;
@@ -406,7 +785,7 @@ sub command_exit_is
 	# header file). IPC::Run's result function always returns exit code >> 8,
 	# assuming the Unix convention, which will always return 0 on Windows as
 	# long as the process was not terminated by an exception. To work around
-	# that, use $h->full_result on Windows instead.
+	# that, use $h->full_results on Windows instead.
 	my $result =
 	    ($Config{osname} eq "MSWin32")
 	  ? ($h->full_results)[0]
@@ -415,8 +794,17 @@ sub command_exit_is
 	return;
 }
 
+=pod
+
+=item program_help_ok(cmd)
+
+Check that the command supports the C<--help> option.
+
+=cut
+
 sub program_help_ok
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd) = @_;
 	my ($stdout, $stderr);
 	print("# Running: $cmd --help\n");
@@ -428,8 +816,17 @@ sub program_help_ok
 	return;
 }
 
+=pod
+
+=item program_version_ok(cmd)
+
+Check that the command supports the C<--version> option.
+
+=cut
+
 sub program_version_ok
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd) = @_;
 	my ($stdout, $stderr);
 	print("# Running: $cmd --version\n");
@@ -441,8 +838,18 @@ sub program_version_ok
 	return;
 }
 
+=pod
+
+=item program_options_handling_ok(cmd)
+
+Check that a command with an invalid option returns a non-zero
+exit code and error message.
+
+=cut
+
 sub program_options_handling_ok
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd) = @_;
 	my ($stdout, $stderr);
 	print("# Running: $cmd --not-a-valid-option\n");
@@ -454,20 +861,42 @@ sub program_options_handling_ok
 	return;
 }
 
+=pod
+
+=item command_like(cmd, expected_stdout, test_name)
+
+Check that the command runs successfully and the output
+matches the given regular expression.
+
+=cut
+
 sub command_like
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd, $expected_stdout, $test_name) = @_;
 	my ($stdout, $stderr);
 	print("# Running: " . join(" ", @{$cmd}) . "\n");
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
 	ok($result, "$test_name: exit code 0");
 	is($stderr, '', "$test_name: no stderr");
+	$stdout =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	like($stdout, $expected_stdout, "$test_name: matches");
 	return;
 }
 
+=pod
+
+=item command_like_safe(cmd, expected_stdout, test_name)
+
+Check that the command runs successfully and the output
+matches the given regular expression.  Doesn't assume that the
+output files are closed.
+
+=cut
+
 sub command_like_safe
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 
 	# Doesn't rely on detecting end of file on the file descriptors,
 	# which can fail, causing the process to hang, notably on Msys
@@ -486,26 +915,55 @@ sub command_like_safe
 	return;
 }
 
+=pod
+
+=item command_fails_like(cmd, expected_stderr, test_name)
+
+Check that the command fails and the error message matches
+the given regular expression.
+
+=cut
+
 sub command_fails_like
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
 	my ($cmd, $expected_stderr, $test_name) = @_;
 	my ($stdout, $stderr);
 	print("# Running: " . join(" ", @{$cmd}) . "\n");
 	my $result = IPC::Run::run $cmd, '>', \$stdout, '2>', \$stderr;
 	ok(!$result, "$test_name: exit code not 0");
+	$stderr =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
 	like($stderr, $expected_stderr, "$test_name: matches");
 	return;
 }
 
-# Run a command and check its status and outputs.
-# The 5 arguments are:
-# - cmd: ref to list for command, options and arguments to run
-# - ret: expected exit status
-# - out: ref to list of re to be checked against stdout (all must match)
-# - err: ref to list of re to be checked against stderr (all must match)
-# - test_name: name of test
+=pod
+
+=item command_checks_all(cmd, ret, out, err, test_name)
+
+Run a command and check its status and outputs.
+Arguments:
+
+=over
+
+=item C<cmd>: Array reference of command and arguments to run
+
+=item C<ret>: Expected exit code
+
+=item C<out>: Expected stdout from command
+
+=item C<err>: Expected stderr from command
+
+=item C<test_name>: test name
+
+=back
+
+=cut
+
 sub command_checks_all
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($cmd, $expected_ret, $out, $err, $test_name) = @_;
 
 	# run command
@@ -518,6 +976,8 @@ sub command_checks_all
 	die "command exited with signal " . ($ret & 127)
 	  if $ret & 127;
 	$ret = $ret >> 8;
+
+	foreach ($stderr, $stdout) { s/\r\n/\n/g if $Config{osname} eq 'msys'; }
 
 	# check status
 	ok($ret == $expected_ret,
@@ -537,5 +997,11 @@ sub command_checks_all
 
 	return;
 }
+
+=pod
+
+=back
+
+=cut
 
 1;

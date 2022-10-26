@@ -3,7 +3,7 @@
  * joinpath.c
  *	  Routines to find all possible paths for processing a set of joins
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,10 +18,13 @@
 
 #include "executor/executor.h"
 #include "foreign/fdwapi.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+#include "utils/typcache.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -40,54 +43,57 @@ set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
 	(PATH_PARAM_BY_REL_SELF(path, rel) || PATH_PARAM_BY_PARENT(path, rel))
 
 static void try_partial_mergejoin_path(PlannerInfo *root,
-						   RelOptInfo *joinrel,
-						   Path *outer_path,
-						   Path *inner_path,
-						   List *pathkeys,
-						   List *mergeclauses,
-						   List *outersortkeys,
-						   List *innersortkeys,
-						   JoinType jointype,
-						   JoinPathExtraData *extra);
+									   RelOptInfo *joinrel,
+									   Path *outer_path,
+									   Path *inner_path,
+									   List *pathkeys,
+									   List *mergeclauses,
+									   List *outersortkeys,
+									   List *innersortkeys,
+									   JoinType jointype,
+									   JoinPathExtraData *extra);
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
-					 RelOptInfo *outerrel, RelOptInfo *innerrel,
-					 JoinType jointype, JoinPathExtraData *extra);
+								 RelOptInfo *outerrel, RelOptInfo *innerrel,
+								 JoinType jointype, JoinPathExtraData *extra);
+static inline bool clause_sides_match_join(RestrictInfo *rinfo,
+										   RelOptInfo *outerrel,
+										   RelOptInfo *innerrel);
 static void match_unsorted_outer(PlannerInfo *root, RelOptInfo *joinrel,
-					 RelOptInfo *outerrel, RelOptInfo *innerrel,
-					 JoinType jointype, JoinPathExtraData *extra);
+								 RelOptInfo *outerrel, RelOptInfo *innerrel,
+								 JoinType jointype, JoinPathExtraData *extra);
 static void consider_parallel_nestloop(PlannerInfo *root,
-						   RelOptInfo *joinrel,
-						   RelOptInfo *outerrel,
-						   RelOptInfo *innerrel,
-						   JoinType jointype,
-						   JoinPathExtraData *extra);
+									   RelOptInfo *joinrel,
+									   RelOptInfo *outerrel,
+									   RelOptInfo *innerrel,
+									   JoinType jointype,
+									   JoinPathExtraData *extra);
 static void consider_parallel_mergejoin(PlannerInfo *root,
-							RelOptInfo *joinrel,
-							RelOptInfo *outerrel,
-							RelOptInfo *innerrel,
-							JoinType jointype,
-							JoinPathExtraData *extra,
-							Path *inner_cheapest_total);
+										RelOptInfo *joinrel,
+										RelOptInfo *outerrel,
+										RelOptInfo *innerrel,
+										JoinType jointype,
+										JoinPathExtraData *extra,
+										Path *inner_cheapest_total);
 static void hash_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
-					 RelOptInfo *outerrel, RelOptInfo *innerrel,
-					 JoinType jointype, JoinPathExtraData *extra);
+								 RelOptInfo *outerrel, RelOptInfo *innerrel,
+								 JoinType jointype, JoinPathExtraData *extra);
 static List *select_mergejoin_clauses(PlannerInfo *root,
-						 RelOptInfo *joinrel,
-						 RelOptInfo *outerrel,
-						 RelOptInfo *innerrel,
-						 List *restrictlist,
-						 JoinType jointype,
-						 bool *mergejoin_allowed);
+									  RelOptInfo *joinrel,
+									  RelOptInfo *outerrel,
+									  RelOptInfo *innerrel,
+									  List *restrictlist,
+									  JoinType jointype,
+									  bool *mergejoin_allowed);
 static void generate_mergejoin_paths(PlannerInfo *root,
-						 RelOptInfo *joinrel,
-						 RelOptInfo *innerrel,
-						 Path *outerpath,
-						 JoinType jointype,
-						 JoinPathExtraData *extra,
-						 bool useallclauses,
-						 Path *inner_cheapest_total,
-						 List *merge_pathkeys,
-						 bool is_partial);
+									 RelOptInfo *joinrel,
+									 RelOptInfo *innerrel,
+									 Path *outerpath,
+									 JoinType jointype,
+									 JoinPathExtraData *extra,
+									 bool useallclauses,
+									 Path *inner_cheapest_total,
+									 List *merge_pathkeys,
+									 bool is_partial);
 
 
 /*
@@ -163,6 +169,11 @@ add_paths_to_joinrel(PlannerInfo *root,
 	{
 		case JOIN_SEMI:
 		case JOIN_ANTI:
+
+			/*
+			 * XXX it may be worth proving this to allow a Memoize to be
+			 * considered for Nested Loop Semi/Anti Joins.
+			 */
 			extra.inner_unique = false; /* well, unproven */
 			break;
 		case JOIN_UNIQUE_INNER:
@@ -355,6 +366,212 @@ allow_star_schema_join(PlannerInfo *root,
 }
 
 /*
+ * paraminfo_get_equal_hashops
+ *		Determine if param_info and innerrel's lateral_vars can be hashed.
+ *		Returns true the hashing is possible, otherwise return false.
+ *
+ * Additionally we also collect the outer exprs and the hash operators for
+ * each parameter to innerrel.  These set in 'param_exprs' and 'operators'
+ * when we return true.
+ */
+static bool
+paraminfo_get_equal_hashops(PlannerInfo *root, ParamPathInfo *param_info,
+							RelOptInfo *outerrel, RelOptInfo *innerrel,
+							List **param_exprs, List **operators)
+
+{
+	ListCell   *lc;
+
+	*param_exprs = NIL;
+	*operators = NIL;
+
+	if (param_info != NULL)
+	{
+		List	   *clauses = param_info->ppi_clauses;
+
+		foreach(lc, clauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			OpExpr	   *opexpr;
+			Node	   *expr;
+
+			/* can't use a memoize node without a valid hash equals operator */
+			if (!OidIsValid(rinfo->hasheqoperator) ||
+				!clause_sides_match_join(rinfo, outerrel, innerrel))
+			{
+				list_free(*operators);
+				list_free(*param_exprs);
+				return false;
+			}
+
+			/*
+			 * We already checked that this is an OpExpr with 2 args when
+			 * setting hasheqoperator.
+			 */
+			opexpr = (OpExpr *) rinfo->clause;
+			if (rinfo->outer_is_left)
+				expr = (Node *) linitial(opexpr->args);
+			else
+				expr = (Node *) lsecond(opexpr->args);
+
+			*operators = lappend_oid(*operators, rinfo->hasheqoperator);
+			*param_exprs = lappend(*param_exprs, expr);
+		}
+	}
+
+	/* Now add any lateral vars to the cache key too */
+	foreach(lc, innerrel->lateral_vars)
+	{
+		Node	   *expr = (Node *) lfirst(lc);
+		TypeCacheEntry *typentry;
+
+		/* Reject if there are any volatile functions */
+		if (contain_volatile_functions(expr))
+		{
+			list_free(*operators);
+			list_free(*param_exprs);
+			return false;
+		}
+
+		typentry = lookup_type_cache(exprType(expr),
+									 TYPECACHE_HASH_PROC | TYPECACHE_EQ_OPR);
+
+		/* can't use a memoize node without a valid hash equals operator */
+		if (!OidIsValid(typentry->hash_proc) || !OidIsValid(typentry->eq_opr))
+		{
+			list_free(*operators);
+			list_free(*param_exprs);
+			return false;
+		}
+
+		*operators = lappend_oid(*operators, typentry->eq_opr);
+		*param_exprs = lappend(*param_exprs, expr);
+	}
+
+	/* We're okay to use memoize */
+	return true;
+}
+
+/*
+ * get_memoize_path
+ *		If possible, make and return a Memoize path atop of 'inner_path'.
+ *		Otherwise return NULL.
+ */
+static Path *
+get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
+				 RelOptInfo *outerrel, Path *inner_path,
+				 Path *outer_path, JoinType jointype,
+				 JoinPathExtraData *extra)
+{
+	List	   *param_exprs;
+	List	   *hash_operators;
+	ListCell   *lc;
+
+	/* Obviously not if it's disabled */
+	if (!enable_memoize)
+		return NULL;
+
+	/*
+	 * We can safely not bother with all this unless we expect to perform more
+	 * than one inner scan.  The first scan is always going to be a cache
+	 * miss.  This would likely fail later anyway based on costs, so this is
+	 * really just to save some wasted effort.
+	 */
+	if (outer_path->parent->rows < 2)
+		return NULL;
+
+	/*
+	 * We can only have a memoize node when there's some kind of cache key,
+	 * either parameterized path clauses or lateral Vars.  No cache key sounds
+	 * more like something a Materialize node might be more useful for.
+	 */
+	if ((inner_path->param_info == NULL ||
+		 inner_path->param_info->ppi_clauses == NIL) &&
+		innerrel->lateral_vars == NIL)
+		return NULL;
+
+	/*
+	 * Currently we don't do this for SEMI and ANTI joins unless they're
+	 * marked as inner_unique.  This is because nested loop SEMI/ANTI joins
+	 * don't scan the inner node to completion, which will mean memoize cannot
+	 * mark the cache entry as complete.
+	 *
+	 * XXX Currently we don't attempt to mark SEMI/ANTI joins as inner_unique
+	 * = true.  Should we?  See add_paths_to_joinrel()
+	 */
+	if (!extra->inner_unique && (jointype == JOIN_SEMI ||
+								 jointype == JOIN_ANTI))
+		return NULL;
+
+	/*
+	 * Memoize normally marks cache entries as complete when it runs out of
+	 * tuples to read from its subplan.  However, with unique joins, Nested
+	 * Loop will skip to the next outer tuple after finding the first matching
+	 * inner tuple.  This means that we may not read the inner side of the
+	 * join to completion which leaves no opportunity to mark the cache entry
+	 * as complete.  To work around that, when the join is unique we
+	 * automatically mark cache entries as complete after fetching the first
+	 * tuple.  This works when the entire join condition is parameterized.
+	 * Otherwise, when the parameterization is only a subset of the join
+	 * condition, we can't be sure which part of it causes the join to be
+	 * unique.  This means there are no guarantees that only 1 tuple will be
+	 * read.  We cannot mark the cache entry as complete after reading the
+	 * first tuple without that guarantee.  This means the scope of Memoize
+	 * node's usefulness is limited to only outer rows that have no join
+	 * partner as this is the only case where Nested Loop would exhaust the
+	 * inner scan of a unique join.  Since the scope is limited to that, we
+	 * just don't bother making a memoize path in this case.
+	 *
+	 * Lateral vars needn't be considered here as they're not considered when
+	 * determining if the join is unique.
+	 *
+	 * XXX this could be enabled if the remaining join quals were made part of
+	 * the inner scan's filter instead of the join filter.  Maybe it's worth
+	 * considering doing that?
+	 */
+	if (extra->inner_unique &&
+		(inner_path->param_info == NULL ||
+		 list_length(inner_path->param_info->ppi_clauses) <
+		 list_length(extra->restrictlist)))
+		return NULL;
+
+	/*
+	 * We can't use a memoize node if there are volatile functions in the
+	 * inner rel's target list or restrict list.  A cache hit could reduce the
+	 * number of calls to these functions.
+	 */
+	if (contain_volatile_functions((Node *) innerrel->reltarget))
+		return NULL;
+
+	foreach(lc, innerrel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (contain_volatile_functions((Node *) rinfo))
+			return NULL;
+	}
+
+	/* Check if we have hash ops for each parameter to the path */
+	if (paraminfo_get_equal_hashops(root,
+									inner_path->param_info,
+									outerrel,
+									innerrel,
+									&param_exprs,
+									&hash_operators))
+	{
+		return (Path *) create_memoize_path(root,
+											innerrel,
+											inner_path,
+											param_exprs,
+											hash_operators,
+											extra->inner_unique,
+											outer_path->parent->rows);
+	}
+
+	return NULL;
+}
+
+/*
  * try_nestloop_path
  *	  Consider a nestloop join path; if it appears useful, push it into
  *	  the joinrel's pathlist via add_path().
@@ -485,8 +702,8 @@ try_partial_nestloop_path(PlannerInfo *root,
 	/*
 	 * If the inner path is parameterized, the parameterization must be fully
 	 * satisfied by the proposed outer path.  Parameterized partial paths are
-	 * not supported.  The caller should already have verified that no
-	 * extra_lateral_rels are required here.
+	 * not supported.  The caller should already have verified that no lateral
+	 * rels are required here.
 	 */
 	Assert(bms_is_empty(joinrel->lateral_relids));
 	if (inner_path->param_info != NULL)
@@ -799,8 +1016,8 @@ try_partial_hashjoin_path(PlannerInfo *root,
 	/*
 	 * If the inner path is parameterized, the parameterization must be fully
 	 * satisfied by the proposed outer path.  Parameterized partial paths are
-	 * not supported.  The caller should already have verified that no
-	 * extra_lateral_rels are required here.
+	 * not supported.  The caller should already have verified that no lateral
+	 * rels are required here.
 	 */
 	Assert(bms_is_empty(joinrel->lateral_relids));
 	if (inner_path->param_info != NULL)
@@ -1005,8 +1222,8 @@ sort_inner_and_outer(PlannerInfo *root,
 		/* Make a pathkey list with this guy first */
 		if (l != list_head(all_pathkeys))
 			outerkeys = lcons(front_pathkey,
-							  list_delete_ptr(list_copy(all_pathkeys),
-											  front_pathkey));
+							  list_delete_nth_cell(list_copy(all_pathkeys),
+												   foreach_current_index(l)));
 		else
 			outerkeys = all_pathkeys;	/* no work at first one... */
 
@@ -1472,6 +1689,7 @@ match_unsorted_outer(PlannerInfo *root,
 			foreach(lc2, param_paths)
 			{
 				Path	   *innerpath = (Path *) lfirst(lc2);
+				Path	   *mpath;
 
 				try_nestloop_path(root,
 								  joinrel,
@@ -1480,6 +1698,22 @@ match_unsorted_outer(PlannerInfo *root,
 								  merge_pathkeys,
 								  jointype,
 								  extra);
+
+				/*
+				 * Try generating a memoize path and see if that makes the
+				 * nested loop any cheaper.
+				 */
+				mpath = get_memoize_path(root, innerrel, outerrel,
+										 innerpath, outerpath, jointype,
+										 extra);
+				if (mpath != NULL)
+					try_nestloop_path(root,
+									  joinrel,
+									  outerpath,
+									  mpath,
+									  merge_pathkeys,
+									  jointype,
+									  extra);
 			}
 
 			/* Also consider materialized form of the cheapest inner path */
@@ -1513,7 +1747,7 @@ match_unsorted_outer(PlannerInfo *root,
 	 * partial path and the joinrel is parallel-safe.  However, we can't
 	 * handle JOIN_UNIQUE_OUTER, because the outer path will be partial, and
 	 * therefore we won't be able to properly guarantee uniqueness.  Nor can
-	 * we handle extra_lateral_rels, since partial paths must not be
+	 * we handle joins needing lateral rels, since partial paths must not be
 	 * parameterized. Similarly, we can't handle JOIN_FULL and JOIN_RIGHT,
 	 * because they can produce false null extended rows.
 	 */
@@ -1539,8 +1773,7 @@ match_unsorted_outer(PlannerInfo *root,
 			if (save_jointype == JOIN_UNIQUE_INNER)
 				return;
 
-			inner_cheapest_total = get_cheapest_parallel_safe_total_inner(
-																		  innerrel->pathlist);
+			inner_cheapest_total = get_cheapest_parallel_safe_total_inner(innerrel->pathlist);
 		}
 
 		if (inner_cheapest_total)
@@ -1635,6 +1868,7 @@ consider_parallel_nestloop(PlannerInfo *root,
 		foreach(lc2, innerrel->cheapest_parameterized_paths)
 		{
 			Path	   *innerpath = (Path *) lfirst(lc2);
+			Path	   *mpath;
 
 			/* Can't join to an inner path that is not parallel-safe */
 			if (!innerpath->parallel_safe)
@@ -1659,6 +1893,17 @@ consider_parallel_nestloop(PlannerInfo *root,
 
 			try_partial_nestloop_path(root, joinrel, outerpath, innerpath,
 									  pathkeys, jointype, extra);
+
+			/*
+			 * Try generating a memoize path and see if that makes the nested
+			 * loop any cheaper.
+			 */
+			mpath = get_memoize_path(root, innerrel, outerrel,
+									 innerpath, outerpath, jointype,
+									 extra);
+			if (mpath != NULL)
+				try_partial_nestloop_path(root, joinrel, outerpath, mpath,
+										  pathkeys, jointype, extra);
 		}
 	}
 }
@@ -1868,9 +2113,12 @@ hash_inner_and_outer(PlannerInfo *root,
 
 			/*
 			 * Can we use a partial inner plan too, so that we can build a
-			 * shared hash table in parallel?
+			 * shared hash table in parallel?  We can't handle
+			 * JOIN_UNIQUE_INNER because we can't guarantee uniqueness.
 			 */
-			if (innerrel->partial_pathlist != NIL && enable_parallel_hash)
+			if (innerrel->partial_pathlist != NIL &&
+				save_jointype != JOIN_UNIQUE_INNER &&
+				enable_parallel_hash)
 			{
 				cheapest_partial_inner =
 					(Path *) linitial(innerrel->partial_pathlist);

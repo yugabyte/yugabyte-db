@@ -5,6 +5,7 @@
 #ifndef PLPY_SPI_H
 #define PLPY_SPI_H
 
+#include "plpython.h"
 #include "utils/resowner.h"
 
 extern PyObject *PLy_spi_prepare(PyObject *self, PyObject *args);

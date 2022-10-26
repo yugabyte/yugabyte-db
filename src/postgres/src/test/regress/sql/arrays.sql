@@ -34,6 +34,9 @@ INSERT INTO arrtest (a, b[1:2][1:2], c, d, e, f, g)
 INSERT INTO arrtest (a, b[1:2], c, d[1:2])
    VALUES ('{}', '{3,4}', '{foo,bar}', '{bar,foo}');
 
+INSERT INTO arrtest (b[2]) VALUES(now());  -- error, type mismatch
+
+INSERT INTO arrtest (b[1:2]) VALUES(now());  -- error, type mismatch
 
 SELECT * FROM arrtest;
 
@@ -106,7 +109,7 @@ select ('[0:2][0:2]={{1,2,3},{4,5,6},{7,8,9}}'::int[])[1:2][2];
 --
 -- check subscription corner cases
 --
--- More subscripts than MAXDIMS(6)
+-- More subscripts than MAXDIM (6)
 SELECT ('{}'::int[])[1][2][3][4][5][6][7];
 -- NULL index yields NULL when selecting
 SELECT ('{{{1},{2},{3}},{{4},{5},{6}}}'::int[])[1][NULL][1];
@@ -122,6 +125,8 @@ UPDATE arrtest
 UPDATE arrtest
   SET c[1:NULL] = '{"can''t assign"}'
   WHERE array_dims(c) is not null;
+-- Un-subscriptable type
+SELECT (now())[1];
 
 -- test slices with empty lower and/or upper index
 CREATE TEMP TABLE arrtest_s (
@@ -311,6 +316,7 @@ SELECT ARRAY[[['hello','world']]] || ARRAY[[['happy','birthday']]] AS "ARRAY";
 SELECT ARRAY[[1,2],[3,4]] || ARRAY[5,6] AS "{{1,2},{3,4},{5,6}}";
 SELECT ARRAY[0,0] || ARRAY[1,1] || ARRAY[2,2] AS "{0,0,1,1,2,2}";
 SELECT 0 || ARRAY[1,2] || 3 AS "{0,1,2,3}";
+SELECT ARRAY[1.1] || ARRAY[2,3,4];
 
 SELECT * FROM array_op_test WHERE i @> '{32}' ORDER BY seqno;
 SELECT * FROM array_op_test WHERE i && '{32}' ORDER BY seqno;
@@ -342,9 +348,9 @@ SELECT * FROM array_op_test WHERE t <@ '{}' ORDER BY seqno;
 
 -- array casts
 SELECT ARRAY[1,2,3]::text[]::int[]::float8[] AS "{1,2,3}";
-SELECT ARRAY[1,2,3]::text[]::int[]::float8[] is of (float8[]) as "TRUE";
+SELECT pg_typeof(ARRAY[1,2,3]::text[]::int[]::float8[]) AS "double precision[]";
 SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] AS "{{a,bc},{def,hijk}}";
-SELECT ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[] is of (varchar[]) as "TRUE";
+SELECT pg_typeof(ARRAY[['a','bc'],['def','hijk']]::text[]::varchar[]) AS "character varying[]";
 SELECT CAST(ARRAY[[[[[['a','bb','ccc']]]]]] as text[]) as "{{{{{{a,bb,ccc}}}}}}";
 SELECT NULL::text[]::int[] AS "NULL";
 
@@ -544,6 +550,21 @@ select string_to_array('1,2,3,4,,6', ',');
 select string_to_array('1,2,3,4,,6', ',', '');
 select string_to_array('1,2,3,4,*,6', ',', '*');
 
+select v, v is null as "is null" from string_to_table('1|2|3', '|') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3|', '|') g(v);
+select v, v is null as "is null" from string_to_table('1||2|3||', '||') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3', '') g(v);
+select v, v is null as "is null" from string_to_table('', '|') g(v);
+select v, v is null as "is null" from string_to_table('1|2|3', NULL) g(v);
+select v, v is null as "is null" from string_to_table(NULL, '|') g(v);
+select v, v is null as "is null" from string_to_table('abc', '') g(v);
+select v, v is null as "is null" from string_to_table('abc', '', 'abc') g(v);
+select v, v is null as "is null" from string_to_table('abc', ',') g(v);
+select v, v is null as "is null" from string_to_table('abc', ',', 'abc') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,,6', ',', '') g(v);
+select v, v is null as "is null" from string_to_table('1,2,3,4,*,6', ',', '*') g(v);
+
 select array_to_string(NULL::int4[], ',') IS NULL;
 select array_to_string('{}'::int4[], ',');
 select array_to_string(array[1,2,3,4,NULL,6], ',');
@@ -601,6 +622,7 @@ select array_remove(array[1,2,2,3], 2);
 select array_remove(array[1,2,2,3], 5);
 select array_remove(array[1,NULL,NULL,3], NULL);
 select array_remove(array['A','CC','D','C','RR'], 'RR');
+select array_remove(array[1.0, 2.1, 3.3], 1);
 select array_remove('{{1,2,2},{1,4,3}}', 2); -- not allowed
 select array_remove(array['X','X','X'], 'X') = '{}';
 select array_replace(array[1,2,5,4],5,3);
@@ -700,3 +722,16 @@ SELECT width_bucket(5, '{}');
 SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
 SELECT width_bucket(5, ARRAY[3, 4, NULL]);
 SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
+
+-- trim_array
+
+SELECT arr, trim_array(arr, 2)
+FROM
+(VALUES ('{1,2,3,4,5,6}'::bigint[]),
+        ('{1,2}'),
+        ('[10:16]={1,2,3,4,5,6,7}'),
+        ('[-15:-10]={1,2,3,4,5,6}'),
+        ('{{1,10},{2,20},{3,30},{4,40}}')) v(arr);
+
+SELECT trim_array(ARRAY[1, 2, 3], -1); -- fail
+SELECT trim_array(ARRAY[1, 2, 3], 10); -- fail

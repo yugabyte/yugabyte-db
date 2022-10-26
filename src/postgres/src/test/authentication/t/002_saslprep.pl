@@ -1,16 +1,19 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # Test password normalization in SCRAM.
 #
-# This test cannot run on Windows as Postgres cannot be set up with Unix
-# sockets and needs to go through SSPI.
+# This test can only run with Unix-domain sockets.
 
 use strict;
 use warnings;
 use PostgresNode;
 use TestLib;
 use Test::More;
-if ($windows_os)
+if (!$use_unix_sockets)
 {
-	plan skip_all => "authentication tests cannot run on Windows";
+	plan skip_all =>
+	  "authentication tests cannot run without Unix-domain sockets";
 }
 else
 {
@@ -41,17 +44,25 @@ sub test_login
 
 	$status_string = 'success' if ($expected_res eq 0);
 
+	my $connstr = "user=$role";
+	my $testname =
+	  "authentication $status_string for role $role with password $password";
+
 	$ENV{"PGPASSWORD"} = $password;
-	my $res = $node->psql('postgres', undef, extra_params => [ '-U', $role ]);
-	is($res, $expected_res,
-		"authentication $status_string for role $role with password $password"
-	);
-	return;
+	if ($expected_res eq 0)
+	{
+		$node->connect_ok($connstr, $testname);
+	}
+	else
+	{
+		# No checks of the error message, only the status code.
+		$node->connect_fails($connstr, $testname);
+	}
 }
 
-# Initialize master node. Force UTF-8 encoding, so that we can use non-ASCII
+# Initialize primary node. Force UTF-8 encoding, so that we can use non-ASCII
 # characters in the passwords below.
-my $node = get_new_node('master');
+my $node = PostgresNode->new('primary');
 $node->init(extra => [ '--locale=C', '--encoding=UTF8' ]);
 $node->start;
 

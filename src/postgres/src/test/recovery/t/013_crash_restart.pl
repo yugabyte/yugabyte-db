@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 #
 # Tests restarts of postgres due to crashes of a subprocess.
 #
@@ -14,7 +17,6 @@ use PostgresNode;
 use TestLib;
 use Test::More;
 use Config;
-use Time::HiRes qw(usleep);
 
 plan tests => 18;
 
@@ -25,7 +27,7 @@ plan tests => 18;
 # is really wrong.
 my $psql_timeout = IPC::Run::timer(60);
 
-my $node = get_new_node('master');
+my $node = PostgresNode->new('primary');
 $node->init(allows_streaming => 1);
 $node->start();
 
@@ -90,9 +92,9 @@ $killme_stdout = '';
 $killme_stderr = '';
 
 
-# Start longrunning query in second session, it's failure will signal
-# that crash-restart has occurred.  The initial wait for the trivial
-# select is to be sure that psql successfully connected to backend.
+# Start longrunning query in second session; its failure will signal that
+# crash-restart has occurred.  The initial wait for the trivial select is to
+# be sure that psql successfully connected to backend.
 $monitor_stdin .= q[
 SELECT $$psql-connected$$;
 SELECT pg_sleep(3600);
@@ -134,12 +136,8 @@ ok( pump_until(
 $monitor->finish;
 
 # Wait till server restarts
-is( $node->poll_query_until(
-		'postgres',
-		'SELECT $$restarted after sigquit$$;',
-		'restarted after sigquit'),
-	"1",
-	"reconnected after SIGQUIT");
+is($node->poll_query_until('postgres', undef, ''),
+	"1", "reconnected after SIGQUIT");
 
 
 # restart psql processes, now that the crash cycle finished
@@ -171,10 +169,9 @@ ok(pump_until($killme, \$killme_stdout, qr/in-progress-before-sigkill/m),
 $killme_stdout = '';
 $killme_stderr = '';
 
-# Re-start longrunning query in second session, it's failure will
-# signal that crash-restart has occurred.  The initial wait for the
-# trivial select is to be sure that psql successfully connected to
-# backend.
+# Re-start longrunning query in second session; its failure will signal that
+# crash-restart has occurred.  The initial wait for the trivial select is to
+# be sure that psql successfully connected to backend.
 $monitor_stdin .= q[
 SELECT $$psql-connected$$;
 SELECT pg_sleep(3600);
@@ -186,7 +183,7 @@ $monitor_stderr = '';
 
 
 # kill with SIGKILL this time - we expect the backend to exit, without
-# being able to emit an error error message
+# being able to emit an error message
 $ret = TestLib::system_log('pg_ctl', 'kill', 'KILL', $pid);
 is($ret, 0, "killed process with KILL");
 
@@ -196,8 +193,10 @@ $killme_stdin .= q[
 SELECT 1;
 ];
 ok( pump_until(
-		$killme, \$killme_stderr,
-		qr/server closed the connection unexpectedly|connection to server was lost/m),
+		$killme,
+		\$killme_stderr,
+		qr/server closed the connection unexpectedly|connection to server was lost/m
+	),
 	"psql query died successfully after SIGKILL");
 $killme->finish;
 
@@ -213,7 +212,7 @@ ok( pump_until(
 $monitor->finish;
 
 # Wait till server restarts
-is($node->poll_query_until('postgres', 'SELECT 1', '1'),
+is($node->poll_query_until('postgres', undef, ''),
 	"1", "reconnected after SIGKILL");
 
 # Make sure the committed rows survived, in-progress ones not

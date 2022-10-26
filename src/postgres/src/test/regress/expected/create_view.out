@@ -20,6 +20,16 @@ COMMENT ON VIEW noview IS 'no view';
 ERROR:  relation "noview" does not exist
 COMMENT ON VIEW toyemp IS 'is a view';
 COMMENT ON VIEW toyemp IS NULL;
+-- These views are left around mainly to exercise special cases in pg_dump.
+CREATE TABLE view_base_table (key int PRIMARY KEY, data varchar(20));
+CREATE VIEW key_dependent_view AS
+   SELECT * FROM view_base_table GROUP BY key;
+ALTER TABLE view_base_table DROP CONSTRAINT view_base_table_pkey;  -- fails
+ERROR:  cannot drop constraint view_base_table_pkey on table view_base_table because other objects depend on it
+DETAIL:  view key_dependent_view depends on constraint view_base_table_pkey on table view_base_table
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+CREATE VIEW key_dependent_view_no_cols AS
+   SELECT FROM view_base_table GROUP BY key HAVING length(data) > 0;
 --
 -- CREATE OR REPLACE VIEW
 --
@@ -54,6 +64,7 @@ ERROR:  cannot drop columns from view
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT 1, * FROM viewtest_tbl;
 ERROR:  cannot change name of view column "a" to "?column?"
+HINT:  Use ALTER VIEW ... RENAME COLUMN ... to change name of view column instead.
 -- should fail
 CREATE OR REPLACE VIEW viewtest AS
 	SELECT a, b::numeric FROM viewtest_tbl;
@@ -759,6 +770,86 @@ View definition:
            FROM temp_view_test.tx1 tx1_1
           WHERE tx1.y1 = tx1_1.f1));
 
+-- Test aliasing of joins
+create view view_of_joins as
+select * from
+  (select * from (tbl1 cross join tbl2) same) ss,
+  (tbl3 cross join tbl4) same;
+\d+ view_of_joins
+                    View "testviewschm2.view_of_joins"
+ Column |  Type   | Collation | Nullable | Default | Storage | Description 
+--------+---------+-----------+----------+---------+---------+-------------
+ a      | integer |           |          |         | plain   | 
+ b      | integer |           |          |         | plain   | 
+ c      | integer |           |          |         | plain   | 
+ d      | integer |           |          |         | plain   | 
+ e      | integer |           |          |         | plain   | 
+ f      | integer |           |          |         | plain   | 
+ g      | integer |           |          |         | plain   | 
+ h      | integer |           |          |         | plain   | 
+View definition:
+ SELECT ss.a,
+    ss.b,
+    ss.c,
+    ss.d,
+    same.e,
+    same.f,
+    same.g,
+    same.h
+   FROM ( SELECT same_1.a,
+            same_1.b,
+            same_1.c,
+            same_1.d
+           FROM (tbl1
+             CROSS JOIN tbl2) same_1) ss,
+    (tbl3
+     CROSS JOIN tbl4) same;
+
+create table tbl1a (a int, c int);
+create view view_of_joins_2a as select * from tbl1 join tbl1a using (a);
+create view view_of_joins_2b as select * from tbl1 join tbl1a using (a) as x;
+create view view_of_joins_2c as select * from (tbl1 join tbl1a using (a)) as y;
+create view view_of_joins_2d as select * from (tbl1 join tbl1a using (a) as x) as y;
+select pg_get_viewdef('view_of_joins_2a', true);
+       pg_get_viewdef       
+----------------------------
+  SELECT tbl1.a,           +
+     tbl1.b,               +
+     tbl1a.c               +
+    FROM tbl1              +
+      JOIN tbl1a USING (a);
+(1 row)
+
+select pg_get_viewdef('view_of_joins_2b', true);
+         pg_get_viewdef          
+---------------------------------
+  SELECT tbl1.a,                +
+     tbl1.b,                    +
+     tbl1a.c                    +
+    FROM tbl1                   +
+      JOIN tbl1a USING (a) AS x;
+(1 row)
+
+select pg_get_viewdef('view_of_joins_2c', true);
+        pg_get_viewdef         
+-------------------------------
+  SELECT y.a,                 +
+     y.b,                     +
+     y.c                      +
+    FROM (tbl1                +
+      JOIN tbl1a USING (a)) y;
+(1 row)
+
+select pg_get_viewdef('view_of_joins_2d', true);
+           pg_get_viewdef           
+------------------------------------
+  SELECT y.a,                      +
+     y.b,                          +
+     y.c                           +
+    FROM (tbl1                     +
+      JOIN tbl1a USING (a) AS x) y;
+(1 row)
+
 -- Test view decompilation in the face of column addition/deletion/renaming
 create table tt2 (a int, b int, c int);
 create table tt3 (ax int8, b int2, c numeric);
@@ -1142,6 +1233,29 @@ select pg_get_viewdef('vv1', true);
      j.dd                                     +
     FROM (tt5                                 +
       CROSS JOIN tt6) j(aa, bb, cc_1, cc, dd);
+(1 row)
+
+create view v4 as select * from v1;
+alter view v1 rename column a to x;
+select pg_get_viewdef('v1', true);
+                  pg_get_viewdef                   
+---------------------------------------------------
+  SELECT tt2.b,                                   +
+     tt3.c,                                       +
+     tt2.a AS x,                                  +
+     tt3.ax                                       +
+    FROM tt2                                      +
+      JOIN tt3 tt3(ax, b, c, c_1, e) USING (b, c);
+(1 row)
+
+select pg_get_viewdef('v4', true);
+ pg_get_viewdef 
+----------------
+  SELECT v1.b, +
+     v1.c,     +
+     v1.x AS a,+
+     v1.ax     +
+    FROM v1;
 (1 row)
 
 -- Unnamed FULL JOIN USING is lots of fun too
@@ -1641,11 +1755,56 @@ select pg_get_viewdef('tt20v', true);
      i4.i4,                                 +
      i8.i8                                  +
     FROM COALESCE(1, 2) c(c),               +
-     pg_collation_for('x'::text) col(col),  +
+     COLLATION FOR ('x'::text) col(col),    +
      CURRENT_DATE d(d),                     +
      LOCALTIMESTAMP(3) t(t),                +
      CAST(1 + 2 AS integer) i4(i4),         +
      CAST((1 + 2)::bigint AS bigint) i8(i8);
+(1 row)
+
+-- reverse-listing of various special function syntaxes required by SQL
+create view tt201v as
+select
+  extract(day from now()) as extr,
+  (now(), '1 day'::interval) overlaps
+    (current_timestamp(2), '1 day'::interval) as o,
+  'foo' is normalized isn,
+  'foo' is nfkc normalized isnn,
+  normalize('foo') as n,
+  normalize('foo', nfkd) as nfkd,
+  overlay('foo' placing 'bar' from 2) as ovl,
+  overlay('foo' placing 'bar' from 2 for 3) as ovl2,
+  position('foo' in 'foobar') as p,
+  substring('foo' from 2 for 3) as s,
+  substring('foo' similar 'f' escape '#') as ss,
+  substring('foo' from 'oo') as ssf,  -- historically-permitted abuse
+  trim(' ' from ' foo ') as bt,
+  trim(leading ' ' from ' foo ') as lt,
+  trim(trailing ' foo ') as rt,
+  trim(E'\\000'::bytea from E'\\000Tom\\000'::bytea) as btb,
+  trim(leading E'\\000'::bytea from E'\\000Tom\\000'::bytea) as ltb,
+  trim(trailing E'\\000'::bytea from E'\\000Tom\\000'::bytea) as rtb;
+select pg_get_viewdef('tt201v', true);
+                                        pg_get_viewdef                                         
+-----------------------------------------------------------------------------------------------
+  SELECT EXTRACT(day FROM now()) AS extr,                                                     +
+     ((now(), '@ 1 day'::interval) OVERLAPS (CURRENT_TIMESTAMP(2), '@ 1 day'::interval)) AS o,+
+     (('foo'::text) IS NORMALIZED) AS isn,                                                    +
+     (('foo'::text) IS NFKC NORMALIZED) AS isnn,                                              +
+     NORMALIZE('foo'::text) AS n,                                                             +
+     NORMALIZE('foo'::text, NFKD) AS nfkd,                                                    +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2) AS ovl,                                  +
+     OVERLAY('foo'::text PLACING 'bar'::text FROM 2 FOR 3) AS ovl2,                           +
+     POSITION(('foo'::text) IN ('foobar'::text)) AS p,                                        +
+     SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                +
+     SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                         +
+     "substring"('foo'::text, 'oo'::text) AS ssf,                                             +
+     TRIM(BOTH ' '::text FROM ' foo '::text) AS bt,                                           +
+     TRIM(LEADING ' '::text FROM ' foo '::text) AS lt,                                        +
+     TRIM(TRAILING FROM ' foo '::text) AS rt,                                                 +
+     TRIM(BOTH '\x00'::bytea FROM '\x00546f6d00'::bytea) AS btb,                              +
+     TRIM(LEADING '\x00'::bytea FROM '\x00546f6d00'::bytea) AS ltb,                           +
+     TRIM(TRAILING '\x00'::bytea FROM '\x00546f6d00'::bytea) AS rtb;
 (1 row)
 
 -- corner cases with empty join conditions
@@ -1706,9 +1865,206 @@ select pg_get_ruledef(oid, true) from pg_rewrite
      43 AS col_b;
 (1 row)
 
+-- test extraction of FieldSelect field names (get_name_for_var_field)
+create view tt24v as
+with cte as materialized (select r from (values(1,2),(3,4)) r)
+select (r).column2 as col_a, (rr).column2 as col_b from
+  cte join (select rr from (values(1,7),(3,8)) rr limit 2) ss
+  on (r).column1 = (rr).column1;
+select pg_get_viewdef('tt24v', true);
+                       pg_get_viewdef                       
+------------------------------------------------------------
+  WITH cte AS MATERIALIZED (                               +
+          SELECT r.*::record AS r                          +
+            FROM ( VALUES (1,2), (3,4)) r                  +
+         )                                                 +
+  SELECT (cte.r).column2 AS col_a,                         +
+     (ss.rr).column2 AS col_b                              +
+    FROM cte                                               +
+      JOIN ( SELECT rr.*::record AS rr                     +
+            FROM ( VALUES (1,7), (3,8)) rr                 +
+          LIMIT 2) ss ON (cte.r).column1 = (ss.rr).column1;
+(1 row)
+
+create view tt25v as
+with cte as materialized (select pg_get_keywords() k)
+select (k).word from cte;
+select pg_get_viewdef('tt25v', true);
+             pg_get_viewdef             
+----------------------------------------
+  WITH cte AS MATERIALIZED (           +
+          SELECT pg_get_keywords() AS k+
+         )                             +
+  SELECT (cte.k).word AS word          +
+    FROM cte;
+(1 row)
+
+-- also check cases seen only in EXPLAIN
+explain (verbose, costs off)
+select * from tt24v;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Hash Join
+   Output: (cte.r).column2, ((ROW("*VALUES*".column1, "*VALUES*".column2))).column2
+   Hash Cond: (((ROW("*VALUES*".column1, "*VALUES*".column2))).column1 = (cte.r).column1)
+   CTE cte
+     ->  Values Scan on "*VALUES*_1"
+           Output: ROW("*VALUES*_1".column1, "*VALUES*_1".column2)
+   ->  Limit
+         Output: (ROW("*VALUES*".column1, "*VALUES*".column2))
+         ->  Values Scan on "*VALUES*"
+               Output: ROW("*VALUES*".column1, "*VALUES*".column2)
+   ->  Hash
+         Output: cte.r
+         ->  CTE Scan on cte
+               Output: cte.r
+(14 rows)
+
+explain (verbose, costs off)
+select (r).column2 from (select r from (values(1,2),(3,4)) r limit 1) ss;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Subquery Scan on ss
+   Output: (ss.r).column2
+   ->  Limit
+         Output: (ROW("*VALUES*".column1, "*VALUES*".column2))
+         ->  Values Scan on "*VALUES*"
+               Output: ROW("*VALUES*".column1, "*VALUES*".column2)
+(6 rows)
+
+-- test pretty-print parenthesization rules, and SubLink deparsing
+create view tt26v as
+select x + y + z as c1,
+       (x * y) + z as c2,
+       x + (y * z) as c3,
+       (x + y) * z as c4,
+       x * (y + z) as c5,
+       x + (y + z) as c6,
+       x + (y # z) as c7,
+       (x > y) AND (y > z OR x > z) as c8,
+       (x > y) OR (y > z AND NOT (x > z)) as c9,
+       (x,y) <> ALL (values(1,2),(3,4)) as c10,
+       (x,y) <= ANY (values(1,2),(3,4)) as c11
+from (values(1,2,3)) v(x,y,z);
+select pg_get_viewdef('tt26v', true);
+                     pg_get_viewdef                     
+--------------------------------------------------------
+  SELECT v.x + v.y + v.z AS c1,                        +
+     v.x * v.y + v.z AS c2,                            +
+     v.x + v.y * v.z AS c3,                            +
+     (v.x + v.y) * v.z AS c4,                          +
+     v.x * (v.y + v.z) AS c5,                          +
+     v.x + (v.y + v.z) AS c6,                          +
+     v.x + (v.y # v.z) AS c7,                          +
+     v.x > v.y AND (v.y > v.z OR v.x > v.z) AS c8,     +
+     v.x > v.y OR v.y > v.z AND NOT v.x > v.z AS c9,   +
+     ((v.x, v.y) <> ALL ( VALUES (1,2), (3,4))) AS c10,+
+     ((v.x, v.y) <= ANY ( VALUES (1,2), (3,4))) AS c11 +
+    FROM ( VALUES (1,2,3)) v(x, y, z);
+(1 row)
+
 -- clean up all the random objects we made above
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA temp_view_test CASCADE;
 NOTICE:  drop cascades to 27 other objects
+DETAIL:  drop cascades to table temp_view_test.base_table
+drop cascades to view v2_temp
+drop cascades to view v4_temp
+drop cascades to view v6_temp
+drop cascades to view v7_temp
+drop cascades to view v10_temp
+drop cascades to view v8_temp
+drop cascades to view v9_temp
+drop cascades to view v11_temp
+drop cascades to view v12_temp
+drop cascades to table temp_view_test.base_table2
+drop cascades to view v5_temp
+drop cascades to view temp_view_test.v1
+drop cascades to view temp_view_test.v2
+drop cascades to view temp_view_test.v3
+drop cascades to view temp_view_test.v4
+drop cascades to view temp_view_test.v5
+drop cascades to view temp_view_test.v6
+drop cascades to view temp_view_test.v7
+drop cascades to view temp_view_test.v8
+drop cascades to sequence temp_view_test.seq1
+drop cascades to view temp_view_test.v9
+drop cascades to table temp_view_test.tx1
+drop cascades to view aliased_view_1
+drop cascades to view aliased_view_2
+drop cascades to view aliased_view_3
+drop cascades to view aliased_view_4
 DROP SCHEMA testviewschm2 CASCADE;
-NOTICE:  drop cascades to 62 other objects
+NOTICE:  drop cascades to 73 other objects
+DETAIL:  drop cascades to table t1
+drop cascades to view temporal1
+drop cascades to view temporal2
+drop cascades to view temporal3
+drop cascades to view temporal4
+drop cascades to table t2
+drop cascades to view nontemp1
+drop cascades to view nontemp2
+drop cascades to view nontemp3
+drop cascades to view nontemp4
+drop cascades to table tbl1
+drop cascades to table tbl2
+drop cascades to table tbl3
+drop cascades to table tbl4
+drop cascades to view mytempview
+drop cascades to view pubview
+drop cascades to view mysecview1
+drop cascades to view mysecview2
+drop cascades to view mysecview3
+drop cascades to view mysecview4
+drop cascades to view unspecified_types
+drop cascades to table tt1
+drop cascades to table tx1
+drop cascades to view view_of_joins
+drop cascades to table tbl1a
+drop cascades to view view_of_joins_2a
+drop cascades to view view_of_joins_2b
+drop cascades to view view_of_joins_2c
+drop cascades to view view_of_joins_2d
+drop cascades to table tt2
+drop cascades to table tt3
+drop cascades to table tt4
+drop cascades to view v1
+drop cascades to view v1a
+drop cascades to view v2
+drop cascades to view v2a
+drop cascades to view v3
+drop cascades to table tt5
+drop cascades to table tt6
+drop cascades to view vv1
+drop cascades to view v4
+drop cascades to table tt7
+drop cascades to table tt8
+drop cascades to view vv2
+drop cascades to view vv3
+drop cascades to view vv4
+drop cascades to table tt7a
+drop cascades to table tt8a
+drop cascades to view vv2a
+drop cascades to table tt9
+drop cascades to table tt10
+drop cascades to view vv5
+drop cascades to table tt11
+drop cascades to table tt12
+drop cascades to table tt13
+drop cascades to view vv6
+drop cascades to table tt14t
+drop cascades to function tt14f()
+drop cascades to view tt14v
+drop cascades to type nestedcomposite
+drop cascades to view tt15v
+drop cascades to view tt16v
+drop cascades to view tt17v
+drop cascades to view tt18v
+drop cascades to view tt19v
+drop cascades to view tt20v
+drop cascades to view tt201v
+drop cascades to view tt21v
+drop cascades to view tt22v
+drop cascades to view tt23v
+drop cascades to view tt24v
+drop cascades to view tt25v
+drop cascades to view tt26v

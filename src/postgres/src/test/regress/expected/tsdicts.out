@@ -413,6 +413,40 @@ SELECT ts_lexize('hunspell_num', 'footballyklubber');
  {foot,ball,klubber}
 (1 row)
 
+-- Test suitability of affix and dict files
+CREATE TEXT SEARCH DICTIONARY hunspell_err (
+						Template=ispell,
+						DictFile=ispell_sample,
+						AffFile=hunspell_sample_long
+);
+ERROR:  invalid affix alias "GJUS"
+CREATE TEXT SEARCH DICTIONARY hunspell_err (
+						Template=ispell,
+						DictFile=ispell_sample,
+						AffFile=hunspell_sample_num
+);
+ERROR:  invalid affix flag "SZ\"
+CREATE TEXT SEARCH DICTIONARY hunspell_invalid_1 (
+						Template=ispell,
+						DictFile=hunspell_sample_long,
+						AffFile=ispell_sample
+);
+CREATE TEXT SEARCH DICTIONARY hunspell_invalid_2 (
+						Template=ispell,
+						DictFile=hunspell_sample_long,
+						AffFile=hunspell_sample_num
+);
+CREATE TEXT SEARCH DICTIONARY hunspell_invalid_3 (
+						Template=ispell,
+						DictFile=hunspell_sample_num,
+						AffFile=ispell_sample
+);
+CREATE TEXT SEARCH DICTIONARY hunspell_err (
+						Template=ispell,
+						DictFile=hunspell_sample_num,
+						AffFile=hunspell_sample_long
+);
+ERROR:  invalid affix alias "302,301,202,303"
 -- Synonym dictionary
 CREATE TEXT SEARCH DICTIONARY synonym (
 						Template=synonym,
@@ -434,6 +468,41 @@ SELECT ts_lexize('synonym', 'indices');
  ts_lexize 
 -----------
  {index}
+(1 row)
+
+-- test altering boolean parameters
+SELECT dictinitoption FROM pg_ts_dict WHERE dictname = 'synonym';
+       dictinitoption        
+-----------------------------
+ synonyms = 'synonym_sample'
+(1 row)
+
+ALTER TEXT SEARCH DICTIONARY synonym (CaseSensitive = 1);
+SELECT ts_lexize('synonym', 'PoStGrEs');
+ ts_lexize 
+-----------
+ 
+(1 row)
+
+SELECT dictinitoption FROM pg_ts_dict WHERE dictname = 'synonym';
+                 dictinitoption                 
+------------------------------------------------
+ synonyms = 'synonym_sample', casesensitive = 1
+(1 row)
+
+ALTER TEXT SEARCH DICTIONARY synonym (CaseSensitive = 2);  -- fail
+ERROR:  casesensitive requires a Boolean value
+ALTER TEXT SEARCH DICTIONARY synonym (CaseSensitive = off);
+SELECT ts_lexize('synonym', 'PoStGrEs');
+ ts_lexize 
+-----------
+ {pgsql}
+(1 row)
+
+SELECT dictinitoption FROM pg_ts_dict WHERE dictname = 'synonym';
+                   dictinitoption                   
+----------------------------------------------------
+ synonyms = 'synonym_sample', casesensitive = 'off'
 (1 row)
 
 -- Create and simple test thesaurus dictionary

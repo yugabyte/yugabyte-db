@@ -5,7 +5,7 @@
  * Originally written by Tatsuo Ishii and enhanced by many contributors.
  *
  * src/bin/pgbench/pgbench.c
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2021, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * Permission to use, copy, modify, and distribute this software and its
@@ -28,15 +28,10 @@
  */
 
 #ifdef WIN32
-#define FD_SETSIZE 1024			/* set before winsock2.h is included */
-#endif							/* ! WIN32 */
+#define FD_SETSIZE 1024			/* must set before winsock2.h is included */
+#endif
 
 #include "postgres_fe.h"
-#include "fe_utils/conditional.h"
-
-#include "getopt_long.h"
-#include "libpq-fe.h"
-#include "portability/instr_time.h"
 
 #include <ctype.h>
 #include <float.h>
@@ -45,19 +40,40 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif
-
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>		/* for getrlimit */
 #endif
 
+/* For testing, PGBENCH_USE_SELECT can be defined to force use of that code */
+#if defined(HAVE_PPOLL) && !defined(PGBENCH_USE_SELECT)
+#define POLL_USING_PPOLL
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
+#else							/* no ppoll(), so use select() */
+#define POLL_USING_SELECT
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
+#endif
+
+#include "common/int.h"
+#include "common/logging.h"
+#include "common/string.h"
+#include "common/username.h"
+#include "fe_utils/cancel.h"
+#include "fe_utils/conditional.h"
+#include "fe_utils/option_utils.h"
+#include "fe_utils/string_utils.h"
+#include "getopt_long.h"
+#include "libpq-fe.h"
+#include "pgbench.h"
+#include "port/pg_bitutils.h"
+#include "portability/instr_time.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-#include "pgbench.h"
 
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION  "25P02"
 #define ERRCODE_T_R_SERIALIZATION_FAILURE  "40001"
@@ -74,44 +90,98 @@
 #define MM2_ROT				47
 
 /*
- * Multi-platform pthread implementations
+ * Multi-platform socket set implementations
+ */
+
+#ifdef POLL_USING_PPOLL
+#define SOCKET_WAIT_METHOD "ppoll"
+
+typedef struct socket_set
+{
+	int			maxfds;			/* allocated length of pollfds[] array */
+	int			curfds;			/* number currently in use */
+	struct pollfd pollfds[FLEXIBLE_ARRAY_MEMBER];
+} socket_set;
+
+#endif							/* POLL_USING_PPOLL */
+
+#ifdef POLL_USING_SELECT
+#define SOCKET_WAIT_METHOD "select"
+
+typedef struct socket_set
+{
+	int			maxfd;			/* largest FD currently set in fds */
+	fd_set		fds;
+} socket_set;
+
+#endif							/* POLL_USING_SELECT */
+
+/*
+ * Multi-platform thread implementations
  */
 
 #ifdef WIN32
-/* Use native win32 threads on Windows */
-typedef struct win32_pthread *pthread_t;
-typedef int pthread_attr_t;
-
-static int	pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
-static int	pthread_join(pthread_t th, void **thread_return);
+/* Use Windows threads */
+#include <windows.h>
+#define GETERRNO() (_dosmaperr(GetLastError()), errno)
+#define THREAD_T HANDLE
+#define THREAD_FUNC_RETURN_TYPE unsigned
+#define THREAD_FUNC_RETURN return 0
+#define THREAD_FUNC_CC __stdcall
+#define THREAD_CREATE(handle, function, arg) \
+	((*(handle) = (HANDLE) _beginthreadex(NULL, 0, (function), (arg), 0, NULL)) == 0 ? errno : 0)
+#define THREAD_JOIN(handle) \
+	(WaitForSingleObject(handle, INFINITE) != WAIT_OBJECT_0 ? \
+	GETERRNO() : CloseHandle(handle) ? 0 : GETERRNO())
+#define THREAD_BARRIER_T SYNCHRONIZATION_BARRIER
+#define THREAD_BARRIER_INIT(barrier, n) \
+	(InitializeSynchronizationBarrier((barrier), (n), 0) ? 0 : GETERRNO())
+#define THREAD_BARRIER_WAIT(barrier) \
+	EnterSynchronizationBarrier((barrier), \
+								SYNCHRONIZATION_BARRIER_FLAGS_BLOCK_ONLY)
+#define THREAD_BARRIER_DESTROY(barrier)
 #elif defined(ENABLE_THREAD_SAFETY)
-/* Use platform-dependent pthread capability */
-#include <pthread.h>
+/* Use POSIX threads */
+#include "port/pg_pthread.h"
+#define THREAD_T pthread_t
+#define THREAD_FUNC_RETURN_TYPE void *
+#define THREAD_FUNC_RETURN return NULL
+#define THREAD_FUNC_CC
+#define THREAD_CREATE(handle, function, arg) \
+	pthread_create((handle), NULL, (function), (arg))
+#define THREAD_JOIN(handle) \
+	pthread_join((handle), NULL)
+#define THREAD_BARRIER_T pthread_barrier_t
+#define THREAD_BARRIER_INIT(barrier, n) \
+	pthread_barrier_init((barrier), NULL, (n))
+#define THREAD_BARRIER_WAIT(barrier) pthread_barrier_wait((barrier))
+#define THREAD_BARRIER_DESTROY(barrier) pthread_barrier_destroy((barrier))
 #else
 /* No threads implementation, use none (-j 1) */
-#define pthread_t void *
+#define THREAD_T void *
+#define THREAD_FUNC_RETURN_TYPE void *
+#define THREAD_FUNC_RETURN return NULL
+#define THREAD_FUNC_CC
+#define THREAD_BARRIER_T int
+#define THREAD_BARRIER_INIT(barrier, n) (*(barrier) = 0)
+#define THREAD_BARRIER_WAIT(barrier)
+#define THREAD_BARRIER_DESTROY(barrier)
 #endif
 
 
 /********************************************************************
  * some configurable parameters */
 
-/* max number of clients allowed */
-#ifdef FD_SETSIZE
-#define MAXCLIENTS	(FD_SETSIZE - 10)
-#else
-#define MAXCLIENTS	1024
-#endif
-
 #define DEFAULT_INIT_STEPS "dtgp"	/* default -I setting */
+#define ALL_INIT_STEPS "dtgGvpf"	/* all possible steps */
 
 #define LOG_STEP_SECONDS	5	/* seconds between log messages */
 #define DEFAULT_NXACTS	10		/* default nxacts */
 
-#define ZIPF_CACHE_SIZE	15		/* cache cells number */
-
 #define MIN_GAUSSIAN_PARAM		2.0 /* minimum parameter for gauss */
-#define MAX_ZIPFIAN_PARAM		1000	/* maximum parameter for zipfian */
+
+#define MIN_ZIPFIAN_PARAM		1.001	/* minimum parameter for zipfian */
+#define MAX_ZIPFIAN_PARAM		1000.0	/* maximum parameter for zipfian */
 
 int			nxacts = 0;			/* number of transactions per client */
 int			duration = 0;		/* duration in seconds */
@@ -144,7 +214,7 @@ double		sample_rate = 0.0;
  * When threads are throttled to a given rate limit, this is the target delay
  * to reach that rate in usec.  0 is the default and means no throttling.
  */
-int64		throttle_delay = 0;
+double		throttle_delay = 0;
 
 /*
  * Transactions which take longer than this limit (in usec) are counted as
@@ -159,6 +229,23 @@ int64		latency_limit = 0;
  */
 char	   *tablespace = NULL;
 char	   *index_tablespace = NULL;
+
+/*
+ * Number of "ysql_bench_accounts" partitions.  0 is the default and means no
+ * partitioning.
+ */
+static int	partitions = 0;
+
+/* partitioning strategy for "ysql_bench_accounts" */
+typedef enum
+{
+	PART_NONE,					/* no partitioning */
+	PART_RANGE,					/* range partitioning */
+	PART_HASH					/* hash partitioning */
+} partition_method_t;
+
+static partition_method_t partition_method = PART_NONE;
+static const char *PARTITION_METHOD[] = {"none", "range", "hash"};
 
 /* random seed used to initialize base_random_sequence */
 int64		random_seed = -1;
@@ -195,6 +282,11 @@ bool		report_per_command = false;	/* report per-command latencies, retries
 										 * after the failures and errors
 										 * (failures without retrying) */
 int			main_pid;			/* main process id used in log filename */
+
+const char *pghost = NULL;
+const char *pgport = NULL;
+const char *username = NULL;
+const char *dbName = NULL;
 uint32		batch_size = 1024;	/* Batch size used for a transaction */
 
 /*
@@ -210,11 +302,6 @@ uint32		batch_size = 1024;	/* Batch size used for a transaction */
 uint32		max_tries = 0;		/* we cannot retry a failed transaction if its
 								 * number of tries reaches this maximum; if its
 								 * value is zero, it is not used */
-
-char	   *pghost = "";
-char	   *pgport = "";
-char	   *login = NULL;
-char	   *dbName;
 char	   *logfile_prefix = NULL;
 const char *progname;
 
@@ -258,12 +345,19 @@ typedef struct SimpleStats
 } SimpleStats;
 
 /*
+ * The instr_time type is expensive when dealing with time arithmetic.  Define
+ * a type to hold microseconds instead.  Type int64 is good enough for about
+ * 584500 years.
+ */
+typedef int64 pg_time_usec_t;
+
+/*
  * Data structure to hold various statistics: per-thread and per-script stats
  * are maintained and merged together.
  */
 typedef struct StatsData
 {
-	time_t		start_time;		/* interval start time, for aggregates */
+	pg_time_usec_t start_time;	/* interval start time, for aggregates */
 	int64		cnt;			/* number of sucessfull transactions, including
 								 * skipped */
 	int64		skipped;		/* number of transactions skipped under --rate
@@ -283,8 +377,25 @@ typedef struct StatsData
 	SimpleStats lag;
 } StatsData;
 
+/*
+ * For displaying Unix epoch timestamps, as some time functions may have
+ * another reference.
+ */
+pg_time_usec_t epoch_shift;
+
+/*
+ * Struct to keep random state.
+ */
+typedef struct RandomState
+{
+	unsigned short xseed[3];
+} RandomState;
+
 /* Various random sequences are initialized from this one. */
-static unsigned short base_random_sequence[3];
+static RandomState base_random_sequence;
+
+/* Synchronization barrier for start and connection */
+static THREAD_BARRIER_T barrier;
 
 /*
  * Data structure for client variables.
@@ -295,14 +406,6 @@ typedef struct Variables
 	int			nvariables;		/* number of variables */
 	bool		vars_sorted;	/* are variables sorted by name? */
 } Variables;
-
-/*
- * Data structure for thread/client random seed.
- */
-typedef struct RandomState
-{
-	unsigned short data[3];
-} RandomState;
 
 /*
  * Data structure for repeating a transaction from the beginnning with the same
@@ -341,38 +444,44 @@ typedef enum
 {
 	/*
 	 * The client must first choose a script to execute.  Once chosen, it can
-	 * either be throttled (state CSTATE_START_THROTTLE under --rate) or start
-	 * right away (state CSTATE_START_TX).
+	 * either be throttled (state CSTATE_PREPARE_THROTTLE under --rate), start
+	 * right away (state CSTATE_START_TX) or not start at all if the timer was
+	 * exceeded (state CSTATE_FINISHED).
 	 */
 	CSTATE_CHOOSE_SCRIPT,
 
 	/*
-	 * In CSTATE_START_THROTTLE state, we calculate when to begin the next
-	 * transaction, and advance to CSTATE_THROTTLE.  CSTATE_THROTTLE state
-	 * sleeps until that moment.  (If throttling is not enabled, doCustom()
-	 * falls directly through from CSTATE_START_THROTTLE to CSTATE_START_TX.)
-	 */
-	CSTATE_START_THROTTLE,
-	CSTATE_THROTTLE,
-
-	/*
 	 * CSTATE_START_TX performs start-of-transaction processing.  Establishes
-	 * a new connection for the transaction, in --connect mode, and records
-	 * the transaction start time.
+	 * a new connection for the transaction in --connect mode, records the
+	 * transaction start time, and proceed to the first command.
+	 *
+	 * Note: once a script is started, it will either error or run till its
+	 * end, where it may be interrupted. It is not interrupted while running,
+	 * so pgbench --time is to be understood as tx are allowed to start in
+	 * that time, and will finish when their work is completed.
 	 */
 	CSTATE_START_TX,
+
+	/*
+	 * In CSTATE_PREPARE_THROTTLE state, we calculate when to begin the next
+	 * transaction, and advance to CSTATE_THROTTLE.  CSTATE_THROTTLE state
+	 * sleeps until that moment, then advances to CSTATE_START_TX, or
+	 * CSTATE_FINISHED if the next transaction would start beyond the end of
+	 * the run.
+	 */
+	CSTATE_PREPARE_THROTTLE,
+	CSTATE_THROTTLE,
 
 	/*
 	 * We loop through these states, to process each command in the script:
 	 *
 	 * CSTATE_START_COMMAND starts the execution of a command.  On a SQL
 	 * command, the command is sent to the server, and we move to
-	 * CSTATE_WAIT_RESULT state.  On a \sleep meta-command, the timer is set,
-	 * and we enter the CSTATE_SLEEP state to wait for it to expire. Other
-	 * meta-commands are executed immediately.
-	 *
-	 * CSTATE_SKIP_COMMAND for conditional branches which are not executed,
-	 * quickly skip commands that do not need any evaluation.
+	 * CSTATE_WAIT_RESULT state unless in pipeline mode. On a \sleep
+	 * meta-command, the timer is set, and we enter the CSTATE_SLEEP state to
+	 * wait for it to expire. Other meta-commands are executed immediately. If
+	 * the command about to start is actually beyond the end of the script,
+	 * advance to CSTATE_END_TX.
 	 *
 	 * CSTATE_WAIT_RESULT waits until we get a result set back from the server
 	 * for the current command.
@@ -381,12 +490,17 @@ typedef enum
 	 *
 	 * CSTATE_END_COMMAND records the end-of-command timestamp, increments the
 	 * command counter, and loops back to CSTATE_START_COMMAND state.
+	 *
+	 * CSTATE_SKIP_COMMAND is used by conditional branches which are not
+	 * executed. It quickly skip commands that do not need any evaluation.
+	 * This state can move forward several commands, till there is something
+	 * to do or the end of the script.
 	 */
 	CSTATE_START_COMMAND,
-	CSTATE_SKIP_COMMAND,
 	CSTATE_WAIT_RESULT,
 	CSTATE_SLEEP,
 	CSTATE_END_COMMAND,
+	CSTATE_SKIP_COMMAND,
 
 	/*
 	 * States for transactions with serialization or deadlock failures.
@@ -405,11 +519,12 @@ typedef enum
 	CSTATE_RETRY,
 
 	/*
-	 * CSTATE_END_TX performs end-of-transaction processing.  Calculates
-	 * latency, and logs the transaction.  In --connect mode, closes the
-	 * current connection.  Chooses the next script to execute and starts over
-	 * in CSTATE_START_THROTTLE state, or enters CSTATE_FINISHED if we have no
-	 * more work to do.
+	 * CSTATE_END_TX performs end-of-transaction processing.  It calculates
+	 * latency, and logs the transaction.  In --connect mode, it closes the
+	 * current connection.
+	 *
+	 * Then either starts over in CSTATE_CHOOSE_SCRIPT, or enters
+	 * CSTATE_FINISHED if we have no more work to do.
 	 */
 	CSTATE_END_TX,
 
@@ -430,19 +545,26 @@ typedef struct
 	int			id;				/* client No. */
 	ConnectionStateEnum state;	/* state machine's current state. */
 	ConditionalStack cstack;	/* enclosing conditionals state */
-	RandomState random_state;	/* separate randomness for each client */
 
+	/*
+	 * Separate randomness for each client. This is used for random functions
+	 * PGBENCH_RANDOM_* during the execution of the script.
+	 */
+	RandomState cs_func_rs;
+	RandomState random_state;	/* separate randomness for each client */
 	int			use_file;		/* index in sql_script for this client */
 	int			command;		/* command number in script */
 
 	/* client variables */
-	Variables   variables;
+	Variable   *variables;		/* array of variable definitions */
+	int			nvariables;		/* number of variables */
+	bool		vars_sorted;	/* are variables sorted by name? */
 
-	/* various times about current transaction */
-	int64		txn_scheduled;	/* scheduled start time of transaction (usec) */
-	int64		sleep_until;	/* scheduled start time of next cmd (usec) */
-	instr_time	txn_begin;		/* used for measuring schedule lag times */
-	instr_time	stmt_begin;		/* used for measuring statement latencies */
+	/* various times about current transaction in microseconds */
+	pg_time_usec_t txn_scheduled;	/* scheduled start time of transaction */
+	pg_time_usec_t sleep_until; /* scheduled start time of next cmd */
+	pg_time_usec_t txn_begin;	/* used for measuring schedule lag times */
+	pg_time_usec_t stmt_begin;	/* used for measuring statement latencies */
 
 	bool		prepared[MAX_SCRIPTS];	/* whether client prepared the script */
 
@@ -460,37 +582,7 @@ typedef struct
 
 	/* per client collected stats */
 	int64		cnt;			/* client transaction count, for -t */
-	int			ecnt;			/* error count */
 } CState;
-
-/*
- * Cache cell for random_zipfian call
- */
-typedef struct
-{
-	/* cell keys */
-	double		s;				/* s - parameter of random_zipfian function */
-	int64		n;				/* number of elements in range (max - min + 1) */
-
-	double		harmonicn;		/* generalizedHarmonicNumber(n, s) */
-	double		alpha;
-	double		beta;
-	double		eta;
-
-	uint64		last_used;		/* last used logical time */
-} ZipfCell;
-
-/*
- * Zipf cache for zeta values
- */
-typedef struct
-{
-	uint64		current;		/* counter for LRU cache replacement algorithm */
-
-	int			nb_cells;		/* number of filled cells */
-	int			overflowCount;	/* number of cache overflows */
-	ZipfCell	cells[ZIPF_CACHE_SIZE];
-} ZipfCache;
 
 /*
  * Thread state
@@ -498,31 +590,45 @@ typedef struct
 typedef struct
 {
 	int			tid;			/* thread id */
-	pthread_t	thread;			/* thread handle */
+	THREAD_T	thread;			/* thread handle */
 	CState	   *state;			/* array of CState */
 	int			nstate;			/* length of state[] */
+
+	/*
+	 * Separate randomness for each thread. Each thread option uses its own
+	 * random state to make all of them independent of each other and
+	 * therefore deterministic at the thread level.
+	 */
+	RandomState ts_choose_rs;	/* random state for selecting a script */
+	RandomState ts_throttle_rs; /* random state for transaction throttling */
+	RandomState ts_sample_rs;	/* random state for log sampling */
 	RandomState random_state; 	/* separate randomness for each thread */
 	int64		throttle_trigger;	/* previous/next throttling (us) */
 	FILE	   *logfile;		/* where to log, or NULL */
-	ZipfCache	zipf_cache;		/* for thread-safe  zipfian random number
-								 * generation */
 
-	/* per thread collected stats */
-	instr_time	start_time;		/* thread start time */
-	instr_time	conn_time;
+	/* per thread collected stats in microseconds */
+	pg_time_usec_t create_time; /* thread creation time */
+	pg_time_usec_t started_time;	/* thread is running */
+	pg_time_usec_t bench_start; /* thread is benchmarking */
+	pg_time_usec_t conn_duration;	/* cumulated connection and deconnection
+									 * delays */
+
 	StatsData	stats;
 	int64		latency_late;	/* executed but late transactions (including
 								 * errors) */
 } TState;
-
-#define INVALID_THREAD		((pthread_t) 0)
 
 /*
  * queries read from files
  */
 #define SQL_COMMAND		1
 #define META_COMMAND	2
-#define MAX_ARGS		10
+
+/*
+ * max number of backslash command arguments or SQL variables,
+ * including the command or SQL statement itself
+ */
+#define MAX_ARGS		256
 
 typedef enum MetaCommand
 {
@@ -531,10 +637,14 @@ typedef enum MetaCommand
 	META_SETSHELL,				/* \setshell */
 	META_SHELL,					/* \shell */
 	META_SLEEP,					/* \sleep */
+	META_GSET,					/* \gset */
+	META_ASET,					/* \aset */
 	META_IF,					/* \if */
 	META_ELIF,					/* \elif */
 	META_ELSE,					/* \else */
-	META_ENDIF					/* \endif */
+	META_ENDIF,					/* \endif */
+	META_STARTPIPELINE,			/* \startpipeline */
+	META_ENDPIPELINE			/* \endpipeline */
 } MetaCommand;
 
 typedef enum QueryMode
@@ -548,16 +658,37 @@ typedef enum QueryMode
 static QueryMode querymode = QUERY_SIMPLE;
 static const char *QUERYMODE[] = {"simple", "extended", "prepared"};
 
-typedef struct
+/*
+ * struct Command represents one command in a script.
+ *
+ * lines		The raw, possibly multi-line command text.  Variable substitution
+ *				not applied.
+ * first_line	A short, single-line extract of 'lines', for error reporting.
+ * type			SQL_COMMAND or META_COMMAND
+ * meta			The type of meta-command, with META_NONE/GSET/ASET if command
+ *				is SQL.
+ * argc			Number of arguments of the command, 0 if not yet processed.
+ * argv			Command arguments, the first of which is the command or SQL
+ *				string itself.  For SQL commands, after post-processing
+ *				argv[0] is the same as 'lines' with variables substituted.
+ * varprefix 	SQL commands terminated with \gset or \aset have this set
+ *				to a non NULL value.  If nonempty, it's used to prefix the
+ *				variable name that receives the value.
+ * aset			do gset on all possible queries of a combined query (\;).
+ * expr			Parsed expression, if needed.
+ * stats		Time spent in this command.
+ */
+typedef struct Command
 {
-	char	   *line;			/* text of command line */
-	int			command_num;	/* unique index of this Command struct */
-	int			type;			/* command type (SQL_COMMAND or META_COMMAND) */
-	MetaCommand meta;			/* meta command identifier, or META_NONE */
-	int			argc;			/* number of command words */
-	char	   *argv[MAX_ARGS]; /* command word list */
-	PgBenchExpr *expr;			/* parsed expression, if needed */
-	SimpleStats stats;			/* time spent in this command */
+	PQExpBufferData lines;
+	char	   *first_line;
+	int			type;
+	MetaCommand meta;
+	int			argc;
+	char	   *argv[MAX_ARGS];
+	char	   *varprefix;
+	PgBenchExpr *expr;
+	SimpleStats stats;
 	int64		retries;
 	int64		errors;			/* number of failures that were not retried */
 	int64		errors_in_failed_tx;	/* number of errors
@@ -574,7 +705,6 @@ typedef struct ParsedScript
 
 static ParsedScript sql_script[MAX_SCRIPTS];	/* SQL script files */
 static int	num_scripts;		/* number of scripts in sql_script[] */
-static int	num_commands = 0;	/* total number of Command structs */
 static int64 total_weight = 0;
 
 typedef enum DebugLevel
@@ -742,16 +872,23 @@ static void setNullValue(PgBenchValue *pv);
 static void setBoolValue(PgBenchValue *pv, bool bval);
 static void setIntValue(PgBenchValue *pv, int64 ival);
 static void setDoubleValue(PgBenchValue *pv, double dval);
-static bool evaluateExpr(TState *, CState *, PgBenchExpr *, PgBenchValue *);
+static bool evaluateExpr(CState *st, PgBenchExpr *expr,
+						 PgBenchValue *retval);
+static ConnectionStateEnum executeMetaCommand(CState *st, pg_time_usec_t *now);
 static void doLog(TState *thread, CState *st,
-	  StatsData *agg, bool skipped, double latency, double lag);
-static void processXactStats(TState *thread, CState *st, instr_time *now,
-				 bool skipped, StatsData *agg);
-static void pgbench_error(const char *fmt,...) pg_attribute_printf(1, 2);
+				  StatsData *agg, bool skipped, double latency, double lag);
+static void processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
+							 bool skipped, StatsData *agg);
 static void addScript(ParsedScript script);
-static void *threadRun(void *arg);
-static void setalarm(int seconds);
+static THREAD_FUNC_RETURN_TYPE THREAD_FUNC_CC threadRun(void *arg);
 static void finishCon(CState *st);
+static void setalarm(int seconds);
+static socket_set *alloc_socket_set(int count);
+static void free_socket_set(socket_set *sa);
+static void clear_socket_set(socket_set *sa);
+static void add_socket_to_set(socket_set *sa, int fd, int idx);
+static int	wait_on_socket_set(socket_set *sa, int64 usecs);
+static bool socket_has_input(socket_set *sa, int fd, int idx);
 
 #if defined(ENABLE_THREAD_SAFETY) && defined(HAVE__VA_ARGS)
 static bool errstartImpl(Error error, ErrorLevel elevel);
@@ -767,9 +904,26 @@ static void errfinishImpl(int dummy,...);
 /* callback functions for our flex lexer */
 static const PsqlScanCallbacks pgbench_callbacks = {
 	NULL,						/* don't need get_variable functionality */
-	pgbench_error
 };
 
+static inline pg_time_usec_t
+pg_time_now(void)
+{
+	instr_time	now;
+
+	INSTR_TIME_SET_CURRENT(now);
+
+	return (pg_time_usec_t) INSTR_TIME_GET_MICROSEC(now);
+}
+
+static inline void
+pg_time_now_lazy(pg_time_usec_t *now)
+{
+	if ((*now) == 0)
+		(*now) = pg_time_now();
+}
+
+#define PG_TIME_GET_DOUBLE(t) (0.000001 * (t))
 
 static void
 usage(void)
@@ -779,7 +933,7 @@ usage(void)
 		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i, --initialize         invokes initialization mode\n"
-		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgp\")\n"
+		   "  -I, --init-steps=[" ALL_INIT_STEPS "]+ (default \"" DEFAULT_INIT_STEPS "\")\n"
 		   "                           run selected initialization steps\n"
 		   "  -F, --fillfactor=NUM     set fill factor\n"
 		   "  -n, --no-vacuum          do not run VACUUM during initialization\n"
@@ -788,6 +942,9 @@ usage(void)
 		   "  --foreign-keys           create foreign key constraints between tables\n"
 		   "  --index-tablespace=TABLESPACE\n"
 		   "                           create indexes in the specified tablespace\n"
+		   "  --partition-method=(range|hash)\n"
+		   "                           partition ysql_bench_accounts with this method (default: range)\n"
+		   "  --partitions=NUM         partition ysql_bench_accounts into NUM parts (default: 0)\n"
 		   "  --tablespace=TABLESPACE  create tables in the specified tablespace\n"
 		   "  --unlogged-tables        create tables as unlogged tables\n"
 		   "\nOptions to select what to run:\n"
@@ -823,8 +980,9 @@ usage(void)
 		   "  --progress-timestamp     use Unix epoch timestamps for progress\n"
 		   "  --random-seed=SEED       set random seed (\"time\", \"rand\", integer)\n"
 		   "  --sampling-rate=NUM      fraction of transactions to log (e.g., 0.01 for 1%%)\n"
-		   "  --batch-size=NUM         batch size for a transaction\n"
+		   "  --show-script=NAME       show builtin script code, then exit\n"
 		   "\nCommon options:\n"
+		   "  --batch-size=NUM         batch size for a transaction\n"
 		   "  -d, --debug=no|fails|all print debugging output (default: no)\n"
 		   "  -h, --host=HOSTNAME      database server host or socket directory\n"
 		   "  -p, --port=PORT          database server port number\n"
@@ -866,19 +1024,27 @@ is_an_int(const char *str)
 /*
  * strtoint64 -- convert a string to 64-bit integer
  *
- * This function is a modified version of scanint8() from
+ * This function is a slightly modified version of scanint8() from
  * src/backend/utils/adt/int8.c.
+ *
+ * The function returns whether the conversion worked, and if so
+ * "*result" is set to the result.
+ *
+ * If not errorOK, an error message is also printed out on errors.
  */
-int64
-strtoint64(const char *str)
+bool
+strtoint64(const char *str, bool errorOK, int64 *result)
 {
 	const char *ptr = str;
-	int64		result = 0;
-	int			sign = 1;
+	int64		tmp = 0;
+	bool		neg = false;
 
 	/*
 	 * Do our own scan, rather than relying on sscanf which might be broken
 	 * for long long.
+	 *
+	 * As INT64_MIN can't be stored as a positive 64 bit integer, accumulate
+	 * value as a negative number.
 	 */
 
 	/* skip leading spaces */
@@ -889,56 +1055,102 @@ strtoint64(const char *str)
 	if (*ptr == '-')
 	{
 		ptr++;
-
-		/*
-		 * Do an explicit check for INT64_MIN.  Ugly though this is, it's
-		 * cleaner than trying to get the loop below to handle it portably.
-		 */
-		if (strncmp(ptr, "9223372036854775808", 19) == 0)
-		{
-			result = PG_INT64_MIN;
-			ptr += 19;
-			goto gotdigits;
-		}
-		sign = -1;
+		neg = true;
 	}
 	else if (*ptr == '+')
 		ptr++;
 
 	/* require at least one digit */
-	if (!isdigit((unsigned char) *ptr))
-	{
-		ereport(ELEVEL_LOG_MAIN,
-				(errmsg("invalid input syntax for integer: \"%s\"\n", str)));
-	}
+	if (unlikely(!isdigit((unsigned char) *ptr)))
+		goto invalid_syntax;
 
 	/* process digits */
 	while (*ptr && isdigit((unsigned char) *ptr))
 	{
-		int64		tmp = result * 10 + (*ptr++ - '0');
+		int8		digit = (*ptr++ - '0');
 
-		if ((tmp / 10) != result)	/* overflow? */
-		{
-			ereport(ELEVEL_LOG_MAIN,
-					(errmsg("value \"%s\" is out of range for type bigint\n",
-							str)));
-		}
-		result = tmp;
+		if (unlikely(pg_mul_s64_overflow(tmp, 10, &tmp)) ||
+			unlikely(pg_sub_s64_overflow(tmp, digit, &tmp)))
+			goto out_of_range;
 	}
-
-gotdigits:
 
 	/* allow trailing whitespace, but not other trailing chars */
 	while (*ptr != '\0' && isspace((unsigned char) *ptr))
 		ptr++;
 
-	if (*ptr != '\0')
+	if (unlikely(*ptr != '\0'))
+		goto invalid_syntax;
+
+	if (!neg)
 	{
-		ereport(ELEVEL_LOG_MAIN,
-				(errmsg("invalid input syntax for integer: \"%s\"\n", str)));
+		if (unlikely(tmp == PG_INT64_MIN))
+			goto out_of_range;
+		tmp = -tmp;
 	}
 
-	return ((sign < 0) ? -result : result);
+	*result = tmp;
+	return true;
+
+out_of_range:
+	if (!errorOK)
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("value \"%s\" is out of range for type bigint", str)));
+	return false;
+
+invalid_syntax:
+	if (!errorOK)
+		ereport(ELEVEL_LOG_MAIN,
+				(errmsg("invalid input syntax for type bigint: \"%s\"", str)));
+	return false;
+}
+
+/* convert string to double, detecting overflows/underflows */
+bool
+strtodouble(const char *str, bool errorOK, double *dv)
+{
+	char	   *end;
+
+	errno = 0;
+	*dv = strtod(str, &end);
+
+	if (unlikely(errno != 0))
+	{
+		if (!errorOK)
+			pg_log_error("value \"%s\" is out of range for type double", str);
+		return false;
+	}
+
+	if (unlikely(end == str || *end != '\0'))
+	{
+		if (!errorOK)
+			pg_log_error("invalid input syntax for type double: \"%s\"", str);
+		return false;
+	}
+	return true;
+}
+
+/*
+ * Initialize a random state struct.
+ *
+ * We derive the seed from base_random_sequence, which must be set up already.
+ */
+static void
+initRandomState(RandomState *random_state)
+{
+	random_state->data[0] = (unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+	random_state->data[1] =(unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+	random_state->data[2] = (unsigned short)
+                (pg_jrand48(base_random_sequence) & 0xFFFF);
+
+	random_state->xseed[0] = (unsigned short)
+		(pg_jrand48(base_random_sequence.xseed) & 0xFFFF);
+	random_state->xseed[1] = (unsigned short)
+		(pg_jrand48(base_random_sequence.xseed) & 0xFFFF);
+	random_state->xseed[2] = (unsigned short)
+		(pg_jrand48(base_random_sequence.xseed) & 0xFFFF);
+
 }
 
 /*
@@ -961,7 +1173,7 @@ getrand(RandomState *random_state, int64 min, int64 max)
 	 * protected by a mutex, and therefore a bottleneck on machines with many
 	 * CPUs.
 	 */
-	return min + (int64) ((max - min + 1) * pg_erand48(random_state->data));
+	return min + (int64) ((max - min + 1) * pg_erand48(random_state->xseed));
 }
 
 /*
@@ -981,7 +1193,7 @@ getExponentialRand(RandomState *random_state, int64 min, int64 max,
 	Assert(parameter > 0.0);
 	cut = exp(-parameter);
 	/* erand in [0, 1), uniform in (0, 1] */
-	uniform = 1.0 - pg_erand48(random_state->data);
+	uniform = 1.0 - pg_erand48(random_state->xseed);
 
 	/*
 	 * inner expression in (cut, 1] (if parameter > 0), rand in [0, 1)
@@ -1023,8 +1235,8 @@ getGaussianRand(RandomState *random_state, int64 min, int64 max,
 		 * are expected in (0, 1] (see
 		 * https://en.wikipedia.org/wiki/Box-Muller_transform)
 		 */
-		double		rand1 = 1.0 - pg_erand48(random_state->data);
-		double		rand2 = 1.0 - pg_erand48(random_state->data);
+		double		rand1 = 1.0 - pg_erand48(random_state->xseed);
+		double		rand2 = 1.0 - pg_erand48(random_state->xseed);
 
 		/* Box-Muller basic form transform */
 		double		var_sqrt = sqrt(-2.0 * log(rand1));
@@ -1049,9 +1261,12 @@ getGaussianRand(RandomState *random_state, int64 min, int64 max,
 /*
  * random number generator: generate a value, such that the series of values
  * will approximate a Poisson distribution centered on the given value.
+ *
+ * Individual results are rounded to integers, though the center value need
+ * not be one.
  */
 static int64
-getPoissonRand(RandomState *random_state, int64 center)
+getPoissonRand(RandomState *random_state, double center)
 {
 	/*
 	 * Use inverse transform sampling to generate a value > 0, such that the
@@ -1060,82 +1275,17 @@ getPoissonRand(RandomState *random_state, int64 center)
 	double		uniform;
 
 	/* erand in [0, 1), uniform in (0, 1] */
-	uniform = 1.0 - pg_erand48(random_state->data);
+	uniform = 1.0 - pg_erand48(random_state->xseed);
 
-	return (int64) (-log(uniform) * ((double) center) + 0.5);
-}
-
-/* helper function for getZipfianRand */
-static double
-generalizedHarmonicNumber(int64 n, double s)
-{
-	int			i;
-	double		ans = 0.0;
-
-	for (i = n; i > 1; i--)
-		ans += pow(i, -s);
-	return ans + 1.0;
-}
-
-/* set harmonicn and other parameters to cache cell */
-static void
-zipfSetCacheCell(ZipfCell *cell, int64 n, double s)
-{
-	double		harmonic2;
-
-	cell->n = n;
-	cell->s = s;
-
-	harmonic2 = generalizedHarmonicNumber(2, s);
-	cell->harmonicn = generalizedHarmonicNumber(n, s);
-
-	cell->alpha = 1.0 / (1.0 - s);
-	cell->beta = pow(0.5, s);
-	cell->eta = (1.0 - pow(2.0 / n, 1.0 - s)) / (1.0 - harmonic2 / cell->harmonicn);
-}
-
-/*
- * search for cache cell with keys (n, s)
- * and create new cell if it does not exist
- */
-static ZipfCell *
-zipfFindOrCreateCacheCell(ZipfCache *cache, int64 n, double s)
-{
-	int			i,
-				least_recently_used = 0;
-	ZipfCell   *cell;
-
-	/* search cached cell for given parameters */
-	for (i = 0; i < cache->nb_cells; i++)
-	{
-		cell = &cache->cells[i];
-		if (cell->n == n && cell->s == s)
-			return &cache->cells[i];
-
-		if (cell->last_used < cache->cells[least_recently_used].last_used)
-			least_recently_used = i;
-	}
-
-	/* create new one if it does not exist */
-	if (cache->nb_cells < ZIPF_CACHE_SIZE)
-		i = cache->nb_cells++;
-	else
-	{
-		/* replace LRU cell if cache is full */
-		i = least_recently_used;
-		cache->overflowCount++;
-	}
-
-	zipfSetCacheCell(&cache->cells[i], n, s);
-
-	cache->cells[i].last_used = cache->current++;
-	return &cache->cells[i];
+	return (int64) (-log(uniform) * center + 0.5);
 }
 
 /*
  * Computing zipfian using rejection method, based on
  * "Non-Uniform Random Variate Generation",
  * Luc Devroye, p. 550-551, Springer 1986.
+ *
+ * This works for s > 1.0, but may perform badly for s very close to 1.0.
  */
 static int64
 computeIterativeZipfian(RandomState *random_state, int64 n, double s)
@@ -1146,11 +1296,15 @@ computeIterativeZipfian(RandomState *random_state, int64 n, double s)
 				u,
 				v;
 
+	/* Ensure n is sane */
+	if (n <= 1)
+		return 1;
+
 	while (true)
 	{
 		/* random variates */
-		u = pg_erand48(random_state->data);
-		v = pg_erand48(random_state->data);
+		u = pg_erand48(random_state->xseed);
+		v = pg_erand48(random_state->xseed);
 
 		x = floor(pow(u, -1.0 / (s - 1.0)));
 
@@ -1162,40 +1316,16 @@ computeIterativeZipfian(RandomState *random_state, int64 n, double s)
 	return (int64) x;
 }
 
-/*
- * Computing zipfian using harmonic numbers, based on algorithm described in
- * "Quickly Generating Billion-Record Synthetic Databases",
- * Jim Gray et al, SIGMOD 1994
- */
-static int64
-computeHarmonicZipfian(TState *thread, RandomState *random_state, int64 n,
-					   double s)
-{
-	ZipfCell   *cell = zipfFindOrCreateCacheCell(&thread->zipf_cache, n, s);
-	double		uniform = pg_erand48(random_state->data);
-	double		uz = uniform * cell->harmonicn;
-
-	if (uz < 1.0)
-		return 1;
-	if (uz < 1.0 + cell->beta)
-		return 2;
-	return 1 + (int64) (cell->n * pow(cell->eta * uniform - cell->eta + 1.0, cell->alpha));
-}
-
 /* random number generator: zipfian distribution from min to max inclusive */
 static int64
-getZipfianRand(TState *thread, RandomState *random_state, int64 min,
-			   int64 max, double s)
+getZipfianRand(RandomState *random_state, int64 min, int64 max, double s)
 {
 	int64		n = max - min + 1;
 
 	/* abort if parameter is invalid */
-	Assert(s > 0.0 && s != 1.0 && s <= MAX_ZIPFIAN_PARAM);
+	Assert(MIN_ZIPFIAN_PARAM <= s && s <= MAX_ZIPFIAN_PARAM);
 
-
-	return min - 1 + ((s > 1)
-					  ? computeIterativeZipfian(random_state, n, s)
-					  : computeHarmonicZipfian(thread, random_state, n, s));
+	return min - 1 + computeIterativeZipfian(random_state, n, s);
 }
 
 /*
@@ -1247,6 +1377,113 @@ getHashMurmur2(int64 val, uint64 seed)
 }
 
 /*
+ * Pseudorandom permutation function
+ *
+ * For small sizes, this generates each of the (size!) possible permutations
+ * of integers in the range [0, size) with roughly equal probability.  Once
+ * the size is larger than 20, the number of possible permutations exceeds the
+ * number of distinct states of the internal pseudorandom number generators,
+ * and so not all possible permutations can be generated, but the permutations
+ * chosen should continue to give the appearance of being random.
+ *
+ * THIS FUNCTION IS NOT CRYPTOGRAPHICALLY SECURE.
+ * DO NOT USE FOR SUCH PURPOSE.
+ */
+static int64
+permute(const int64 val, const int64 isize, const int64 seed)
+{
+	RandomState random_state1;
+	RandomState random_state2;
+	uint64		size;
+	uint64		v;
+	int			masklen;
+	uint64		mask;
+	int			i;
+
+	if (isize < 2)
+		return 0;				/* nothing to permute */
+
+	/* Initialize a pair of random states using the seed */
+	random_state1.xseed[0] = seed & 0xFFFF;
+	random_state1.xseed[1] = (seed >> 16) & 0xFFFF;
+	random_state1.xseed[2] = (seed >> 32) & 0xFFFF;
+
+	random_state2.xseed[0] = (((uint64) seed) >> 48) & 0xFFFF;
+	random_state2.xseed[1] = seed & 0xFFFF;
+	random_state2.xseed[2] = (seed >> 16) & 0xFFFF;
+
+	/* Computations are performed on unsigned values */
+	size = (uint64) isize;
+	v = (uint64) val % size;
+
+	/* Mask to work modulo largest power of 2 less than or equal to size */
+	masklen = pg_leftmost_one_pos64(size);
+	mask = (((uint64) 1) << masklen) - 1;
+
+	/*
+	 * Permute the input value by applying several rounds of pseudorandom
+	 * bijective transformations.  The intention here is to distribute each
+	 * input uniformly randomly across the range, and separate adjacent inputs
+	 * approximately uniformly randomly from each other, leading to a fairly
+	 * random overall choice of permutation.
+	 *
+	 * To separate adjacent inputs, we multiply by a random number modulo
+	 * (mask + 1), which is a power of 2.  For this to be a bijection, the
+	 * multiplier must be odd.  Since this is known to lead to less randomness
+	 * in the lower bits, we also apply a rotation that shifts the topmost bit
+	 * into the least significant bit.  In the special cases where size <= 3,
+	 * mask = 1 and each of these operations is actually a no-op, so we also
+	 * XOR the value with a different random number to inject additional
+	 * randomness.  Since the size is generally not a power of 2, we apply
+	 * this bijection on overlapping upper and lower halves of the input.
+	 *
+	 * To distribute the inputs uniformly across the range, we then also apply
+	 * a random offset modulo the full range.
+	 *
+	 * Taken together, these operations resemble a modified linear
+	 * congruential generator, as is commonly used in pseudorandom number
+	 * generators.  The number of rounds is fairly arbitrary, but six has been
+	 * found empirically to give a fairly good tradeoff between performance
+	 * and uniform randomness.  For small sizes it selects each of the (size!)
+	 * possible permutations with roughly equal probability.  For larger
+	 * sizes, not all permutations can be generated, but the intended random
+	 * spread is still produced.
+	 */
+	for (i = 0; i < 6; i++)
+	{
+		uint64		m,
+					r,
+					t;
+
+		/* Random multiply (by an odd number), XOR and rotate of lower half */
+		m = (uint64) getrand(&random_state1, 0, mask) | 1;
+		r = (uint64) getrand(&random_state2, 0, mask);
+		if (v <= mask)
+		{
+			v = ((v * m) ^ r) & mask;
+			v = ((v << 1) & mask) | (v >> (masklen - 1));
+		}
+
+		/* Random multiply (by an odd number), XOR and rotate of upper half */
+		m = (uint64) getrand(&random_state1, 0, mask) | 1;
+		r = (uint64) getrand(&random_state2, 0, mask);
+		t = size - 1 - v;
+		if (t <= mask)
+		{
+			t = ((t * m) ^ r) & mask;
+			t = ((t << 1) & mask) | (t >> (masklen - 1));
+			v = size - 1 - t;
+		}
+
+		/* Random offset */
+		r = (uint64) getrand(&random_state2, 0, size - 1);
+		v = (v + r) % size;
+	}
+
+	return (int64) v;
+}
+
+/*
  * Initialize the given SimpleStats struct to all zeroes
  */
 static void
@@ -1290,9 +1527,9 @@ mergeSimpleStats(SimpleStats *acc, SimpleStats *ss)
  * the given value.
  */
 static void
-initStats(StatsData *sd, time_t start_time)
+initStats(StatsData *sd, pg_time_usec_t start)
 {
-	sd->start_time = start_time;
+	sd->start_time = start;
 	sd->cnt = 0;
 	sd->skipped = 0;
 	sd->retries = 0;
@@ -1356,7 +1593,11 @@ executeStatement(PGconn *con, const char *sql)
 
 	res = PQexec(con, sql);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	{
+		pg_log_fatal("query failed: %s", PQerrorMessage(con));
+		pg_log_info("query was: %s", sql);
 		ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
+	}
 	PQclear(res);
 }
 
@@ -1369,6 +1610,8 @@ tryExecuteStatement(PGconn *con, const char *sql)
 	res = PQexec(con, sql);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
+		pg_log_error("%s", PQerrorMessage(con));
+		pg_log_info("(ignoring this error and continuing anyway)");
 		ereport(ELEVEL_LOG_MAIN,
 				(errmsg("%s(ignoring this error and continuing anyway)\n",
 						PQerrorMessage(con))));
@@ -1382,8 +1625,7 @@ doConnect(void)
 {
 	PGconn	   *conn;
 	bool		new_pass;
-	static bool have_password = false;
-	static char password[100];
+	static char *password = NULL;
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -1401,9 +1643,9 @@ doConnect(void)
 		keywords[1] = "port";
 		values[1] = pgport;
 		keywords[2] = "user";
-		values[2] = login;
+		values[2] = username;
 		keywords[3] = "password";
-		values[3] = have_password ? password : NULL;
+		values[3] = password;
 		keywords[4] = "dbname";
 		values[4] = dbName;
 		keywords[5] = "fallback_application_name";
@@ -1417,6 +1659,7 @@ doConnect(void)
 
 		if (!conn)
 		{
+			pg_log_error("connection to database \"%s\" failed", dbName);
 			ereport(ELEVEL_LOG_MAIN,
 					(errmsg("connection to database \"%s\" failed\n", dbName)));
 			return NULL;
@@ -1424,11 +1667,10 @@ doConnect(void)
 
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
-			!have_password)
+			!password)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -1436,28 +1678,15 @@ doConnect(void)
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
+		pg_log_error("%s", PQerrorMessage(conn));
+		PQfinish(conn);
 		ereport(ELEVEL_LOG_MAIN,
 				(errmsg("connection to database \"%s\" failed:\n%s",
 						dbName, PQerrorMessage(conn))));
-		PQfinish(conn);
 		return NULL;
 	}
 
 	return conn;
-}
-
-/* throw away response from backend */
-static void
-discard_response(CState *state)
-{
-	PGresult   *res;
-
-	do
-	{
-		res = PQgetResult(state->con);
-		if (res)
-			PQclear(res);
-	} while (res);
 }
 
 /* qsort comparator for Variable array */
@@ -1567,15 +1796,22 @@ makeVariableValue(Variable *var)
 	}
 	else if (is_an_int(var->svalue))
 	{
-		setIntValue(&var->value, strtoint64(var->svalue));
+		/* if it looks like an int, it must be an int without overflow */
+		int64		iv;
+
+		if (!strtoint64(var->svalue, false, &iv))
+			return false;
+
+		setIntValue(&var->value, iv);
 	}
 	else						/* type should be double */
 	{
 		double		dv;
-		char		xs;
 
-		if (sscanf(var->svalue, "%lf%c", &dv, &xs) != 1)
+		if (!strtodouble(var->svalue, true, &dv))
 		{
+			pg_log_error("malformed variable \"%s\" value: \"%s\"",
+						 var->name, var->svalue);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("malformed variable \"%s\" value: \"%s\"\n",
 							var->name, var->svalue)));
@@ -1597,6 +1833,7 @@ makeVariableValue(Variable *var)
  * "src/bin/pgbench/exprscan.l".  Also see parseVariable(), below.
  *
  * Note: this static function is copied from "src/bin/psql/variables.c"
+ * but changed to disallow variable names starting with a digit.
  */
 static bool
 valid_variable_name(const char *name)
@@ -1607,6 +1844,15 @@ valid_variable_name(const char *name)
 	if (*ptr == '\0')
 		return false;
 
+	/* must not start with [0-9] */
+	if (IS_HIGHBIT_SET(*ptr) ||
+		strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+			   "_", *ptr) != NULL)
+		ptr++;
+	else
+		return false;
+
+	/* remaining characters can include [0-9] */
 	while (*ptr)
 	{
 		if (IS_HIGHBIT_SET(*ptr) ||
@@ -1643,6 +1889,7 @@ lookupCreateVariable(Variables *variables, const char *context, char *name,
 		 */
 		if (!valid_variable_name(name))
 		{
+			pg_log_error("%s: invalid variable name: \"%s\"", context, name);
 			/*
 			 * About the error level used: if we process client commands, it a
 			 * normal failure; otherwise it is not and we exit the program.
@@ -1739,23 +1986,27 @@ putVariableInt(Variables *variables, const char *context, char *name,
  *
  * "sql" points at a colon.  If what follows it looks like a valid
  * variable name, return a malloc'd string containing the variable name,
- * and set *eaten to the number of characters consumed.
+ * and set *eaten to the number of characters consumed (including the colon).
  * Otherwise, return NULL.
  */
 static char *
 parseVariable(const char *sql, int *eaten)
 {
-	int			i = 0;
+	int			i = 1;			/* starting at 1 skips the colon */
 	char	   *name;
 
-	do
-	{
+	/* keep this logic in sync with valid_variable_name() */
+	if (IS_HIGHBIT_SET(sql[i]) ||
+		strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+			   "_", sql[i]) != NULL)
 		i++;
-	} while (IS_HIGHBIT_SET(sql[i]) ||
-			 strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
-					"_0123456789", sql[i]) != NULL);
-	if (i == 1)
-		return NULL;			/* no valid variable name chars */
+	else
+		return NULL;
+
+	while (IS_HIGHBIT_SET(sql[i]) ||
+		   strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+				  "_0123456789", sql[i]) != NULL)
+		i++;
 
 	name = pg_malloc(i);
 	memcpy(name, &sql[1], i - 1);
@@ -1863,9 +2114,10 @@ coerceToBool(PgBenchValue *pval, bool *bval)
 	}
 	else						/* NULL, INT or DOUBLE */
 	{
+		pg_log_error("cannot coerce %s to boolean", valueTypeName(pval));
+		*bval = false;			/* suppress uninitialized-variable warnings */
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("cannot coerce %s to boolean\n", valueTypeName(pval))));
-		*bval = false;			/* suppress uninitialized-variable warnings */
 		return false;
 	}
 }
@@ -1905,11 +2157,11 @@ coerceToInt(PgBenchValue *pval, int64 *ival)
 	}
 	else if (pval->type == PGBT_DOUBLE)
 	{
-		double		dval = pval->u.dval;
+		double		dval = rint(pval->u.dval);
 
-		/* Cast to avoid -Wimplicit-int-float-conversion */
-		if (dval < (double) PG_INT64_MIN || (double) PG_INT64_MAX < dval)
+		if (isnan(dval) || !FLOAT8_FITS_IN_INT64(dval))
 		{
+			pg_log_error("double to int overflow for %f", dval);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("double to int overflow for %f\n", dval)));
 			return false;
@@ -1919,6 +2171,7 @@ coerceToInt(PgBenchValue *pval, int64 *ival)
 	}
 	else						/* BOOLEAN or NULL */
 	{
+		pg_log_error("cannot coerce %s to int", valueTypeName(pval));
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("cannot coerce %s to int\n", valueTypeName(pval))));
 		return false;
@@ -1941,6 +2194,7 @@ coerceToDouble(PgBenchValue *pval, double *dval)
 	}
 	else						/* BOOLEAN or NULL */
 	{
+		pg_log_error("cannot coerce %s to double", valueTypeName(pval));
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("cannot coerce %s to double\n", valueTypeName(pval))));
 		return false;
@@ -1987,7 +2241,7 @@ isLazyFunc(PgBenchFunction func)
 
 /* lazy evaluation of some functions */
 static bool
-evalLazyFunc(TState *thread, CState *st,
+evalLazyFunc(CState *st,
 			 PgBenchFunction func, PgBenchExprLink *args, PgBenchValue *retval)
 {
 	PgBenchValue a1,
@@ -1998,7 +2252,7 @@ evalLazyFunc(TState *thread, CState *st,
 	Assert(isLazyFunc(func) && args != NULL && args->next != NULL);
 
 	/* args points to first condition */
-	if (!evaluateExpr(thread, st, args->expr, &a1))
+	if (!evaluateExpr(st, args->expr, &a1))
 		return false;
 
 	/* second condition for AND/OR and corresponding branch for CASE */
@@ -2022,7 +2276,7 @@ evalLazyFunc(TState *thread, CState *st,
 				return true;
 			}
 
-			if (!evaluateExpr(thread, st, args->expr, &a2))
+			if (!evaluateExpr(st, args->expr, &a2))
 				return false;
 
 			if (a2.type == PGBT_NULL)
@@ -2057,7 +2311,7 @@ evalLazyFunc(TState *thread, CState *st,
 				return true;
 			}
 
-			if (!evaluateExpr(thread, st, args->expr, &a2))
+			if (!evaluateExpr(st, args->expr, &a2))
 				return false;
 
 			if (a2.type == PGBT_NULL)
@@ -2076,17 +2330,17 @@ evalLazyFunc(TState *thread, CState *st,
 		case PGBENCH_CASE:
 			/* when true, execute branch */
 			if (valueTruth(&a1))
-				return evaluateExpr(thread, st, args->expr, retval);
+				return evaluateExpr(st, args->expr, retval);
 
 			/* now args contains next condition or final else expression */
 			args = args->next;
 
 			/* final else case? */
 			if (args->next == NULL)
-				return evaluateExpr(thread, st, args->expr, retval);
+				return evaluateExpr(st, args->expr, retval);
 
 			/* no, another when, proceed */
-			return evalLazyFunc(thread, st, PGBENCH_CASE, args, retval);
+			return evalLazyFunc(st, PGBENCH_CASE, args, retval);
 
 		default:
 			/* internal error, cannot get here */
@@ -2104,7 +2358,7 @@ evalLazyFunc(TState *thread, CState *st,
  * which do not require lazy evaluation.
  */
 static bool
-evalStandardFunc(TState *thread, CState *st,
+evalStandardFunc(CState *st,
 				 PgBenchFunction func, PgBenchExprLink *args,
 				 PgBenchValue *retval)
 {
@@ -2116,13 +2370,14 @@ evalStandardFunc(TState *thread, CState *st,
 
 	for (nargs = 0; nargs < MAX_FARGS && l != NULL; nargs++, l = l->next)
 	{
-		if (!evaluateExpr(thread, st, l->expr, &vargs[nargs]))
+		if (!evaluateExpr(st, l->expr, &vargs[nargs]))
 			return false;
 		has_null |= vargs[nargs].type == PGBT_NULL;
 	}
 
 	if (l != NULL)
 	{
+		pg_log_error("too many function arguments, maximum is %d", MAX_FARGS);
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("too many function arguments, maximum is %d\n",
 					   MAX_FARGS)));
@@ -2208,7 +2463,8 @@ evalStandardFunc(TState *thread, CState *st,
 				else			/* we have integer operands, or % */
 				{
 					int64		li,
-								ri;
+								ri,
+								res;
 
 					if (!coerceToInt(lval, &li) ||
 						!coerceToInt(rval, &ri))
@@ -2217,15 +2473,30 @@ evalStandardFunc(TState *thread, CState *st,
 					switch (func)
 					{
 						case PGBENCH_ADD:
-							setIntValue(retval, li + ri);
+							if (pg_add_s64_overflow(li, ri, &res))
+							{
+								pg_log_error("bigint add out of range");
+								return false;
+							}
+							setIntValue(retval, res);
 							return true;
 
 						case PGBENCH_SUB:
-							setIntValue(retval, li - ri);
+							if (pg_sub_s64_overflow(li, ri, &res))
+							{
+								pg_log_error("bigint sub out of range");
+								return false;
+							}
+							setIntValue(retval, res);
 							return true;
 
 						case PGBENCH_MUL:
-							setIntValue(retval, li * ri);
+							if (pg_mul_s64_overflow(li, ri, &res))
+							{
+								pg_log_error("bigint mul out of range");
+								return false;
+							}
+							setIntValue(retval, res);
 							return true;
 
 						case PGBENCH_EQ:
@@ -2248,6 +2519,7 @@ evalStandardFunc(TState *thread, CState *st,
 						case PGBENCH_MOD:
 							if (ri == 0)
 							{
+								pg_log_error("division by zero");
 								ereport(ELEVEL_LOG_CLIENT_FAIL,
 										(errmsg("division by zero\n")));
 								return false;
@@ -2260,6 +2532,7 @@ evalStandardFunc(TState *thread, CState *st,
 									/* overflow check (needed for INT64_MIN) */
 									if (li == PG_INT64_MIN)
 									{
+										pg_log_error("bigint div out of range");
 										ereport(
 											ELEVEL_LOG_CLIENT_FAIL,
 											(errmsg("bigint out of range\n")));
@@ -2511,7 +2784,8 @@ evalStandardFunc(TState *thread, CState *st,
 		case PGBENCH_RANDOM_ZIPFIAN:
 			{
 				int64		imin,
-							imax;
+							imax,
+							delta;
 
 				Assert(nargs >= 2);
 
@@ -2520,15 +2794,18 @@ evalStandardFunc(TState *thread, CState *st,
 					return false;
 
 				/* check random range */
-				if (imin > imax)
+				if (unlikely(imin > imax))
 				{
+					pg_log_error("empty range given to random");
 					ereport(ELEVEL_LOG_CLIENT_FAIL,
 							(errmsg("empty range given to random\n")));
 					return false;
 				}
-				else if (imax - imin < 0 || (imax - imin) + 1 < 0)
+				else if (unlikely(pg_sub_s64_overflow(imax, imin, &delta) ||
+								  pg_add_s64_overflow(delta, 1, &delta)))
 				{
 					/* prevent int overflows in random functions */
+					pg_log_error("random range is too large");
 					ereport(ELEVEL_LOG_CLIENT_FAIL,
 							(errmsg("random range is too large\n")));
 					return false;
@@ -2552,6 +2829,8 @@ evalStandardFunc(TState *thread, CState *st,
 					{
 						if (param < MIN_GAUSSIAN_PARAM)
 						{
+							pg_log_error("gaussian parameter must be at least %f (not %f)",
+										 MIN_GAUSSIAN_PARAM, param);
 							ereport(ELEVEL_LOG_CLIENT_FAIL,
 									(errmsg("gaussian parameter must be at least %f (not %f)\n",
 											MIN_GAUSSIAN_PARAM, param)));
@@ -2564,21 +2843,25 @@ evalStandardFunc(TState *thread, CState *st,
 					}
 					else if (func == PGBENCH_RANDOM_ZIPFIAN)
 					{
-						if (param <= 0.0 || param == 1.0 || param > MAX_ZIPFIAN_PARAM)
+						if (param < MIN_ZIPFIAN_PARAM || param > MAX_ZIPFIAN_PARAM)
 						{
+							pg_log_error("zipfian parameter must be in range [%.3f, %.0f] (not %f)",
+										 MIN_ZIPFIAN_PARAM, MAX_ZIPFIAN_PARAM, param);
 							ereport(ELEVEL_LOG_CLIENT_FAIL,
 									(errmsg("zipfian parameter must be in range (0, 1) U (1, %d] (got %f)\n",
 											MAX_ZIPFIAN_PARAM, param)));
 							return false;
 						}
+
 						setIntValue(retval,
-									getZipfianRand(thread, &st->random_state,
-												   imin, imax, param));
+									getZipfianRand(&st->random_state, imin, imax, param));
 					}
 					else		/* exponential */
 					{
 						if (param <= 0.0)
 						{
+							pg_log_error("exponential parameter must be greater than zero (not %f)",
+										 param);
 							ereport(ELEVEL_LOG_CLIENT_FAIL,
 									(errmsg("exponential parameter must be greater than zero (got %f)\n",
 											param)));
@@ -2650,6 +2933,29 @@ evalStandardFunc(TState *thread, CState *st,
 				return true;
 			}
 
+		case PGBENCH_PERMUTE:
+			{
+				int64		val,
+							size,
+							seed;
+
+				Assert(nargs == 3);
+
+				if (!coerceToInt(&vargs[0], &val) ||
+					!coerceToInt(&vargs[1], &size) ||
+					!coerceToInt(&vargs[2], &seed))
+					return false;
+
+				if (size <= 0)
+				{
+					pg_log_error("permute size parameter must be greater than zero");
+					return false;
+				}
+
+				setIntValue(retval, permute(val, size, seed));
+				return true;
+			}
+
 		default:
 			/* cannot get here */
 			Assert(0);
@@ -2660,13 +2966,13 @@ evalStandardFunc(TState *thread, CState *st,
 
 /* evaluate some function */
 static bool
-evalFunc(TState *thread, CState *st,
+evalFunc(CState *st,
 		 PgBenchFunction func, PgBenchExprLink *args, PgBenchValue *retval)
 {
 	if (isLazyFunc(func))
-		return evalLazyFunc(thread, st, func, args, retval);
+		return evalLazyFunc(st, func, args, retval);
 	else
-		return evalStandardFunc(thread, st, func, args, retval);
+		return evalStandardFunc(st, func, args, retval);
 }
 
 /*
@@ -2676,7 +2982,7 @@ evalFunc(TState *thread, CState *st,
  * the value itself is returned through the retval pointer.
  */
 static bool
-evaluateExpr(TState *thread, CState *st, PgBenchExpr *expr, PgBenchValue *retval)
+evaluateExpr(CState *st, PgBenchExpr *expr, PgBenchValue *retval)
 {
 	switch (expr->etype)
 	{
@@ -2690,8 +2996,9 @@ evaluateExpr(TState *thread, CState *st, PgBenchExpr *expr, PgBenchValue *retval
 			{
 				Variable   *var;
 
-				if ((var = lookupVariable(&st->variables, expr->u.variable.varname)) == NULL)
+				if ((var = lookupVariable(st, expr->u.variable.varname)) == NULL)
 				{
+					pg_log_error("undefined variable \"%s\"", expr->u.variable.varname);
 					ereport(ELEVEL_LOG_CLIENT_FAIL,
 							(errmsg("undefined variable \"%s\"\n",
 									expr->u.variable.varname)));
@@ -2706,16 +3013,18 @@ evaluateExpr(TState *thread, CState *st, PgBenchExpr *expr, PgBenchValue *retval
 			}
 
 		case ENODE_FUNCTION:
-			return evalFunc(thread, st,
+			return evalFunc(st,
 							expr->u.function.function,
 							expr->u.function.args,
 							retval);
 
 		default:
 			/* internal error which should never occur */
+			pg_log_fatal("unexpected enode type in evaluation: %d", expr->etype);
 			ereport(ELEVEL_FATAL,
 					(errmsg("unexpected enode type in evaluation: %d\n",
 							expr->etype)));
+			exit(1);
 	}
 }
 
@@ -2745,6 +3054,14 @@ getMetaCommand(const char *cmd)
 		mc = META_ELSE;
 	else if (pg_strcasecmp(cmd, "endif") == 0)
 		mc = META_ENDIF;
+	else if (pg_strcasecmp(cmd, "gset") == 0)
+		mc = META_GSET;
+	else if (pg_strcasecmp(cmd, "aset") == 0)
+		mc = META_ASET;
+	else if (pg_strcasecmp(cmd, "startpipeline") == 0)
+		mc = META_STARTPIPELINE;
+	else if (pg_strcasecmp(cmd, "endpipeline") == 0)
+		mc = META_ENDPIPELINE;
 	else
 		mc = META_NONE;
 	return mc;
@@ -2786,8 +3103,9 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 		{
 			arg = argv[i] + 1;	/* a string literal starting with colons */
 		}
-		else if ((arg = getVariable(variables, argv[i] + 1)) == NULL)
+		else if ((arg = getVariable(st, argv[i] + 1)) == NULL)
 		{
+			pg_log_error("%s: undefined variable \"%s\"", argv[0], argv[i]);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("%s: undefined variable \"%s\"\n",
 							argv[0], argv[i])));
@@ -2797,6 +3115,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 		arglen = strlen(arg);
 		if (len + arglen + (i > 0 ? 1 : 0) >= SHELL_COMMAND_SIZE - 1)
 		{
+			pg_log_error("%s: shell command is too long", argv[0]);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("%s: shell command is too long\n", argv[0])));
 			return false;
@@ -2817,6 +3136,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 		{
 			if (!timer_exceeded)
 			{
+				pg_log_error("%s: could not launch shell command", argv[0]);
 				ereport(ELEVEL_LOG_CLIENT_FAIL,
 						(errmsg("%s: could not launch shell command\n",
 								argv[0])));
@@ -2829,6 +3149,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	/* Execute the command with pipe and read the standard output. */
 	if ((fp = popen(command, "r")) == NULL)
 	{
+		pg_log_error("%s: could not launch shell command", argv[0]);
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("%s: could not launch shell command\n", argv[0])));
 		return false;
@@ -2837,6 +3158,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	{
 		if (!timer_exceeded)
 		{
+			pg_log_error("%s: could not read result of shell command", argv[0]);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("%s: could not read result of shell command\n",
 							argv[0])));
@@ -2846,6 +3168,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	}
 	if (pclose(fp) < 0)
 	{
+		pg_log_error("%s: could not close shell command", argv[0]);
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("%s: could not close shell command\n", argv[0])));
 		return false;
@@ -2857,6 +3180,7 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 		endptr++;
 	if (*res == '\0' || *endptr != '\0')
 	{
+		pg_log_error("%s: shell command must return an integer (not \"%s\")", argv[0], res);
 		ereport(ELEVEL_LOG_CLIENT_FAIL,
 				(errmsg("%s: shell command must return an integer (not \"%s\")\n",
 						argv[0], res)));
@@ -2865,9 +3189,8 @@ runShellCommand(Variables *variables, char *variable, char **argv, int argc)
 	if (!putVariableInt(variables, "setshell", variable, retval, true))
 		return false;
 
-#ifdef DEBUG
-	printf("shell parameter name: \"%s\", value: \"%s\"\n", argv[1], res);
-#endif
+	pg_log_debug("%s: shell parameter name: \"%s\", value: \"%s\"", argv[0], argv[1], res);
+
 	return true;
 }
 
@@ -2882,6 +3205,8 @@ static void
 commandFailed(CState *st, const char *cmd, const char *message,
 			  ErrorLevel elevel)
 {
+	pg_log_error("client %d aborted in command %d (%s) of script %d; %s",
+				 st->id, st->command, cmd, st->use_file, message);
 	switch (elevel)
 	{
 		case ELEVEL_LOG_CLIENT_FAIL:
@@ -2957,6 +3282,7 @@ sendCommand(CState *st, Command *command)
 		sql = pg_strdup(command->argv[0]);
 		sql = assignVariables(&st->variables, sql);
 
+		pg_log_debug("client %d sending %s", st->id, sql);
 		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, sql)));
 		r = PQsendQuery(st->con, sql);
 		free(sql);
@@ -2968,6 +3294,7 @@ sendCommand(CState *st, Command *command)
 
 		getQueryParams(&st->variables, command, params);
 
+		pg_log_debug("client %d sending %s", st->id, sql);
 		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, sql)));
 		r = PQsendQueryParams(st->con, sql, command->argc - 1,
 							  NULL, params, NULL, NULL, 0);
@@ -2990,14 +3317,34 @@ sendCommand(CState *st, Command *command)
 				if (commands[j]->type != SQL_COMMAND)
 					continue;
 				preparedStatementName(name, st->use_file, j);
-				res = PQprepare(st->con, name,
-								commands[j]->argv[0], commands[j]->argc - 1, NULL);
-				if (PQresultStatus(res) != PGRES_COMMAND_OK)
+				if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
 				{
-					ereport(ELEVEL_LOG_MAIN,
-							(errmsg("%s", PQerrorMessage(st->con))));
+					res = PQprepare(st->con, name,
+									commands[j]->argv[0], commands[j]->argc - 1, NULL);
+					if (PQresultStatus(res) != PGRES_COMMAND_OK)
+					{
+						pg_log_error("%s", PQerrorMessage(st->con));
+						ereport(ELEVEL_LOG_MAIN,
+								(errmsg("%s", PQerrorMessage(st->con))));
+
+					}
+					PQclear(res);
 				}
-				PQclear(res);
+				else
+				{
+					/*
+					 * In pipeline mode, we use asynchronous functions. If a
+					 * server-side error occurs, it will be processed later
+					 * among the other results.
+					 */
+					if (!PQsendPrepare(st->con, name,
+									   commands[j]->argv[0], commands[j]->argc - 1, NULL))
+					{
+						pg_log_error("%s", PQerrorMessage(st->con));
+						ereport(ELEVEL_LOG_MAIN,
+								(errmsg("%s", PQerrorMessage(st->con))));
+					}
+				}
 			}
 			st->prepared[st->use_file] = true;
 		}
@@ -3005,6 +3352,7 @@ sendCommand(CState *st, Command *command)
 		getQueryParams(&st->variables, command, params);
 		preparedStatementName(name, st->use_file, st->command);
 
+		pg_log_debug("client %d sending %s", st->id, name);
 		ereport(ELEVEL_DEBUG, (errmsg("client %d sending %s\n", st->id, name)));
 		r = PQsendQueryPrepared(st->con, name, command->argc - 1,
 								params, NULL, NULL, 0);
@@ -3014,6 +3362,7 @@ sendCommand(CState *st, Command *command)
 
 	if (r == 0)
 	{
+		pg_log_debug("client %d could not send %s", st->id, command->argv[0]);
 		ereport(ELEVEL_DEBUG,
 				(errmsg("client %d could not send %s\n",
 						st->id, command->argv[0])));
@@ -3021,6 +3370,148 @@ sendCommand(CState *st, Command *command)
 	}
 	else
 		return true;
+}
+
+/*
+ * Process query response from the backend.
+ *
+ * If varprefix is not NULL, it's the variable name prefix where to store
+ * the results of the *last* command (META_GSET) or *all* commands
+ * (META_ASET).
+ *
+ * Returns true if everything is A-OK, false if any error occurs.
+ */
+static bool
+readCommandResponse(CState *st, MetaCommand meta, char *varprefix,
+					FailureStatus *failure_status)
+{
+	PGresult   *res;
+	PGresult   *next_res;
+	int			qrynum = 0;
+
+	/*
+	 * varprefix should be set only with \gset or \aset, and \endpipeline and
+	 * SQL commands do not need it.
+	 */
+	Assert((meta == META_NONE && varprefix == NULL) ||
+		   ((meta == META_ENDPIPELINE) && varprefix == NULL) ||
+		   ((meta == META_GSET || meta == META_ASET) && varprefix != NULL));
+
+	res = PQgetResult(st->con);
+
+	while (res != NULL)
+	{
+		bool		is_last;
+
+		/* peek at the next result to know whether the current is last */
+		next_res = PQgetResult(st->con);
+		is_last = (next_res == NULL);
+
+		switch (PQresultStatus(res))
+		{
+			case PGRES_COMMAND_OK:	/* non-SELECT commands */
+			case PGRES_EMPTY_QUERY: /* may be used for testing no-op overhead */
+				*failure_status = NO_FAILURE;
+				if (is_last && meta == META_GSET)
+				{
+					pg_log_error("client %d script %d command %d query %d: expected one row, got %d",
+								 st->id, st->use_file, st->command, qrynum, 0);
+					goto error;
+				}
+				break;
+
+			case PGRES_TUPLES_OK:
+				*failure_status = NO_FAILURE;
+				if ((is_last && meta == META_GSET) || meta == META_ASET)
+				{
+					int			ntuples = PQntuples(res);
+
+					if (meta == META_GSET && ntuples != 1)
+					{
+						/* under \gset, report the error */
+						pg_log_error("client %d script %d command %d query %d: expected one row, got %d",
+									 st->id, st->use_file, st->command, qrynum, PQntuples(res));
+						goto error;
+					}
+					else if (meta == META_ASET && ntuples <= 0)
+					{
+						/* coldly skip empty result under \aset */
+						break;
+					}
+
+					/* store results into variables */
+					for (int fld = 0; fld < PQnfields(res); fld++)
+					{
+						char	   *varname = PQfname(res, fld);
+
+						/* allocate varname only if necessary, freed below */
+						if (*varprefix != '\0')
+							varname = psprintf("%s%s", varprefix, varname);
+
+						/* store last row result as a string */
+						if (!putVariable(st, meta == META_ASET ? "aset" : "gset", varname,
+										 PQgetvalue(res, ntuples - 1, fld)))
+						{
+							/* internal error */
+							pg_log_error("client %d script %d command %d query %d: error storing into variable %s",
+										 st->id, st->use_file, st->command, qrynum, varname);
+							goto error;
+						}
+
+						if (*varprefix != '\0')
+							pg_free(varname);
+					}
+				}
+				/* otherwise the result is simply thrown away by PQclear below */
+				break;
+
+			case PGRES_PIPELINE_SYNC:
+				pg_log_debug("client %d pipeline ending", st->id);
+				if (PQexitPipelineMode(st->con) != 1)
+					pg_log_error("client %d failed to exit pipeline mode: %s", st->id,
+								 PQerrorMessage(st->con));
+				break;
+			case PGRES_NONFATAL_ERROR:
+			case PGRES_FATAL_ERROR:
+				sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+				*failure_status = getFailureStatus(sqlState);
+				commandFailed(st, "SQL", PQerrorMessage(st->con),
+							  ELEVEL_LOG_CLIENT_FAIL);
+				PQclear(res);
+				discard_response(st);
+				st->state = CSTATE_FAILURE;
+				break;
+			default:
+				/* anything else is unexpected */
+				pg_log_error("client %d script %d aborted in command %d query %d: %s",
+							 st->id, st->use_file, st->command, qrynum,
+							 PQerrorMessage(st->con));
+				goto error;
+		}
+
+		PQclear(res);
+		qrynum++;
+		res = next_res;
+	}
+
+	if (qrynum == 0)
+	{
+		pg_log_error("client %d command %d: no results", st->id, st->command);
+		return false;
+	}
+
+	return true;
+
+error:
+	PQclear(res);
+	PQclear(next_res);
+	do
+	{
+		res = PQgetResult(st->con);
+		PQclear(res);
+	} while (res);
+
+	return false;
 }
 
 /*
@@ -3037,12 +3528,22 @@ evaluateSleep(Variables *variables, int argc, char **argv, int *usecs)
 	{
 		if ((var = getVariable(variables, argv[1] + 1)) == NULL)
 		{
+			pg_log_error("%s: undefined variable \"%s\"", argv[0], argv[1] + 1);
 			ereport(ELEVEL_LOG_CLIENT_FAIL,
 					(errmsg("%s: undefined variable \"%s\"\n",
 							argv[0], argv[1])));
 			return false;
 		}
+
 		usec = atoi(var);
+
+		/* Raise an error if the value of a variable is not a number */
+		if (usec == 0 && !isdigit((unsigned char) *var))
+		{
+			pg_log_error("%s: invalid sleep time \"%s\" for variable \"%s\"",
+						 argv[0], var, argv[1] + 1);
+			return false;
+		}
 	}
 	else
 		usec = atoi(argv[1]);
@@ -3242,16 +3743,11 @@ getLatencyUsed(CState *st, instr_time *now)
 }
 
 /*
- * Advance the state machine of a connection, if possible.
+ * Advance the state machine of a connection.
  */
 static void
-doCustom(TState *thread, CState *st, StatsData *agg)
+advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 {
-	PGresult   *res;
-	Command    *command;
-	instr_time	now;
-	bool		end_tx_processed = false;
-	int64		wait;
 	FailureStatus failure_status = NO_FAILURE;
 
 	/*
@@ -3262,149 +3758,69 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 	 * means "not set yet".  Reset "now" when we execute shell commands or
 	 * expressions, which might take a non-negligible amount of time, though.
 	 */
-	INSTR_TIME_SET_ZERO(now);
+	pg_time_usec_t now = 0;
 
 	/*
 	 * Loop in the state machine, until we have to wait for a result from the
-	 * server (or have to sleep, for throttling or for \sleep).
+	 * server or have to sleep for throttling or \sleep.
 	 *
 	 * Note: In the switch-statement below, 'break' will loop back here,
 	 * meaning "continue in the state machine".  Return is used to return to
-	 * the caller.
+	 * the caller, giving the thread the opportunity to advance another
+	 * client.
 	 */
 	for (;;)
 	{
+		Command    *command;
+
 		switch (st->state)
 		{
-				/*
-				 * Select transaction to run.
-				 */
+				/* Select transaction (script) to run.  */
 			case CSTATE_CHOOSE_SCRIPT:
-
 				st->use_file = chooseScript(thread);
+				Assert(conditional_stack_empty(st->cstack));
 
+				pg_log_debug("client %d executing script \"%s\"",
+							 st->id, sql_script[st->use_file].desc);
 				ereport(ELEVEL_DEBUG,
 						(errmsg("client %d executing script \"%s\"\n",
 								st->id, sql_script[st->use_file].desc)));
 
-				if (throttle_delay > 0)
-					st->state = CSTATE_START_THROTTLE;
-				else
-					st->state = CSTATE_START_TX;
-				/* check consistency */
-				Assert(conditional_stack_empty(st->cstack));
+				/*
+				 * If time is over, we're done; otherwise, get ready to start
+				 * a new transaction, or to get throttled if that's requested.
+				 */
+				st->state = timer_exceeded ? CSTATE_FINISHED :
+					throttle_delay > 0 ? CSTATE_PREPARE_THROTTLE : CSTATE_START_TX;
 
 				/* reset transaction variables to default values */
 				st->first_failure.status = NO_FAILURE;
 				st->retries = 0;
-
 				break;
 
-				/*
-				 * Handle throttling once per transaction by sleeping.
-				 */
-			case CSTATE_START_THROTTLE:
-
-				/*
-				 * Generate a delay such that the series of delays will
-				 * approximate a Poisson distribution centered on the
-				 * throttle_delay time.
-				 *
-				 * If transactions are too slow or a given wait is shorter
-				 * than a transaction, the next transaction will start right
-				 * away.
-				 */
-				Assert(throttle_delay > 0);
-				wait = getPoissonRand(&thread->random_state, throttle_delay);
-
-				thread->throttle_trigger += wait;
-				st->txn_scheduled = thread->throttle_trigger;
-
-				/*
-				 * stop client if next transaction is beyond pgbench end of
-				 * execution
-				 */
-				if (duration > 0 && st->txn_scheduled > end_time)
-				{
-					st->state = CSTATE_FINISHED;
-					break;
-				}
-
-				/*
-				 * If --latency-limit is used, and this slot is already late
-				 * so that the transaction will miss the latency limit even if
-				 * it completed immediately, we skip this time slot and
-				 * iterate till the next slot that isn't late yet.  But don't
-				 * iterate beyond the -t limit, if one is given.
-				 */
-				if (latency_limit)
-				{
-					int64		now_us;
-
-					if (INSTR_TIME_IS_ZERO(now))
-						INSTR_TIME_SET_CURRENT(now);
-					now_us = INSTR_TIME_GET_MICROSEC(now);
-					while (thread->throttle_trigger < now_us - latency_limit &&
-						   (nxacts <= 0 || getTotalCnt(st) < nxacts))
-					{
-						processXactStats(thread, st, &now, true, agg);
-						/* next rendez-vous */
-						wait = getPoissonRand(&thread->random_state,
-											  throttle_delay);
-						thread->throttle_trigger += wait;
-						st->txn_scheduled = thread->throttle_trigger;
-					}
-					/* stop client if -t exceeded */
-					if (nxacts > 0 && getTotalCnt(st) >= nxacts)
-					{
-						st->state = CSTATE_FINISHED;
-						break;
-					}
-				}
-
-				st->state = CSTATE_THROTTLE;
-				ereport(ELEVEL_DEBUG,
-						(errmsg("client %d throttling " INT64_FORMAT " us\n",
-								st->id, wait)));
-				break;
-
-				/*
-				 * Wait until it's time to start next transaction.
-				 */
-			case CSTATE_THROTTLE:
-				if (INSTR_TIME_IS_ZERO(now))
-					INSTR_TIME_SET_CURRENT(now);
-				if (INSTR_TIME_GET_MICROSEC(now) < st->txn_scheduled)
-					return;		/* Still sleeping, nothing to do here */
-
-				/* Else done sleeping, start the transaction */
-				st->state = CSTATE_START_TX;
-				break;
-
-				/* Start new transaction */
+				/* Start new transaction (script) */
 			case CSTATE_START_TX:
+				pg_time_now_lazy(&now);
 
-				/*
-				 * Establish connection on first call, or if is_connect is
-				 * true.
-				 */
+				/* establish connection if needed, i.e. under --connect */
 				if (st->con == NULL)
 				{
-					instr_time	start;
+					pg_time_usec_t start = now;
 
-					if (INSTR_TIME_IS_ZERO(now))
-						INSTR_TIME_SET_CURRENT(now);
-					start = now;
 					if ((st->con = doConnect()) == NULL)
 					{
+						pg_log_error("client %d aborted while establishing connection", st->id);
 						ereport(ELEVEL_LOG_CLIENT_ABORTED,
 								(errmsg("client %d aborted while establishing connection\n",
 										st->id)));
 						st->state = CSTATE_ABORTED;
 						break;
 					}
-					INSTR_TIME_SET_CURRENT(now);
-					INSTR_TIME_ACCUM_DIFF(thread->conn_time, now, start);
+
+					/* reset now after connection */
+					now = pg_time_now();
+
+					thread->conn_duration += now - start;
 
 					/* Reset session-local state */
 					memset(st->prepared, 0, sizeof(st->prepared));
@@ -3419,28 +3835,97 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 								&st->random_state);
 				copyVariables(&st->retry_state.variables, &st->variables);
 
-				/*
-				 * Record transaction start time under logging, progress or
-				 * throttling.
-				 */
-				if (use_log || progress || throttle_delay || latency_limit ||
-					per_script_stats)
-				{
-					if (INSTR_TIME_IS_ZERO(now))
-						INSTR_TIME_SET_CURRENT(now);
-					st->txn_begin = now;
+				/* record transaction start time */
+				st->txn_begin = now;
 
-					/*
-					 * When not throttling, this is also the transaction's
-					 * scheduled start time.
-					 */
-					if (!throttle_delay)
-						st->txn_scheduled = INSTR_TIME_GET_MICROSEC(now);
-				}
+				/*
+				 * When not throttling, this is also the transaction's
+				 * scheduled start time.
+				 */
+				if (!throttle_delay)
+					st->txn_scheduled = now;
 
 				/* Begin with the first command */
-				st->command = 0;
 				st->state = CSTATE_START_COMMAND;
+				st->command = 0;
+				break;
+
+				/*
+				 * Handle throttling once per transaction by sleeping.
+				 */
+			case CSTATE_PREPARE_THROTTLE:
+
+				/*
+				 * Generate a delay such that the series of delays will
+				 * approximate a Poisson distribution centered on the
+				 * throttle_delay time.
+				 *
+				 * If transactions are too slow or a given wait is shorter
+				 * than a transaction, the next transaction will start right
+				 * away.
+				 */
+				Assert(throttle_delay > 0);
+
+				thread->throttle_trigger +=
+					getPoissonRand(&thread->random_state, throttle_delay);
+				st->txn_scheduled = thread->throttle_trigger;
+
+				/*
+				 * If --latency-limit is used, and this slot is already late
+				 * so that the transaction will miss the latency limit even if
+				 * it completed immediately, skip this time slot and loop to
+				 * reschedule.
+				 */
+				if (latency_limit)
+				{
+					pg_time_now_lazy(&now);
+
+					if (thread->throttle_trigger < now - latency_limit)
+					{
+						processXactStats(thread, st, &now, true, agg);
+
+						/*
+						 * Finish client if -T or -t was exceeded.
+						 *
+						 * Stop counting skipped transactions under -T as soon
+						 * as the timer is exceeded. Because otherwise it can
+						 * take a very long time to count all of them
+						 * especially when quite a lot of them happen with
+						 * unrealistically high rate setting in -R, which
+						 * would prevent pgbench from ending immediately.
+						 * Because of this behavior, note that there is no
+						 * guarantee that all skipped transactions are counted
+						 * under -T though there is under -t. This is OK in
+						 * practice because it's very unlikely to happen with
+						 * realistic setting.
+						 */
+						if (timer_exceeded || (nxacts > 0 && getTotalCnt(st) >= nxacts))
+							st->state = CSTATE_FINISHED;
+
+						/* Go back to top of loop with CSTATE_PREPARE_THROTTLE */
+						break;
+					}
+				}
+
+				/*
+				 * stop client if next transaction is beyond pgbench end of
+				 * execution; otherwise, throttle it.
+				 */
+				st->state = end_time > 0 && st->txn_scheduled > end_time ?
+					CSTATE_FINISHED : CSTATE_THROTTLE;
+				break;
+
+				/*
+				 * Wait until it's time to start next transaction.
+				 */
+			case CSTATE_THROTTLE:
+				pg_time_now_lazy(&now);
+
+				if (now < st->txn_scheduled)
+					return;		/* still sleeping, nothing to do here */
+
+				/* done sleeping, but don't start transaction if we're done */
+				st->state = timer_exceeded ? CSTATE_FINISHED : CSTATE_START_TX;
 				break;
 
 				/*
@@ -3449,10 +3934,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 			case CSTATE_START_COMMAND:
 				command = sql_script[st->use_file].commands[st->command];
 
-				/*
-				 * If we reached the end of the script, move to end-of-xact
-				 * processing.
-				 */
+				/* Transition to script end processing if done */
 				if (command == NULL)
 				{
 					if (st->first_failure.status == NO_FAILURE)
@@ -3467,19 +3949,35 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					break;
 				}
 
-				/*
-				 * Record statement start time if per-command latencies are
-				 * requested
-				 */
+				/* record begin time of next command, and initiate it */
 				if (report_per_command)
 				{
-					if (INSTR_TIME_IS_ZERO(now))
-						INSTR_TIME_SET_CURRENT(now);
+					pg_time_now_lazy(&now);
 					st->stmt_begin = now;
 				}
 
+				/* Execute the command */
 				if (command->type == SQL_COMMAND)
 				{
+					/* disallow \aset and \gset in pipeline mode */
+					if (PQpipelineStatus(st->con) != PQ_PIPELINE_OFF)
+					{
+						if (command->meta == META_GSET)
+						{
+							commandFailed(st, "gset", "\\gset is not allowed in pipeline mode",
+										  ELEVEL_LOG_CLIENT_ABORTED);
+							st->state = CSTATE_ABORTED;
+							break;
+						}
+						else if (command->meta == META_ASET)
+						{
+							commandFailed(st, "aset", "\\aset is not allowed in pipeline mode",
+										  ELEVEL_LOG_CLIENT_ABORTED);
+							st->state = CSTATE_ABORTED;
+							break;
+						}
+					}
+
 					if (!sendCommand(st, command))
 					{
 						commandFailed(st, "SQL", "SQL command send failed",
@@ -3487,192 +3985,34 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						st->state = CSTATE_ABORTED;
 					}
 					else
-						st->state = CSTATE_WAIT_RESULT;
+					{
+						/* Wait for results, unless in pipeline mode */
+						if (PQpipelineStatus(st->con) == PQ_PIPELINE_OFF)
+							st->state = CSTATE_WAIT_RESULT;
+						else
+							st->state = CSTATE_END_COMMAND;
+					}
 				}
 				else if (command->type == META_COMMAND)
 				{
-					int			argc = command->argc,
-								i;
-					char	  **argv = command->argv;
-					PQExpBufferData errmsg_buf;
-
-					initPQExpBuffer(&errmsg_buf);
-					printfPQExpBuffer(&errmsg_buf, "client %d executing \\%s",
-									  st->id, argv[0]);
-					for (i = 1; i < argc; i++)
-						appendPQExpBuffer(&errmsg_buf, " %s", argv[i]);
-					appendPQExpBufferChar(&errmsg_buf, '\n');
-					ereport(ELEVEL_DEBUG, (errmsg("%s", errmsg_buf.data)));
-					termPQExpBuffer(&errmsg_buf);
-
-					/* change it if the meta command fails */
-					failure_status = NO_FAILURE;
-
-					if (command->meta == META_SLEEP)
-					{
-						/*
-						 * A \sleep doesn't execute anything, we just get the
-						 * delay from the argument, and enter the CSTATE_SLEEP
-						 * state.  (The per-command latency will be recorded
-						 * in CSTATE_SLEEP state, not here, after the delay
-						 * has elapsed.)
-						 */
-						int			usec;
-
-						if (!evaluateSleep(&st->variables, argc, argv, &usec))
-						{
-							commandFailed(st, "sleep",
-										  "execution of meta-command failed",
-										  ELEVEL_LOG_CLIENT_FAIL);
-							failure_status = ANOTHER_FAILURE;
-							st->state = CSTATE_FAILURE;
-							break;
-						}
-
-						if (INSTR_TIME_IS_ZERO(now))
-							INSTR_TIME_SET_CURRENT(now);
-						st->sleep_until = INSTR_TIME_GET_MICROSEC(now) + usec;
-						st->state = CSTATE_SLEEP;
-						break;
-					}
-					else if (command->meta == META_SET ||
-							 command->meta == META_IF ||
-							 command->meta == META_ELIF)
-					{
-						/* backslash commands with an expression to evaluate */
-						PgBenchExpr *expr = command->expr;
-						PgBenchValue result;
-
-						if (command->meta == META_ELIF &&
-							conditional_stack_peek(st->cstack) == IFSTATE_TRUE)
-						{
-							/*
-							 * elif after executed block, skip eval and wait
-							 * for endif
-							 */
-							conditional_stack_poke(st->cstack, IFSTATE_IGNORED);
-							goto move_to_end_command;
-						}
-
-						if (!evaluateExpr(thread, st, expr, &result))
-						{
-							commandFailed(st, argv[0],
-										  "evaluation of meta-command failed",
-										  ELEVEL_LOG_CLIENT_FAIL);
-
-							/*
-							 * Do not ruin the following conditional commands,
-							 * if any.
-							 */
-							executeCondition(st, false);
-
-							failure_status = ANOTHER_FAILURE;
-							st->state = CSTATE_FAILURE;
-							break;
-						}
-
-						if (command->meta == META_SET)
-						{
-							if (!putVariableValue(&st->variables,  argv[0],
-												  argv[1], &result, true))
-							{
-								commandFailed(st, "set",
-											  "assignment of meta-command failed",
-											  ELEVEL_LOG_CLIENT_FAIL);
-								failure_status = ANOTHER_FAILURE;
-								st->state = CSTATE_FAILURE;
-								break;
-							}
-						}
-						else	/* if and elif evaluated cases */
-						{
-							executeCondition(st, valueTruth(&result));
-						}
-					}
-					else if (command->meta == META_ELSE)
-					{
-						switch (conditional_stack_peek(st->cstack))
-						{
-							case IFSTATE_TRUE:
-								conditional_stack_poke(st->cstack, IFSTATE_ELSE_FALSE);
-								break;
-							case IFSTATE_FALSE: /* inconsistent if active */
-							case IFSTATE_IGNORED:	/* inconsistent if active */
-							case IFSTATE_NONE:	/* else without if */
-							case IFSTATE_ELSE_TRUE: /* else after else */
-							case IFSTATE_ELSE_FALSE:	/* else after else */
-							default:
-								/* dead code if conditional check is ok */
-								Assert(false);
-						}
-						goto move_to_end_command;
-					}
-					else if (command->meta == META_ENDIF)
-					{
-						Assert(!conditional_stack_empty(st->cstack));
-						conditional_stack_pop(st->cstack);
-						goto move_to_end_command;
-					}
-					else if (command->meta == META_SETSHELL)
-					{
-						bool		ret = runShellCommand(&st->variables,
-														  argv[1], argv + 2,
-														  argc - 2);
-
-						if (timer_exceeded) /* timeout */
-						{
-							st->state = CSTATE_FINISHED;
-							break;
-						}
-						else if (!ret)	/* on error */
-						{
-							commandFailed(st, "setshell",
-										  "execution of meta-command failed",
-										  ELEVEL_LOG_CLIENT_FAIL);
-							failure_status = ANOTHER_FAILURE;
-							st->state = CSTATE_FAILURE;
-							break;
-						}
-						else
-						{
-							/* succeeded */
-						}
-					}
-					else if (command->meta == META_SHELL)
-					{
-						bool		ret = runShellCommand(&st->variables, NULL,
-														  argv + 1, argc - 1);
-
-						if (timer_exceeded) /* timeout */
-						{
-							st->state = CSTATE_FINISHED;
-							break;
-						}
-						else if (!ret)	/* on error */
-						{
-							commandFailed(st, "shell",
-										  "execution of meta-command failed",
-										  ELEVEL_LOG_CLIENT_FAIL);
-							failure_status = ANOTHER_FAILURE;
-							st->state = CSTATE_FAILURE;
-							break;
-						}
-						else
-						{
-							/* succeeded */
-						}
-					}
-
-			move_to_end_command:
-
-					/*
-					 * executing the expression or shell command might take a
-					 * non-negligible amount of time, so reset 'now'
+					/*-----
+					 * Possible state changes when executing meta commands:
+					 * - on errors CSTATE_ABORTED
+					 * - on sleep CSTATE_SLEEP
+					 * - else CSTATE_END_COMMAND
 					 */
-					INSTR_TIME_SET_ZERO(now);
-
-					st->state = CSTATE_END_COMMAND;
+					st->state = executeMetaCommand(st, &now, &failure_status);
 				}
+
+				/*
+				 * We're now waiting for an SQL command to complete, or
+				 * finished processing a metacommand, or need to sleep, or
+				 * something bad happened.
+				 */
+				Assert(st->state == CSTATE_WAIT_RESULT ||
+					   st->state == CSTATE_END_COMMAND ||
+					   st->state == CSTATE_SLEEP ||
+					   st->state == CSTATE_ABORTED);
 				break;
 
 				/*
@@ -3683,6 +4023,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				/* quickly skip commands until something to do... */
 				while (true)
 				{
+					Command    *command;
+
 					command = sql_script[st->use_file].commands[st->command];
 
 					/* cannot reach end of script in that state */
@@ -3701,7 +4043,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 						switch (conditional_stack_peek(st->cstack))
 						{
 							case IFSTATE_FALSE:
-								if (command->meta == META_IF || command->meta == META_ELIF)
+								if (command->meta == META_IF ||
+									command->meta == META_ELIF)
 								{
 									/* we must evaluate the condition */
 									st->state = CSTATE_START_COMMAND;
@@ -3709,7 +4052,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 								else if (command->meta == META_ELSE)
 								{
 									/* we must execute next command */
-									conditional_stack_poke(st->cstack, IFSTATE_ELSE_TRUE);
+									conditional_stack_poke(st->cstack,
+														   IFSTATE_ELSE_TRUE);
 									st->state = CSTATE_START_COMMAND;
 									st->command++;
 								}
@@ -3731,7 +4075,8 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 							case IFSTATE_IGNORED:
 							case IFSTATE_ELSE_FALSE:
 								if (command->meta == META_IF)
-									conditional_stack_push(st->cstack, IFSTATE_IGNORED);
+									conditional_stack_push(st->cstack,
+														   IFSTATE_IGNORED);
 								else if (command->meta == META_ENDIF)
 								{
 									Assert(!conditional_stack_empty(st->cstack));
@@ -3762,6 +4107,7 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 					}
 
 					if (st->state != CSTATE_SKIP_COMMAND)
+						/* out of quick skip command loop */
 						break;
 				}
 				break;
@@ -3770,56 +4116,43 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * Wait for the current SQL command to complete
 				 */
 			case CSTATE_WAIT_RESULT:
+				pg_log_debug("client %d receiving", st->id);
+				ereport(ELEVEL_DEBUG,
+						(errmsg("client %d receiving\n", st->id)));
+
+				/*
+				 * Only check for new network data if we processed all data
+				 * fetched prior. Otherwise we end up doing a syscall for each
+				 * individual pipelined query, which has a measurable
+				 * performance impact.
+				 */
+				if (PQisBusy(st->con) && !PQconsumeInput(st->con))
 				{
-					char	   *sqlState;
-
-					command = sql_script[st->use_file].commands[st->command];
-					ereport(ELEVEL_DEBUG,
-							(errmsg("client %d receiving\n", st->id)));
-					if (!PQconsumeInput(st->con))
-					{				/* there's something wrong */
-						commandFailed(st, "SQL",
-									  "perhaps the backend died while processing",
-									  ELEVEL_LOG_CLIENT_ABORTED);
-						st->state = CSTATE_ABORTED;
-						break;
-					}
-					if (PQisBusy(st->con))
-						return;		/* don't have the whole result yet */
-
-					/*
-					 * Read and discard the query result;
-					 */
-					res = PQgetResult(st->con);
-					sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
-					switch (PQresultStatus(res))
-					{
-						case PGRES_COMMAND_OK:
-						case PGRES_TUPLES_OK:
-						case PGRES_EMPTY_QUERY:
-							/* OK */
-							PQclear(res);
-							discard_response(st);
-							failure_status = NO_FAILURE;
-							st->state = CSTATE_END_COMMAND;
-							break;
-						case PGRES_NONFATAL_ERROR:
-						case PGRES_FATAL_ERROR:
-							failure_status = getFailureStatus(sqlState);
-							commandFailed(st, "SQL", PQerrorMessage(st->con),
-										  ELEVEL_LOG_CLIENT_FAIL);
-							PQclear(res);
-							discard_response(st);
-							st->state = CSTATE_FAILURE;
-							break;
-						default:
-							commandFailed(st, "SQL", PQerrorMessage(st->con),
-										  ELEVEL_LOG_CLIENT_ABORTED);
-							PQclear(res);
-							st->state = CSTATE_ABORTED;
-							break;
-					}
+					/* there's something wrong */
+					commandFailed(st, "SQL", "perhaps the backend died while processing",
+								  ELEVEL_LOG_CLIENT_ABORTED);
+					st->state = CSTATE_ABORTED;
+					break;
 				}
+				if (PQisBusy(st->con))
+					return;		/* don't have the whole result yet */
+
+				/* store or discard the query results */
+				if (readCommandResponse(st,
+										sql_script[st->use_file].commands[st->command]->meta,
+										sql_script[st->use_file].commands[st->command]->varprefix,
+										&failure_status))
+				{
+					/*
+					 * outside of pipeline mode: stop reading results.
+					 * pipeline mode: continue reading results until an
+					 * end-of-pipeline response.
+					 */
+					if (PQpipelineStatus(st->con) != PQ_PIPELINE_ON)
+						st->state = CSTATE_END_COMMAND;
+				}
+				else
+					st->state = CSTATE_ABORTED;
 				break;
 
 				/*
@@ -3829,10 +4162,9 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 * instead of CSTATE_START_TX.
 				 */
 			case CSTATE_SLEEP:
-				if (INSTR_TIME_IS_ZERO(now))
-					INSTR_TIME_SET_CURRENT(now);
-				if (INSTR_TIME_GET_MICROSEC(now) < st->sleep_until)
-					return;		/* Still sleeping, nothing to do here */
+				pg_time_now_lazy(&now);
+				if (now < st->sleep_until)
+					return;		/* still sleeping, nothing to do here */
 				/* Else done sleeping. */
 				st->state = CSTATE_END_COMMAND;
 				break;
@@ -3849,14 +4181,14 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				 */
 				if (report_per_command)
 				{
-					if (INSTR_TIME_IS_ZERO(now))
-						INSTR_TIME_SET_CURRENT(now);
+					Command    *command;
 
-					/* XXX could use a mutex here, but we choose not to */
+					pg_time_now_lazy(&now);
+
 					command = sql_script[st->use_file].commands[st->command];
+					/* XXX could use a mutex here, but we choose not to */
 					addToSimpleStats(&command->stats,
-									 INSTR_TIME_GET_DOUBLE(now) -
-									 INSTR_TIME_GET_DOUBLE(st->stmt_begin));
+									 PG_TIME_GET_DOUBLE(now - st->stmt_begin));
 				}
 
 				/* Go ahead with next command, to be executed or skipped */
@@ -3999,60 +4331,64 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 				break;
 
 				/*
-				 * End of transaction.
+				 * End of transaction (end of script, really).
 				 */
 			case CSTATE_END_TX:
 
 				/* transaction finished: calculate latency and do log */
 				processXactStats(thread, st, &now, false, agg);
 
-				/* conditional stack must be empty */
-				if (!conditional_stack_empty(st->cstack))
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("end of script reached within a conditional, missing \\endif\n")));
-				}
+				/*
+				 * missing \endif... cannot happen if CheckConditional was
+				 * okay
+				 */
+				Assert(conditional_stack_empty(st->cstack));
 
 				if (is_connect)
 				{
+					pg_time_usec_t start = now;
+
+					pg_time_now_lazy(&start);
 					finishCon(st);
-					INSTR_TIME_SET_ZERO(now);
+					now = pg_time_now();
+					thread->conn_duration += now - start;
 				}
 
 				if ((getTotalCnt(st) >= nxacts && duration <= 0) ||
 					timer_exceeded)
 				{
-					/* exit success */
+					/* script completed */
 					st->state = CSTATE_FINISHED;
 					break;
 				}
 
-				/*
-				 * No transaction is underway anymore.
-				 */
+				/* next transaction (script) */
 				st->state = CSTATE_CHOOSE_SCRIPT;
 
 				/*
-				 * If we paced through all commands in the script in this
-				 * loop, without returning to the caller even once, do it now.
-				 * This gives the thread a chance to process other
-				 * connections, and to do progress reporting.  This can
-				 * currently only happen if the script consists entirely of
-				 * meta-commands.
+				 * Ensure that we always return on this point, so as to avoid
+				 * an infinite loop if the script only contains meta commands.
 				 */
-				if (end_tx_processed)
-					return;
-				else
-				{
-					end_tx_processed = true;
-					break;
-				}
+				return;
 
 				/*
 				 * Final states.  Close the connection if it's still open.
 				 */
 			case CSTATE_ABORTED:
 			case CSTATE_FINISHED:
+
+				/*
+				 * Don't measure the disconnection delays here even if in
+				 * CSTATE_FINISHED and -C/--connect option is specified.
+				 * Because in this case all the connections that this thread
+				 * established are closed at the end of transactions and the
+				 * disconnection delays should have already been measured at
+				 * that moment.
+				 *
+				 * In CSTATE_ABORTED state, the measurement is no longer
+				 * necessary because we cannot report complete results anyways
+				 * in this case.
+				 */
 				finishCon(st);
 				return;
 		}
@@ -4060,18 +4396,259 @@ doCustom(TState *thread, CState *st, StatsData *agg)
 }
 
 /*
+ * Subroutine for advanceConnectionState -- initiate or execute the current
+ * meta command, and return the next state to set.
+ *
+ * *now is updated to the current time, unless the command is expected to
+ * take no time to execute.
+ */
+static ConnectionStateEnum
+executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_status)
+{
+	Command    *command = sql_script[st->use_file].commands[st->command];
+	int			argc;
+	char	  **argv;
+	PQExpBufferData buf;
+
+	Assert(command != NULL && command->type == META_COMMAND);
+
+	argc = command->argc;
+	argv = command->argv;
+
+	initPQExpBuffer(&buf);
+	printfPQExpBuffer(&buf, "client %d executing \\%s", st->id, argv[0]);
+	for (int i = 1; i < argc; i++)
+		appendPQExpBuffer(&buf, " %s", argv[i]);
+	appendPQExpBufferChar(&buf, '\n');
+	ereport(ELEVEL_DEBUG, (errmsg("%s", buf.data)));
+	termPQExpBuffer(&buf);
+
+	/* change it if the meta command fails */
+	*failure_status = NO_FAILURE;
+
+	if (command->meta == META_SLEEP)
+	{
+		int			usec;
+
+		/*
+		 * A \sleep doesn't execute anything, we just get the delay from the
+		 * argument, and enter the CSTATE_SLEEP state.  (The per-command
+		 * latency will be recorded in CSTATE_SLEEP state, not here, after the
+		 * delay has elapsed.)
+		 */
+		if (!evaluateSleep(&st->variables, argc, argv, &usec))
+		{
+			commandFailed(st, "sleep", "execution of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+
+		pg_time_now_lazy(now);
+		st->sleep_until = (*now) + usec;
+		return CSTATE_SLEEP;
+	}
+	else if (command->meta == META_SET)
+	{
+		PgBenchExpr *expr = command->expr;
+		PgBenchValue result;
+
+		if (!evaluateExpr(st, expr, &result))
+		{
+			commandFailed(st, argv[0], "evaluation of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+
+			/*
+			 * Do not ruin the following conditional commands,
+			 * if any.
+			 */
+			executeCondition(st, false);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+
+		if (!putVariableValue(st, argv[0], argv[1], &result))
+		{
+			commandFailed(st, "set", "assignment of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+	}
+	else if (command->meta == META_IF)
+	{
+		/* backslash commands with an expression to evaluate */
+		PgBenchExpr *expr = command->expr;
+		PgBenchValue result;
+		bool		cond;
+
+		if (!evaluateExpr(st, expr, &result))
+		{
+			commandFailed(st, argv[0], "evaluation of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+
+			/*
+			 * Do not ruin the following conditional commands,
+			 * if any.
+			 */
+			executeCondition(st, false);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+
+		cond = valueTruth(&result);
+		executeCondition(st, cond);
+		conditional_stack_push(st->cstack, cond ? IFSTATE_TRUE : IFSTATE_FALSE);
+	}
+	else if (command->meta == META_ELIF)
+	{
+		/* backslash commands with an expression to evaluate */
+		PgBenchExpr *expr = command->expr;
+		PgBenchValue result;
+		bool		cond;
+
+		if (conditional_stack_peek(st->cstack) == IFSTATE_TRUE)
+		{
+			/* elif after executed block, skip eval and wait for endif. */
+			conditional_stack_poke(st->cstack, IFSTATE_IGNORED);
+			return CSTATE_END_COMMAND;
+		}
+
+		if (!evaluateExpr(st, expr, &result))
+		{
+			commandFailed(st, argv[0], "evaluation of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+
+			/*
+			 * Do not ruin the following conditional commands,
+			 * if any.
+			 */
+			executeCondition(st, false);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+
+		cond = valueTruth(&result);
+		executeCondition(st, cond);
+		Assert(conditional_stack_peek(st->cstack) == IFSTATE_FALSE);
+		conditional_stack_poke(st->cstack, cond ? IFSTATE_TRUE : IFSTATE_FALSE);
+	}
+	else if (command->meta == META_ELSE)
+	{
+		switch (conditional_stack_peek(st->cstack))
+		{
+			case IFSTATE_TRUE:
+				conditional_stack_poke(st->cstack, IFSTATE_ELSE_FALSE);
+				break;
+			case IFSTATE_FALSE: /* inconsistent if active */
+			case IFSTATE_IGNORED:	/* inconsistent if active */
+			case IFSTATE_NONE:	/* else without if */
+			case IFSTATE_ELSE_TRUE: /* else after else */
+			case IFSTATE_ELSE_FALSE:	/* else after else */
+			default:
+				/* dead code if conditional check is ok */
+				Assert(false);
+		}
+	}
+	else if (command->meta == META_ENDIF)
+	{
+		Assert(!conditional_stack_empty(st->cstack));
+		conditional_stack_pop(st->cstack);
+	}
+	else if (command->meta == META_SETSHELL)
+	{
+		if (!runShellCommand(&st->variables, argv[1], argv + 2, argc - 2))
+		{
+			commandFailed(st, "setshell", "execution of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+	}
+	else if (command->meta == META_SHELL)
+	{
+		if (!runShellCommand(&st->variables, NULL, argv + 1, argc - 1))
+		{
+			commandFailed(st, "shell", "execution of meta-command failed",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+	}
+	else if (command->meta == META_STARTPIPELINE)
+	{
+		/*
+		 * In pipeline mode, we use a workflow based on libpq pipeline
+		 * functions.
+		 */
+		if (querymode == QUERY_SIMPLE)
+		{
+			commandFailed(st, "startpipeline", "cannot use pipeline mode with the simple query protocol",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+
+		if (PQpipelineStatus(st->con) != PQ_PIPELINE_OFF)
+		{
+			commandFailed(st, "startpipeline", "already in pipeline mode",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+		if (PQenterPipelineMode(st->con) == 0)
+		{
+			commandFailed(st, "startpipeline", "failed to enter pipeline mode",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+	}
+	else if (command->meta == META_ENDPIPELINE)
+	{
+		if (PQpipelineStatus(st->con) != PQ_PIPELINE_ON)
+		{
+			commandFailed(st, "endpipeline", "not in pipeline mode",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+		if (!PQpipelineSync(st->con))
+		{
+			commandFailed(st, "endpipeline", "failed to send a pipeline sync",
+						  ELEVEL_LOG_CLIENT_FAIL);
+			*failure_status = ANOTHER_FAILURE;
+			return CSTATE_FAILURE;
+		}
+		/* Now wait for the PGRES_PIPELINE_SYNC and exit pipeline mode there */
+		/* collect pending results before getting out of pipeline mode */
+		return CSTATE_WAIT_RESULT;
+	}
+
+	/*
+	 * executing the expression or shell command might have taken a
+	 * non-negligible amount of time, so reset 'now'
+	 */
+	*now = 0;
+
+	return CSTATE_END_COMMAND;
+}
+
+/*
  * Print log entry after completing one transaction.
  *
  * We print Unix-epoch timestamps in the log, so that entries can be
- * correlated against other logs.  On some platforms this could be obtained
- * from the instr_time reading the caller has, but rather than get entangled
- * with that, we just eat the cost of an extra syscall in all cases.
+ * correlated against other logs.
+ *
+ * XXX We could obtain the time from the caller and just shift it here, to
+ * avoid the cost of an extra call to pg_time_now().
  */
 static void
 doLog(TState *thread, CState *st,
 	  StatsData *agg, bool skipped, double latency, double lag)
 {
 	FILE	   *logfile = thread->logfile;
+	pg_time_usec_t now = pg_time_now() + epoch_shift;
 
 	Assert(use_log);
 
@@ -4086,18 +4663,19 @@ doLog(TState *thread, CState *st,
 	/* should we aggregate the results or not? */
 	if (agg_interval > 0)
 	{
+		pg_time_usec_t next;
+
 		/*
 		 * Loop until we reach the interval of the current moment, and print
 		 * any empty intervals in between (this may happen with very low tps,
 		 * e.g. --rate=0.1).
 		 */
-		time_t		now = time(NULL);
 
-		while (agg->start_time + agg_interval <= now)
+		while ((next = agg->start_time + agg_interval * INT64CONST(1000000)) <= now)
 		{
 			/* print aggregated report to logfile */
-			fprintf(logfile, "%ld " INT64_FORMAT " %.0f %.0f %.0f %.0f " INT64_FORMAT " " INT64_FORMAT,
-					(long) agg->start_time,
+			fprintf(logfile, INT64_FORMAT " " INT64_FORMAT " %.0f %.0f %.0f %.0f" INT64_FORMAT " " INT64_FORMAT,
+					agg->start_time / 1000000,	/* seconds since Unix epoch */
 					agg->cnt,
 					agg->latency.sum,
 					agg->latency.sum2,
@@ -4122,7 +4700,7 @@ doLog(TState *thread, CState *st,
 			fputc('\n', logfile);
 
 			/* reset data and move to next interval */
-			initStats(agg, agg->start_time + agg_interval);
+			initStats(agg, next);
 		}
 
 		/* accumulate the current transaction */
@@ -4132,25 +4710,23 @@ doLog(TState *thread, CState *st,
 	else
 	{
 		/* no, print raw transactions */
-		struct timeval tv;
-
-		gettimeofday(&tv, NULL);
 		if (skipped)
-			fprintf(logfile, "%d " INT64_FORMAT " skipped %d %ld %ld",
-					st->id, getTotalCnt(st), st->use_file,
-					(long) tv.tv_sec, (long) tv.tv_usec);
+			fprintf(logfile, "%d " INT64_FORMAT " skipped %d " INT64_FORMAT " "
+					INT64_FORMAT,
+					st->id, getTotalCnt(st), st->use_file, now / 1000000, now % 1000000);
 		else if (st->first_failure.status == NO_FAILURE)
 			fprintf(logfile, "%d " INT64_FORMAT " %.0f %d %ld %ld",
 					st->id, getTotalCnt(st), latency, st->use_file,
-					(long) tv.tv_sec, (long) tv.tv_usec);
+					now / 1000000, now % 1000000);
 		else if (st->first_failure.status == IN_FAILED_SQL_TRANSACTION)
 			fprintf(logfile, "%d " INT64_FORMAT " in_failed_tx %d %ld %ld",
 					st->id, getTotalCnt(st), st->use_file,
-					(long) tv.tv_sec, (long) tv.tv_usec);
+					now / 1000000, now % 1000000);
 		else
-			fprintf(logfile, "%d " INT64_FORMAT " failed %d %ld %ld",
-					st->id, getTotalCnt(st), st->use_file,
-					(long) tv.tv_sec, (long) tv.tv_usec);
+			fprintf(logfile, "%d " INT64_FORMAT "  failed %.0f %d " INT64_FORMAT " "
+					INT64_FORMAT,
+					st->id, getTotalCnt(st), latency, st->use_file,
+					now / 1000000, now % 1000000);
 
 		if (throttle_delay)
 			fprintf(logfile, " %.0f", lag);
@@ -4167,7 +4743,7 @@ doLog(TState *thread, CState *st,
  * Note that even skipped transactions are counted in the "cnt" fields.)
  */
 static void
-processXactStats(TState *thread, CState *st, instr_time *now,
+processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
 				 bool skipped, StatsData *agg)
 {
 	double		latency = 0.0,
@@ -4178,12 +4754,11 @@ processXactStats(TState *thread, CState *st, instr_time *now,
 	if (detailed && !skipped &&
 		(st->first_failure.status == NO_FAILURE || latency_limit))
 	{
-		if (INSTR_TIME_IS_ZERO(*now))
-			INSTR_TIME_SET_CURRENT(*now);
+		pg_time_now_lazy(now);
 
 		/* compute latency & lag */
-		latency = INSTR_TIME_GET_MICROSEC(*now) - st->txn_scheduled;
-		lag = INSTR_TIME_GET_MICROSEC(st->txn_begin) - st->txn_scheduled;
+		latency = (*now) - st->txn_scheduled;
+		lag = st->txn_begin - st->txn_scheduled;
 	}
 
 	if (thread_details)
@@ -4249,21 +4824,83 @@ initDropTables(PGconn *con)
 }
 
 /*
+ * Create "ysql_bench_accounts" partitions if needed.
+ *
+ * This is the larger table of pgbench default tpc-b like schema
+ * with a known size, so we choose to partition it.
+ */
+static void
+createPartitions(PGconn *con)
+{
+	PQExpBufferData query;
+
+	/* we must have to create some partitions */
+	Assert(partitions > 0);
+
+	fprintf(stderr, "creating %d partitions...\n", partitions);
+
+	initPQExpBuffer(&query);
+
+	for (int p = 1; p <= partitions; p++)
+	{
+		if (partition_method == PART_RANGE)
+		{
+			int64		part_size = (naccounts * (int64) scale + partitions - 1) / partitions;
+
+			printfPQExpBuffer(&query,
+							  "create%s table ysql_bench_accounts_%d\n"
+							  "  partition of ysql_bench_accounts\n"
+							  "  for values from (",
+							  unlogged_tables ? " unlogged" : "", p);
+
+			/*
+			 * For RANGE, we use open-ended partitions at the beginning and
+			 * end to allow any valid value for the primary key.  Although the
+			 * actual minimum and maximum values can be derived from the
+			 * scale, it is more generic and the performance is better.
+			 */
+			if (p == 1)
+				appendPQExpBufferStr(&query, "minvalue");
+			else
+				appendPQExpBuffer(&query, INT64_FORMAT, (p - 1) * part_size + 1);
+
+			appendPQExpBufferStr(&query, ") to (");
+
+			if (p < partitions)
+				appendPQExpBuffer(&query, INT64_FORMAT, p * part_size + 1);
+			else
+				appendPQExpBufferStr(&query, "maxvalue");
+
+			appendPQExpBufferChar(&query, ')');
+		}
+		else if (partition_method == PART_HASH)
+			printfPQExpBuffer(&query,
+							  "create%s table ysql_bench_accounts_%d\n"
+							  "  partition of ysql_bench_accounts\n"
+							  "  for values with (modulus %d, remainder %d)",
+							  unlogged_tables ? " unlogged" : "", p,
+							  partitions, p - 1);
+		else					/* cannot get there */
+			Assert(0);
+
+		/*
+		 * Per ddlinfo in initCreateTables, fillfactor is needed on table
+		 * ysql_bench_accounts.
+		 */
+		appendPQExpBuffer(&query, " with (fillfactor=%d)", fillfactor);
+
+		executeStatement(con, query.data);
+	}
+
+	termPQExpBuffer(&query);
+}
+
+/*
  * Create pgbench's standard tables
  */
 static void
 initCreateTables(PGconn *con, bool use_primary_key)
 {
-	/*
-	 * The scale factor at/beyond which 32-bit integers are insufficient for
-	 * storing TPC-B account IDs.
-	 *
-	 * Although the actual threshold is 21474, we use 20000 because it is
-	 * easier to document and remember, and isn't that far away from the real
-	 * threshold.
-	 */
-#define SCALE_32BIT_THRESHOLD 20000
-
 	/*
 	 * Note: TPC-B requires at least 100 bytes per row, and the "filler"
 	 * fields in these table declarations were intended to comply with that.
@@ -4314,6 +4951,7 @@ initCreateTables(PGconn *con, bool use_primary_key)
 		}
 	};
 	int			i;
+	PQExpBufferData query;
 
 	if (use_primary_key) {
 		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables (with primary keys)...\n")));
@@ -4321,70 +4959,98 @@ initCreateTables(PGconn *con, bool use_primary_key)
 		ereport(ELEVEL_LOG_MAIN, (errmsg("creating tables...\n")));
 	}
 
+	initPQExpBuffer(&query);
+
 	for (i = 0; i < lengthof(DDLs); i++)
 	{
-		char		opts[256];
-		char		buffer[256];
 		const struct ddlinfo *ddl = &DDLs[i];
-		const char *cols;
 
 		/* Construct new create table statement. */
-		opts[0] = '\0';
-		if (ddl->declare_fillfactor && set_fillfactor)
-			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-					 " with (fillfactor=%d)", fillfactor);
+		printfPQExpBuffer(&query, "create%s table %s(%s%s)",
+						  unlogged_tables ? " unlogged" : "",
+						  ddl->table,
+						  (scale >= SCALE_32BIT_THRESHOLD) ? ddl->bigcols : ddl->smcols,
+						  use_primary_key ? ddl->pkey : "");
+
+		/* Partition ysql_bench_accounts table */
+		if (partition_method != PART_NONE && strcmp(ddl->table, "ysql_bench_accounts") == 0)
+			appendPQExpBuffer(&query,
+							  " partition by %s (aid)", PARTITION_METHOD[partition_method]);
+		else if (ddl->declare_fillfactor && set_fillfactor)
+		{
+			/* fillfactor is only expected on actual tables */
+			appendPQExpBuffer(&query, " with (fillfactor=%d)", fillfactor);
+		}
+
 		if (tablespace != NULL)
 		{
 			char	   *escape_tablespace;
 
-			escape_tablespace = PQescapeIdentifier(con, tablespace,
-												   strlen(tablespace));
-			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-					 " tablespace %s", escape_tablespace);
+			escape_tablespace = PQescapeIdentifier(con, tablespace, strlen(tablespace));
+			appendPQExpBuffer(&query, " tablespace %s", escape_tablespace);
 			PQfreemem(escape_tablespace);
 		}
 
-		cols = (scale >= SCALE_32BIT_THRESHOLD) ? ddl->bigcols : ddl->smcols;
-
+/* NEIL:
 		snprintf(buffer, sizeof(buffer), "create%s table %s(%s%s)%s",
 				 unlogged_tables ? " unlogged" : "",
 				 ddl->table, cols,
 				 use_primary_key ? ddl->pkey : "",
 				 opts);
-
-		executeStatement(con, buffer);
+*/
+		executeStatement(con, query.data);
 	}
+
+	termPQExpBuffer(&query);
+
+	if (partition_method != PART_NONE)
+		createPartitions(con);
 }
 
 /*
- * Fill the standard tables with some data
+ * Truncate away any old data, in one command in case there are foreign keys
  */
 static void
-initGenerateData(PGconn *con)
+initTruncateTables(PGconn *con)
 {
-	char		sql[256];
-	PGresult   *res;
-	int			i;
-	int64		k;
-
-	/* used to track elapsed time and estimate of the remaining time */
-	instr_time	start,
-				diff;
-	double		elapsed_sec,
-				remaining_sec;
-	int			log_interval = 1;
-
-	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data...\n")));
-
-	/*
-	 * truncate away any old data, in one command in case there are foreign
-	 * keys
-	 */
 	executeStatement(con, "truncate table "
 					 "ysql_bench_accounts, "
 					 "ysql_bench_branches, "
 					 "ysql_bench_history, "
 					 "ysql_bench_tellers");
+}
+
+/*
+ * Fill the standard tables with some data generated and sent from the client
+ */
+static void
+initGenerateDataClientSide(PGconn *con)
+{
+	PQExpBufferData sql;
+	PGresult   *res;
+	int			i;
+	int64		k;
+	char		*copy_statement;
+
+	/* used to track elapsed time and estimate of the remaining time */
+	pg_time_usec_t start;
+	int			log_interval = 1;
+
+	/* Stay on the same line if reporting to a terminal */
+	char		eol = isatty(fileno(stderr)) ? '\r' : '\n';
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data (client-side)...\n")));
+
+	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
+	executeStatement(con, "begin");
+
+	/* truncate away any old data */
+	initTruncateTables(con);
+
+	initPQExpBuffer(&sql);
 
 	/*
 	 * fill branches, tellers, accounts in that order in case foreign keys
@@ -4393,19 +5059,19 @@ initGenerateData(PGconn *con)
 	for (i = 0; i < nbranches * scale; i++)
 	{
 		/* "filler" column defaults to NULL */
-		snprintf(sql, sizeof(sql),
-				 "insert into ysql_bench_branches(bid,bbalance) values(%d,0)",
-				 i + 1);
-		executeStatement(con, sql);
+		printfPQExpBuffer(&sql,
+						  "insert into ysql_bench_branches(bid,bbalance) values(%d,0)",
+						  i + 1);
+		executeStatement(con, sql.data);
 	}
 
 	for (i = 0; i < ntellers * scale; i++)
 	{
 		/* "filler" column defaults to NULL */
-		snprintf(sql, sizeof(sql),
-				 "insert into ysql_bench_tellers(tid,bid,tbalance) values (%d,%d,0)",
-				 i + 1, i / ntellers + 1);
-		executeStatement(con, sql);
+		printfPQExpBuffer(&sql,
+						  "insert into ysql_bench_tellers(tid,bid,tbalance) values (%d,%d,0)",
+						  i + 1, i / ntellers + 1);
+		executeStatement(con, sql.data);
 	}
 
 	/*
@@ -4417,23 +5083,37 @@ initGenerateData(PGconn *con)
 	/*
 	 * accounts is big enough to be worth using COPY and tracking runtime
 	 */
-	res = PQexec(con, "copy ysql_bench_accounts from stdin");
+	/* use COPY with FREEZE on v14 and later without partioning */
+	if (partitions == 0 && PQserverVersion(con) >= 140000)
+		copy_statement = "copy ysql_bench_accounts from stdin with (freeze on)";
+	else
+		copy_statement = "copy ysql_bench_accounts from stdin";
+
+	res = PQexec(con, copy_statement);
+
 	if (PQresultStatus(res) != PGRES_COPY_IN)
-		ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
+	{
+		ereport(ELEVEL_FATAL, (errmsg("unexpected copy in result: %s", PQerrorMessage(con))));
+	}
 	PQclear(res);
 
-	INSTR_TIME_SET_CURRENT(start);
+	start = pg_time_now();
 
 	for (k = 0; k < (int64) naccounts * scale; k++)
 	{
 		int64		j = k + 1;
 
 		/* "filler" column defaults to blank padded empty string */
-		snprintf(sql, sizeof(sql),
-				 INT64_FORMAT "\t" INT64_FORMAT "\t%d\t\n",
-				 j, k / naccounts + 1, 0);
-		if (PQputline(con, sql))
-			ereport(ELEVEL_FATAL, (errmsg("PQputline failed\n")));
+		printfPQExpBuffer(&sql,
+						  INT64_FORMAT "\t" INT64_FORMAT "\t%d\t\n",
+						  j, k / naccounts + 1, 0);
+		if (PQputline(con, sql.data))
+		{
+			ereport(ELEVEL_FATAL, (errmsg("PQputline failed")));
+		}
+
+		if (CancelRequested)
+			break;
 
 		/*
 		 * If we want to stick with the original logging, print a message each
@@ -4441,65 +5121,111 @@ initGenerateData(PGconn *con)
 		 */
 		if ((!use_quiet) && (j % 100000 == 0))
 		{
-			INSTR_TIME_SET_CURRENT(diff);
-			INSTR_TIME_SUBTRACT(diff, start);
-
-			elapsed_sec = INSTR_TIME_GET_DOUBLE(diff);
-			remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
+			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
+			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
 
 			ereport(ELEVEL_LOG_MAIN,
-					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
-							j, (int64) naccounts * scale,
-							(int) (((int64) j * 100) /
-								   (naccounts * (int64) scale)),
-							elapsed_sec, remaining_sec)));
+					(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c\n",
+					j, (int64) naccounts * scale,
+					(int) (((int64) j * 100) / (naccounts * (int64) scale)),
+					elapsed_sec, remaining_sec, eol);
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
 		{
-			INSTR_TIME_SET_CURRENT(diff);
-			INSTR_TIME_SUBTRACT(diff, start);
-
-			elapsed_sec = INSTR_TIME_GET_DOUBLE(diff);
-			remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
+			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
+			double		remaining_sec = ((double) scale * naccounts - j) * elapsed_sec / j;
 
 			/* have we reached the next interval (or end)? */
 			if ((j == scale * naccounts) || (elapsed_sec >= log_interval * LOG_STEP_SECONDS))
 			{
 				ereport(ELEVEL_LOG_MAIN,
-						(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)\n",
-								j, (int64) naccounts * scale,
-								(int) (((int64) j * 100) /
-									   (naccounts * (int64) scale)),
-								elapsed_sec, remaining_sec)));
+						(errmsg(INT64_FORMAT " of " INT64_FORMAT " tuples (%d%%) done (elapsed %.2f s, remaining %.2f s)%c\n",
+						j, (int64) naccounts * scale,
+						(int) (((int64) j * 100) / (naccounts * (int64) scale)), elapsed_sec, remaining_sec, eol);
 
 				/* skip to the next interval */
 				log_interval = (int) ceil(elapsed_sec / LOG_STEP_SECONDS);
 			}
 		}
-
-		if (j % batch_size == 0 || j == (int64) naccounts * scale)
-		{
-			/* We have submitted the batch. Commit the transaction. */
-			 if (PQputline(con, "\\.\n"))
-				ereport(ELEVEL_FATAL, (errmsg("very last PQputline failed\n")));
-			if (PQendcopy(con))
-				ereport(ELEVEL_FATAL, (errmsg("PQendcopy failed\n")));
-			executeStatement(con, "commit");
-
-			if (j != (int64) naccounts * scale)
-			{
-				/* We would need to begin a new transaction if we have more
-				* records to be pushed to the database.
-				*/
-				executeStatement(con, "begin");
-				res = PQexec(con, "copy ysql_bench_accounts from stdin");
-				if (PQresultStatus(res) != PGRES_COPY_IN)
-					ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
-				PQclear(res);
-			}
-		}
 	}
+
+	if (eol != '\n')
+		fputc('\n', stderr);	/* Need to move to next line */
+
+	if (PQputline(con, "\\.\n"))
+	{
+		ereport(ELEVEL_FATAL, (errmsg("very last PQputline failed")));
+	}
+	if (PQendcopy(con))
+	{
+		ereport(ELEVEL_FATAL, (errmsg("PQendcopy failed")));
+	}
+
+	termPQExpBuffer(&sql);
+
+	executeStatement(con, "commit");
+
+	if (j != (int64) naccounts * scale)
+	{
+		/* We would need to begin a new transaction if we have more
+		 * records to be pushed to the database.
+		 */
+		executeStatement(con, "begin");
+		res = PQexec(con, "copy ysql_bench_accounts from stdin");
+		if (PQresultStatus(res) != PGRES_COPY_IN)
+			ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
+		PQclear(res);
+	}
+}
+
+/*
+ * Fill the standard tables with some data generated on the server
+ *
+ * As already the case with the client-side data generation, the filler
+ * column defaults to NULL in ysql_bench_branches and ysql_bench_tellers,
+ * and is a blank-padded string in ysql_bench_accounts.
+ */
+static void
+initGenerateDataServerSide(PGconn *con)
+{
+	PQExpBufferData sql;
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("generating data (server-side)...\n")));
+
+	/*
+	 * we do all of this in one transaction to enable the backend's
+	 * data-loading optimizations
+	 */
+	executeStatement(con, "begin");
+
+	/* truncate away any old data */
+	initTruncateTables(con);
+
+	initPQExpBuffer(&sql);
+
+	printfPQExpBuffer(&sql,
+					  "insert into ysql_bench_branches(bid,bbalance) "
+					  "select bid, 0 "
+					  "from generate_series(1, %d) as bid", nbranches * scale);
+	executeStatement(con, sql.data);
+
+	printfPQExpBuffer(&sql,
+					  "insert into ysql_bench_tellers(tid,bid,tbalance) "
+					  "select tid, (tid - 1) / %d + 1, 0 "
+					  "from generate_series(1, %d) as tid", ntellers, ntellers * scale);
+	executeStatement(con, sql.data);
+
+	printfPQExpBuffer(&sql,
+					  "insert into ysql_bench_accounts(aid,bid,abalance,filler) "
+					  "select aid, (aid - 1) / %d + 1, 0, '' "
+					  "from generate_series(1, " INT64_FORMAT ") as aid",
+					  naccounts, (int64) naccounts * scale);
+	executeStatement(con, sql.data);
+
+	termPQExpBuffer(&sql);
+
+	executeStatement(con, "commit");
 }
 
 /*
@@ -4513,6 +5239,44 @@ initVacuum(PGconn *con)
 	executeStatement(con, "vacuum analyze ysql_bench_tellers");
 	executeStatement(con, "vacuum analyze ysql_bench_accounts");
 	executeStatement(con, "vacuum analyze ysql_bench_history");
+}
+
+/*
+ * Create primary keys on the standard tables
+ */
+static void
+initCreatePKeys(PGconn *con)
+{
+	static const char *const DDLINDEXes[] = {
+		"alter table ysql_bench_branches add primary key (bid)",
+		"alter table ysql_bench_tellers add primary key (tid)",
+		"alter table ysql_bench_accounts add primary key (aid)"
+	};
+	int			i;
+	PQExpBufferData query;
+
+	fprintf(stderr, "creating primary keys...\n");
+	initPQExpBuffer(&query);
+
+	for (i = 0; i < lengthof(DDLINDEXes); i++)
+	{
+		resetPQExpBuffer(&query);
+		appendPQExpBufferStr(&query, DDLINDEXes[i]);
+
+		if (index_tablespace != NULL)
+		{
+			char	   *escape_tablespace;
+
+			escape_tablespace = PQescapeIdentifier(con, index_tablespace,
+												   strlen(index_tablespace));
+			appendPQExpBuffer(&query, " using index tablespace %s", escape_tablespace);
+			PQfreemem(escape_tablespace);
+		}
+
+		executeStatement(con, query.data);
+	}
+
+	termPQExpBuffer(&query);
 }
 
 /*
@@ -4547,18 +5311,18 @@ initCreateFKeys(PGconn *con)
 static void
 checkInitSteps(const char *initialize_steps)
 {
-	const char *step;
-
 	if (initialize_steps[0] == '\0')
-		ereport(ELEVEL_FATAL, (errmsg("no initialization steps specified\n")));
-
-	for (step = initialize_steps; *step != '\0'; step++)
 	{
-		if (strchr("dtgvpf ", *step) == NULL)
+		ereport(ELEVEL_FATAL, (errmsg("no initialization steps specified")));
+	}
+
+	for (const char *step = initialize_steps; *step != '\0'; step++)
+	{
+		if (strchr(ALL_INIT_STEPS " ", *step) == NULL)
 		{
 			ereport(ELEVEL_FATAL,
 					(errmsg("unrecognized initialization step \"%c\"\n"
-							"allowed steps are: \"d\", \"t\", \"g\", \"v\", \"p\", \"f\"\n",
+							"Allowed step characters are: \"" ALL_INIT_STEPS "\".",
 							*step)));
 		}
 	}
@@ -4570,37 +5334,59 @@ checkInitSteps(const char *initialize_steps)
 static void
 runInitSteps(const char *initialize_steps)
 {
+	PQExpBufferData stats;
 	PGconn	   *con;
 	const char *step;
+	double		run_time = 0.0;
+	bool		first = true;
+
+	initPQExpBuffer(&stats);
 
 	if ((con = doConnect()) == NULL)
 		exit(1);
 
-  bool use_primary_key = false;
-  for (step = initialize_steps; *step != '\0'; step++)
-  {
-    use_primary_key |= (*step == 'p');
-  }
+	setup_cancel_handler(NULL);
+	SetCancelConn(con);
+
+	bool use_primary_key = false;
 	for (step = initialize_steps; *step != '\0'; step++)
 	{
+		use_primary_key |= (*step == 'p');
+	}
+
+	for (step = initialize_steps; *step != '\0'; step++)
+	{
+		char	   *op = NULL;
+		pg_time_usec_t start = pg_time_now();
+
 		switch (*step)
 		{
 			case 'd':
+				op = "drop tables";
 				initDropTables(con);
 				break;
 			case 't':
+				op = "create tables";
 				initCreateTables(con, use_primary_key);
 				break;
 			case 'g':
-				initGenerateData(con);
+				op = "client-side generate";
+				initGenerateDataClientSide(con);
+				break;
+			case 'G':
+				op = "server-side generate";
+				initGenerateDataServerSide(con);
 				break;
 			case 'v':
+				op = "vacuum";
 				initVacuum(con);
 				break;
 			case 'p':
-          // handled via 'use_primary_key' in conjunction with 't'
-          break;
+				op = "primary keys";
+				// handled via 'use_primary_key' in conjunction with 't'
+				break;
 			case 'f':
+				op = "foreign keys";
 				initCreateFKeys(con);
 				break;
 			case ' ':
@@ -4612,15 +5398,144 @@ runInitSteps(const char *initialize_steps)
 				PQfinish(con);
 				exit(1);
 		}
+
+		if (op != NULL)
+		{
+			double		elapsed_sec = PG_TIME_GET_DOUBLE(pg_time_now() - start);
+
+			if (!first)
+				appendPQExpBufferStr(&stats, ", ");
+			else
+				first = false;
+
+			appendPQExpBuffer(&stats, "%s %.2f s", op, elapsed_sec);
+
+			run_time += elapsed_sec;
+		}
 	}
 
-	ereport(ELEVEL_LOG_MAIN, (errmsg("done.\n")));
+	ereport(ELEVEL_LOG_MAIN, (errmsg("done in %.2f s (%s).\n", run_time, stats.data)));
+	ResetCancelConn();
 	PQfinish(con);
+	termPQExpBuffer(&stats);
+}
+
+/*
+ * Extract pgbench table information into global variables scale,
+ * partition_method and partitions.
+ */
+static void
+GetTableInfo(PGconn *con, bool scale_given)
+{
+	PGresult   *res;
+
+	/*
+	 * get the scaling factor that should be same as count(*) from
+	 * ysql_bench_branches if this is not a custom query
+	 */
+	res = PQexec(con, "select count(*) from ysql_bench_branches");
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		char	   *sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+
+		pg_log_fatal("could not count number of branches: %s", PQerrorMessage(con));
+
+		if (sqlState && strcmp(sqlState, ERRCODE_UNDEFINED_TABLE) == 0)
+			pg_log_info("Perhaps you need to do initialization (\"pgbench -i\") in database \"%s\"",
+						PQdb(con));
+
+		exit(1);
+	}
+	scale = atoi(PQgetvalue(res, 0, 0));
+	if (scale < 0)
+	{
+		pg_log_fatal("invalid count(*) from ysql_bench_branches: \"%s\"",
+					 PQgetvalue(res, 0, 0));
+		exit(1);
+	}
+	PQclear(res);
+
+	/* warn if we override user-given -s switch */
+	if (scale_given)
+		pg_log_warning("scale option ignored, using count from ysql_bench_branches table (%d)",
+					   scale);
+
+	/*
+	 * Get the partition information for the first "ysql_bench_accounts" table
+	 * found in search_path.
+	 *
+	 * The result is empty if no "ysql_bench_accounts" is found.
+	 *
+	 * Otherwise, it always returns one row even if the table is not
+	 * partitioned (in which case the partition strategy is NULL).
+	 *
+	 * The number of partitions can be 0 even for partitioned tables, if no
+	 * partition is attached.
+	 *
+	 * We assume no partitioning on any failure, so as to avoid failing on an
+	 * old version without "pg_partitioned_table".
+	 */
+	res = PQexec(con,
+				 "select o.n, p.partstrat, pg_catalog.count(i.inhparent) "
+				 "from pg_catalog.pg_class as c "
+				 "join pg_catalog.pg_namespace as n on (n.oid = c.relnamespace) "
+				 "cross join lateral (select pg_catalog.array_position(pg_catalog.current_schemas(true), n.nspname)) as o(n) "
+				 "left join pg_catalog.pg_partitioned_table as p on (p.partrelid = c.oid) "
+				 "left join pg_catalog.pg_inherits as i on (c.oid = i.inhparent) "
+				 "where c.relname = 'ysql_bench_accounts' and o.n is not null "
+				 "group by 1, 2 "
+				 "order by 1 asc "
+				 "limit 1");
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		/* probably an older version, coldly assume no partitioning */
+		partition_method = PART_NONE;
+		partitions = 0;
+	}
+	else if (PQntuples(res) == 0)
+	{
+		/*
+		 * This case is unlikely as pgbench already found "ysql_bench_branches"
+		 * above to compute the scale.
+		 */
+		pg_log_fatal("no ysql_bench_accounts table found in search_path");
+		pg_log_info("Perhaps you need to do initialization (\"pgbench -i\") in database \"%s\".", PQdb(con));
+		exit(1);
+	}
+	else						/* PQntupes(res) == 1 */
+	{
+		/* normal case, extract partition information */
+		if (PQgetisnull(res, 0, 1))
+			partition_method = PART_NONE;
+		else
+		{
+			char	   *ps = PQgetvalue(res, 0, 1);
+
+			/* column must be there */
+			Assert(ps != NULL);
+
+			if (strcmp(ps, "r") == 0)
+				partition_method = PART_RANGE;
+			else if (strcmp(ps, "h") == 0)
+				partition_method = PART_HASH;
+			else
+			{
+				/* possibly a newer version with new partition method */
+				pg_log_fatal("unexpected partition method: \"%s\"", ps);
+				exit(1);
+			}
+		}
+
+		partitions = atoi(PQgetvalue(res, 0, 2));
+	}
+
+	PQclear(res);
 }
 
 /*
  * Replace :param with $n throughout the command's SQL text, which
- * is a modifiable string in cmd->argv[0].
+ * is a modifiable string in cmd->lines.
  */
 static bool
 parseQuery(Command *cmd)
@@ -4628,12 +5543,9 @@ parseQuery(Command *cmd)
 	char	   *sql,
 			   *p;
 
-	/* We don't want to scribble on cmd->argv[0] until done */
-	sql = pg_strdup(cmd->argv[0]);
-
 	cmd->argc = 1;
 
-	p = sql;
+	p = sql = pg_strdup(cmd->lines.data);
 	while ((p = strchr(p, ':')) != NULL)
 	{
 		char		var[13];
@@ -4650,11 +5562,15 @@ parseQuery(Command *cmd)
 			continue;
 		}
 
+		/*
+		 * cmd->argv[0] is the SQL statement itself, so the max number of
+		 * arguments is one less than MAX_ARGS
+		 */
 		if (cmd->argc >= MAX_ARGS)
 		{
 			ereport(ELEVEL_LOG_MAIN,
 					(errmsg("statement has too many arguments (maximum is %d): %s\n",
-							MAX_ARGS - 1, cmd->argv[0])));
+						 MAX_ARGS - 1, cmd->lines.data);
 			pg_free(name);
 			return false;
 		}
@@ -4666,34 +5582,9 @@ parseQuery(Command *cmd)
 		cmd->argc++;
 	}
 
-	pg_free(cmd->argv[0]);
+	Assert(cmd->argv[0] == NULL);
 	cmd->argv[0] = sql;
 	return true;
-}
-
-/*
- * Simple error-printing function, might be needed by lexer
- */
-static void
-pgbench_error(const char *fmt,...)
-{
-	va_list		ap;
-	PQExpBufferData errmsg_buf;
-	bool		done;
-
-	fflush(stdout);
-	initPQExpBuffer(&errmsg_buf);
-
-	/* Loop in case we have to retry after enlarging the buffer. */
-	do
-	{
-		va_start(ap, fmt);
-		done = appendPQExpBufferVA(&errmsg_buf, fmt, ap);
-		va_end(ap);
-	} while (!done);
-
-	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
-	termPQExpBuffer(&errmsg_buf);
 }
 
 /*
@@ -4713,51 +5604,42 @@ syntax_error(const char *source, int lineno,
 			 const char *line, const char *command,
 			 const char *msg, const char *more, int column)
 {
-	PQExpBufferData errmsg_buf;
+	PQExpBufferData buf;
 
-	initPQExpBuffer(&errmsg_buf);
-	printfPQExpBuffer(&errmsg_buf, "%s:%d: %s", source, lineno, msg);
+	initPQExpBuffer(&buf);
+
+	printfPQExpBuffer(&buf, "%s:%d: %s", source, lineno, msg);
 	if (more != NULL)
-		appendPQExpBuffer(&errmsg_buf, " (%s)", more);
+		appendPQExpBuffer(&buf, " (%s)", more);
 	if (column >= 0 && line == NULL)
-		appendPQExpBuffer(&errmsg_buf, " at column %d", column + 1);
+		appendPQExpBuffer(&buf, " at column %d", column + 1);
 	if (command != NULL)
-		appendPQExpBuffer(&errmsg_buf, " in command \"%s\"", command);
+		appendPQExpBuffer(&buf, " in command \"%s\"", command);
 	appendPQExpBufferChar(&errmsg_buf, '\n');
+
 	if (line != NULL)
 	{
-		appendPQExpBuffer(&errmsg_buf, "%s\n", line);
+		appendPQExpBuffer(&buf, "%s\n", line);
 		if (column >= 0)
-		{
-			int			i;
-
-			for (i = 0; i < column; i++)
-				appendPQExpBufferChar(&errmsg_buf, ' ');
-			appendPQExpBufferStr(&errmsg_buf, "^ error found here\n");
-		}
+			appendPQExpBuffer(&buf, "%*c error found here\n", column + 1, '^');
 	}
 
-	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
-	termPQExpBuffer(&errmsg_buf);
+	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", buf.data)));
+	termPQExpBuffer(&buf);
 	exit(1);
 }
 
 /*
- * Parse a SQL command; return a Command struct, or NULL if it's a comment
- *
- * On entry, psqlscan.l has collected the command into "buf", so we don't
- * really need to do much here except check for comment and set up a
- * Command struct.
+ * Return a pointer to the start of the SQL command, after skipping over
+ * whitespace and "--" comments.
+ * If the end of the string is reached, return NULL.
  */
-static Command *
-process_sql_command(PQExpBuffer buf, const char *source)
+static char *
+skip_sql_comments(char *sql_command)
 {
-	Command    *my_command;
-	char	   *p;
-	char	   *nlpos;
+	char	   *p = sql_command;
 
 	/* Skip any leading whitespace, as well as "--" style comments */
-	p = buf->data;
 	for (;;)
 	{
 		if (isspace((unsigned char) *p))
@@ -4773,39 +5655,95 @@ process_sql_command(PQExpBuffer buf, const char *source)
 			break;
 	}
 
-	/* If there's nothing but whitespace and comments, we're done */
+	/* NULL if there's nothing but whitespace and comments */
 	if (*p == '\0')
 		return NULL;
 
+	return p;
+}
+
+/*
+ * Parse a SQL command; return a Command struct, or NULL if it's a comment
+ *
+ * On entry, psqlscan.l has collected the command into "buf", so we don't
+ * really need to do much here except check for comments and set up a Command
+ * struct.
+ */
+static Command *
+create_sql_command(PQExpBuffer buf, const char *source)
+{
+	Command    *my_command;
+	char	   *p = skip_sql_comments(buf->data);
+
+	if (p == NULL)
+		return NULL;
+
 	/* Allocate and initialize Command structure */
-	my_command = (Command *) pg_malloc0(sizeof(Command));
-	my_command->command_num = num_commands++;
+	my_command = (Command *) pg_malloc(sizeof(Command));
+	initPQExpBuffer(&my_command->lines);
+	appendPQExpBufferStr(&my_command->lines, p);
+	my_command->first_line = NULL;	/* this is set later */
 	my_command->type = SQL_COMMAND;
 	my_command->meta = META_NONE;
+	my_command->argc = 0;
+	memset(my_command->argv, 0, sizeof(my_command->argv));
+	my_command->varprefix = NULL;	/* allocated later, if needed */
+	my_command->expr = NULL;
 	initSimpleStats(&my_command->stats);
 
-	/*
-	 * Install query text as the sole argv string.  If we are using a
-	 * non-simple query mode, we'll extract parameters from it later.
-	 */
-	my_command->argv[0] = pg_strdup(p);
-	my_command->argc = 1;
-
-	/*
-	 * If SQL command is multi-line, we only want to save the first line as
-	 * the "line" label.
-	 */
-	nlpos = strchr(p, '\n');
-	if (nlpos)
-	{
-		my_command->line = pg_malloc(nlpos - p + 1);
-		memcpy(my_command->line, p, nlpos - p);
-		my_command->line[nlpos - p] = '\0';
-	}
-	else
-		my_command->line = pg_strdup(p);
-
 	return my_command;
+}
+
+/* Free a Command structure and associated data */
+static void
+free_command(Command *command)
+{
+	termPQExpBuffer(&command->lines);
+	if (command->first_line)
+		pg_free(command->first_line);
+	for (int i = 0; i < command->argc; i++)
+		pg_free(command->argv[i]);
+	if (command->varprefix)
+		pg_free(command->varprefix);
+
+	/*
+	 * It should also free expr recursively, but this is currently not needed
+	 * as only gset commands (which do not have an expression) are freed.
+	 */
+	pg_free(command);
+}
+
+/*
+ * Once an SQL command is fully parsed, possibly by accumulating several
+ * parts, complete other fields of the Command structure.
+ */
+static void
+postprocess_sql_command(Command *my_command)
+{
+	char		buffer[128];
+
+	Assert(my_command->type == SQL_COMMAND);
+
+	/* Save the first line for error display. */
+	strlcpy(buffer, my_command->lines.data, sizeof(buffer));
+	buffer[strcspn(buffer, "\n\r")] = '\0';
+	my_command->first_line = pg_strdup(buffer);
+
+	/* parse query if necessary */
+	switch (querymode)
+	{
+		case QUERY_SIMPLE:
+			my_command->argv[0] = my_command->lines.data;
+			my_command->argc++;
+			break;
+		case QUERY_EXTENDED:
+		case QUERY_PREPARED:
+			if (!parseQuery(my_command))
+				exit(1);
+			break;
+		default:
+			exit(1);
+	}
 }
 
 /*
@@ -4839,7 +5777,6 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 
 	/* Allocate and initialize Command structure */
 	my_command = (Command *) pg_malloc0(sizeof(Command));
-	my_command->command_num = num_commands++;
 	my_command->type = META_COMMAND;
 	my_command->argc = 0;
 	initSimpleStats(&my_command->stats);
@@ -4863,7 +5800,7 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 		if (my_command->meta == META_SET)
 		{
 			if (!expr_lex_one_word(sstate, &word_buf, &word_offset))
-				syntax_error(source, lineno, my_command->line, my_command->argv[0],
+				syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 							 "missing argument", NULL, -1);
 
 			offsets[j] = word_offset;
@@ -4884,10 +5821,11 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 		my_command->expr = expr_parse_result;
 
 		/* Save line, trimming any trailing newline */
-		my_command->line = expr_scanner_get_substring(sstate,
-													  start_offset,
-													  expr_scanner_offset(sstate),
-													  true);
+		my_command->first_line =
+			expr_scanner_get_substring(sstate,
+									   start_offset,
+									   expr_scanner_offset(sstate),
+									   true);
 
 		expr_scanner_finish(yyscanner);
 
@@ -4899,8 +5837,12 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 	/* For all other commands, collect remaining words. */
 	while (expr_lex_one_word(sstate, &word_buf, &word_offset))
 	{
+		/*
+		 * my_command->argv[0] is the command itself, so the max number of
+		 * arguments is one less than MAX_ARGS
+		 */
 		if (j >= MAX_ARGS)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "too many arguments", NULL, -1);
 
 		offsets[j] = word_offset;
@@ -4909,19 +5851,20 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 	}
 
 	/* Save line, trimming any trailing newline */
-	my_command->line = expr_scanner_get_substring(sstate,
-												  start_offset,
-												  expr_scanner_offset(sstate),
-												  true);
+	my_command->first_line =
+		expr_scanner_get_substring(sstate,
+								   start_offset,
+								   expr_scanner_offset(sstate),
+								   true);
 
 	if (my_command->meta == META_SLEEP)
 	{
 		if (my_command->argc < 2)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "missing argument", NULL, -1);
 
 		if (my_command->argc > 3)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "too many arguments", NULL,
 						 offsets[3] - start_offset);
 
@@ -4931,17 +5874,41 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 		 * will be parsed with atoi, which ignores trailing non-digit
 		 * characters.
 		 */
-		if (my_command->argc == 2 && my_command->argv[1][0] != ':')
+		if (my_command->argv[1][0] != ':')
 		{
 			char	   *c = my_command->argv[1];
+			bool		have_digit = false;
 
-			while (isdigit((unsigned char) *c))
+			/* Skip sign */
+			if (*c == '+' || *c == '-')
 				c++;
+
+			/* Require at least one digit */
+			if (*c && isdigit((unsigned char) *c))
+				have_digit = true;
+
+			/* Eat all digits */
+			while (*c && isdigit((unsigned char) *c))
+				c++;
+
 			if (*c)
 			{
-				my_command->argv[2] = c;
-				offsets[2] = offsets[1] + (c - my_command->argv[1]);
-				my_command->argc = 3;
+				if (my_command->argc == 2 && have_digit)
+				{
+					my_command->argv[2] = c;
+					offsets[2] = offsets[1] + (c - my_command->argv[1]);
+					my_command->argc = 3;
+				}
+				else
+				{
+					/*
+					 * Raise an error if argument starts with non-digit
+					 * character (after sign).
+					 */
+					syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
+								 "invalid sleep time, must be an integer",
+								 my_command->argv[1], offsets[1] - start_offset);
+				}
 			}
 		}
 
@@ -4950,7 +5917,7 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 			if (pg_strcasecmp(my_command->argv[2], "us") != 0 &&
 				pg_strcasecmp(my_command->argv[2], "ms") != 0 &&
 				pg_strcasecmp(my_command->argv[2], "s") != 0)
-				syntax_error(source, lineno, my_command->line, my_command->argv[0],
+				syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 							 "unrecognized time unit, must be us, ms or s",
 							 my_command->argv[2], offsets[2] - start_offset);
 		}
@@ -4958,25 +5925,33 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 	else if (my_command->meta == META_SETSHELL)
 	{
 		if (my_command->argc < 3)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "missing argument", NULL, -1);
 	}
 	else if (my_command->meta == META_SHELL)
 	{
 		if (my_command->argc < 2)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "missing command", NULL, -1);
 	}
-	else if (my_command->meta == META_ELSE || my_command->meta == META_ENDIF)
+	else if (my_command->meta == META_ELSE || my_command->meta == META_ENDIF ||
+			 my_command->meta == META_STARTPIPELINE ||
+			 my_command->meta == META_ENDPIPELINE)
 	{
 		if (my_command->argc != 1)
-			syntax_error(source, lineno, my_command->line, my_command->argv[0],
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 						 "unexpected argument", NULL, -1);
+	}
+	else if (my_command->meta == META_GSET || my_command->meta == META_ASET)
+	{
+		if (my_command->argc > 2)
+			syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
+						 "too many arguments", NULL, -1);
 	}
 	else
 	{
 		/* my_command->meta == META_NONE */
-		syntax_error(source, lineno, my_command->line, my_command->argv[0],
+		syntax_error(source, lineno, my_command->first_line, my_command->argv[0],
 					 "invalid command", NULL, -1);
 	}
 
@@ -5054,6 +6029,8 @@ ParseScript(const char *script, const char *desc, int weight)
 	PQExpBufferData line_buf;
 	int			alloc_num;
 	int			index;
+	int			lineno;
+	int			start_offset;
 
 #define COMMANDS_ALLOC_NUM 128
 	alloc_num = COMMANDS_ALLOC_NUM;
@@ -5077,6 +6054,7 @@ ParseScript(const char *script, const char *desc, int weight)
 	 * stdstrings should be true, which is a bit riskier.
 	 */
 	psql_scan_setup(sstate, script, strlen(script), 0, true);
+	start_offset = expr_scanner_offset(sstate) - 1;
 
 	initPQExpBuffer(&line_buf);
 
@@ -5086,43 +6064,78 @@ ParseScript(const char *script, const char *desc, int weight)
 	{
 		PsqlScanResult sr;
 		promptStatus_t prompt;
-		Command    *command;
+		Command    *command = NULL;
 
 		resetPQExpBuffer(&line_buf);
+		lineno = expr_scanner_get_lineno(sstate, start_offset);
 
 		sr = psql_scan(sstate, &line_buf, &prompt);
 
-		/* If we collected a SQL command, process that */
-		command = process_sql_command(&line_buf, desc);
-		if (command)
-		{
-			ps.commands[index] = command;
-			index++;
+		/* If we collected a new SQL command, process that */
+		command = create_sql_command(&line_buf, desc);
 
-			if (index >= alloc_num)
-			{
-				alloc_num += COMMANDS_ALLOC_NUM;
-				ps.commands = (Command **)
-					pg_realloc(ps.commands, sizeof(Command *) * alloc_num);
-			}
-		}
+		/* store new command */
+		if (command)
+			ps.commands[index++] = command;
 
 		/* If we reached a backslash, process that */
 		if (sr == PSCAN_BACKSLASH)
 		{
 			command = process_backslash_command(sstate, desc);
+
 			if (command)
 			{
-				ps.commands[index] = command;
-				index++;
-
-				if (index >= alloc_num)
+				/*
+				 * If this is gset or aset, merge into the preceding command.
+				 * (We don't use a command slot in this case).
+				 */
+				if (command->meta == META_GSET || command->meta == META_ASET)
 				{
-					alloc_num += COMMANDS_ALLOC_NUM;
-					ps.commands = (Command **)
-						pg_realloc(ps.commands, sizeof(Command *) * alloc_num);
+					Command    *cmd;
+
+					if (index == 0)
+						syntax_error(desc, lineno, NULL, NULL,
+									 "\\gset must follow an SQL command",
+									 NULL, -1);
+
+					cmd = ps.commands[index - 1];
+
+					if (cmd->type != SQL_COMMAND ||
+						cmd->varprefix != NULL)
+						syntax_error(desc, lineno, NULL, NULL,
+									 "\\gset must follow an SQL command",
+									 cmd->first_line, -1);
+
+					/* get variable prefix */
+					if (command->argc <= 1 || command->argv[1][0] == '\0')
+						cmd->varprefix = pg_strdup("");
+					else
+						cmd->varprefix = pg_strdup(command->argv[1]);
+
+					/* update the sql command meta */
+					cmd->meta = command->meta;
+
+					/* cleanup unused command */
+					free_command(command);
+
+					continue;
 				}
+
+				/* Attach any other backslash command as a new command */
+				ps.commands[index++] = command;
 			}
+		}
+
+		/*
+		 * Since we used a command slot, allocate more if needed.  Note we
+		 * always allocate one more in order to accommodate the NULL
+		 * terminator below.
+		 */
+		if (index >= alloc_num)
+		{
+			alloc_num += COMMANDS_ALLOC_NUM;
+			ps.commands = (Command **)
+				pg_realloc(ps.commands, sizeof(Command *) * alloc_num);
 		}
 
 		/* Done if we reached EOF */
@@ -5227,8 +6240,9 @@ listAvailableScripts(void)
 
 	initPQExpBuffer(&errmsg_buf);
 	printfPQExpBuffer(&errmsg_buf, "Available builtin scripts:\n");
+
 	for (i = 0; i < lengthof(builtin_script); i++)
-		appendPQExpBuffer(&errmsg_buf, "\t%s\n", builtin_script[i].name);
+		appendPQExpBuffer(&errmsg_buf, "  %13s: %s\n", builtin_script[i].name, builtin_script[i].desc);
 	appendPQExpBufferChar(&errmsg_buf, '\n');
 
 	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
@@ -5307,8 +6321,8 @@ parseScriptWeight(const char *option, char **script)
 		if (wtmp > INT_MAX || wtmp < 0)
 		{
 			ereport(ELEVEL_FATAL,
-					(errmsg("weight specification out of range (0 .. %u): " INT64_FORMAT "\n",
-							INT_MAX, (int64) wtmp)));
+					(errmsg("weight specification out of range (0 .. %u): %lld\n",
+						 INT_MAX, (long long) wtmp);
 		}
 		weight = wtmp;
 	}
@@ -5344,6 +6358,131 @@ addScript(ParsedScript script)
 	num_scripts++;
 }
 
+/*
+ * Print progress report.
+ *
+ * On entry, *last and *last_report contain the statistics and time of last
+ * progress report.  On exit, they are updated with the new stats.
+ */
+static void
+printProgressReport(TState *threads, int64 test_start, pg_time_usec_t now,
+					StatsData *last, int64 *last_report)
+{
+	/* generate and show report */
+	pg_time_usec_t run = now - *last_report;
+	int64		ntx,
+				retries,
+				retried,
+				errors,
+				errors_in_failed_tx;
+	double		tps,
+				total_run,
+				latency,
+				sqlat,
+				lag,
+				stdev;
+	char		tbuf[315];
+	StatsData	cur;
+
+	/*
+	 * Add up the statistics of all threads.
+	 *
+	 * XXX: No locking.  There is no guarantee that we get an atomic snapshot
+	 * of the transaction count and latencies, so these figures can well be
+	 * off by a small amount.  The progress report's purpose is to give a
+	 * quick overview of how the test is going, so that shouldn't matter too
+	 * much.  (If a read from a 64-bit integer is not atomic, you might get a
+	 * "torn" read and completely bogus latencies though!)
+	 */
+	initStats(&cur, 0);
+	for (int i = 0; i < nthreads; i++)
+	{
+		mergeSimpleStats(&cur.latency, &threads[i].stats.latency);
+		mergeSimpleStats(&cur.lag, &threads[i].stats.lag);
+		cur.cnt += threads[i].stats.cnt;
+		cur.skipped += threads[i].stats.skipped;
+		cur.retries += thread[i].stats.retries;
+		cur.retried += thread[i].stats.retried;
+		cur.errors += thread[i].stats.errors;
+		cur.errors_in_failed_tx +=
+			thread[i].stats.errors_in_failed_tx;
+	}
+
+	/* we count only actually executed transactions */
+	ntx = (cur.cnt - cur.skipped) - (last->cnt - last->skipped);
+	total_run = (now - test_start) / 1000000.0;
+	tps = 1000000.0 * ntx / run;
+	if (ntx > 0)
+	{
+		latency = 0.001 * (cur.latency.sum - last->latency.sum) / ntx;
+		sqlat = 1.0 * (cur.latency.sum2 - last->latency.sum2) / ntx;
+		stdev = 0.001 * sqrt(sqlat - 1000000.0 * latency * latency);
+		lag = 0.001 * (cur.lag.sum - last->lag.sum) / ntx;
+	}
+	else
+	{
+		latency = sqlat = stdev = lag = 0;
+	}
+	retries = cur.retries - last.retries;
+	retried = cur.retried - last.retried;
+	errors = cur.errors - last.errors;
+	errors_in_failed_tx = cur.errors_in_failed_tx -
+		last.errors_in_failed_tx;
+
+	if (progress_timestamp)
+	{
+		snprintf(tbuf, sizeof(tbuf), "%.3f s",
+				 PG_TIME_GET_DOUBLE(now + epoch_shift));
+	}
+	else
+	{
+		/* round seconds are expected, but the thread may be late */
+		snprintf(tbuf, sizeof(tbuf), "%.1f s", total_run);
+	}
+
+	initPQExpBuffer(&progress_buf);
+	printfPQExpBuffer(&progress_buf,
+					  "progress: %s, %.1f tps, lat %.3f ms stddev %.3f",
+					  tbuf, tps, latency, stdev);
+
+	if (errors > 0)
+	{
+		appendPQExpBuffer(&progress_buf,
+						  ", " INT64_FORMAT " failed" , errors);
+		if (errors_in_failed_tx > 0)
+			appendPQExpBuffer(&progress_buf,
+							  " (" INT64_FORMAT " in failed tx)",
+							  errors_in_failed_tx);
+	}
+
+	if (throttle_delay)
+	{
+		appendPQExpBuffer(&progress_buf, ", lag %.3f ms", lag);
+		if (latency_limit)
+			appendPQExpBuffer(&progress_buf,
+							  ", " INT64_FORMAT " skipped",
+							  cur.skipped - last.skipped);
+	}
+
+	/*
+	 * It can be non-zero only if max_tries is greater than one or
+	 * latency_limit is used.
+	 */
+	if (retried > 0)
+	{
+		appendPQExpBuffer(&progress_buf,
+						  ", " INT64_FORMAT " retried, " INT64_FORMAT " retries",
+						  retried, retries);
+	}
+	appendPQExpBufferChar(&progress_buf, '\n');
+
+	ereport(ELEVEL_LOG_MAIN, (errmsg("%s", progress_buf.data)));
+	termPQExpBuffer(&progress_buf);
+
+	*last = cur;
+	*last_report = now;
+}
+
 static void
 printSimpleStats(const char *prefix, SimpleStats *ss)
 {
@@ -5357,30 +6496,59 @@ printSimpleStats(const char *prefix, SimpleStats *ss)
 	}
 }
 
+/* print version banner */
+static void
+printVersion(PGconn *con)
+{
+	int			server_ver = PQserverVersion(con);
+	int			client_ver = PG_VERSION_NUM;
+
+	if (server_ver != client_ver)
+	{
+		const char *server_version;
+		char		sverbuf[32];
+
+		/* Try to get full text form, might include "devel" etc */
+		server_version = PQparameterStatus(con, "server_version");
+		/* Otherwise fall back on server_ver */
+		if (!server_version)
+		{
+			formatPGVersionNumber(server_ver, true,
+								  sverbuf, sizeof(sverbuf));
+			server_version = sverbuf;
+		}
+
+		printf(_("%s (%s, server %s)\n"),
+			   "pgbench", PG_VERSION, server_version);
+	}
+	/* For version match, only print pgbench version */
+	else
+		printf("%s (%s)\n", "pgbench", PG_VERSION);
+	fflush(stdout);
+}
+
 /* print out results */
 static void
-printResults(TState *threads, StatsData *total, instr_time total_time,
-			 instr_time conn_total_time, int64 latency_late)
+printResults(StatsData *total,
+			 pg_time_usec_t total_duration, /* benchmarking time */
+			 pg_time_usec_t conn_total_duration,	/* is_connect */
+			 pg_time_usec_t conn_elapsed_duration,	/* !is_connect */
+			 int64 latency_late)
 {
-	double		time_include,
-				tps_include,
-				tps_exclude;
+	/* tps is about actually executed transactions during benchmarking */
 	int64		ntx = total->cnt - total->skipped,
 				total_ntx = total->cnt + total->errors;
-	int			i,
-				totalCacheOverflows = 0;
-
-	time_include = INSTR_TIME_GET_DOUBLE(total_time);
-
-	/* tps is about actually executed transactions */
-	tps_include = ntx / time_include;
-	tps_exclude = ntx /
-		(time_include - (INSTR_TIME_GET_DOUBLE(conn_total_time) / nclients));
+	double		bench_duration = PG_TIME_GET_DOUBLE(total_duration);
+	double		tps = ntx / bench_duration;
 
 	/* Report test parameters. */
 	printf("transaction type: %s\n",
 		   num_scripts == 1 ? sql_script[0].desc : "multiple scripts");
 	printf("scaling factor: %d\n", scale);
+	/* only print partitioning information if some partitioning was detected */
+	if (partition_method != PART_NONE)
+		printf("partition method: %s\npartitions: %d\n",
+			   PARTITION_METHOD[partition_method], partitions);
 	printf("query mode: %s\n", QUERYMODE[querymode]);
 	printf("number of clients: %d\n", nclients);
 	printf("number of threads: %d\n", nthreads);
@@ -5434,32 +6602,26 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 		printf("\n");
 	}
 
-	/* Report zipfian cache overflow */
-	for (i = 0; i < nthreads; i++)
-	{
-		totalCacheOverflows += threads[i].zipf_cache.overflowCount;
-	}
-	if (totalCacheOverflows > 0)
-	{
-		printf("zipfian cache array overflowed %d time(s)\n", totalCacheOverflows);
-	}
-
 	/* Remaining stats are nonsensical if we failed to execute any xacts */
 	if (total->cnt <= 0)
 		return;
 
 	if (throttle_delay && latency_limit)
 		printf("number of transactions skipped: " INT64_FORMAT " (%.3f %%)\n",
-			   total->skipped,
-			   100.0 * total->skipped / total->cnt);
+			   total->skipped, 100.0 * total->skipped / total->cnt);
+
+	if (latency_limit)
+		printf("number of transactions above the %.1f ms latency limit: " INT64_FORMAT "/" INT64_FORMAT " (%.3f %%)\n",
+			   latency_limit / 1000.0, latency_late, ntx,
+			   (ntx > 0) ? 100.0 * latency_late / ntx : 0.0);
 
 	if (throttle_delay || progress || latency_limit)
 		printSimpleStats("latency", &total->latency);
 	else
 	{
 		/* no measurement, show average latency computed from run time */
-		printf("latency average = %.3f ms",
-			   1000.0 * time_include * nclients / total_ntx);
+		printf("latency average = %.3f ms\n",
+			   0.001 * total_duration * nclients / total->cnt);
 
 		/* this statistics includes both successful and failed transactions */
 		if (total->errors > 0)
@@ -5480,8 +6642,25 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 			   0.001 * total->lag.sum / total->cnt, 0.001 * total->lag.max);
 	}
 
-	printf("tps = %f (including connections establishing)\n", tps_include);
-	printf("tps = %f (excluding connections establishing)\n", tps_exclude);
+	/*
+	 * Under -C/--connect, each transaction incurs a significant connection
+	 * cost, it would not make much sense to ignore it in tps, and it would
+	 * not be tps anyway.
+	 *
+	 * Otherwise connections are made just once at the beginning of the run
+	 * and should not impact performance but for very short run, so they are
+	 * (right)fully ignored in tps.
+	 */
+	if (is_connect)
+	{
+		printf("average connection time = %.3f ms\n", 0.001 * conn_total_duration / total->cnt);
+		printf("tps = %f (including reconnection times)\n", tps);
+	}
+	else
+	{
+		printf("initial connection time = %.3f ms\n", 0.001 * conn_elapsed_duration);
+		printf("tps = %f (without initial connection time)\n", tps);
+	}
 
 	/* Report per-script/command statistics */
 	if (per_script_stats || report_per_command)
@@ -5503,7 +6682,7 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 					   100.0 * sql_script[i].weight / total_weight,
 					   sstats->cnt,
 					   100.0 * sstats->cnt / script_total_ntx,
-					   (sstats->cnt - sstats->skipped) / time_include);
+					   (sstats->cnt - sstats->skipped) / bench_duration);
 
 				if (total->errors > 0)
 					printf(" - number of errors: " INT64_FORMAT " (%.3f%%)\n",
@@ -5589,7 +6768,7 @@ printResults(TState *threads, StatsData *total, instr_time total_time,
 						printf("  %20" INT64_MODIFIER "d",
 							   (*commands)->retries);
 					}
-					printf("  %s\n", (*commands)->line);
+					printf("  %s\n", (*commands)->first_line);
 				}
 			}
 		}
@@ -5608,17 +6787,12 @@ set_random_seed(const char *seed)
 	if (seed == NULL || strcmp(seed, "time") == 0)
 	{
 		/* rely on current time */
-		instr_time	now;
-
-		INSTR_TIME_SET_CURRENT(now);
-		iseed = (uint64) INSTR_TIME_GET_MICROSEC(now);
+		iseed = pg_time_now();
 	}
 	else if (strcmp(seed, "rand") == 0)
 	{
 		/* use some "strong" random source */
-#ifdef HAVE_STRONG_RANDOM
 		if (!pg_strong_random(&iseed, sizeof(iseed)))
-#endif
 		{
 			ereport(ELEVEL_LOG_MAIN,
 					(errmsg("cannot seed random from a strong source, none available: use \"time\" or an unsigned integer value.\n")));
@@ -5627,16 +6801,19 @@ set_random_seed(const char *seed)
 	}
 	else
 	{
-		/* parse seed unsigned int value */
+		/* parse unsigned-int seed value */
+		unsigned long ulseed;
 		char		garbage;
 
-		if (sscanf(seed, UINT64_FORMAT "%c", &iseed, &garbage) != 1)
+		/* Don't try to use UINT64_FORMAT here; it might not work for sscanf */
+		if (sscanf(seed, "%lu%c", &ulseed, &garbage) != 1)
 		{
-                        ereport(ELEVEL_LOG_MAIN,
-                                        (errmsg("unrecognized random seed option \"%s\": expecting an unsigned integer, \"time\" or \"rand\"\n",
-                                                        seed)));
+			ereport(ELEVEL_LOG_MAIN,
+					(errmsg("unrecognized random seed option \"%s\": expecting an unsigned integer, \"time\" or \"rand\"\n",
+							seed)));
 			return false;
 		}
+		iseed = (uint64) ulseed;
 	}
 
 	if (seed != NULL)
@@ -5644,28 +6821,12 @@ set_random_seed(const char *seed)
 	random_seed = iseed;
 
 	/* Fill base_random_sequence with low-order bits of seed */
-	base_random_sequence[0] = iseed & 0xFFFF;
-	base_random_sequence[1] = (iseed >> 16) & 0xFFFF;
-	base_random_sequence[2] = (iseed >> 32) & 0xFFFF;
+	base_random_sequence.xseed[0] = iseed & 0xFFFF;
+	base_random_sequence.xseed[1] = (iseed >> 16) & 0xFFFF;
+	base_random_sequence.xseed[2] = (iseed >> 32) & 0xFFFF;
 
 	return true;
 }
-
-/*
- * Initialize the random state of the client/thread.
- */
-static void
-initRandomState(RandomState *random_state)
-{
-	random_state->data[0] = (unsigned short)
-                (pg_jrand48(base_random_sequence) & 0xFFFF);
-	random_state->data[1] =(unsigned short)
-                (pg_jrand48(base_random_sequence) & 0xFFFF);
-	random_state->data[2] = (unsigned short)
-                (pg_jrand48(base_random_sequence) & 0xFFFF);
-
-}
-
 
 int
 main(int argc, char **argv)
@@ -5709,8 +6870,11 @@ main(int argc, char **argv)
 		{"log-prefix", required_argument, NULL, 7},
 		{"foreign-keys", no_argument, NULL, 8},
 		{"random-seed", required_argument, NULL, 9},
-		{"max-tries", required_argument, NULL, 10},
-		{"batch-size", required_argument, NULL, 11},
+		{"show-script", required_argument, NULL, 10},
+		{"partitions", required_argument, NULL, 11},
+		{"partition-method", required_argument, NULL, 12},
+		{"max-tries", required_argument, NULL, 13},
+		{"batch-size", required_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -5730,9 +6894,11 @@ main(int argc, char **argv)
 	CState	   *state;			/* status of clients */
 	TState	   *threads;		/* array of thread */
 
-	instr_time	start_time;		/* start up time */
-	instr_time	total_time;
-	instr_time	conn_total_time;
+	pg_time_usec_t
+				start_time,		/* start up time */
+				bench_start = 0,	/* first recorded benchmarking time */
+				conn_total_duration;	/* cumulated connection time in
+										 * threads */
 	int64		latency_late = 0;
 	StatsData	stats;
 	int			weight;
@@ -5745,9 +6911,19 @@ main(int argc, char **argv)
 #endif
 
 	PGconn	   *con;
-	PGresult   *res;
 	char	   *env;
 
+	int			exit_code = 0;
+	struct timeval tv;
+
+	/*
+	 * Record difference between Unix time and instr_time time.  We'll use
+	 * this for logging and aggregation.
+	 */
+	gettimeofday(&tv, NULL);
+	epoch_shift = tv.tv_sec * INT64CONST(1000000) + tv.tv_usec - pg_time_now();
+
+	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 
 	if (argc > 1)
@@ -5764,20 +6940,7 @@ main(int argc, char **argv)
 		}
 	}
 
-#ifdef WIN32
-	/* stderr is buffered on Win32. */
-	setvbuf(stderr, NULL, _IONBF, 0);
-#endif
-
-	if ((env = getenv("PGHOST")) != NULL && *env != '\0')
-		pghost = env;
-	if ((env = getenv("PGPORT")) != NULL && *env != '\0')
-		pgport = env;
-	else if ((env = getenv("PGUSER")) != NULL && *env != '\0')
-		login = env;
-
-	state = (CState *) pg_malloc(sizeof(CState));
-	memset(state, 0, sizeof(CState));
+	state = (CState *) pg_malloc0(sizeof(CState));
 
 	/* set random seed early, because it may be used while parsing scripts. */
 	if (!set_random_seed(getenv("PGBENCH_RANDOM_SEED")))
@@ -5816,6 +6979,7 @@ main(int argc, char **argv)
 				pgport = pg_strdup(optarg);
 				break;
 			case 'd':
+				pg_logging_increase_verbosity();
 				{
 					for (debug_level = 0;
 						 debug_level < NUM_DEBUGLEVEL;
@@ -5830,16 +6994,15 @@ main(int argc, char **argv)
 								(errmsg("invalid debug level (-d): \"%s\"\n",
 										optarg)));
 					}
-					break;
 				}
+				break;
+
 			case 'c':
 				benchmarking_option_set = true;
-				nclients = atoi(optarg);
-				if (nclients <= 0 || nclients > MAXCLIENTS)
+				if (!option_parse_int(optarg, "-c/--clients", 1, INT_MAX,
+									  &nclients))
 				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid number of clients: \"%s\"\n",
-									optarg)));
+					exit(1);
 				}
 #ifdef HAVE_GETRLIMIT
 #ifdef RLIMIT_NOFILE			/* most platforms use RLIMIT_NOFILE */
@@ -5863,12 +7026,10 @@ main(int argc, char **argv)
 				break;
 			case 'j':			/* jobs */
 				benchmarking_option_set = true;
-				nthreads = atoi(optarg);
-				if (nthreads <= 0)
+				if (!option_parse_int(optarg, "-j/--jobs", 1, INT_MAX,
+									  &nthreads))
 				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid number of threads: \"%s\"\n",
-									optarg)));
+					exit(1);
 				}
 #ifndef ENABLE_THREAD_SAFETY
 				if (nthreads != 1)
@@ -5888,35 +7049,24 @@ main(int argc, char **argv)
 				break;
 			case 's':
 				scale_given = true;
-				scale = atoi(optarg);
-				if (scale <= 0)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid scaling factor: \"%s\"\n",
-									optarg)));
-				}
+				if (!option_parse_int(optarg, "-s/--scale", 1, INT_MAX,
+									  &scale))
+					exit(1);
 				break;
 			case 't':
 				benchmarking_option_set = true;
-				nxacts = atoi(optarg);
-				if (nxacts <= 0)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid number of transactions: \"%s\"\n",
-									optarg)));
-				}
+				if (!option_parse_int(optarg, "-t/--transactions", 1, INT_MAX,
+									  &nxacts))
+					exit(1);
 				break;
 			case 'T':
 				benchmarking_option_set = true;
-				duration = atoi(optarg);
-				if (duration <= 0)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid duration: \"%s\"\n", optarg)));
-				}
+				if (!option_parse_int(optarg, "-T/--time", 1, INT_MAX,
+									  &duration))
+					exit(1);
 				break;
 			case 'U':
-				login = pg_strdup(optarg);
+				username = pg_strdup(optarg);
 				break;
 			case 'l':
 				benchmarking_option_set = true;
@@ -5971,13 +7121,10 @@ main(int argc, char **argv)
 				break;
 			case 'F':
 				initialization_option_set = true;
-				fillfactor = atoi(optarg);
+				if (!option_parse_int(optarg, "-F/--fillfactor", 10, 100,
+									  &fillfactor))
+					exit(1);
 				set_fillfactor = true;
-				if (fillfactor < 10 || fillfactor > 100)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid fillfactor: \"%s\"\n", optarg)));
-				}
 				break;
 			case 'M':
 				benchmarking_option_set = true;
@@ -5993,13 +7140,9 @@ main(int argc, char **argv)
 				break;
 			case 'P':
 				benchmarking_option_set = true;
-				progress = atoi(optarg);
-				if (progress <= 0)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid thread progress delay: \"%s\"\n",
-									optarg)));
-				}
+				if (!option_parse_int(optarg, "-P/--progress", 1, INT_MAX,
+									  &progress))
+					exit(1);
 				break;
 			case 'R':
 				{
@@ -6014,8 +7157,8 @@ main(int argc, char **argv)
 								(errmsg("invalid rate limit: \"%s\"\n",
 										optarg)));
 					}
-					/* Invert rate limit into a time offset */
-					throttle_delay = (int64) (1000000.0 / throttle_value);
+					/* Invert rate limit into per-transaction delay in usec */
+					throttle_delay = 1000000.0 / throttle_value;
 				}
 				break;
 			case 'L':
@@ -6056,13 +7199,9 @@ main(int argc, char **argv)
 				break;
 			case 5:				/* aggregate-interval */
 				benchmarking_option_set = true;
-				agg_interval = atoi(optarg);
-				if (agg_interval <= 0)
-				{
-					ereport(ELEVEL_FATAL,
-							(errmsg("invalid number of seconds for aggregation: \"%s\"\n",
-									optarg)));
-				}
+				if (!option_parse_int(optarg, "--aggregate-interval", 1, INT_MAX,
+									  &agg_interval))
+					exit(1);
 				break;
 			case 6:				/* progress-timestamp */
 				progress_timestamp = true;
@@ -6084,7 +7223,34 @@ main(int argc, char **argv)
 							(errmsg("error while setting random seed from --random-seed option\n")));
 				}
 				break;
-			case 10:			/* max-tries */
+			case 10:			/* list */
+				{
+					const BuiltinScript *s = findBuiltin(optarg);
+					ereport(ELEVEL_LOG_MAIN,
+							(errmsg("-- %s: %s\n%s\n", s->name, s->desc, s->script);
+					exit(0);
+				}
+				break;
+			case 11:			/* partitions */
+				initialization_option_set = true;
+				if (!option_parse_int(optarg, "--partitions", 1, INT_MAX,
+									  &partitions))
+					exit(1);
+				break;
+			case 12:			/* partition-method */
+				initialization_option_set = true;
+				if (pg_strcasecmp(optarg, "range") == 0)
+					partition_method = PART_RANGE;
+				else if (pg_strcasecmp(optarg, "hash") == 0)
+					partition_method = PART_HASH;
+				else
+				{
+					ereport(ELEVEL_FATAL,
+							(errmsg("invalid partition method, expecting \"range\" or \"hash\", got: \"%s\"",
+									optarg)));
+				}
+				break;
+			case 13:			/* max-tries */
 				{
 					int32		max_tries_arg = atoi(optarg);
 
@@ -6098,7 +7264,7 @@ main(int argc, char **argv)
 					max_tries = (uint32) max_tries_arg;
 				}
 				break;
-			case 11:			/* batch-size */
+			case 14:			/* batch-size */
 				{
 					int32		batch_size_arg = atoi(optarg);
 
@@ -6127,28 +7293,18 @@ main(int argc, char **argv)
 		internal_script_used = true;
 	}
 
-	/* if not simple query mode, parse the script(s) to find parameters */
-	if (querymode != QUERY_SIMPLE)
-	{
-		for (i = 0; i < num_scripts; i++)
-		{
-			Command   **commands = sql_script[i].commands;
-			int			j;
-
-			for (j = 0; commands[j] != NULL; j++)
-			{
-				if (commands[j]->type != SQL_COMMAND)
-					continue;
-				if (!parseQuery(commands[j]))
-					exit(1);
-			}
-		}
-	}
-
-	/* compute total_weight */
+	/* complete SQL command initialization and compute total weight */
 	for (i = 0; i < num_scripts; i++)
+	{
+		Command   **commands = sql_script[i].commands;
+
+		for (int j = 0; commands[j] != NULL; j++)
+			if (commands[j]->type == SQL_COMMAND)
+				postprocess_sql_command(commands[j]);
+
 		/* cannot overflow: weight is 32b, total_weight 64b */
 		total_weight += sql_script[i].weight;
+	}
 
 	if (total_weight == 0 && !is_init_mode)
 	{
@@ -6168,19 +7324,31 @@ main(int argc, char **argv)
 	if (nthreads > nclients)
 		nthreads = nclients;
 
-	/* compute a per thread delay */
+	/*
+	 * Convert throttle_delay to a per-thread delay time.  Note that this
+	 * might be a fractional number of usec, but that's OK, since it's just
+	 * the center of a Poisson distribution of delays.
+	 */
 	throttle_delay *= nthreads;
 
 	if (argc > optind)
-		dbName = argv[optind];
+		dbName = argv[optind++];
 	else
 	{
 		if ((env = getenv("PGDATABASE")) != NULL && *env != '\0')
 			dbName = env;
-		else if (login != NULL && *login != '\0')
-			dbName = login;
+		else if ((env = getenv("PGUSER")) != NULL && *env != '\0')
+			dbName = env;
 		else
-			dbName = "";
+			dbName = get_user_name_or_exit(progname);
+	}
+
+	if (optind < argc)
+	{
+		pg_log_fatal("too many command-line arguments (first is \"%s\")",
+					 argv[optind]);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
 	}
 
 	if (is_init_mode)
@@ -6190,6 +7358,16 @@ main(int argc, char **argv)
 			ereport(ELEVEL_FATAL,
 					(errmsg("some of the specified options cannot be used in initialization (-i) mode\n")));
 		}
+
+		if (partitions == 0 && partition_method != PART_NONE)
+		{
+			pg_log_fatal("--partition-method requires greater than zero --partitions");
+			exit(1);
+		}
+
+		/* set default method */
+		if (partitions > 0 && partition_method == PART_NONE)
+			partition_method = PART_RANGE;
 
 		if (initialize_steps == NULL)
 			initialize_steps = pg_strdup(DEFAULT_INIT_STEPS);
@@ -6329,67 +7507,22 @@ main(int argc, char **argv)
 		initRandomState(&state[i].random_state);
 	}
 
-	if (duration <= 0)
-		ereport(ELEVEL_DEBUG,
-				(errmsg("pghost: %s pgport: %s nclients: %d nxacts: %d dbName: %s\n",
-						pghost, pgport, nclients, nxacts, dbName)));
-	else
-		ereport(ELEVEL_DEBUG,
-				(errmsg("pghost: %s pgport: %s nclients: %d duration: %d dbName: %s\n",
-						pghost, pgport, nclients, duration, dbName)));
-
 	/* opening connection... */
 	con = doConnect();
 	if (con == NULL)
 		exit(1);
 
-	if (PQstatus(con) == CONNECTION_BAD)
-	{
-		ereport(ELEVEL_FATAL,
-				(errmsg("connection to database \"%s\" failed\n%s",
-						dbName, PQerrorMessage(con))));
-	}
+	/* report pgbench and server versions */
+	printVersion(con);
+
+	ereport(ELEVEL_DEBUG,
+			(errmsg("pghost: %s pgport: %s nclients: %d %s: %d dbName: %s",
+					PQhost(con), PQport(con), nclients,
+					duration <= 0 ? "nxacts" : "duration",
+					duration <= 0 ? nxacts : duration, PQdb(con))));
 
 	if (internal_script_used)
-	{
-		/*
-		 * get the scaling factor that should be same as count(*) from
-		 * ysql_bench_branches if this is not a custom query
-		 */
-		res = PQexec(con, "select count(*) from ysql_bench_branches");
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		{
-			char	   *sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
-			PQExpBufferData errmsg_buf;
-
-			initPQExpBuffer(&errmsg_buf);
-			printfPQExpBuffer(&errmsg_buf, "%s", PQerrorMessage(con));
-			if (sqlState && strcmp(sqlState, ERRCODE_UNDEFINED_TABLE) == 0)
-			{
-				appendPQExpBuffer(&errmsg_buf,
-								  "Perhaps you need to do initialization (\"ysql_bench -i\") in database \"%s\"\n",
-								  PQdb(con));
-			}
-
-			ereport(ELEVEL_LOG_MAIN, (errmsg("%s", errmsg_buf.data)));
-			termPQExpBuffer(&errmsg_buf);
-			exit(1);
-		}
-		scale = atoi(PQgetvalue(res, 0, 0));
-		if (scale < 0)
-		{
-			ereport(ELEVEL_FATAL,
-					(errmsg("invalid count(*) from ysql_bench_branches: \"%s\"\n",
-							PQgetvalue(res, 0, 0))));
-		}
-		PQclear(res);
-
-		/* warn if we override user-given -s switch */
-		if (scale_given)
-			ereport(ELEVEL_LOG_MAIN,
-					(errmsg("scale option ignored, using count from ysql_bench_branches table (%d)\n",
-							scale)));
-	}
+		GetTableInfo(con, scale_given);
 
 	/*
 	 * :scale variables normally get -s or database scale, but don't override
@@ -6419,8 +7552,8 @@ main(int argc, char **argv)
 	if (lookupVariable(&state[0].variables, "default_seed") == NULL)
 	{
 		uint64		seed =
-		((uint64) pg_jrand48(base_random_sequence) & 0xFFFFFFFF) |
-		(((uint64) pg_jrand48(base_random_sequence) & 0xFFFFFFFF) << 32);
+		((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) |
+		(((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) << 32);
 
 		for (i = 0; i < nclients; i++)
 			putVariableInt(&state[i].variables, "startup", "default_seed",
@@ -6465,12 +7598,12 @@ main(int argc, char **argv)
 		thread->state = &state[nclients_dealt];
 		thread->nstate =
 			(nclients - nclients_dealt + nthreads - i - 1) / (nthreads - i);
+		initRandomState(&thread->ts_choose_rs);
+		initRandomState(&thread->ts_throttle_rs);
+		initRandomState(&thread->ts_sample_rs);
 		initRandomState(&thread->random_state);
 		thread->logfile = NULL; /* filled in later */
 		thread->latency_late = 0;
-		thread->zipf_cache.nb_cells = 0;
-		thread->zipf_cache.current = 0;
-		thread->zipf_cache.overflowCount = 0;
 		initStats(&thread->stats, 0);
 
 		nclients_dealt += thread->nstate;
@@ -6479,69 +7612,64 @@ main(int argc, char **argv)
 	/* all clients must be assigned to a thread */
 	Assert(nclients_dealt == nclients);
 
-	/* get start up time */
-	INSTR_TIME_SET_CURRENT(start_time);
+	/* get start up time for the whole computation */
+	start_time = pg_time_now();
 
 	/* set alarm if duration is specified. */
 	if (duration > 0)
 		setalarm(duration);
 
-	/* start threads */
+	errno = THREAD_BARRIER_INIT(&barrier, nthreads);
+	if (errno != 0)
+	{
+		pg_log_fatal("could not initialize barrier: %m");
+		exit(1);
+	}
+
 #ifdef ENABLE_THREAD_SAFETY
-	for (i = 0; i < nthreads; i++)
+	/* start all threads but thread 0 which is executed directly later */
+	for (i = 1; i < nthreads; i++)
 	{
 		TState	   *thread = &threads[i];
 
-		INSTR_TIME_SET_CURRENT(thread->start_time);
+		thread->create_time = pg_time_now();
+		errno = THREAD_CREATE(&thread->thread, threadRun, thread);
 
-		/* compute when to stop */
-		if (duration > 0)
-			end_time = INSTR_TIME_GET_MICROSEC(thread->start_time) +
-				(int64) 1000000 * duration;
-
-		/* the first thread (i = 0) is executed by main thread */
-		if (i > 0)
+		if (errno != 0)
 		{
-			int			err = pthread_create(&thread->thread, NULL, threadRun, thread);
-
-			if (err != 0 || thread->thread == INVALID_THREAD)
-			{
-				ereport(ELEVEL_FATAL,
-						(errmsg("could not create thread: %s\n",
-								strerror(err))));
-			}
-		}
-		else
-		{
-			thread->thread = INVALID_THREAD;
+			ereport(ELEVEL_FATAL,
+					(errmsg("could not create thread: %s\n",
+							strerror(err))));
 		}
 	}
 #else
-	INSTR_TIME_SET_CURRENT(threads[0].start_time);
-	/* compute when to stop */
-	if (duration > 0)
-		end_time = INSTR_TIME_GET_MICROSEC(threads[0].start_time) +
-			(int64) 1000000 * duration;
-	threads[0].thread = INVALID_THREAD;
+	Assert(nthreads == 1);
 #endif							/* ENABLE_THREAD_SAFETY */
 
-	/* wait for threads and accumulate results */
+	/* compute when to stop */
+	threads[0].create_time = pg_time_now();
+	if (duration > 0)
+		end_time = threads[0].create_time + (int64) 1000000 * duration;
+
+	/* run thread 0 directly */
+	(void) threadRun(&threads[0]);
+
+	/* wait for other threads and accumulate results */
 	initStats(&stats, 0);
-	INSTR_TIME_SET_ZERO(conn_total_time);
+	conn_total_duration = 0;
+
 	for (i = 0; i < nthreads; i++)
 	{
 		TState	   *thread = &threads[i];
 
 #ifdef ENABLE_THREAD_SAFETY
-		if (threads[i].thread == INVALID_THREAD)
-			/* actually run this thread directly in the main thread */
-			(void) threadRun(thread);
-		else
-			/* wait of other threads. should check that 0 is returned? */
-			pthread_join(thread->thread, NULL);
-#else
-		(void) threadRun(thread);
+		if (i > 0)
+			THREAD_JOIN(thread->thread);
 #endif							/* ENABLE_THREAD_SAFETY */
+
+		for (int j = 0; j < thread->nstate; j++)
+			if (thread->state[j].state == CSTATE_ABORTED)
+				exit_code = 2;
 
 		/* aggregate thread level stats */
 		mergeSimpleStats(&stats.latency, &thread->stats.latency);
@@ -6553,58 +7681,52 @@ main(int argc, char **argv)
 		stats.errors += thread->stats.errors;
 		stats.errors_in_failed_tx += thread->stats.errors_in_failed_tx;
 		latency_late += thread->latency_late;
-		INSTR_TIME_ADD(conn_total_time, thread->conn_time);
+		conn_total_duration += thread->conn_duration;
+
+		/* first recorded benchmarking start time */
+		if (bench_start == 0 || thread->bench_start < bench_start)
+			bench_start = thread->bench_start;
 	}
+
+	/*
+	 * All connections should be already closed in threadRun(), so this
+	 * disconnect_all() will be a no-op, but clean up the connecions just to
+	 * be sure. We don't need to measure the disconnection delays here.
+	 */
 	disconnect_all(state, nclients);
 
 	/*
-	 * XXX We compute results as though every client of every thread started
-	 * and finished at the same time.  That model can diverge noticeably from
-	 * reality for a short benchmark run involving relatively many threads.
-	 * The first thread may process notably many transactions before the last
-	 * thread begins.  Improving the model alone would bring limited benefit,
-	 * because performance during those periods of partial thread count can
-	 * easily exceed steady state performance.  This is one of the many ways
-	 * short runs convey deceptive performance figures.
+	 * Beware that performance of short benchmarks with many threads and
+	 * possibly long transactions can be deceptive because threads do not
+	 * start and finish at the exact same time. The total duration computed
+	 * here encompasses all transactions so that tps shown is somehow slightly
+	 * underestimated.
 	 */
-	INSTR_TIME_SET_CURRENT(total_time);
-	INSTR_TIME_SUBTRACT(total_time, start_time);
-	printResults(threads, &stats, total_time, conn_total_time, latency_late);
+	printResults(&stats, pg_time_now() - bench_start, conn_total_duration,
+				 bench_start - start_time, latency_late);
 
-	return 0;
+	THREAD_BARRIER_DESTROY(&barrier);
+
+	if (exit_code != 0)
+		pg_log_fatal("Run was aborted; the above results are incomplete.");
+
+	return exit_code;
 }
 
-static void *
+static THREAD_FUNC_RETURN_TYPE THREAD_FUNC_CC
 threadRun(void *arg)
 {
 	TState	   *thread = (TState *) arg;
 	CState	   *state = thread->state;
-	instr_time	start,
-				end;
+	pg_time_usec_t start;
 	int			nstate = thread->nstate;
 	int			remains = nstate;	/* number of remaining clients */
-	int			i;
-
-	/* for reporting progress: */
-	int64		thread_start = INSTR_TIME_GET_MICROSEC(thread->start_time);
-	int64		last_report = thread_start;
-	int64		next_report = last_report + (int64) progress * 1000000;
+	socket_set *sockets = alloc_socket_set(nstate);
+	int64		thread_start,
+				last_report,
+				next_report;
 	StatsData	last,
 				aggs;
-
-	/*
-	 * Initialize throttling rate target for all of the thread's clients.  It
-	 * might be a little more accurate to reset thread->start_time here too.
-	 * The possible drift seems too small relative to typical throttle delay
-	 * times to worry about it.
-	 */
-	INSTR_TIME_SET_CURRENT(start);
-	thread->throttle_trigger = INSTR_TIME_GET_MICROSEC(start);
-
-	INSTR_TIME_SET_ZERO(thread->conn_time);
-
-	initStats(&aggs, time(NULL));
-	last = aggs;
 
 	/* open log file if requested */
 	if (use_log)
@@ -6628,66 +7750,87 @@ threadRun(void *arg)
 		}
 	}
 
+	/* explicitly initialize the state machines */
+	for (int i = 0; i < nstate; i++)
+		state[i].state = CSTATE_CHOOSE_SCRIPT;
+
+	/* READY */
+	THREAD_BARRIER_WAIT(&barrier);
+
+	thread_start = pg_time_now();
+	thread->started_time = thread_start;
+	thread->conn_duration = 0;
+	last_report = thread_start;
+	next_report = last_report + (int64) 1000000 * progress;
+
+	/* STEADY */
 	if (!is_connect)
 	{
-		/* make connections to the database */
-		for (i = 0; i < nstate; i++)
+		/* make connections to the database before starting */
+		for (int i = 0; i < nstate; i++)
 		{
 			if ((state[i].con = doConnect()) == NULL)
+			{
+				/*
+				 * On connection failure, we meet the barrier here in place of
+				 * GO before proceeding to the "done" path which will cleanup,
+				 * so as to avoid locking the process.
+				 *
+				 * It is unclear whether it is worth doing anything rather
+				 * than coldly exiting with an error message.
+				 */
+				THREAD_BARRIER_WAIT(&barrier);
 				goto done;
+			}
 		}
 	}
 
-	/* time after thread and connections set up */
-	INSTR_TIME_SET_CURRENT(thread->conn_time);
-	INSTR_TIME_SUBTRACT(thread->conn_time, thread->start_time);
+	/* GO */
+	THREAD_BARRIER_WAIT(&barrier);
 
-	/* explicitly initialize the state machines */
-	for (i = 0; i < nstate; i++)
-	{
-		state[i].state = CSTATE_CHOOSE_SCRIPT;
-	}
+	start = pg_time_now();
+	thread->bench_start = start;
+	thread->throttle_trigger = start;
+
+	/*
+	 * The log format currently has Unix epoch timestamps with whole numbers
+	 * of seconds.  Round the first aggregate's start time down to the nearest
+	 * Unix epoch second (the very first aggregate might really have started a
+	 * fraction of a second later, but later aggregates are measured from the
+	 * whole number time that is actually logged).
+	 */
+	initStats(&aggs, (start + epoch_shift) / 1000000 * 1000000);
+	last = aggs;
 
 	/* loop till all clients have terminated */
 	while (remains > 0)
 	{
-		fd_set		input_mask;
-		int			maxsock;	/* max socket number to be waited for */
-		int64		min_usec;
-		int64		now_usec = 0;	/* set this only if needed */
+		int			nsocks;		/* number of sockets to be waited for */
+		pg_time_usec_t min_usec;
+		pg_time_usec_t now = 0; /* set this only if needed */
 
-		/* identify which client sockets should be checked for input */
-		FD_ZERO(&input_mask);
-		maxsock = -1;
+		/*
+		 * identify which client sockets should be checked for input, and
+		 * compute the nearest time (if any) at which we need to wake up.
+		 */
+		clear_socket_set(sockets);
+		nsocks = 0;
 		min_usec = PG_INT64_MAX;
-		for (i = 0; i < nstate; i++)
+		for (int i = 0; i < nstate; i++)
 		{
 			CState	   *st = &state[i];
 
-			if (st->state == CSTATE_THROTTLE && timer_exceeded)
-			{
-				/* interrupt client that has not started a transaction */
-				st->state = CSTATE_FINISHED;
-				finishCon(st);
-				remains--;
-			}
-			else if (st->state == CSTATE_SLEEP || st->state == CSTATE_THROTTLE)
+			if (st->state == CSTATE_SLEEP || st->state == CSTATE_THROTTLE)
 			{
 				/* a nap from the script, or under throttling */
-				int64		this_usec;
+				pg_time_usec_t this_usec;
 
 				/* get current time if needed */
-				if (now_usec == 0)
-				{
-					instr_time	now;
-
-					INSTR_TIME_SET_CURRENT(now);
-					now_usec = INSTR_TIME_GET_MICROSEC(now);
-				}
+				pg_time_now_lazy(&now);
 
 				/* min_usec should be the minimum delay across all clients */
 				this_usec = (st->state == CSTATE_SLEEP ?
-							 st->sleep_until : st->txn_scheduled) - now_usec;
+							 st->sleep_until : st->txn_scheduled) - now;
 				if (min_usec > this_usec)
 					min_usec = this_usec;
 			}
@@ -6707,9 +7850,7 @@ threadRun(void *arg)
 					goto done;
 				}
 
-				FD_SET(sock, &input_mask);
-				if (maxsock < sock)
-					maxsock = sock;
+				add_socket_to_set(sockets, sock, nsocks++);
 			}
 			else if (st->state != CSTATE_ABORTED &&
 					 st->state != CSTATE_FINISHED)
@@ -6726,52 +7867,39 @@ threadRun(void *arg)
 		/* also wake up to print the next progress report on time */
 		if (progress && min_usec > 0 && thread->tid == 0)
 		{
-			/* get current time if needed */
-			if (now_usec == 0)
-			{
-				instr_time	now;
+			pg_time_now_lazy(&now);
 
-				INSTR_TIME_SET_CURRENT(now);
-				now_usec = INSTR_TIME_GET_MICROSEC(now);
-			}
-
-			if (now_usec >= next_report)
+			if (now >= next_report)
 				min_usec = 0;
-			else if ((next_report - now_usec) < min_usec)
-				min_usec = next_report - now_usec;
+			else if ((next_report - now) < min_usec)
+				min_usec = next_report - now;
 		}
 
 		/*
 		 * If no clients are ready to execute actions, sleep until we receive
-		 * data from the server, or a nap-time specified in the script ends,
-		 * or it's time to print a progress report.  Update input_mask to show
-		 * which client(s) received data.
+		 * data on some client socket or the timeout (if any) elapses.
 		 */
 		if (min_usec > 0)
 		{
-			int			nsocks = 0; /* return from select(2) if called */
+			int			rc = 0;
 
 			if (min_usec != PG_INT64_MAX)
 			{
-				if (maxsock != -1)
+				if (nsocks > 0)
 				{
-					struct timeval timeout;
-
-					timeout.tv_sec = min_usec / 1000000;
-					timeout.tv_usec = min_usec % 1000000;
-					nsocks = select(maxsock + 1, &input_mask, NULL, NULL, &timeout);
+					rc = wait_on_socket_set(sockets, min_usec);
 				}
 				else			/* nothing active, simple sleep */
 				{
 					pg_usleep(min_usec);
 				}
 			}
-			else				/* no explicit delay, select without timeout */
+			else				/* no explicit delay, wait without timeout */
 			{
-				nsocks = select(maxsock + 1, &input_mask, NULL, NULL, NULL);
+				rc = wait_on_socket_set(sockets, 0);
 			}
 
-			if (nsocks < 0)
+			if (rc < 0)
 			{
 				if (errno == EINTR)
 				{
@@ -6780,26 +7908,27 @@ threadRun(void *arg)
 				}
 				/* must be something wrong */
 				ereport(ELEVEL_LOG_MAIN,
-						(errmsg("select() failed: %s\n", strerror(errno))));
+						(errmsg("%s() failed: %s\n", SOCKET_WAIT_METHOD, strerror(errno))));
 				goto done;
 			}
 		}
 		else
 		{
-			/* min_usec == 0, i.e. something needs to be executed */
+			/* min_usec <= 0, i.e. something needs to be executed now */
 
-			/* If we didn't call select(), don't try to read any data */
-			FD_ZERO(&input_mask);
+			/* If we didn't wait, don't try to read any data */
+			clear_socket_set(sockets);
 		}
 
 		/* ok, advance the state machine of each connection */
-		for (i = 0; i < nstate; i++)
+		nsocks = 0;
+		for (int i = 0; i < nstate; i++)
 		{
 			CState	   *st = &state[i];
 
 			if (st->state == CSTATE_WAIT_RESULT)
 			{
-				/* don't call doCustom unless data is available */
+				/* don't call advanceConnectionState unless data is available */
 				int			sock = PQsocket(st->con);
 
 				if (sock < 0)
@@ -6810,7 +7939,7 @@ threadRun(void *arg)
 					goto done;
 				}
 
-				if (!FD_ISSET(sock, &input_mask))
+				if (!socket_has_input(sockets, sock, nsocks++))
 					continue;
 			}
 			else if (st->state == CSTATE_FINISHED ||
@@ -6820,9 +7949,12 @@ threadRun(void *arg)
 				continue;
 			}
 
-			doCustom(thread, st, &aggs);
+			advanceConnectionState(thread, st, &aggs);
 
-			/* If doCustom changed client to finished state, reduce remains */
+			/*
+			 * If advanceConnectionState changed client to finished state,
+			 * that's one fewer client that remains.
+			 */
 			if (st->state == CSTATE_FINISHED || st->state == CSTATE_ABORTED)
 				remains--;
 		}
@@ -6830,155 +7962,34 @@ threadRun(void *arg)
 		/* progress report is made by thread 0 for all threads */
 		if (progress && thread->tid == 0)
 		{
-			instr_time	now_time;
-			int64		now;
+			pg_time_usec_t now = pg_time_now();
 
-			INSTR_TIME_SET_CURRENT(now_time);
-			now = INSTR_TIME_GET_MICROSEC(now_time);
 			if (now >= next_report)
 			{
-				/* generate and show report */
-				StatsData	cur;
-				int64		run = now - last_report,
-							ntx,
-							retries,
-							retried,
-							errors,
-							errors_in_failed_tx;
-				double		tps,
-							total_run,
-							latency,
-							sqlat,
-							lag,
-							stdev;
-				char		tbuf[315];
-				PQExpBufferData progress_buf;
-
 				/*
-				 * Add up the statistics of all threads.
-				 *
-				 * XXX: No locking. There is no guarantee that we get an
-				 * atomic snapshot of the transaction count and latencies, so
-				 * these figures can well be off by a small amount. The
-				 * progress report's purpose is to give a quick overview of
-				 * how the test is going, so that shouldn't matter too much.
-				 * (If a read from a 64-bit integer is not atomic, you might
-				 * get a "torn" read and completely bogus latencies though!)
+				 * Horrible hack: this relies on the thread pointer we are
+				 * passed to be equivalent to threads[0], that is the first
+				 * entry of the threads array.  That is why this MUST be done
+				 * by thread 0 and not any other.
 				 */
-				initStats(&cur, 0);
-				for (i = 0; i < nthreads; i++)
-				{
-					mergeSimpleStats(&cur.latency, &thread[i].stats.latency);
-					mergeSimpleStats(&cur.lag, &thread[i].stats.lag);
-					cur.cnt += thread[i].stats.cnt;
-					cur.skipped += thread[i].stats.skipped;
-					cur.retries += thread[i].stats.retries;
-					cur.retried += thread[i].stats.retried;
-					cur.errors += thread[i].stats.errors;
-					cur.errors_in_failed_tx +=
-						thread[i].stats.errors_in_failed_tx;
-				}
-
-				/* we count only actually executed transactions */
-				ntx = (cur.cnt - cur.skipped) - (last.cnt - last.skipped);
-				total_run = (now - thread_start) / 1000000.0;
-				tps = 1000000.0 * ntx / run;
-				if (ntx > 0)
-				{
-					latency = 0.001 * (cur.latency.sum - last.latency.sum) / ntx;
-					sqlat = 1.0 * (cur.latency.sum2 - last.latency.sum2) / ntx;
-					stdev = 0.001 * sqrt(sqlat - 1000000.0 * latency * latency);
-					lag = 0.001 * (cur.lag.sum - last.lag.sum) / ntx;
-				}
-				else
-				{
-					latency = sqlat = stdev = lag = 0;
-				}
-				retries = cur.retries - last.retries;
-				retried = cur.retried - last.retried;
-				errors = cur.errors - last.errors;
-				errors_in_failed_tx = cur.errors_in_failed_tx -
-					last.errors_in_failed_tx;
-
-				if (progress_timestamp)
-				{
-					/*
-					 * On some platforms the current system timestamp is
-					 * available in now_time, but rather than get entangled
-					 * with that, we just eat the cost of an extra syscall in
-					 * all cases.
-					 */
-					struct timeval tv;
-
-					gettimeofday(&tv, NULL);
-					snprintf(tbuf, sizeof(tbuf), "%ld.%03ld s",
-							 (long) tv.tv_sec, (long) (tv.tv_usec / 1000));
-				}
-				else
-				{
-					/* round seconds are expected, but the thread may be late */
-					snprintf(tbuf, sizeof(tbuf), "%.1f s", total_run);
-				}
-
-				initPQExpBuffer(&progress_buf);
-				printfPQExpBuffer(&progress_buf,
-								  "progress: %s, %.1f tps, lat %.3f ms stddev %.3f",
-								  tbuf, tps, latency, stdev);
-
-				if (errors > 0)
-				{
-					appendPQExpBuffer(&progress_buf,
-									  ", " INT64_FORMAT " failed" , errors);
-					if (errors_in_failed_tx > 0)
-						appendPQExpBuffer(&progress_buf,
-										  " (" INT64_FORMAT " in failed tx)",
-										  errors_in_failed_tx);
-				}
-
-				if (throttle_delay)
-				{
-					appendPQExpBuffer(&progress_buf, ", lag %.3f ms", lag);
-					if (latency_limit)
-						appendPQExpBuffer(&progress_buf,
-										  ", " INT64_FORMAT " skipped",
-										  cur.skipped - last.skipped);
-				}
-
-				/*
-				 * It can be non-zero only if max_tries is greater than one or
-				 * latency_limit is used.
-				 */
-				if (retried > 0)
-				{
-					appendPQExpBuffer(&progress_buf,
-									  ", " INT64_FORMAT " retried, " INT64_FORMAT " retries",
-									  retried, retries);
-				}
-				appendPQExpBufferChar(&progress_buf, '\n');
-
-				ereport(ELEVEL_LOG_MAIN, (errmsg("%s", progress_buf.data)));
-				termPQExpBuffer(&progress_buf);
-
-				last = cur;
-				last_report = now;
-
+NEIL
+				printProgressReport(thread, thread_start, now,
+									&last, &last_report);
 				/*
 				 * Ensure that the next report is in the future, in case
 				 * pgbench/postgres got stuck somewhere.
 				 */
 				do
 				{
-					next_report += (int64) progress * 1000000;
+					next_report += (int64) 1000000 * progress;
 				} while (now >= next_report);
 			}
 		}
 	}
 
 done:
-	INSTR_TIME_SET_CURRENT(start);
 	disconnect_all(state, nstate);
-	INSTR_TIME_SET_CURRENT(end);
-	INSTR_TIME_ACCUM_DIFF(thread->conn_time, end, start);
+
 	if (thread->logfile)
 	{
 		if (agg_interval > 0)
@@ -6989,7 +8000,8 @@ done:
 		fclose(thread->logfile);
 		thread->logfile = NULL;
 	}
-	return NULL;
+	free_socket_set(sockets);
+	THREAD_FUNC_RETURN;
 }
 
 static void
@@ -7044,73 +8056,179 @@ setalarm(int seconds)
 		ereport(ELEVEL_FATAL, (errmsg("failed to set timer\n")));
 }
 
-/* partial pthread implementation for Windows */
-
-typedef struct win32_pthread
-{
-	HANDLE		handle;
-	void	   *(*routine) (void *);
-	void	   *arg;
-	void	   *result;
-} win32_pthread;
-
-static unsigned __stdcall
-win32_pthread_run(void *arg)
-{
-	win32_pthread *th = (win32_pthread *) arg;
-
-	th->result = th->routine(th->arg);
-
-	return 0;
-}
-
-static int
-pthread_create(pthread_t *thread,
-			   pthread_attr_t *attr,
-			   void *(*start_routine) (void *),
-			   void *arg)
-{
-	int			save_errno;
-	win32_pthread *th;
-
-	th = (win32_pthread *) pg_malloc(sizeof(win32_pthread));
-	th->routine = start_routine;
-	th->arg = arg;
-	th->result = NULL;
-
-	th->handle = (HANDLE) _beginthreadex(NULL, 0, win32_pthread_run, th, 0, NULL);
-	if (th->handle == NULL)
-	{
-		save_errno = errno;
-		free(th);
-		return save_errno;
-	}
-
-	*thread = th;
-	return 0;
-}
-
-static int
-pthread_join(pthread_t th, void **thread_return)
-{
-	if (th == NULL || th->handle == NULL)
-		return errno = EINVAL;
-
-	if (WaitForSingleObject(th->handle, INFINITE) != WAIT_OBJECT_0)
-	{
-		_dosmaperr(GetLastError());
-		return errno;
-	}
-
-	if (thread_return)
-		*thread_return = th->result;
-
-	CloseHandle(th->handle);
-	free(th);
-	return 0;
-}
-
 #endif							/* WIN32 */
+
+
+/*
+ * These functions provide an abstraction layer that hides the syscall
+ * we use to wait for input on a set of sockets.
+ *
+ * Currently there are two implementations, based on ppoll(2) and select(2).
+ * ppoll() is preferred where available due to its typically higher ceiling
+ * on the number of usable sockets.  We do not use the more-widely-available
+ * poll(2) because it only offers millisecond timeout resolution, which could
+ * be problematic with high --rate settings.
+ *
+ * Function APIs:
+ *
+ * alloc_socket_set: allocate an empty socket set with room for up to
+ *		"count" sockets.
+ *
+ * free_socket_set: deallocate a socket set.
+ *
+ * clear_socket_set: reset a socket set to empty.
+ *
+ * add_socket_to_set: add socket with indicated FD to slot "idx" in the
+ *		socket set.  Slots must be filled in order, starting with 0.
+ *
+ * wait_on_socket_set: wait for input on any socket in set, or for timeout
+ *		to expire.  timeout is measured in microseconds; 0 means wait forever.
+ *		Returns result code of underlying syscall (>=0 if OK, else see errno).
+ *
+ * socket_has_input: after waiting, call this to see if given socket has
+ *		input.  fd and idx parameters should match some previous call to
+ *		add_socket_to_set.
+ *
+ * Note that wait_on_socket_set destructively modifies the state of the
+ * socket set.  After checking for input, caller must apply clear_socket_set
+ * and add_socket_to_set again before waiting again.
+ */
+
+#ifdef POLL_USING_PPOLL
+
+static socket_set *
+alloc_socket_set(int count)
+{
+	socket_set *sa;
+
+	sa = (socket_set *) pg_malloc0(offsetof(socket_set, pollfds) +
+								   sizeof(struct pollfd) * count);
+	sa->maxfds = count;
+	sa->curfds = 0;
+	return sa;
+}
+
+static void
+free_socket_set(socket_set *sa)
+{
+	pg_free(sa);
+}
+
+static void
+clear_socket_set(socket_set *sa)
+{
+	sa->curfds = 0;
+}
+
+static void
+add_socket_to_set(socket_set *sa, int fd, int idx)
+{
+	Assert(idx < sa->maxfds && idx == sa->curfds);
+	sa->pollfds[idx].fd = fd;
+	sa->pollfds[idx].events = POLLIN;
+	sa->pollfds[idx].revents = 0;
+	sa->curfds++;
+}
+
+static int
+wait_on_socket_set(socket_set *sa, int64 usecs)
+{
+	if (usecs > 0)
+	{
+		struct timespec timeout;
+
+		timeout.tv_sec = usecs / 1000000;
+		timeout.tv_nsec = (usecs % 1000000) * 1000;
+		return ppoll(sa->pollfds, sa->curfds, &timeout, NULL);
+	}
+	else
+	{
+		return ppoll(sa->pollfds, sa->curfds, NULL, NULL);
+	}
+}
+
+static bool
+socket_has_input(socket_set *sa, int fd, int idx)
+{
+	/*
+	 * In some cases, threadRun will apply clear_socket_set and then try to
+	 * apply socket_has_input anyway with arguments that it used before that,
+	 * or might've used before that except that it exited its setup loop
+	 * early.  Hence, if the socket set is empty, silently return false
+	 * regardless of the parameters.  If it's not empty, we can Assert that
+	 * the parameters match a previous call.
+	 */
+	if (sa->curfds == 0)
+		return false;
+
+	Assert(idx < sa->curfds && sa->pollfds[idx].fd == fd);
+	return (sa->pollfds[idx].revents & POLLIN) != 0;
+}
+
+#endif							/* POLL_USING_PPOLL */
+
+#ifdef POLL_USING_SELECT
+
+static socket_set *
+alloc_socket_set(int count)
+{
+	return (socket_set *) pg_malloc0(sizeof(socket_set));
+}
+
+static void
+free_socket_set(socket_set *sa)
+{
+	pg_free(sa);
+}
+
+static void
+clear_socket_set(socket_set *sa)
+{
+	FD_ZERO(&sa->fds);
+	sa->maxfd = -1;
+}
+
+static void
+add_socket_to_set(socket_set *sa, int fd, int idx)
+{
+	if (fd < 0 || fd >= FD_SETSIZE)
+	{
+		/*
+		 * Doing a hard exit here is a bit grotty, but it doesn't seem worth
+		 * complicating the API to make it less grotty.
+		 */
+		pg_log_fatal("too many client connections for select()");
+		exit(1);
+	}
+	FD_SET(fd, &sa->fds);
+	if (fd > sa->maxfd)
+		sa->maxfd = fd;
+}
+
+static int
+wait_on_socket_set(socket_set *sa, int64 usecs)
+{
+	if (usecs > 0)
+	{
+		struct timeval timeout;
+
+		timeout.tv_sec = usecs / 1000000;
+		timeout.tv_usec = usecs % 1000000;
+		return select(sa->maxfd + 1, &sa->fds, NULL, NULL, &timeout);
+	}
+	else
+	{
+		return select(sa->maxfd + 1, &sa->fds, NULL, NULL, NULL);
+	}
+}
+
+static bool
+socket_has_input(socket_set *sa, int fd, int idx)
+{
+	return (FD_ISSET(fd, &sa->fds) != 0);
+}
+
+#endif							/* POLL_USING_SELECT */
 
 /*
  * errstartImpl --- begin an error-reporting cycle

@@ -12,7 +12,16 @@ subdir = src/backend/access/brin
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = brin.o brin_pageops.o brin_revmap.o brin_tuple.o brin_xlog.o \
-       brin_minmax.o brin_inclusion.o brin_validate.o
+OBJS = \
+	brin.o \
+	brin_bloom.o \
+	brin_inclusion.o \
+	brin_minmax.o \
+	brin_minmax_multi.o \
+	brin_pageops.o \
+	brin_revmap.o \
+	brin_tuple.o \
+	brin_validate.o \
+	brin_xlog.o
 
 include $(top_srcdir)/src/backend/common.mk

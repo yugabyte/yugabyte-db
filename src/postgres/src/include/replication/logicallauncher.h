@@ -3,7 +3,7 @@
  * logicallauncher.h
  *	  Exports for logical replication launcher.
  *
- * Portions Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2021, PostgreSQL Global Development Group
  *
  * src/include/replication/logicallauncher.h
  *
@@ -22,9 +22,7 @@ extern Size ApplyLauncherShmemSize(void);
 extern void ApplyLauncherShmemInit(void);
 
 extern void ApplyLauncherWakeupAtCommit(void);
-extern bool XactManipulatesLogicalReplicationWorkers(void);
 extern void AtEOXact_ApplyLauncher(bool isCommit);
-extern void AtEOSubXact_ApplyLauncher(bool isCommit, int nestDepth);
 
 extern bool IsLogicalLauncher(void);
 

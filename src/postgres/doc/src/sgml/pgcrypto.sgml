@@ -17,6 +17,12 @@
   <productname>PostgreSQL</productname>.
  </para>
 
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
+ </para>
+
  <sect2>
   <title>General Hashing Functions</title>
 
@@ -39,8 +45,8 @@ digest(data bytea, type text) returns bytea
     <literal>sha224</literal>, <literal>sha256</literal>,
     <literal>sha384</literal> and <literal>sha512</literal>.
     If <filename>pgcrypto</filename> was built with
-    OpenSSL, more algorithms are available, as detailed in
-    <xref linkend="pgcrypto-with-without-openssl"/>.
+    <productname>OpenSSL</productname>, more algorithms are available, as
+    detailed in <xref linkend="pgcrypto-with-without-openssl"/>.
    </para>
 
    <para>
@@ -431,7 +437,8 @@ gen_salt(type text [, iter_count integer ]) returns text
   <title>PGP Encryption Functions</title>
 
   <para>
-   The functions here implement the encryption part of the OpenPGP (RFC 4880)
+   The functions here implement the encryption part of the OpenPGP
+   (<ulink url="https://tools.ietf.org/html/rfc4880">RFC 4880</ulink>)
    standard.  Supported are both symmetric-key and public-key encryption.
   </para>
 
@@ -514,7 +521,7 @@ gen_salt(type text [, iter_count integer ]) returns text
    </listitem>
    <listitem>
     <para>
-     An SHA1 hash of the random prefix and data is appended.
+     A SHA1 hash of the random prefix and data is appended.
     </para>
    </listitem>
    <listitem>
@@ -800,7 +807,7 @@ Applies to: pgp_sym_encrypt, pgp_pub_encrypt
    <para>
     Whether to convert <literal>\n</literal> into <literal>\r\n</literal> when
     encrypting and <literal>\r\n</literal> to <literal>\n</literal> when
-    decrypting.  RFC 4880 specifies that text data should be stored using
+    decrypting.  <acronym>RFC</acronym> 4880 specifies that text data should be stored using
     <literal>\r\n</literal> line-feeds.  Use this to get fully RFC-compliant
     behavior.
    </para>
@@ -817,7 +824,7 @@ Applies to: pgp_sym_encrypt, pgp_pub_encrypt, pgp_sym_decrypt, pgp_pub_decrypt
    <para>
     Do not protect data with SHA-1.  The only good reason to use this
     option is to achieve compatibility with ancient PGP products, predating
-    the addition of SHA-1 protected packets to RFC 4880.
+    the addition of SHA-1 protected packets to <acronym>RFC</acronym> 4880.
     Recent gnupg.org and pgp.com software supports it fine.
    </para>
 <literallayout>
@@ -1132,7 +1139,8 @@ gen_random_bytes(count integer) returns bytea
 gen_random_uuid() returns uuid
 </synopsis>
   <para>
-   Returns a version 4 (random) UUID.
+   Returns a version 4 (random) UUID. (Obsolete, this function is now also
+   included in core <productname>PostgreSQL</productname>.)
   </para>
  </sect2>
 
@@ -1146,7 +1154,7 @@ gen_random_uuid() returns uuid
     <filename>pgcrypto</filename> configures itself according to the findings of the
     main PostgreSQL <literal>configure</literal> script.  The options that
     affect it are <literal>--with-zlib</literal> and
-    <literal>--with-openssl</literal>.
+    <literal>--with-ssl=openssl</literal>.
    </para>
 
    <para>
@@ -1155,9 +1163,10 @@ gen_random_uuid() returns uuid
    </para>
 
    <para>
-    When compiled with OpenSSL, there will be more algorithms available.
-    Also public-key encryption functions will be faster as OpenSSL
-    has more optimized BIGNUM functions.
+    When compiled with <productname>OpenSSL</productname>, there will be
+    more algorithms available. Also public-key encryption functions will
+    be faster as <productname>OpenSSL</productname> has more optimized
+    BIGNUM functions.
    </para>
 
    <table id="pgcrypto-with-without-openssl">
@@ -1226,13 +1235,21 @@ gen_random_uuid() returns uuid
    </table>
 
    <para>
+    When compiled against <productname>OpenSSL</productname> 3.0.0 and later
+    versions, the legacy provider must be activated in the
+    <filename>openssl.cnf</filename> configuration file in order to use older
+    ciphers like DES or Blowfish.
+   </para>
+
+   <para>
     Notes:
    </para>
 
    <orderedlist>
     <listitem>
      <para>
-      Any digest algorithm OpenSSL supports is automatically picked up.
+      Any digest algorithm <productname>OpenSSL</productname> supports
+      is automatically picked up.
       This is not possible with ciphers, which need to be supported
       explicitly.
      </para>
@@ -1290,12 +1307,12 @@ gen_random_uuid() returns uuid
      <para>The GNU Privacy Handbook.</para>
     </listitem>
     <listitem>
-     <para><ulink url="http://www.openwall.com/crypt/"></ulink></para>
+     <para><ulink url="https://www.openwall.com/crypt/"></ulink></para>
      <para>Describes the crypt-blowfish algorithm.</para>
     </listitem>
     <listitem>
      <para>
-      <ulink url="http://www.iusmentis.com/security/passphrasefaq/"></ulink>
+      <ulink url="https://www.iusmentis.com/security/passphrasefaq/"></ulink>
      </para>
      <para>How to choose a good password.</para>
     </listitem>
@@ -1341,7 +1358,7 @@ gen_random_uuid() returns uuid
      <para>Description of Fortuna CSPRNG.</para>
     </listitem>
     <listitem>
-     <para><ulink url="http://jlcooke.ca/random/"></ulink></para>
+     <para><ulink url="https://jlcooke.ca/random/"></ulink></para>
      <para>Jean-Luc Cooke Fortuna-based <filename>/dev/random</filename> driver for Linux.</para>
     </listitem>
    </itemizedlist>
@@ -1400,7 +1417,7 @@ gen_random_uuid() returns uuid
       <entry>KAME kame/sys/crypto</entry>
      </row>
      <row>
-      <entry>SHA256/384/512 </entry>
+      <entry>SHA256/384/512</entry>
       <entry>Aaron D. Gifford</entry>
       <entry>OpenBSD sys/crypto</entry>
      </row>

@@ -28,7 +28,7 @@
 #include "utils/fmgroids.h"
 
 const uint32 yb_funcs_safe_for_pushdown[] = {
-	F_DRANDOM
+	F_RANDOM
 };
 
 const int yb_funcs_safe_for_pushdown_count =

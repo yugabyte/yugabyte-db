@@ -59,9 +59,8 @@ select testtext || testvarchar as concat, testnumeric + 42 as sum
 from basictest;
 
 -- check that union/case/coalesce type resolution handles domains properly
-select coalesce(4::domainint4, 7) is of (int4) as t;
-select coalesce(4::domainint4, 7) is of (domainint4) as f;
-select coalesce(4::domainint4, 7::domainint4) is of (domainint4) as t;
+select pg_typeof(coalesce(4::domainint4, 7));
+select pg_typeof(coalesce(4::domainint4, 7::domainint4));
 
 drop table basictest;
 drop domain domainvarchar restrict;
@@ -678,6 +677,26 @@ drop function array_elem_check(int);
 create domain di as int;
 
 create function dom_check(int) returns di as $$
+declare d di;
+begin
+  d := $1::di;
+  return d;
+end
+$$ language plpgsql immutable;
+
+select dom_check(0);
+
+alter domain di add constraint pos check (value > 0);
+
+select dom_check(0); -- fail
+
+alter domain di drop constraint pos;
+
+select dom_check(0);
+
+-- implicit cast during assignment is a separate code path, test that too
+
+create or replace function dom_check(int) returns di as $$
 declare d di;
 begin
   d := $1;

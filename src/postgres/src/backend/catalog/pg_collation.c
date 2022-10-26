@@ -3,7 +3,7 @@
  * pg_collation.c
  *	  routines to support manipulation of the pg_collation relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,9 +15,10 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/table.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -29,7 +30,6 @@
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/tqual.h"
 
 
 /*
@@ -46,6 +46,7 @@ Oid
 CollationCreate(const char *collname, Oid collnamespace,
 				Oid collowner,
 				char collprovider,
+				bool collisdeterministic,
 				int32 collencoding,
 				const char *collcollate, const char *collctype,
 				const char *collversion,
@@ -77,7 +78,7 @@ CollationCreate(const char *collname, Oid collnamespace,
 	 * friendlier error message.  The unique index provides a backstop against
 	 * race conditions.
 	 */
-	oid = GetSysCacheOid3(COLLNAMEENCNSP,
+	oid = GetSysCacheOid3(COLLNAMEENCNSP, Anum_pg_collation_oid,
 						  PointerGetDatum(collname),
 						  Int32GetDatum(collencoding),
 						  ObjectIdGetDatum(collnamespace));
@@ -115,7 +116,7 @@ CollationCreate(const char *collname, Oid collnamespace,
 	}
 
 	/* open pg_collation; see below about the lock level */
-	rel = heap_open(CollationRelationId, ShareRowExclusiveLock);
+	rel = table_open(CollationRelationId, ShareRowExclusiveLock);
 
 	/*
 	 * Also forbid a specific-encoding collation shadowing an any-encoding
@@ -125,12 +126,12 @@ CollationCreate(const char *collname, Oid collnamespace,
 	 * concurrent changes fooling this check.
 	 */
 	if (collencoding == -1)
-		oid = GetSysCacheOid3(COLLNAMEENCNSP,
+		oid = GetSysCacheOid3(COLLNAMEENCNSP, Anum_pg_collation_oid,
 							  PointerGetDatum(collname),
 							  Int32GetDatum(GetDatabaseEncoding()),
 							  ObjectIdGetDatum(collnamespace));
 	else
-		oid = GetSysCacheOid3(COLLNAMEENCNSP,
+		oid = GetSysCacheOid3(COLLNAMEENCNSP, Anum_pg_collation_oid,
 							  PointerGetDatum(collname),
 							  Int32GetDatum(-1),
 							  ObjectIdGetDatum(collnamespace));
@@ -138,7 +139,7 @@ CollationCreate(const char *collname, Oid collnamespace,
 	{
 		if (quiet)
 		{
-			heap_close(rel, NoLock);
+			table_close(rel, NoLock);
 			return InvalidOid;
 		}
 		else if (if_not_exists)
@@ -151,7 +152,8 @@ CollationCreate(const char *collname, Oid collnamespace,
 			checkMembershipInCurrentExtension(&myself);
 
 			/* OK to skip */
-			heap_close(rel, NoLock);
+			table_close(rel, NoLock);
+
 			ereport(NOTICE,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("collation \"%s\" already exists, skipping",
@@ -171,10 +173,14 @@ CollationCreate(const char *collname, Oid collnamespace,
 	memset(nulls, 0, sizeof(nulls));
 
 	namestrcpy(&name_name, collname);
+	oid = GetNewOidWithIndex(rel, CollationOidIndexId,
+							 Anum_pg_collation_oid);
+	values[Anum_pg_collation_oid - 1] = ObjectIdGetDatum(oid);
 	values[Anum_pg_collation_collname - 1] = NameGetDatum(&name_name);
 	values[Anum_pg_collation_collnamespace - 1] = ObjectIdGetDatum(collnamespace);
 	values[Anum_pg_collation_collowner - 1] = ObjectIdGetDatum(collowner);
 	values[Anum_pg_collation_collprovider - 1] = CharGetDatum(collprovider);
+	values[Anum_pg_collation_collisdeterministic - 1] = BoolGetDatum(collisdeterministic);
 	values[Anum_pg_collation_collencoding - 1] = Int32GetDatum(collencoding);
 	namestrcpy(&name_collate, collcollate);
 	values[Anum_pg_collation_collcollate - 1] = NameGetDatum(&name_collate);
@@ -188,7 +194,7 @@ CollationCreate(const char *collname, Oid collnamespace,
 	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	/* insert a new tuple */
-	oid = CatalogTupleInsert(rel, tup);
+	CatalogTupleInsert(rel, tup);
 	Assert(OidIsValid(oid));
 
 	/* set up dependencies for the new collation */
@@ -203,8 +209,7 @@ CollationCreate(const char *collname, Oid collnamespace,
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
 	/* create dependency on owner */
-	recordDependencyOnOwner(CollationRelationId, HeapTupleGetOid(tup),
-							collowner);
+	recordDependencyOnOwner(CollationRelationId, oid, collowner);
 
 	/* dependency on extension */
 	recordDependencyOnCurrentExtension(&myself, false);
@@ -213,11 +218,13 @@ CollationCreate(const char *collname, Oid collnamespace,
 	InvokeObjectPostCreateHook(CollationRelationId, oid, 0);
 
 	heap_freetuple(tup);
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return oid;
 }
 
+#ifdef NEIL
+This function is removed from Postgres.
 /*
  * RemoveCollationById
  *
@@ -232,7 +239,7 @@ RemoveCollationById(Oid collationOid)
 	SysScanDesc scandesc;
 	HeapTuple	tuple;
 
-	rel = heap_open(CollationRelationId, RowExclusiveLock);
+	rel = table_open(CollationRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&scanKeyData,
 				ObjectIdAttributeNumber,
@@ -251,5 +258,6 @@ RemoveCollationById(Oid collationOid)
 
 	systable_endscan(scandesc);
 
-	heap_close(rel, RowExclusiveLock);
+	table_close(rel, RowExclusiveLock);
 }
+#endif

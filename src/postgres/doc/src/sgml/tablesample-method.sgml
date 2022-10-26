@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/tablesample-method.sgml -->
 
 <chapter id="tablesample-method">
- <title>Writing A Table Sampling Method</title>
+ <title>Writing a Table Sampling Method</title>
 
  <indexterm zone="tablesample-method">
   <primary>table sampling method</primary>
@@ -28,7 +28,7 @@ method_name(internal) RETURNS tsm_handler
   The name of the function is the same method name appearing in the
   <literal>TABLESAMPLE</literal> clause.  The <type>internal</type> argument is a dummy
   (always having value zero) that simply serves to prevent this function from
-  being called directly from a SQL command.
+  being called directly from an SQL command.
   The result of the function must be a palloc'd struct of
   type <type>TsmRoutine</type>, which contains pointers to support functions for
   the sampling method.  These support functions are plain C functions and
@@ -227,7 +227,7 @@ BeginSampleScan (SampleScanState *node,
   <para>
 <programlisting>
 BlockNumber
-NextSampleBlock (SampleScanState *node);
+NextSampleBlock (SampleScanState *node, BlockNumber nblocks);
 </programlisting>
 
    Returns the block number of the next page to be scanned, or
@@ -262,10 +262,9 @@ NextSampleTuple (SampleScanState *node,
     numbers in the range <literal>1 .. maxoffset</literal> actually contain valid
     tuples.  This is not normally a problem since the core code ignores
     requests to sample missing or invisible tuples; that should not result in
-    any bias in the sample.  However, if necessary, the function can
-    examine <literal>node-&gt;ss.ss_currentScanDesc-&gt;rs_vistuples[]</literal>
-    to identify which tuples are valid and visible.  (This
-    requires <literal>node-&gt;use_pagemode</literal> to be <literal>true</literal>.)
+    any bias in the sample.  However, if necessary, the function can use
+    <literal>node-&gt;donetuples</literal> to examine how many of the tuples
+    it returned were valid and visible.
    </para>
   </note>
 

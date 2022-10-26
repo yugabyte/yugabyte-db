@@ -149,10 +149,17 @@ PREPARE foo (xml) AS SELECT xmlconcat('<foo/>', $1);
 SET XML OPTION DOCUMENT;
 EXECUTE foo ('<bar/>');
 EXECUTE foo ('bad');
+SELECT xml '<!DOCTYPE a><a/><b/>';
 
 SET XML OPTION CONTENT;
 EXECUTE foo ('<bar/>');
 EXECUTE foo ('good');
+SELECT xml '<!-- in SQL:2006+ a doc is content too--> <?y z?> <!DOCTYPE a><a/>';
+SELECT xml '<?xml version="1.0"?> <!-- hi--> <!DOCTYPE a><a/>';
+SELECT xml '<!DOCTYPE a><a/>';
+SELECT xml '<!-- hi--> oops <!DOCTYPE a><a/>';
+SELECT xml '<!-- hi--> <oops/> <!DOCTYPE a><a/>';
+SELECT xml '<!DOCTYPE a><a/><b/>';
 
 
 -- Test backwards parsing
@@ -395,6 +402,10 @@ SELECT * FROM XMLTABLE(XMLNAMESPACES(DEFAULT 'http://x.y'),
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
                       COLUMNS a int PATH 'a');
 
+SELECT * FROM XMLTABLE('.'
+                       PASSING '<foo/>'
+                       COLUMNS a text PATH 'foo/namespace::node()');
+
 -- used in prepare statements
 PREPARE pp AS
 SELECT  xmltable.*
@@ -595,3 +606,11 @@ INSERT INTO xmltest2 VALUES('<d><r><dc>2</dc></r></d>', 'D');
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable('/d/r' PASSING x COLUMNS a int PATH '' || lower(_path) || 'c');
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c') PASSING x COLUMNS a int PATH '.');
 SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c') PASSING x COLUMNS a int PATH 'x' DEFAULT ascii(_path) - 54);
+
+-- XPath result can be boolean or number too
+SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml PATH '.', b text PATH '.', c text PATH '"hi"', d boolean PATH '. = "a"', e integer PATH 'string-length(.)');
+\x
+SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH 'node()', y xml PATH '/');
+\x
+
+SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');

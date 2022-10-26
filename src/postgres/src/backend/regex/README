@@ -129,9 +129,9 @@ If not, we can reject the match immediately without iterating through many
 possibilities.
 
 As an example, consider the regex "(a[bc]+)\1".  The compiled
-representation will have a top-level concatenation subre node.  Its left
-child is a capture node, and the child of that is a plain DFA node for
-"a[bc]+".  The concatenation's right child is a backref node for \1.
+representation will have a top-level concatenation subre node.  Its first
+child is a plain DFA node for "a[bc]+" (which is marked as being a capture
+node).  The concatenation's second child is a backref node for \1.
 The DFA associated with the concatenation node will be "a[bc]+a[bc]+",
 where the backref has been replaced by a copy of the DFA for its referent
 expression.  When executed, the concatenation node will have to search for
@@ -146,6 +146,17 @@ string division point.  In many cases, this prefiltering makes the search
 run much faster than a pure NFA engine could do.  It is this behavior that
 justifies using the phrase "hybrid DFA/NFA engine" to describe Spencer's
 library.
+
+It's perhaps worth noting that separate capture subre nodes are a rarity:
+normally, we just mark a subre as capturing and that's it.  However, it's
+legal to write a regex like "((x))" in which the same substring has to be
+captured by multiple sets of parentheses.  Since a subre has room for only
+one "capno" field, a single subre can't handle that.  We handle such cases
+by wrapping the base subre (which captures the innermost parens) in a
+no-op capture node, or even more than one for "(((x)))" etc.  This is a
+little bit inefficient because we end up with multiple identical NFAs,
+but since the case is pointless and infrequent, it's not worth working
+harder.
 
 
 Colors and colormapping
@@ -261,6 +272,18 @@ and the NFA has these arcs:
 	states 4 -> 5 on color 2 ("x" only)
 which can be seen to be a correct representation of the regex.
 
+There is one more complexity, which is how to handle ".", that is a
+match-anything atom.  We used to do that by generating a "rainbow"
+of arcs of all live colors between the two NFA states before and after
+the dot.  That's expensive in itself when there are lots of colors,
+and it also typically adds lots of follow-on arc-splitting work for the
+color splitting logic.  Now we handle this case by generating a single arc
+labeled with the special color RAINBOW, meaning all colors.  Such arcs
+never need to be split, so they help keep NFAs small in this common case.
+(Note: this optimization doesn't help in REG_NLSTOP mode, where "." is
+not supposed to match newline.  In that case we still handle "." by
+generating an almost-rainbow of all colors except newline's color.)
+
 Given this summary, we can see we need the following operations for
 colors:
 
@@ -349,6 +372,8 @@ The possible arc types are:
 
     PLAIN arcs, which specify matching of any character of a given "color"
     (see above).  These are dumped as "[color_number]->to_state".
+    In addition there can be "rainbow" PLAIN arcs, which are dumped as
+    "[*]->to_state".
 
     EMPTY arcs, which specify a no-op transition to another state.  These
     are dumped as "->to_state".
@@ -356,11 +381,11 @@ The possible arc types are:
     AHEAD constraints, which represent a "next character must be of this
     color" constraint.  AHEAD differs from a PLAIN arc in that the input
     character is not consumed when crossing the arc.  These are dumped as
-    ">color_number>->to_state".
+    ">color_number>->to_state", or possibly ">*>->to_state".
 
     BEHIND constraints, which represent a "previous character must be of
     this color" constraint, which likewise consumes no input.  These are
-    dumped as "<color_number<->to_state".
+    dumped as "<color_number<->to_state", or possibly "<*<->to_state".
 
     '^' arcs, which specify a beginning-of-input constraint.  These are
     dumped as "^0->to_state" or "^1->to_state" for beginning-of-string and
@@ -396,14 +421,53 @@ substring, or an imaginary following EOS character if the substring is at
 the end of the input.
 3. If the NFA is (or can be) in the goal state at this point, it matches.
 
+This definition is necessary to support regexes that begin or end with
+constraints such as \m and \M, which imply requirements on the adjacent
+character if any.  The executor implements that by checking if the
+adjacent character (or BOS/BOL/EOS/EOL pseudo-character) is of the
+right color, and it does that in the same loop that checks characters
+within the match.
+
 So one can mentally execute an untransformed NFA by taking ^ and $ as
 ordinary constraints that match at start and end of input; but plain
 arcs out of the start state should be taken as matches for the character
 before the target substring, and similarly, plain arcs leading to the
 post state are matches for the character after the target substring.
-This definition is necessary to support regexes that begin or end with
-constraints such as \m and \M, which imply requirements on the adjacent
-character if any.  NFAs for simple unanchored patterns will usually have
-pre-state outarcs for all possible character colors as well as BOS and
-BOL, and post-state inarcs for all possible character colors as well as
-EOS and EOL, so that the executor's behavior will work.
+After the optimize() transformation, there are explicit arcs mentioning
+BOS/BOL/EOS/EOL adjacent to the pre-state and post-state.  So a finished
+NFA for a pattern without anchors or adjacent-character constraints will
+have pre-state outarcs for RAINBOW (all possible character colors) as well
+as BOS and BOL, and likewise post-state inarcs for RAINBOW, EOS, and EOL.
+Also note that LACON arcs will never connect to the pre-state
+or post-state.
+
+
+Look-around constraints (LACONs)
+--------------------------------
+
+The regex compiler doesn't have much intelligence about LACONs; it just
+constructs a sub-NFA representing the pattern that the constraint says to
+match or not match, and puts a LACON arc referencing that sub-NFA into the
+main NFA.  At runtime, the executor applies the sub-NFA at each point in
+the string where the constraint is relevant, and then traverses or doesn't
+traverse the arc.  ("Traversal" means including the arc's to-state in the
+set of NFA states that are considered active at the next character.)
+
+The actual basic matching cycle of the executor is
+1.  Identify the color of the next input character, then advance over it.
+2.  Apply the DFA to follow all the matching "plain" arcs of the NFA.
+    (Notionally, the previous DFA state represents the set of states the
+    NFA could have been in before the character, and the new DFA state
+    represents the set of states the NFA could be in after the character.)
+3.  If there are any LACON arcs leading out of any of the new NFA states,
+    apply each LACON constraint starting from the new next input character
+    (while not actually consuming any input).  For each successful LACON,
+    add its to-state to the current set of NFA states.  If any such
+    to-state has outgoing LACON arcs, process those in the same way.
+    (Mathematically speaking, we compute the transitive closure of the
+    set of states reachable by successful LACONs.)
+
+Thus, LACONs are always checked immediately after consuming a character
+via a plain arc.  This is okay because the NFA's "pre" state only has
+plain out-arcs, so we can always consume a character (possibly a BOS
+pseudo-character as described above) before we need to worry about LACONs.

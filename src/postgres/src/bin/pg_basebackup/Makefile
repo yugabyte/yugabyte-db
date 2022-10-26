@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_basebackup
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/pg_basebackup/Makefile
@@ -18,10 +18,21 @@ subdir = src/bin/pg_basebackup
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+# make these available to TAP test scripts
+export TAR
+# Note that GZIP cannot be used directly as this environment variable is
+# used by the command "gzip" to pass down options, so stick with a different
+# name.
+export GZIP_PROGRAM=$(GZIP)
+
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
-OBJS=receivelog.o streamutil.o walmethods.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	receivelog.o \
+	streamutil.o \
+	walmethods.o
 
 all: pg_basebackup pg_receivewal pg_recvlogical
 

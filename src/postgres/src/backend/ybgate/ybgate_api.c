@@ -28,6 +28,8 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
+#include "utils/array.h"
+#include "utils/acl.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/rowtypes.h"
@@ -418,6 +420,13 @@ YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *d
 	return PG_STATUS_OK;
 }
 
+/* YB_TODO(Deepthi@yugabyte)
+ * - Postgres 13 has added some new types. Need to update this function accordingly.
+ * - It'd be best if you use the table "static const YBCPgTypeEntity YbTypeEntityTable[]". Just
+ *   as the attributes that you need, such as (elmlen, elmbyval, ...), and fill the table with
+ *   their values. That way, when upgrading we don't have to seek for location of datatypes every
+ *   where and update the info.
+ */
 YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			     const int type,
 			     uint64_t **result_datum_array,
@@ -572,21 +581,6 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			elmlen = 8;
 			elmbyval = FLOAT8PASSBYVAL;
 			elmalign = 'd';
-			break;
-		case ABSTIMEOID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case RELTIMEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TINTERVALOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
 			break;
 		case ACLITEMOID:
 			elmlen = sizeof(AclItem);

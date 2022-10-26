@@ -5,7 +5,7 @@
  *	  However, we define it here so that the format is documented.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_control.h
@@ -15,13 +15,14 @@
 #ifndef PG_CONTROL_H
 #define PG_CONTROL_H
 
+#include "access/transam.h"
 #include "access/xlogdefs.h"
 #include "pgtime.h"				/* for pg_time_t */
 #include "port/pg_crc32c.h"
 
 
 /* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	1100
+#define PG_CONTROL_VERSION	1300
 
 /* Nonce key length, see below */
 #define MOCK_AUTH_NONCE_LEN		32
@@ -39,8 +40,7 @@ typedef struct CheckPoint
 	TimeLineID	PrevTimeLineID; /* previous TLI, if this record begins a new
 								 * timeline (equals ThisTimeLineID otherwise) */
 	bool		fullPageWrites; /* current full_page_writes */
-	uint32		nextXidEpoch;	/* higher-order bits of nextXid */
-	TransactionId nextXid;		/* next free XID */
+	FullTransactionId nextXid;	/* next free transaction ID */
 	Oid			nextOid;		/* next free OID */
 	MultiXactId nextMulti;		/* next free MultiXactId */
 	MultiXactOffset nextMultiOffset;	/* next free MultiXact offset */
@@ -177,6 +177,7 @@ typedef struct ControlFileData
 	bool		wal_log_hints;
 	int			MaxConnections;
 	int			max_worker_processes;
+	int			max_wal_senders;
 	int			max_prepared_xacts;
 	int			max_locks_per_xact;
 	bool		track_commit_timestamp;
@@ -213,8 +214,6 @@ typedef struct ControlFileData
 	uint32		toast_max_chunk_size;	/* chunk size in TOAST tables */
 	uint32		loblksize;		/* chunk size in pg_largeobject */
 
-	/* flags indicating pass-by-value status of various types */
-	bool		float4ByVal;	/* float4 pass-by-value? */
 	bool		float8ByVal;	/* float8, int8, etc pass-by-value? */
 
 	/* Are data pages protected by checksums? Zero if no checksum version */

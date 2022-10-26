@@ -1,10 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * pmsignal.c
- *	  routines for signaling the postmaster from its child processes
+ *	  routines for signaling between the postmaster and its child processes
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,6 +16,10 @@
 
 #include <signal.h>
 #include <unistd.h>
+
+#ifdef HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
 
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
@@ -51,6 +55,10 @@
  * but carries the extra information that the child is a WAL sender.
  * WAL senders too start in ACTIVE state, but switch to WALSENDER once they
  * start streaming the WAL (and they never go back to ACTIVE after that).
+ *
+ * We also have a shared-memory field that is used for communication in
+ * the opposite direction, from postmaster to children: it tells why the
+ * postmaster has broadcasted SIGQUIT signals, if indeed it has done so.
  */
 
 #define PM_CHILD_UNUSED		0	/* these values must fit in sig_atomic_t */
@@ -61,8 +69,10 @@
 /* "typedef struct PMSignalData PMSignalData" appears in pmsignal.h */
 struct PMSignalData
 {
-	/* per-reason flags */
+	/* per-reason flags for signaling the postmaster */
 	sig_atomic_t PMSignalFlags[NUM_PMSIGNALS];
+	/* global flags for signals from postmaster to children */
+	QuitSignalReason sigquit_reason;	/* why SIGQUIT was sent */
 	/* per-child-process flags */
 	int			num_child_flags;	/* # of entries in PMChildFlags[] */
 	int			next_child_flag;	/* next slot to try to assign */
@@ -71,6 +81,35 @@ struct PMSignalData
 
 NON_EXEC_STATIC volatile PMSignalData *PMSignalState = NULL;
 
+/*
+ * Signal handler to be notified if postmaster dies.
+ */
+#ifdef USE_POSTMASTER_DEATH_SIGNAL
+volatile sig_atomic_t postmaster_possibly_dead = false;
+
+static void
+postmaster_death_handler(int signo)
+{
+	postmaster_possibly_dead = true;
+}
+
+/*
+ * The available signals depend on the OS.  SIGUSR1 and SIGUSR2 are already
+ * used for other things, so choose another one.
+ *
+ * Currently, we assume that we can always find a signal to use.  That
+ * seems like a reasonable assumption for all platforms that are modern
+ * enough to have a parent-death signaling mechanism.
+ */
+#if defined(SIGINFO)
+#define POSTMASTER_DEATH_SIGNAL SIGINFO
+#elif defined(SIGPWR)
+#define POSTMASTER_DEATH_SIGNAL SIGPWR
+#else
+#error "cannot find a signal to use for postmaster death"
+#endif
+
+#endif							/* USE_POSTMASTER_DEATH_SIGNAL */
 
 /*
  * PMSignalShmemSize
@@ -101,6 +140,7 @@ PMSignalShmemInit(void)
 
 	if (!found)
 	{
+		/* initialize all flags to zeroes */
 		MemSet(unvolatize(PMSignalData *, PMSignalState), 0, PMSignalShmemSize());
 		PMSignalState->num_child_flags = MaxLivePostmasterChildren();
 	}
@@ -136,6 +176,34 @@ CheckPostmasterSignal(PMSignalReason reason)
 		return true;
 	}
 	return false;
+}
+
+/*
+ * SetQuitSignalReason - broadcast the reason for a system shutdown.
+ * Should be called by postmaster before sending SIGQUIT to children.
+ *
+ * Note: in a crash-and-restart scenario, the "reason" field gets cleared
+ * as a part of rebuilding shared memory; the postmaster need not do it
+ * explicitly.
+ */
+void
+SetQuitSignalReason(QuitSignalReason reason)
+{
+	PMSignalState->sigquit_reason = reason;
+}
+
+/*
+ * GetQuitSignalReason - obtain the reason for a system shutdown.
+ * Called by child processes when they receive SIGQUIT.
+ * If the postmaster hasn't actually sent SIGQUIT, will return PMQUIT_NOT_SENT.
+ */
+QuitSignalReason
+GetQuitSignalReason(void)
+{
+	/* This is called in signal handlers, so be extra paranoid. */
+	if (!IsUnderPostmaster || PMSignalState == NULL)
+		return PMQUIT_NOT_SENT;
+	return PMSignalState->sigquit_reason;
 }
 
 
@@ -266,28 +334,97 @@ MarkPostmasterChildInactive(void)
 
 
 /*
- * PostmasterIsAlive - check whether postmaster process is still alive
+ * PostmasterIsAliveInternal - check whether postmaster process is still alive
+ *
+ * This is the slow path of PostmasterIsAlive(), where the caller has already
+ * checked 'postmaster_possibly_dead'.  (On platforms that don't support
+ * a signal for parent death, PostmasterIsAlive() is just an alias for this.)
  */
 bool
-PostmasterIsAlive(void)
+PostmasterIsAliveInternal(void)
 {
-#ifndef WIN32
-	char		c;
-	ssize_t		rc;
+#ifdef USE_POSTMASTER_DEATH_SIGNAL
+	/*
+	 * Reset the flag before checking, so that we don't miss a signal if
+	 * postmaster dies right after the check.  If postmaster was indeed dead,
+	 * we'll re-arm it before returning to caller.
+	 */
+	postmaster_possibly_dead = false;
+#endif
 
-	rc = read(postmaster_alive_fds[POSTMASTER_FD_WATCH], &c, 1);
-	if (rc < 0)
+#ifndef WIN32
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		char		c;
+		ssize_t		rc;
+
+		rc = read(postmaster_alive_fds[POSTMASTER_FD_WATCH], &c, 1);
+
+		/*
+		 * In the usual case, the postmaster is still alive, and there is no
+		 * data in the pipe.
+		 */
+		if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
 			return true;
 		else
-			elog(FATAL, "read on postmaster death monitoring pipe failed: %m");
-	}
-	else if (rc > 0)
-		elog(FATAL, "unexpected data in postmaster death monitoring pipe");
+		{
+			/*
+			 * Postmaster is dead, or something went wrong with the read()
+			 * call.
+			 */
 
-	return false;
+#ifdef USE_POSTMASTER_DEATH_SIGNAL
+			postmaster_possibly_dead = true;
+#endif
+
+			if (rc < 0)
+				elog(FATAL, "read on postmaster death monitoring pipe failed: %m");
+			else if (rc > 0)
+				elog(FATAL, "unexpected data in postmaster death monitoring pipe");
+
+			return false;
+		}
+	}
+
 #else							/* WIN32 */
-	return (WaitForSingleObject(PostmasterHandle, 0) == WAIT_TIMEOUT);
+	if (WaitForSingleObject(PostmasterHandle, 0) == WAIT_TIMEOUT)
+		return true;
+	else
+	{
+#ifdef USE_POSTMASTER_DEATH_SIGNAL
+		postmaster_possibly_dead = true;
+#endif
+		return false;
+	}
 #endif							/* WIN32 */
+}
+
+/*
+ * PostmasterDeathSignalInit - request signal on postmaster death if possible
+ */
+void
+PostmasterDeathSignalInit(void)
+{
+#ifdef USE_POSTMASTER_DEATH_SIGNAL
+	int			signum = POSTMASTER_DEATH_SIGNAL;
+
+	/* Register our signal handler. */
+	pqsignal(signum, postmaster_death_handler);
+
+	/* Request a signal on parent exit. */
+#if defined(PR_SET_PDEATHSIG)
+	if (prctl(PR_SET_PDEATHSIG, signum) < 0)
+		elog(ERROR, "could not request parent death signal: %m");
+#elif defined(PROC_PDEATHSIG_CTL)
+	if (procctl(P_PID, 0, PROC_PDEATHSIG_CTL, &signum) < 0)
+		elog(ERROR, "could not request parent death signal: %m");
+#else
+#error "USE_POSTMASTER_DEATH_SIGNAL set, but there is no mechanism to request the signal"
+#endif
+
+	/*
+	 * Just in case the parent was gone already and we missed it, we'd better
+	 * check the slow way on the first call.
+	 */
+	postmaster_possibly_dead = true;
+#endif							/* USE_POSTMASTER_DEATH_SIGNAL */
 }

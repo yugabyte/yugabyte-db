@@ -10,8 +10,10 @@
 #include "postgres_fe.h"
 
 #include "catalog/pg_class_d.h"
-
-#include "fe_utils/connect.h"
+#include "common/connect.h"
+#include "common/logging.h"
+#include "common/string.h"
+#include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
 
@@ -60,9 +62,30 @@ void		sql_exec_dumpalltbspc(PGconn *, struct options *);
 void
 get_opts(int argc, char **argv, struct options *my_opts)
 {
+	static struct option long_options[] = {
+		{"dbname", required_argument, NULL, 'd'},
+		{"host", required_argument, NULL, 'h'},
+		{"host", required_argument, NULL, 'H'}, /* deprecated */
+		{"filenode", required_argument, NULL, 'f'},
+		{"indexes", no_argument, NULL, 'i'},
+		{"oid", required_argument, NULL, 'o'},
+		{"port", required_argument, NULL, 'p'},
+		{"quiet", no_argument, NULL, 'q'},
+		{"tablespaces", no_argument, NULL, 's'},
+		{"system-objects", no_argument, NULL, 'S'},
+		{"table", required_argument, NULL, 't'},
+		{"username", required_argument, NULL, 'U'},
+		{"version", no_argument, NULL, 'V'},
+		{"extended", no_argument, NULL, 'x'},
+		{"help", no_argument, NULL, '?'},
+		{NULL, 0, NULL, 0}
+	};
+
 	int			c;
 	const char *progname;
+	int			optindex;
 
+	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 
 	/* set the defaults */
@@ -93,7 +116,7 @@ get_opts(int argc, char **argv, struct options *my_opts)
 	}
 
 	/* get opts */
-	while ((c = getopt(argc, argv, "H:p:U:d:t:o:f:qSxish")) != -1)
+	while ((c = getopt_long(argc, argv, "d:f:h:H:io:p:qsSt:U:x", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -102,44 +125,15 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				my_opts->dbname = pg_strdup(optarg);
 				break;
 
-				/* specify one tablename to show */
-			case 't':
-				add_one_elt(optarg, my_opts->tables);
-				break;
-
-				/* specify one Oid to show */
-			case 'o':
-				add_one_elt(optarg, my_opts->oids);
-				break;
-
 				/* specify one filenode to show */
 			case 'f':
 				add_one_elt(optarg, my_opts->filenodes);
 				break;
 
-				/* don't show headers */
-			case 'q':
-				my_opts->quiet = true;
-				break;
-
 				/* host to connect to */
-			case 'H':
+			case 'H':			/* deprecated */
+			case 'h':
 				my_opts->hostname = pg_strdup(optarg);
-				break;
-
-				/* port to connect to on remote host */
-			case 'p':
-				my_opts->port = pg_strdup(optarg);
-				break;
-
-				/* username */
-			case 'U':
-				my_opts->username = pg_strdup(optarg);
-				break;
-
-				/* display system tables */
-			case 'S':
-				my_opts->systables = true;
 				break;
 
 				/* also display indexes */
@@ -147,9 +141,19 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				my_opts->indexes = true;
 				break;
 
-				/* display extra columns */
-			case 'x':
-				my_opts->extended = true;
+				/* specify one Oid to show */
+			case 'o':
+				add_one_elt(optarg, my_opts->oids);
+				break;
+
+				/* port to connect to on remote host */
+			case 'p':
+				my_opts->port = pg_strdup(optarg);
+				break;
+
+				/* don't show headers */
+			case 'q':
+				my_opts->quiet = true;
 				break;
 
 				/* dump tablespaces only */
@@ -157,15 +161,38 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				my_opts->tablespaces = true;
 				break;
 
-			case 'h':
-				help(progname);
-				exit(0);
+				/* display system tables */
+			case 'S':
+				my_opts->systables = true;
+				break;
+
+				/* specify one tablename to show */
+			case 't':
+				add_one_elt(optarg, my_opts->tables);
+				break;
+
+				/* username */
+			case 'U':
+				my_opts->username = pg_strdup(optarg);
+				break;
+
+				/* display extra columns */
+			case 'x':
+				my_opts->extended = true;
 				break;
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
 		}
+	}
+
+	if (optind < argc)
+	{
+		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
+				progname, argv[optind]);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
 	}
 }
 
@@ -176,23 +203,26 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTION]...\n"
 		   "\nOptions:\n"
-		   "  -d DBNAME      database to connect to\n"
-		   "  -f FILENODE    show info for table with given file node\n"
-		   "  -H HOSTNAME    database server host or socket directory\n"
-		   "  -i             show indexes and sequences too\n"
-		   "  -o OID         show info for table with given OID\n"
-		   "  -p PORT        database server port number\n"
-		   "  -q             quiet (don't show headers)\n"
-		   "  -s             show all tablespaces\n"
-		   "  -S             show system objects too\n"
-		   "  -t TABLE       show info for named table\n"
-		   "  -U NAME        connect as specified database user\n"
-		   "  -V, --version  output version information, then exit\n"
-		   "  -x             extended (show additional columns)\n"
-		   "  -?, --help     show this help, then exit\n"
+		   "  -f, --filenode=FILENODE    show info for table with given file node\n"
+		   "  -i, --indexes              show indexes and sequences too\n"
+		   "  -o, --oid=OID              show info for table with given OID\n"
+		   "  -q, --quiet                quiet (don't show headers)\n"
+		   "  -s, --tablespaces          show all tablespaces\n"
+		   "  -S, --system-objects       show system objects too\n"
+		   "  -t, --table=TABLE          show info for named table\n"
+		   "  -V, --version              output version information, then exit\n"
+		   "  -x, --extended             extended (show additional columns)\n"
+		   "  -?, --help                 show this help, then exit\n"
+		   "\nConnection options:\n"
+		   "  -d, --dbname=DBNAME        database to connect to\n"
+		   "  -h, --host=HOSTNAME        database server host or socket directory\n"
+		   "  -H                         same as -h, deprecated option\n"
+		   "  -p, --port=PORT            database server port number\n"
+		   "  -U, --username=USERNAME    connect as specified database user\n"
 		   "\nThe default action is to show all database OIDs.\n\n"
-		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
-		   progname, progname);
+		   "Report bugs to <%s>.\n"
+		   "%s home page: <%s>\n",
+		   progname, progname, PACKAGE_BUGREPORT, PACKAGE_NAME, PACKAGE_URL);
 }
 
 /*
@@ -264,8 +294,7 @@ PGconn *
 sql_conn(struct options *my_opts)
 {
 	PGconn	   *conn;
-	bool		have_password = false;
-	char		password[100];
+	char	   *password = NULL;
 	bool		new_pass;
 	PGresult   *res;
 
@@ -287,7 +316,7 @@ sql_conn(struct options *my_opts)
 		keywords[2] = "user";
 		values[2] = my_opts->username;
 		keywords[3] = "password";
-		values[3] = have_password ? password : NULL;
+		values[3] = password;
 		keywords[4] = "dbname";
 		values[4] = my_opts->dbname;
 		keywords[5] = "fallback_application_name";
@@ -300,18 +329,17 @@ sql_conn(struct options *my_opts)
 
 		if (!conn)
 		{
-			fprintf(stderr, "%s: could not connect to database %s\n",
-					"oid2name", my_opts->dbname);
+			pg_log_error("could not connect to database %s",
+						 my_opts->dbname);
 			exit(1);
 		}
 
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
-			!have_password)
+			!password)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -319,8 +347,7 @@ sql_conn(struct options *my_opts)
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
-		fprintf(stderr, "%s: could not connect to database %s: %s",
-				"oid2name", my_opts->dbname, PQerrorMessage(conn));
+		pg_log_error("%s", PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
@@ -328,8 +355,8 @@ sql_conn(struct options *my_opts)
 	res = PQexec(conn, ALWAYS_SECURE_SEARCH_PATH_SQL);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, "oid2name: could not clear search_path: %s\n",
-				PQerrorMessage(conn));
+		pg_log_error("could not clear search_path: %s",
+					 PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
 		exit(-1);
@@ -362,8 +389,8 @@ sql_exec(PGconn *conn, const char *todo, bool quiet)
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "oid2name: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "oid2name: query was: %s\n", todo);
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query was: %s", todo);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -517,8 +544,7 @@ sql_exec_searchtables(PGconn *conn, struct options *opts)
 	free(comma_filenodes);
 
 	/* now build the query */
-	todo = psprintf(
-					"SELECT pg_catalog.pg_relation_filenode(c.oid) as \"Filenode\", relname as \"Table Name\" %s\n"
+	todo = psprintf("SELECT pg_catalog.pg_relation_filenode(c.oid) as \"Filenode\", relname as \"Table Name\" %s\n"
 					"FROM pg_catalog.pg_class c\n"
 					"	LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
 					"	LEFT JOIN pg_catalog.pg_database d ON d.datname = pg_catalog.current_database(),\n"
