@@ -27,6 +27,8 @@
     <img src="https://img.shields.io/github/stars/apache/age"/>
   </a>
   &nbsp;
+  <a href="https://discord.gg/NMsBs9X8Ss">
+    <img src="https://img.shields.io/discord/1022177873127280680.svg?label=discord&style=flat&color=5a66f6"></a>
 </p>
 
 <br>
