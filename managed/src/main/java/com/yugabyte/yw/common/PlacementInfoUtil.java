@@ -258,8 +258,7 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         taskParams.clusterOperation,
-        taskParams.allowGeoPartitioning,
-        taskParams.regionsChanged);
+        taskParams.allowGeoPartitioning);
   }
 
   public static Universe getUniverseForParams(UniverseDefinitionTaskParams taskParams) {
@@ -288,8 +287,7 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         clusterOpType,
-        false,
-        null);
+        false);
   }
 
   private static void updateUniverseDefinition(
@@ -298,8 +296,7 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
-      boolean allowGeoPartitioning,
-      @Nullable Boolean regionsChanged) {
+      boolean allowGeoPartitioning) {
 
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
@@ -326,13 +323,7 @@ public class PlacementInfoUtil {
               && oldCluster.userIntent.numNodes == cluster.userIntent.numNodes;
     }
     updateUniverseDefinition(
-        universe,
-        taskParams,
-        customerId,
-        placementUuid,
-        clusterOpType,
-        allowGeoPartitioning,
-        regionsChanged);
+        universe, taskParams, customerId, placementUuid, clusterOpType, allowGeoPartitioning);
     if (oldCluster != null) {
       // Besides restrictions, resize is only available if no nodes are added/removed.
       // Need to check whether original placement or eventual placement is equal to current.
@@ -351,8 +342,7 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
-      boolean allowGeoPartitioning,
-      @Nullable Boolean regionsChanged) {
+      boolean allowGeoPartitioning) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
 
     LOG.info(
@@ -364,7 +354,7 @@ public class PlacementInfoUtil {
 
     // STEP 1: Validate
     validateAndInitParams(customerId, taskParams, cluster, clusterOpType, universe);
-    UUID defaultRegionUUID = getDefaultRegion(taskParams);
+    UUID defaultRegionUUID = cluster.clusterType == PRIMARY ? getDefaultRegion(taskParams) : null;
 
     // STEP 2: Reset placement if needed
 
@@ -466,8 +456,7 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    setPerAZRF(
-        cluster.placementInfo, cluster.userIntent.replicationFactor, getDefaultRegion(taskParams));
+    setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(
         cluster,

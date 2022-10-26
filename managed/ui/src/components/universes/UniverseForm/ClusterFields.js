@@ -795,7 +795,7 @@ export default class ClusterFields extends Component {
           setPlacementStatus(placementStatusObject);
         }
       }
-      this.configureUniverseNodeList(!_.isEqual(this.state.regionList, prevState.regionList));
+      this.configureUniverseNodeList();
     } else if (currentProvider && currentProvider.code === 'onprem') {
       toggleDisableSubmit(false);
       if (
@@ -1417,7 +1417,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  configureUniverseNodeList(regionsChanged, returnResults = false) {
+  configureUniverseNodeList(returnResults = false) {
     const {
       universe: { universeConfigTemplate, currentUniverse },
       formValues,
@@ -1470,7 +1470,6 @@ export default class ClusterFields extends Component {
     updateTaskParams(universeTaskParams, userIntent, clusterType, isEdit);
     universeTaskParams.resetAZConfig = false;
     universeTaskParams.userAZSelected = false;
-    universeTaskParams.regionsChanged = regionsChanged;
 
     const allowGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
