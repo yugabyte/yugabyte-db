@@ -26,13 +26,14 @@ import {
   CreateXClusterConfigFormValues,
   CreateXClusterConfigFormWarnings
 } from './CreateConfigModal';
-import { SortOrder, YBTableRelationType } from '../constants';
+import { SortOrder } from '../constants';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import YBPagination from '../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../common/CollapsibleNote';
+import { YBTableRelationType } from '../../../redesign/helpers/constants';
 
-import { TableType, Universe } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, YBTable, XClusterTableType } from '../XClusterTypes';
+import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
 import { XClusterTableEligibility } from '../common/TableEligibilityPill';
 
 import styles from './SelectTablesStep.module.scss';
