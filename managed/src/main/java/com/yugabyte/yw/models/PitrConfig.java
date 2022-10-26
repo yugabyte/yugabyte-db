@@ -5,7 +5,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
@@ -26,14 +25,16 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.SnapshotInfo;
 import org.yb.CommonTypes.TableType;
+import org.yb.client.SnapshotInfo;
 
 @ApiModel(description = "")
 @Entity
 @Slf4j
 @Data
+@EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
   private static final Finder<UUID, PitrConfig> find =

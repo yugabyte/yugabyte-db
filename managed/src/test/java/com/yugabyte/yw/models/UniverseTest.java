@@ -21,6 +21,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -352,6 +353,14 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.deviceInfo.volumeSize = 100;
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    u =
+        Universe.saveDetails(
+            u.universeUUID,
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.getPrimaryCluster().regions = ImmutableList.of(r1, r2, r3);
+              universe.setUniverseDetails(universeDetails);
+            });
 
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
