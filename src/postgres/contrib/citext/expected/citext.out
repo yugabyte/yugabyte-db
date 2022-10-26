@@ -222,6 +222,18 @@ SELECT citext_cmp('B'::citext, 'a'::citext) > 0 AS true;
  t
 (1 row)
 
+-- Check the citext_hash() and citext_hash_extended() function explicitly.
+SELECT v as value, citext_hash(v)::bit(32) as standard,
+       citext_hash_extended(v, 0)::bit(32) as extended0,
+       citext_hash_extended(v, 1)::bit(32) as extended1
+FROM   (VALUES (NULL::citext), ('PostgreSQL'), ('eIpUEtqmY89'), ('AXKEJBTK'),
+       ('muop28x03'), ('yi3nm0d73')) x(v)
+WHERE  citext_hash(v)::bit(32) != citext_hash_extended(v, 0)::bit(32)
+       OR citext_hash(v)::bit(32) = citext_hash_extended(v, 1)::bit(32);
+ value | standard | extended0 | extended1 
+-------+----------+-----------+-----------
+(0 rows)
+
 -- Do some tests using a table and index.
 CREATE TEMP TABLE try (
    name citext PRIMARY KEY
@@ -1590,7 +1602,7 @@ SELECT substring('Thomas'::citext from '...$') = 'mas' AS t;
  t
 (1 row)
 
-SELECT substring('Thomas'::citext from '%#"o_a#"_' for '#') = 'oma' AS t;
+SELECT substring('Thomas'::citext similar '%#"o_a#"_' escape '#') = 'oma' AS t;
  t 
 ---
  t
@@ -1829,7 +1841,7 @@ SELECT regexp_match('foobarbequebaz'::citext, '(BAR)(BEQUE)'::citext, 'c'::citex
 
 -- g is not allowed
 SELECT regexp_match('foobarbequebazmorebarbequetoo'::citext, '(BAR)(BEQUE)'::citext, 'g') AS "error";
-ERROR:  regexp_match does not support the global option
+ERROR:  regexp_match() does not support the "global" option
 HINT:  Use the regexp_matches function instead.
 CONTEXT:  SQL function "regexp_match" statement 1
 SELECT regexp_matches('foobarbequebaz'::citext, '(bar)(beque)') = ARRAY[ 'bar', 'beque' ] AS t;
@@ -2597,7 +2609,7 @@ SELECT citext_pattern_ge('b'::citext, 'A'::citext) AS true;
  t
 (1 row)
 
--- Multi-byte tests below are diabled like the sanity tests above.
+-- Multi-byte tests below are disabled like the sanity tests above.
 -- Uncomment to run them.
 -- Test ~<~ and ~<=~
 SELECT 'a'::citext ~<~  'B'::citext AS t;

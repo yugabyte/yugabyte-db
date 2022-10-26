@@ -1,6 +1,0 @@
-# src/test/regress/yb_distinct_pushdown_schedule
-#
-####################################################################################################
-# Postgres Testsuites: This suite includes tests on distinct pushdown.
-####################################################################################################
-test: yb_distinct_pushdown

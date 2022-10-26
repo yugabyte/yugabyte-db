@@ -2,7 +2,7 @@
 #
 # Makefile for src/backend/utils/mb/Unicode
 #
-# Copyright (c) 2001-2018, PostgreSQL Global Development Group
+# Copyright (c) 2001-2021, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/Makefile
 #
@@ -115,35 +115,32 @@ maintainer-clean: distclean
 	rm -f $(MAPS)
 
 
-DOWNLOAD = wget -O $@ --no-use-server-timestamps
-#DOWNLOAD = curl -o $@
-
 BIG5.TXT CNS11643.TXT:
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/OTHER/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/OTHER/$(@F)
 
 euc-jis-2004-std.txt sjis-0213-2004-std.txt:
 	$(DOWNLOAD) http://x0213.org/codetable/$(@F)
 
 gb-18030-2000.xml windows-949-2000.xml:
-	$(DOWNLOAD) https://ssl.icu-project.org/repos/icu/data/trunk/charset/data/xml/$(@F)
+	$(DOWNLOAD) https://raw.githubusercontent.com/unicode-org/icu-data/master/charset/data/xml/$(@F)
 
 GB2312.TXT:
 	$(DOWNLOAD) 'http://trac.greenstone.org/browser/trunk/gsdl/unicode/MAPPINGS/EASTASIA/GB/GB2312.TXT?rev=1842&format=txt'
 
 JIS0212.TXT:
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/JIS/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/JIS/$(@F)
 
 JOHAB.TXT KSX1001.TXT:
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/KSC/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/OBSOLETE/EASTASIA/KSC/$(@F)
 
 KOI8-R.TXT KOI8-U.TXT:
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/VENDORS/MISC/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/VENDORS/MISC/$(@F)
 
 $(ISO8859TEXTS):
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/ISO8859/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/ISO8859/$(@F)
 
 $(filter-out CP8%,$(WINTEXTS)) CP932.TXT CP950.TXT:
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/WINDOWS/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/WINDOWS/$(@F)
 
 $(filter CP8%,$(WINTEXTS)):
-	$(DOWNLOAD) http://ftp.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/PC/$(@F)
+	$(DOWNLOAD) https://www.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/PC/$(@F)

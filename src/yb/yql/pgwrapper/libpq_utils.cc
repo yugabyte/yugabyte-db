@@ -63,7 +63,9 @@ std::string ExecStatusTypeToStr(ExecStatusType exec_status_type) {
     (PGRES_NONFATAL_ERROR) \
     (PGRES_FATAL_ERROR) \
     (PGRES_COPY_BOTH) \
-    (PGRES_SINGLE_TUPLE)
+    (PGRES_SINGLE_TUPLE) \
+    (PGRES_PIPELINE_SYNC) \
+    (PGRES_PIPELINE_ABORTED)
   switch (exec_status_type) {
     BOOST_PP_SEQ_FOR_EACH(EXEC_STATUS_SWITCH_CASE, ~, EXEC_STATUS_TYPE_ENUM_ELEMENTS)
   }

@@ -98,12 +98,15 @@ create aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any") (
   hypothetical
 );
 
-alter aggregate my_percentile_disc(float8 ORDER BY anyelement)
-  rename to test_percentile_disc;
-alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
-  rename to test_rank;
+-- TODO(jason): uncomment when issue #2172 is closed or closing.
+-- alter aggregate my_percentile_disc(float8 ORDER BY anyelement)
+--   rename to test_percentile_disc;
+-- alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
+--   rename to test_rank;
 
-\da test_*
+-- TODO(jason): rename `my_*` to `test_*` when issue #2172 is closed or
+-- closing.
+\da my_*
 
 -- moving-aggregate options
 

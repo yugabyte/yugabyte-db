@@ -20,16 +20,21 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#pragma once
+#ifndef YBCPLAN_H
+#define YBCPLAN_H
 
 #include "postgres.h"
+#include "access/relation.h"
 #include "nodes/plannodes.h"
-#include "nodes/relation.h"
 #include "utils/rel.h"
-
+#include "commands/explain.h"
 
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
+bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
+
+#endif // YBCPLAN_H
+
+

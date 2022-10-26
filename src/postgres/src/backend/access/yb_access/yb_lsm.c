@@ -194,7 +194,7 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 }
 
 static void
-ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isnull,
+ybcinbuildCallback(Relation index, ItemPointer tid, Datum *values, bool *isnull,
 				   bool tupleIsAlive, void *state)
 {
 	YBCBuildState  *buildstate = (YBCBuildState *)state;
@@ -203,7 +203,7 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 		YBCExecuteInsertIndex(index,
 							  values,
 							  isnull,
-							  heapTuple->t_ybctid,
+							  tid,
 							  buildstate->backfill_write_time,
 							  doBindsForIdxWrite,
 							  NULL /* indexstate */);
@@ -227,8 +227,8 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	 */
 	if (!index->rd_index->indisprimary)
 	{
-		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-										 ybcinbuildCallback, &buildstate, NULL);
+		heap_tuples = table_index_build_scan(heap, index, indexInfo, true, false,
+											 ybcinbuildCallback, &buildstate, NULL);
 	}
 	/*
 	 * Return statistics
@@ -278,7 +278,7 @@ ybcinbuildempty(Relation index)
 }
 
 bool
-ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
+ybcininsert(Relation index, Datum *values, bool *isnull, ItemPointer tid, Relation heap,
 			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo, bool sharedInsert)
 {
 	if (!index->rd_index->indisprimary)
@@ -290,7 +290,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 
 			YB_FOR_EACH_DB(pg_db_tuple)
 			{
-				Oid dboid = HeapTupleGetOid(pg_db_tuple);
+				Oid dboid = YbHeapTupleGetOid(pg_db_tuple); /* TODO(Alex) */
 				/*
 				 * Since this is a catalog index, we assume it exists in all databases.
 				 * YB doesn't use PG locks so it's okay not to take them.
@@ -299,7 +299,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 										   index,
 										   values,
 										   isnull,
-										   ybctid,
+										   tid,
 										   NULL /* backfill_write_time */,
 										   doBindsForIdxWrite,
 										   NULL /* indexstate */);
@@ -310,7 +310,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 			YBCExecuteInsertIndex(index,
 								  values,
 								  isnull,
-								  ybctid,
+								  tid,
 								  NULL /* backfill_write_time */,
 								  doBindsForIdxWrite,
 								  NULL /* indexstate */);
@@ -426,8 +426,7 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
 									 scan->xs_want_itup, nscankeys, scankey,
 									 scan->yb_scan_plan, scan->yb_rel_pushdown,
-									 scan->yb_idx_pushdown, scan->yb_aggrefs,
-									 scan->yb_exec_params);
+									 scan->yb_idx_pushdown);
 	scan->opaque = ybScan;
 }
 
@@ -448,70 +447,23 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
-	/* exec_params can be NULL in case of systable_getnext, for example. */
-	if (ybscan->exec_params)
-		ybscan->exec_params->work_mem = work_mem;
-
-	/* Special case: aggregate pushdown. */
-	if (scan->yb_aggrefs)
-	{
-		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
-		 * ybc_getnext_indextuple.
-		 */
-		if (ybscan->quit_scan)
-			return NULL;
-
-		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.
-		 */
-		Assert(ybscan->prepare_params.index_only_scan);
-
-		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
-		 * ybc_getnext_indextuple.
-		 */
-		scan->xs_recheck = (ybscan->nhash_keys > 0 ||
-							!ybscan->is_full_cond_bound);
-		if (!ybscan->is_exec_done)
-		{
-			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
-											   is_forward_scan));
-			HandleYBStatus(YBCPgExecSelect(ybscan->handle,
-										   ybscan->exec_params));
-			ybscan->is_exec_done = true;
-		}
-
-		/*
-		 * Aggregate pushdown directly modifies the scan slot rather than
-		 * passing it through xs_hitup or xs_itup.
-		 *
-		 * The index id passed into ybFetchNext is likely not going to be used
-		 * as it is only used for system table scans, which have oid, and there
-		 * shouldn't exist any system table secondary indexes that index the
-		 * oid column.
-		 * TODO(jason): deduplicate with ybcingettuple.
-		 */
-		scan->yb_agg_slot =
-			ybFetchNext(ybscan->handle, scan->yb_agg_slot,
-						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
+	if (!ybscan->exec_params) {
+		ereport(DEBUG1, (errmsg("null exec_params")));
 	}
+	Assert(PointerIsValid(ybscan));
 
 	/*
 	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
-	scan->xs_ctup.t_ybctid = 0;
-	bool has_tuple = false;
+	scan->xs_heaptid.yb_item.ybctid = 0;
 	if (ybscan->prepare_params.index_only_scan)
 	{
 		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
+			scan->xs_heaptid.yb_item = INDEXTUPLE_YBITEM(tuple);
 			scan->xs_itup = tuple;
 			scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
-			has_tuple = true;
 		}
 	}
 	else
@@ -519,14 +471,13 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
-			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
+			scan->xs_heaptid.yb_item = HEAPTUPLE_YBITEM(tuple);
 			scan->xs_hitup = tuple;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
-			has_tuple = true;
 		}
 	}
 
-	return has_tuple;
+	return scan->xs_heaptid.yb_item.ybctid != 0;
 }
 
 void

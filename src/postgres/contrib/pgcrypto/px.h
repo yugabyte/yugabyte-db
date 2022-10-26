@@ -37,22 +37,6 @@
 /* keep debug messages? */
 #define PX_DEBUG
 
-/* a way to disable palloc
- * - useful if compiled into standalone
- */
-#ifndef PX_OWN_ALLOC
-#define px_alloc(s) palloc(s)
-#define px_realloc(p, s) repalloc(p, s)
-#define px_free(p)	pfree(p)
-#else
-void	   *px_alloc(size_t s);
-void	   *px_realloc(void *p, size_t s);
-void		px_free(void *p);
-#endif
-
-/* max len of 'type' parms */
-#define PX_MAX_NAMELEN		128
-
 /* max salt returned */
 #define PX_MAX_SALT_LEN		128
 
@@ -77,6 +61,7 @@ void		px_free(void *p);
 #define PXE_MCRYPT_INTERNAL			-16
 #define PXE_NO_RANDOM				-17
 #define PXE_DECRYPT_FAILED			-18
+#define PXE_ENCRYPT_FAILED			-19
 
 #define PXE_PGP_CORRUPT_DATA		-100
 #define PXE_PGP_CORRUPT_ARMOR		-101

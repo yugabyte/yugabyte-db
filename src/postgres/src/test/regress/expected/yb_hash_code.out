@@ -357,8 +357,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 512)
-   Remote Filter: (x < 90)
-(3 rows)
+   Filter: (x < 90)
+   Rows Removed by Filter: 84
+(4 rows)
 
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
  x  | y
@@ -456,6 +457,23 @@ SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
  8646 | 8646 | 8646 | 8646 | 8646
 (1 row)
 
+-- pushdown should not occur in this case but it should
+-- operate as a normal index expression
+CREATE INDEX ybhashtjidx ON text_table (yb_hash_code(tj));
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Index Scan using ybhashtjidx on text_table (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(tj) = 63)
+(2 rows)
+
+SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
+  hr  |  ti  |  tj  |  i   |  j
+------+------+------+------+------
+ 1363 | 1363 | 1363 | 1363 | 1363
+(1 row)
+
+DROP INDEX ybhashtjidx;
 -- testing pushdown on a secondary index with a text hash column
 CREATE INDEX textidx ON text_table (tj);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;

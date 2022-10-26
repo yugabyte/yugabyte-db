@@ -5,6 +5,8 @@
 
 #include <pgtypes_timestamp.h>
 
+#include <time.h>
+
 #define MAXTZLEN			 10
 
 typedef int32 fsec_t;
@@ -143,8 +145,6 @@ typedef int32 fsec_t;
 #define DTK_AGO			5
 
 #define DTK_SPECIAL		6
-#define DTK_INVALID		7
-#define DTK_CURRENT		8
 #define DTK_EARLY		9
 #define DTK_LATE		10
 #define DTK_EPOCH		11
@@ -327,15 +327,15 @@ void		GetCurrentDateTime(struct tm *);
 int			date2j(int, int, int);
 void		TrimTrailingZeros(char *);
 void		dt2time(double, int *, int *, int *, fsec_t *);
-int PGTYPEStimestamp_defmt_scan(char **str, char *fmt, timestamp * d,
-							int *year, int *month, int *day,
-							int *hour, int *minute, int *second,
-							int *tz);
+int			PGTYPEStimestamp_defmt_scan(char **str, char *fmt, timestamp * d,
+										int *year, int *month, int *day,
+										int *hour, int *minute, int *second,
+										int *tz);
 
 extern char *pgtypes_date_weekdays_short[];
 extern char *pgtypes_date_months[];
 extern char *months[];
 extern char *days[];
-extern int	day_tab[2][13];
+extern const int day_tab[2][13];
 
 #endif							/* DT_H */

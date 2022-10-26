@@ -1,3 +1,11 @@
+CREATE INDEX onek_two_idx ON onek USING lsm(two);
+
+DROP INDEX onek_two_idx;
+
+DROP INDEX onek_two_idx;
+
+DROP INDEX IF EXISTS onek_two_idx;
+
 --
 -- Create index on existing table with data
 --
@@ -275,7 +283,7 @@ DROP INDEX test_method_h1_idx3;
 CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
 CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
 
-CREATE DATABASE colocation_test colocation = true;
+CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
 CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
   PRIMARY KEY (r1, r2));
@@ -367,7 +375,6 @@ CREATE INDEX ON test_method ((h2) HASH);
 \d test_method
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
 SELECT * FROM test_method WHERE h2 = 258;
-DROP TABLE test_method;
 
 -- Test more HASH key cases in PRIMARY KEY
 CREATE TABLE test_hash (
@@ -465,17 +472,6 @@ INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
 CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 
 DROP TABLE test_index_nonconcurrently;
-
--- Verify that creating indexes on a YB table does not update table stats.
-CREATE TABLE test_stats (i INT);
-INSERT INTO test_stats VALUES (1), (2), (3);
-ANALYZE test_stats;
-SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
-CREATE INDEX CONCURRENTLY ON test_stats(i);
-SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
-CREATE INDEX NONCONCURRENTLY ON test_stats(i);
-SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
-DROP TABLE test_stats;
 
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);

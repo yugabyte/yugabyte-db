@@ -3,7 +3,7 @@
  * ts_parse.c
  *		main parse functions for tsearch
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -204,13 +204,11 @@ LexizeExec(LexizeData *ld, ParsedLex **correspondLexem)
 
 				ld->dictState.isend = ld->dictState.getnext = false;
 				ld->dictState.private_state = NULL;
-				res = (TSLexeme *) DatumGetPointer(FunctionCall4(
-																 &(dict->lexize),
+				res = (TSLexeme *) DatumGetPointer(FunctionCall4(&(dict->lexize),
 																 PointerGetDatum(dict->dictData),
 																 PointerGetDatum(curValLemm),
 																 Int32GetDatum(curValLenLemm),
-																 PointerGetDatum(&ld->dictState)
-																 ));
+																 PointerGetDatum(&ld->dictState)));
 
 				if (ld->dictState.getnext)
 				{
@@ -282,7 +280,7 @@ LexizeExec(LexizeData *ld, ParsedLex **correspondLexem)
 				if (!dictExists)
 				{
 					/*
-					 * Dictionary can't work with current tpe of lexeme,
+					 * Dictionary can't work with current type of lexeme,
 					 * return to basic mode and redo all stored lexemes
 					 */
 					ld->curDictId = InvalidOid;
@@ -290,16 +288,14 @@ LexizeExec(LexizeData *ld, ParsedLex **correspondLexem)
 				}
 			}
 
-			ld->dictState.isend = (curVal->type == 0) ? true : false;
+			ld->dictState.isend = (curVal->type == 0);
 			ld->dictState.getnext = false;
 
-			res = (TSLexeme *) DatumGetPointer(FunctionCall4(
-															 &(dict->lexize),
+			res = (TSLexeme *) DatumGetPointer(FunctionCall4(&(dict->lexize),
 															 PointerGetDatum(dict->dictData),
 															 PointerGetDatum(curVal->lemm),
 															 Int32GetDatum(curVal->lenlemm),
-															 PointerGetDatum(&ld->dictState)
-															 ));
+															 PointerGetDatum(&ld->dictState)));
 
 			if (ld->dictState.getnext)
 			{
@@ -440,7 +436,7 @@ parsetext(Oid cfgId, ParsedText *prs, char *buf, int buflen)
 static void
 hladdword(HeadlineParsedText *prs, char *buf, int buflen, int type)
 {
-	while (prs->curwords >= prs->lenwords)
+	if (prs->curwords >= prs->lenwords)
 	{
 		prs->lenwords *= 2;
 		prs->words = (HeadlineWordEntry *) repalloc((void *) prs->words, prs->lenwords * sizeof(HeadlineWordEntry));

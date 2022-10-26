@@ -3,7 +3,7 @@
  * windowfuncs.c
  *	  Standard window functions defined in SQL spec.
  *
- * Portions Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2000-2021, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -37,7 +37,7 @@ typedef struct
 
 static bool rank_up(WindowObject winobj);
 static Datum leadlag_common(FunctionCallInfo fcinfo,
-			   bool forward, bool withoffset, bool withdefault);
+							bool forward, bool withoffset, bool withdefault);
 
 
 /*

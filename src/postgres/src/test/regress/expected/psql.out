@@ -76,6 +76,28 @@ four  | 4
 (1 row)
 
 \unset FETCH_COUNT
+-- \g/\gx with pset options
+SELECT 1 as one, 2 as two \g (format=csv csv_fieldsep='\t')
+one	two
+1	2
+\g
+ one | two 
+-----+-----
+   1 |   2
+(1 row)
+
+SELECT 1 as one, 2 as two \gx (title='foo bar')
+foo bar
+-[ RECORD 1 ]
+one | 1
+two | 2
+
+\g
+ one | two 
+-----+-----
+   1 |   2
+(1 row)
+
 -- \gset
 select 10 as test01, 20 as test02, 'Hello' as test03 \gset pref01_
 \echo :pref01_test01 :pref01_test02 :pref01_test03
@@ -264,6 +286,7 @@ select '2000-01-01'::date as party_over
 \pset
 border                   1
 columns                  0
+csv_fieldsep             ','
 expanded                 off
 fieldsep                 '|'
 fieldsep_zero            off
@@ -283,6 +306,7 @@ unicode_border_linestyle single
 unicode_column_linestyle single
 unicode_header_linestyle single
 -- test multi-line headers, wrapping, and newline indicators
+-- in aligned, unaligned, and wrapped formats
 prepare q as select array_to_string(array_agg(repeat('x',2*n)),E'\n') as "ab
 
 c", array_to_string(array_agg(repeat('y',20-2*n)),E'\n') as "a
@@ -2640,71 +2664,360 @@ execute q;
 
 deallocate q;
 \pset linestyle ascii
-prepare q as select ' | = | lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&' as " | -- | 012345678 9abc def!*@#&!@(*&*~~_+-=\ \", '11' as "0123456789", 11 as int from generate_series(1,10) as n;
+\pset border 1
+-- support table for output-format tests (useful to create a footer)
+create table psql_serial_tab (id serial);
+-- test header/footer/tuples_only behavior in aligned/unaligned/wrapped cases
+\pset format aligned
+\pset expanded off
+\d psql_serial_tab_id_seq
+               Sequence "public.psql_serial_tab_id_seq"
+  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
+---------+-------+---------+------------+-----------+---------+-------
+ integer |     1 |       1 | 2147483647 |         1 | no      |     1
+Owned by: public.psql_serial_tab.id
+
+\pset tuples_only true
+\df exp
+ pg_catalog | exp  | double precision | double precision    | func
+ pg_catalog | exp  | numeric          | numeric             | func
+
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+Sequence "public.psql_serial_tab_id_seq"
+-[ RECORD 1 ]---------
+Type      | integer
+Start     | 1
+Minimum   | 1
+Maximum   | 2147483647
+Increment | 1
+Cycles?   | no
+Cache     | 1
+
+Owned by: public.psql_serial_tab.id
+
+\pset tuples_only true
+\df exp
+Schema              | pg_catalog
+Name                | exp
+Result data type    | double precision
+Argument data types | double precision
+Type                | func
+--------------------+-----------------
+Schema              | pg_catalog
+Name                | exp
+Result data type    | numeric
+Argument data types | numeric
+Type                | func
+
+\pset tuples_only false
+-- empty table is a special case for this format
+select 1 where false;
+(0 rows)
+
+\pset format unaligned
+\pset expanded off
+\d psql_serial_tab_id_seq
+Sequence "public.psql_serial_tab_id_seq"
+Type|Start|Minimum|Maximum|Increment|Cycles?|Cache
+integer|1|1|2147483647|1|no|1
+Owned by: public.psql_serial_tab.id
+\pset tuples_only true
+\df exp
+pg_catalog|exp|double precision|double precision|func
+pg_catalog|exp|numeric|numeric|func
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+Sequence "public.psql_serial_tab_id_seq"
+
+Type|integer
+Start|1
+Minimum|1
+Maximum|2147483647
+Increment|1
+Cycles?|no
+Cache|1
+
+Owned by: public.psql_serial_tab.id
+\pset tuples_only true
+\df exp
+Schema|pg_catalog
+Name|exp
+Result data type|double precision
+Argument data types|double precision
+Type|func
+
+Schema|pg_catalog
+Name|exp
+Result data type|numeric
+Argument data types|numeric
+Type|func
+\pset tuples_only false
+\pset format wrapped
+\pset expanded off
+\d psql_serial_tab_id_seq
+               Sequence "public.psql_serial_tab_id_seq"
+  Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
+---------+-------+---------+------------+-----------+---------+-------
+ integer |     1 |       1 | 2147483647 |         1 | no      |     1
+Owned by: public.psql_serial_tab.id
+
+\pset tuples_only true
+\df exp
+ pg_catalog | exp  | double precision | double precision    | func
+ pg_catalog | exp  | numeric          | numeric             | func
+
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+Sequence "public.psql_serial_tab_id_seq"
+-[ RECORD 1 ]---------
+Type      | integer
+Start     | 1
+Minimum   | 1
+Maximum   | 2147483647
+Increment | 1
+Cycles?   | no
+Cache     | 1
+
+Owned by: public.psql_serial_tab.id
+
+\pset tuples_only true
+\df exp
+Schema              | pg_catalog
+Name                | exp
+Result data type    | double precision
+Argument data types | double precision
+Type                | func
+--------------------+-----------------
+Schema              | pg_catalog
+Name                | exp
+Result data type    | numeric
+Argument data types | numeric
+Type                | func
+
+\pset tuples_only false
+-- check conditional am display
+\pset expanded off
+CREATE SCHEMA tableam_display;
+CREATE ROLE regress_display_role;
+ALTER SCHEMA tableam_display OWNER TO regress_display_role;
+SET search_path TO tableam_display;
+CREATE ACCESS METHOD heap_psql TYPE TABLE HANDLER heap_tableam_handler;
+SET ROLE TO regress_display_role;
+-- Use only relations with a physical size of zero.
+CREATE TABLE tbl_heap_psql(f1 int, f2 char(100)) using heap_psql;
+CREATE TABLE tbl_heap(f1 int, f2 char(100)) using heap;
+CREATE VIEW view_heap_psql AS SELECT f1 from tbl_heap_psql;
+CREATE MATERIALIZED VIEW mat_view_heap_psql USING heap_psql AS SELECT f1 from tbl_heap_psql;
+\d+ tbl_heap_psql
+                              Table "tableam_display.tbl_heap_psql"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ f1     | integer        |           |          |         | plain    |              | 
+ f2     | character(100) |           |          |         | extended |              | 
+
+\d+ tbl_heap
+                                 Table "tableam_display.tbl_heap"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ f1     | integer        |           |          |         | plain    |              | 
+ f2     | character(100) |           |          |         | extended |              | 
+
+\set HIDE_TABLEAM off
+\d+ tbl_heap_psql
+                              Table "tableam_display.tbl_heap_psql"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ f1     | integer        |           |          |         | plain    |              | 
+ f2     | character(100) |           |          |         | extended |              | 
+Access method: heap_psql
+
+\d+ tbl_heap
+                                 Table "tableam_display.tbl_heap"
+ Column |      Type      | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+----------------+-----------+----------+---------+----------+--------------+-------------
+ f1     | integer        |           |          |         | plain    |              | 
+ f2     | character(100) |           |          |         | extended |              | 
+Access method: heap
+
+-- AM is displayed for tables, indexes and materialized views.
+\d+
+                                                           List of relations
+     Schema      |        Name        |       Type        |        Owner         | Persistence | Access method |  Size   | Description 
+-----------------+--------------------+-------------------+----------------------+-------------+---------------+---------+-------------
+ tableam_display | mat_view_heap_psql | materialized view | regress_display_role | permanent   | heap_psql     | 0 bytes | 
+ tableam_display | tbl_heap           | table             | regress_display_role | permanent   | heap          | 0 bytes | 
+ tableam_display | tbl_heap_psql      | table             | regress_display_role | permanent   | heap_psql     | 0 bytes | 
+ tableam_display | view_heap_psql     | view              | regress_display_role | permanent   |               | 0 bytes | 
+(4 rows)
+
+\dt+
+                                                  List of relations
+     Schema      |     Name      | Type  |        Owner         | Persistence | Access method |  Size   | Description 
+-----------------+---------------+-------+----------------------+-------------+---------------+---------+-------------
+ tableam_display | tbl_heap      | table | regress_display_role | permanent   | heap          | 0 bytes | 
+ tableam_display | tbl_heap_psql | table | regress_display_role | permanent   | heap_psql     | 0 bytes | 
+(2 rows)
+
+\dm+
+                                                           List of relations
+     Schema      |        Name        |       Type        |        Owner         | Persistence | Access method |  Size   | Description 
+-----------------+--------------------+-------------------+----------------------+-------------+---------------+---------+-------------
+ tableam_display | mat_view_heap_psql | materialized view | regress_display_role | permanent   | heap_psql     | 0 bytes | 
+(1 row)
+
+-- But not for views and sequences.
+\dv+
+                                          List of relations
+     Schema      |      Name      | Type |        Owner         | Persistence |  Size   | Description 
+-----------------+----------------+------+----------------------+-------------+---------+-------------
+ tableam_display | view_heap_psql | view | regress_display_role | permanent   | 0 bytes | 
+(1 row)
+
+\set HIDE_TABLEAM on
+\d+
+                                                   List of relations
+     Schema      |        Name        |       Type        |        Owner         | Persistence |  Size   | Description 
+-----------------+--------------------+-------------------+----------------------+-------------+---------+-------------
+ tableam_display | mat_view_heap_psql | materialized view | regress_display_role | permanent   | 0 bytes | 
+ tableam_display | tbl_heap           | table             | regress_display_role | permanent   | 0 bytes | 
+ tableam_display | tbl_heap_psql      | table             | regress_display_role | permanent   | 0 bytes | 
+ tableam_display | view_heap_psql     | view              | regress_display_role | permanent   | 0 bytes | 
+(4 rows)
+
+RESET ROLE;
+RESET search_path;
+DROP SCHEMA tableam_display CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table tableam_display.tbl_heap_psql
+drop cascades to table tableam_display.tbl_heap
+drop cascades to view tableam_display.view_heap_psql
+drop cascades to materialized view tableam_display.mat_view_heap_psql
+DROP ACCESS METHOD heap_psql;
+DROP ROLE regress_display_role;
+-- test numericlocale (as best we can without control of psql's locale)
+\pset format aligned
+\pset expanded off
+\pset numericlocale true
+select n, -n as m, n * 111 as x, '1e90'::float8 as f
+from generate_series(0,3) n;
+ n | m  |  x  |   f   
+---+----+-----+-------
+ 0 |  0 |   0 | 1e+90
+ 1 | -1 | 111 | 1e+90
+ 2 | -2 | 222 | 1e+90
+ 3 | -3 | 333 | 1e+90
+(4 rows)
+
+\pset numericlocale false
+-- test asciidoc output format
 \pset format asciidoc
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+
+.Sequence "public.psql_serial_tab_id_seq"
+[options="header",cols="<l,>l,>l,>l,>l,<l,>l",frame="none"]
+|====
+^l|Type ^l|Start ^l|Minimum ^l|Maximum ^l|Increment ^l|Cycles? ^l|Cache
+|integer |1 |1 |2147483647 |1 |no |1
+|====
+
+....
+Owned by: public.psql_serial_tab.id
+....
+\pset tuples_only true
+\df exp
+
+[cols="<l,<l,<l,<l,<l",frame="none"]
+|====
+|pg_catalog |exp |double precision |double precision |func
+|pg_catalog |exp |numeric |numeric |func
+|====
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+
+.Sequence "public.psql_serial_tab_id_seq"
+[cols="h,l",frame="none"]
+|====
+2+^|Record 1
+<l|Type <l|integer
+<l|Start >l|1
+<l|Minimum >l|1
+<l|Maximum >l|2147483647
+<l|Increment >l|1
+<l|Cycles? <l|no
+<l|Cache >l|1
+|====
+
+....
+Owned by: public.psql_serial_tab.id
+....
+\pset tuples_only true
+\df exp
+
+[cols="h,l",frame="none"]
+|====
+2+|
+<l|Schema <l|pg_catalog
+<l|Name <l|exp
+<l|Result data type <l|double precision
+<l|Argument data types <l|double precision
+<l|Type <l|func
+2+|
+<l|Schema <l|pg_catalog
+<l|Name <l|exp
+<l|Result data type <l|numeric
+<l|Argument data types <l|numeric
+<l|Type <l|func
+|====
+\pset tuples_only false
+prepare q as
+  select 'some|text' as "a|title", '        ' as "empty ", n as int
+  from generate_series(1,2) as n;
 \pset expanded off
 \pset border 0
 execute q;
 
 [options="header",cols="<l,<l,>l",frame="none",grid="none"]
 |====
-^l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ ^l|0123456789 ^l|int
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
+^l|a\|title ^l|empty  ^l|int
+|some\|text |  |1
+|some\|text |  |2
 |====
 
 ....
-(10 rows)
+(2 rows)
 ....
 \pset border 1
 execute q;
 
 [options="header",cols="<l,<l,>l",frame="none"]
 |====
-^l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ ^l|0123456789 ^l|int
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
+^l|a\|title ^l|empty  ^l|int
+|some\|text |  |1
+|some\|text |  |2
 |====
 
 ....
-(10 rows)
+(2 rows)
 ....
 \pset border 2
 execute q;
 
 [options="header",cols="<l,<l,>l",frame="all",grid="all"]
 |====
-^l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ ^l|0123456789 ^l|int
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
-| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (& |11 |11
+^l|a\|title ^l|empty  ^l|int
+|some\|text |  |1
+|some\|text |  |2
 |====
 
 ....
-(10 rows)
+(2 rows)
 ....
 \pset expanded on
 \pset border 0
@@ -2713,45 +3026,13 @@ execute q;
 [cols="h,l",frame="none",grid="none"]
 |====
 2+^|Record 1
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|1
 2+^|Record 2
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 3
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 4
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 5
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 6
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 7
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 8
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 9
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 10
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|2
 |====
 \pset border 1
 execute q;
@@ -2759,45 +3040,13 @@ execute q;
 [cols="h,l",frame="none"]
 |====
 2+^|Record 1
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|1
 2+^|Record 2
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 3
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 4
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 5
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 6
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 7
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 8
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 9
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 10
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|2
 |====
 \pset border 2
 execute q;
@@ -2805,50 +3054,1237 @@ execute q;
 [cols="h,l",frame="all",grid="all"]
 |====
 2+^|Record 1
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|1
 2+^|Record 2
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 3
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 4
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 5
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 6
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 7
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 8
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 9
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
-2+^|Record 10
-<l| \| -- \| 012345678 9abc def!*@#&!@(*&*~~_+-=\ \ <l| \| = \| lkjsafi\\/ /oeu rio)(!@&*#)*(!&@*) \ (&
-<l|0123456789 <l|11
-<l|int >l|11
+<l|a\|title <l|some\|text
+<l|empty  <l| 
+<l|int >l|2
 |====
 deallocate q;
+-- test csv output format
+\pset format csv
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+Type,Start,Minimum,Maximum,Increment,Cycles?,Cache
+integer,1,1,2147483647,1,no,1
+\pset tuples_only true
+\df exp
+pg_catalog,exp,double precision,double precision,func
+pg_catalog,exp,numeric,numeric,func
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+Type,integer
+Start,1
+Minimum,1
+Maximum,2147483647
+Increment,1
+Cycles?,no
+Cache,1
+\pset tuples_only true
+\df exp
+Schema,pg_catalog
+Name,exp
+Result data type,double precision
+Argument data types,double precision
+Type,func
+Schema,pg_catalog
+Name,exp
+Result data type,numeric
+Argument data types,numeric
+Type,func
+\pset tuples_only false
+prepare q as
+  select 'some"text' as "a""title", E'  <foo>\n<bar>' as "junk",
+         '   ' as "empty", n as int
+  from generate_series(1,2) as n;
+\pset expanded off
+execute q;
+"a""title",junk,empty,int
+"some""text","  <foo>
+<bar>",   ,1
+"some""text","  <foo>
+<bar>",   ,2
+\pset expanded on
+execute q;
+"a""title","some""text"
+junk,"  <foo>
+<bar>"
+empty,   
+int,1
+"a""title","some""text"
+junk,"  <foo>
+<bar>"
+empty,   
+int,2
+deallocate q;
+-- special cases
+\pset expanded off
+select 'comma,comma' as comma, 'semi;semi' as semi;
+comma,semi
+"comma,comma",semi;semi
+\pset csv_fieldsep ';'
+select 'comma,comma' as comma, 'semi;semi' as semi;
+comma;semi
+comma,comma;"semi;semi"
+select '\.' as data;
+data
+"\."
+\pset csv_fieldsep '.'
+select '\' as d1, '' as d2;
+"d1"."d2"
+"\".""
+-- illegal csv separators
+\pset csv_fieldsep ''
+\pset: csv_fieldsep must be a single one-byte character
+\pset csv_fieldsep '\0'
+\pset: csv_fieldsep must be a single one-byte character
+\pset csv_fieldsep '\n'
+\pset: csv_fieldsep cannot be a double quote, a newline, or a carriage return
+\pset csv_fieldsep '\r'
+\pset: csv_fieldsep cannot be a double quote, a newline, or a carriage return
+\pset csv_fieldsep '"'
+\pset: csv_fieldsep cannot be a double quote, a newline, or a carriage return
+\pset csv_fieldsep ',,'
+\pset: csv_fieldsep must be a single one-byte character
+\pset csv_fieldsep ','
+-- test html output format
+\pset format html
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+<table border="1">
+  <caption>Sequence &quot;public.psql_serial_tab_id_seq&quot;</caption>
+  <tr>
+    <th align="center">Type</th>
+    <th align="center">Start</th>
+    <th align="center">Minimum</th>
+    <th align="center">Maximum</th>
+    <th align="center">Increment</th>
+    <th align="center">Cycles?</th>
+    <th align="center">Cache</th>
+  </tr>
+  <tr valign="top">
+    <td align="left">integer</td>
+    <td align="right">1</td>
+    <td align="right">1</td>
+    <td align="right">2147483647</td>
+    <td align="right">1</td>
+    <td align="left">no</td>
+    <td align="right">1</td>
+  </tr>
+</table>
+<p>Owned by: public.psql_serial_tab.id<br />
+</p>
+\pset tuples_only true
+\df exp
+<table border="1">
+  <tr valign="top">
+    <td align="left">pg_catalog</td>
+    <td align="left">exp</td>
+    <td align="left">double precision</td>
+    <td align="left">double precision</td>
+    <td align="left">func</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">pg_catalog</td>
+    <td align="left">exp</td>
+    <td align="left">numeric</td>
+    <td align="left">numeric</td>
+    <td align="left">func</td>
+  </tr>
+</table>
+
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+<table border="1">
+  <caption>Sequence &quot;public.psql_serial_tab_id_seq&quot;</caption>
+
+  <tr><td colspan="2" align="center">Record 1</td></tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">integer</td>
+  </tr>
+  <tr valign="top">
+    <th>Start</th>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <th>Minimum</th>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <th>Maximum</th>
+    <td align="right">2147483647</td>
+  </tr>
+  <tr valign="top">
+    <th>Increment</th>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <th>Cycles?</th>
+    <td align="left">no</td>
+  </tr>
+  <tr valign="top">
+    <th>Cache</th>
+    <td align="right">1</td>
+  </tr>
+</table>
+<p>Owned by: public.psql_serial_tab.id<br />
+</p>
+\pset tuples_only true
+\df exp
+<table border="1">
+
+  <tr><td colspan="2">&nbsp;</td></tr>
+  <tr valign="top">
+    <th>Schema</th>
+    <td align="left">pg_catalog</td>
+  </tr>
+  <tr valign="top">
+    <th>Name</th>
+    <td align="left">exp</td>
+  </tr>
+  <tr valign="top">
+    <th>Result data type</th>
+    <td align="left">double precision</td>
+  </tr>
+  <tr valign="top">
+    <th>Argument data types</th>
+    <td align="left">double precision</td>
+  </tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">func</td>
+  </tr>
+
+  <tr><td colspan="2">&nbsp;</td></tr>
+  <tr valign="top">
+    <th>Schema</th>
+    <td align="left">pg_catalog</td>
+  </tr>
+  <tr valign="top">
+    <th>Name</th>
+    <td align="left">exp</td>
+  </tr>
+  <tr valign="top">
+    <th>Result data type</th>
+    <td align="left">numeric</td>
+  </tr>
+  <tr valign="top">
+    <th>Argument data types</th>
+    <td align="left">numeric</td>
+  </tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">func</td>
+  </tr>
+</table>
+
+\pset tuples_only false
+prepare q as
+  select 'some"text' as "a&title", E'  <foo>\n<bar>' as "junk",
+         '   ' as "empty", n as int
+  from generate_series(1,2) as n;
+\pset expanded off
+\pset border 0
+execute q;
+<table border="0">
+  <tr>
+    <th align="center">a&amp;title</th>
+    <th align="center">junk</th>
+    <th align="center">empty</th>
+    <th align="center">int</th>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">2</td>
+  </tr>
+</table>
+<p>(2 rows)<br />
+</p>
+\pset border 1
+execute q;
+<table border="1">
+  <tr>
+    <th align="center">a&amp;title</th>
+    <th align="center">junk</th>
+    <th align="center">empty</th>
+    <th align="center">int</th>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">2</td>
+  </tr>
+</table>
+<p>(2 rows)<br />
+</p>
+\pset tableattr foobar
+execute q;
+<table border="1" foobar>
+  <tr>
+    <th align="center">a&amp;title</th>
+    <th align="center">junk</th>
+    <th align="center">empty</th>
+    <th align="center">int</th>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">1</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">some&quot;text</td>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+    <td align="left">&nbsp; </td>
+    <td align="right">2</td>
+  </tr>
+</table>
+<p>(2 rows)<br />
+</p>
+\pset tableattr
+\pset expanded on
+\pset border 0
+execute q;
+<table border="0">
+
+  <tr><td colspan="2" align="center">Record 1</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">1</td>
+  </tr>
+
+  <tr><td colspan="2" align="center">Record 2</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">2</td>
+  </tr>
+</table>
+
+\pset border 1
+execute q;
+<table border="1">
+
+  <tr><td colspan="2" align="center">Record 1</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">1</td>
+  </tr>
+
+  <tr><td colspan="2" align="center">Record 2</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">2</td>
+  </tr>
+</table>
+
+\pset tableattr foobar
+execute q;
+<table border="1" foobar>
+
+  <tr><td colspan="2" align="center">Record 1</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">1</td>
+  </tr>
+
+  <tr><td colspan="2" align="center">Record 2</td></tr>
+  <tr valign="top">
+    <th>a&amp;title</th>
+    <td align="left">some&quot;text</td>
+  </tr>
+  <tr valign="top">
+    <th>junk</th>
+    <td align="left">&nbsp;&nbsp;&lt;foo&gt;<br />
+&lt;bar&gt;</td>
+  </tr>
+  <tr valign="top">
+    <th>empty</th>
+    <td align="left">&nbsp; </td>
+  </tr>
+  <tr valign="top">
+    <th>int</th>
+    <td align="right">2</td>
+  </tr>
+</table>
+
+\pset tableattr
+deallocate q;
+-- test latex output format
+\pset format latex
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+\begin{center}
+Sequence "public.psql\_serial\_tab\_id\_seq"
+\end{center}
+
+\begin{tabular}{l | r | r | r | r | l | r}
+\textit{Type} & \textit{Start} & \textit{Minimum} & \textit{Maximum} & \textit{Increment} & \textit{Cycles?} & \textit{Cache} \\
+\hline
+integer & 1 & 1 & 2147483647 & 1 & no & 1 \\
+\end{tabular}
+
+\noindent Owned by: public.psql\_serial\_tab.id \\
+
+\pset tuples_only true
+\df exp
+\begin{tabular}{l | l | l | l | l}
+pg\_catalog & exp & double precision & double precision & func \\
+pg\_catalog & exp & numeric & numeric & func \\
+\end{tabular}
+
+\noindent 
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+\begin{center}
+Sequence "public.psql\_serial\_tab\_id\_seq"
+\end{center}
+
+\begin{tabular}{c|l}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+\hline
+Type & integer \\
+Start & 1 \\
+Minimum & 1 \\
+Maximum & 2147483647 \\
+Increment & 1 \\
+Cycles? & no \\
+Cache & 1 \\
+\end{tabular}
+
+\noindent Owned by: public.psql\_serial\_tab.id \\
+
+\pset tuples_only true
+\df exp
+\begin{tabular}{c|l}
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & double precision \\
+Argument data types & double precision \\
+Type & func \\
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & numeric \\
+Argument data types & numeric \\
+Type & func \\
+\end{tabular}
+
+\noindent 
+\pset tuples_only false
+prepare q as
+  select 'some\more_text' as "a$title", E'  #<foo>%&^~|\n{bar}' as "junk",
+         '   ' as "empty", n as int
+  from generate_series(1,2) as n;
+\pset expanded off
+\pset border 0
+execute q;
+\begin{tabular}{lllr}
+\textit{a\$title} & \textit{junk} & \textit{empty} & \textit{int} \\
+\hline
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 1 \\
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 2 \\
+\end{tabular}
+
+\noindent (2 rows) \\
+
+\pset border 1
+execute q;
+\begin{tabular}{l | l | l | r}
+\textit{a\$title} & \textit{junk} & \textit{empty} & \textit{int} \\
+\hline
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 1 \\
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 2 \\
+\end{tabular}
+
+\noindent (2 rows) \\
+
+\pset border 2
+execute q;
+\begin{tabular}{| l | l | l | r |}
+\hline
+\textit{a\$title} & \textit{junk} & \textit{empty} & \textit{int} \\
+\hline
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 1 \\
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 2 \\
+\hline
+\end{tabular}
+
+\noindent (2 rows) \\
+
+\pset border 3
+execute q;
+\begin{tabular}{| l | l | l | r |}
+\hline
+\textit{a\$title} & \textit{junk} & \textit{empty} & \textit{int} \\
+\hline
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 1 \\
+\hline
+some\textbackslash{}more\_text &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} &     & 2 \\
+\hline
+\end{tabular}
+
+\noindent (2 rows) \\
+
+\pset expanded on
+\pset border 0
+execute q;
+\begin{tabular}{cl}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\multicolumn{2}{c}{\textit{Record 2}} \\
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\end{tabular}
+
+\noindent 
+\pset border 1
+execute q;
+\begin{tabular}{c|l}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\multicolumn{2}{c}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\end{tabular}
+
+\noindent 
+\pset border 2
+execute q;
+\begin{tabular}{|c|l|}
+\hline
+\multicolumn{2}{|c|}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\hline
+\multicolumn{2}{|c|}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\hline
+\end{tabular}
+
+\noindent 
+\pset border 3
+execute q;
+\begin{tabular}{|c|l|}
+\hline
+\multicolumn{2}{|c|}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\hline
+\multicolumn{2}{|c|}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\hline
+\end{tabular}
+
+\noindent 
+deallocate q;
+-- test latex-longtable output format
+\pset format latex-longtable
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+\begin{longtable}{l | r | r | r | r | l | r}
+\small\textbf{\textit{Type}} & \small\textbf{\textit{Start}} & \small\textbf{\textit{Minimum}} & \small\textbf{\textit{Maximum}} & \small\textbf{\textit{Increment}} & \small\textbf{\textit{Cycles?}} & \small\textbf{\textit{Cache}} \\
+\midrule
+\endfirsthead
+\small\textbf{\textit{Type}} & \small\textbf{\textit{Start}} & \small\textbf{\textit{Minimum}} & \small\textbf{\textit{Maximum}} & \small\textbf{\textit{Increment}} & \small\textbf{\textit{Cycles?}} & \small\textbf{\textit{Cache}} \\
+\midrule
+\endhead
+\caption[Sequence "public.psql\_serial\_tab\_id\_seq" (Continued)]{Sequence "public.psql\_serial\_tab\_id\_seq"}
+\endfoot
+\caption[Sequence "public.psql\_serial\_tab\_id\_seq"]{Sequence "public.psql\_serial\_tab\_id\_seq"}
+\endlastfoot
+\raggedright{integer}
+&
+\raggedright{1}
+&
+\raggedright{1}
+&
+\raggedright{2147483647}
+&
+\raggedright{1}
+&
+\raggedright{no}
+&
+\raggedright{1} \tabularnewline
+\end{longtable}
+\pset tuples_only true
+\df exp
+\begin{longtable}{l | l | l | l | l}
+\raggedright{pg\_catalog}
+&
+\raggedright{exp}
+&
+\raggedright{double precision}
+&
+\raggedright{double precision}
+&
+\raggedright{func} \tabularnewline
+\raggedright{pg\_catalog}
+&
+\raggedright{exp}
+&
+\raggedright{numeric}
+&
+\raggedright{numeric}
+&
+\raggedright{func} \tabularnewline
+\end{longtable}
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+\begin{center}
+Sequence "public.psql\_serial\_tab\_id\_seq"
+\end{center}
+
+\begin{tabular}{c|l}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+\hline
+Type & integer \\
+Start & 1 \\
+Minimum & 1 \\
+Maximum & 2147483647 \\
+Increment & 1 \\
+Cycles? & no \\
+Cache & 1 \\
+\end{tabular}
+
+\noindent Owned by: public.psql\_serial\_tab.id \\
+
+\pset tuples_only true
+\df exp
+\begin{tabular}{c|l}
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & double precision \\
+Argument data types & double precision \\
+Type & func \\
+\hline
+Schema & pg\_catalog \\
+Name & exp \\
+Result data type & numeric \\
+Argument data types & numeric \\
+Type & func \\
+\end{tabular}
+
+\noindent 
+\pset tuples_only false
+prepare q as
+  select 'some\more_text' as "a$title", E'  #<foo>%&^~|\n{bar}' as "junk",
+         '   ' as "empty", n as int
+  from generate_series(1,2) as n;
+\pset expanded off
+\pset border 0
+execute q;
+\begin{longtable}{lllr}
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endfirsthead
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endhead
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{1} \tabularnewline
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{2} \tabularnewline
+\end{longtable}
+\pset border 1
+execute q;
+\begin{longtable}{l | l | l | r}
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endfirsthead
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endhead
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{1} \tabularnewline
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{2} \tabularnewline
+\end{longtable}
+\pset border 2
+execute q;
+\begin{longtable}{| l | l | l | r |}
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endfirsthead
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{1} \tabularnewline
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{2} \tabularnewline
+\end{longtable}
+\pset border 3
+execute q;
+\begin{longtable}{| l | l | l | r |}
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endfirsthead
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\endhead
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{1} \tabularnewline
+ \hline
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{2} \tabularnewline
+ \hline
+\end{longtable}
+\pset tableattr lr
+execute q;
+\begin{longtable}{| p{lr\textwidth} | p{lr\textwidth} | p{lr\textwidth} | r |}
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\midrule
+\endfirsthead
+\toprule
+\small\textbf{\textit{a\$title}} & \small\textbf{\textit{junk}} & \small\textbf{\textit{empty}} & \small\textbf{\textit{int}} \\
+\endhead
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{1} \tabularnewline
+ \hline
+\raggedright{some\textbackslash{}more\_text}
+&
+\raggedright{  \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\}}
+&
+\raggedright{   }
+&
+\raggedright{2} \tabularnewline
+ \hline
+\end{longtable}
+\pset tableattr
+\pset expanded on
+\pset border 0
+execute q;
+\begin{tabular}{cl}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\multicolumn{2}{c}{\textit{Record 2}} \\
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\end{tabular}
+
+\noindent 
+\pset border 1
+execute q;
+\begin{tabular}{c|l}
+\multicolumn{2}{c}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\multicolumn{2}{c}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\end{tabular}
+
+\noindent 
+\pset border 2
+execute q;
+\begin{tabular}{|c|l|}
+\hline
+\multicolumn{2}{|c|}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\hline
+\multicolumn{2}{|c|}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\hline
+\end{tabular}
+
+\noindent 
+\pset border 3
+execute q;
+\begin{tabular}{|c|l|}
+\hline
+\multicolumn{2}{|c|}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\hline
+\multicolumn{2}{|c|}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\hline
+\end{tabular}
+
+\noindent 
+\pset tableattr lr
+execute q;
+\begin{tabular}{|c|l|}
+\hline
+\multicolumn{2}{|c|}{\textit{Record 1}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 1 \\
+\hline
+\multicolumn{2}{|c|}{\textit{Record 2}} \\
+\hline
+a\$title & some\textbackslash{}more\_text \\
+junk &   \#\textless{}foo\textgreater{}\%\&\^{}\~{}\textbar{}\\\{bar\} \\
+empty &     \\
+int & 2 \\
+\hline
+\end{tabular}
+
+\noindent 
+\pset tableattr
+deallocate q;
+-- test troff-ms output format
+\pset format troff-ms
+\pset border 1
+\pset expanded off
+\d psql_serial_tab_id_seq
+.LP
+.DS C
+Sequence "public.psql_serial_tab_id_seq"
+.DE
+.LP
+.TS
+center;
+l | r | r | r | r | l | r.
+\fIType\fP	\fIStart\fP	\fIMinimum\fP	\fIMaximum\fP	\fIIncrement\fP	\fICycles?\fP	\fICache\fP
+_
+integer	1	1	2147483647	1	no	1
+.TE
+.DS L
+Owned by: public.psql_serial_tab.id
+.DE
+\pset tuples_only true
+\df exp
+.LP
+.TS
+center;
+l | l | l | l | l.
+pg_catalog	exp	double precision	double precision	func
+pg_catalog	exp	numeric	numeric	func
+.TE
+.DS L
+.DE
+\pset tuples_only false
+\pset expanded on
+\d psql_serial_tab_id_seq
+.LP
+.DS C
+Sequence "public.psql_serial_tab_id_seq"
+.DE
+.LP
+.TS
+center;
+c s.
+\fIRecord 1\fP
+_
+.T&
+c | l.
+Type	integer
+Start	1
+Minimum	1
+Maximum	2147483647
+Increment	1
+Cycles?	no
+Cache	1
+.TE
+.DS L
+Owned by: public.psql_serial_tab.id
+.DE
+\pset tuples_only true
+\df exp
+.LP
+.TS
+center;
+c l;
+_
+Schema	pg_catalog
+Name	exp
+Result data type	double precision
+Argument data types	double precision
+Type	func
+_
+Schema	pg_catalog
+Name	exp
+Result data type	numeric
+Argument data types	numeric
+Type	func
+.TE
+.DS L
+.DE
+\pset tuples_only false
+prepare q as
+  select 'some\text' as "a\title", E'  <foo>\n<bar>' as "junk",
+         '   ' as "empty", n as int
+  from generate_series(1,2) as n;
+\pset expanded off
+\pset border 0
+execute q;
+.LP
+.TS
+center;
+lllr.
+\fIa\(rstitle\fP	\fIjunk\fP	\fIempty\fP	\fIint\fP
+_
+some\(rstext	  <foo>
+<bar>	   	1
+some\(rstext	  <foo>
+<bar>	   	2
+.TE
+.DS L
+(2 rows)
+.DE
+\pset border 1
+execute q;
+.LP
+.TS
+center;
+l | l | l | r.
+\fIa\(rstitle\fP	\fIjunk\fP	\fIempty\fP	\fIint\fP
+_
+some\(rstext	  <foo>
+<bar>	   	1
+some\(rstext	  <foo>
+<bar>	   	2
+.TE
+.DS L
+(2 rows)
+.DE
+\pset border 2
+execute q;
+.LP
+.TS
+center box;
+l | l | l | r.
+\fIa\(rstitle\fP	\fIjunk\fP	\fIempty\fP	\fIint\fP
+_
+some\(rstext	  <foo>
+<bar>	   	1
+some\(rstext	  <foo>
+<bar>	   	2
+.TE
+.DS L
+(2 rows)
+.DE
+\pset expanded on
+\pset border 0
+execute q;
+.LP
+.TS
+center;
+c s.
+\fIRecord 1\fP
+.T&
+c l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	1
+.T&
+c s.
+\fIRecord 2\fP
+.T&
+c l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	2
+.TE
+.DS L
+.DE
+\pset border 1
+execute q;
+.LP
+.TS
+center;
+c s.
+\fIRecord 1\fP
+_
+.T&
+c | l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	1
+.T&
+c s.
+\fIRecord 2\fP
+_
+.T&
+c | l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	2
+.TE
+.DS L
+.DE
+\pset border 2
+execute q;
+.LP
+.TS
+center box;
+c s.
+\fIRecord 1\fP
+_
+.T&
+c l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	1
+_
+.T&
+c s.
+\fIRecord 2\fP
+_
+.T&
+c l.
+a\(rstitle	some\(rstext
+junk	  <foo>
+<bar>
+empty	   
+int	2
+.TE
+.DS L
+.DE
+deallocate q;
+-- check ambiguous format requests
+\pset format a
+\pset: ambiguous abbreviation "a" matches both "aligned" and "asciidoc"
+\pset format l
+-- clean up after output format tests
+drop table psql_serial_tab;
 \pset format aligned
 \pset expanded off
 \pset border 1
+-- \echo and allied features
+\echo this is a test
+this is a test
+\echo -n without newline
+without newline\echo with -n newline
+with -n newline
+\echo '-n' with newline
+-n with newline
+\set foo bar
+\echo foo = :foo
+foo = bar
+\qecho this is a test
+this is a test
+\qecho foo = :foo
+foo = bar
+\warn this is a test
+this is a test
+\warn foo = :foo
+foo = bar
 -- tests for \if ... \endif
 \if true
   select 'okay';
@@ -2925,6 +4361,17 @@ all true
 	\echo 'all false'
 all false
 \endif
+-- test true-false elif after initial true branch
+\if true
+	\echo 'should print #2-5'
+should print #2-5
+\elif true
+	\echo 'should not print #2-6'
+\elif false
+	\echo 'should not print #2-7'
+\else
+	\echo 'should not print #2-8'
+\endif
 -- test simple true-then-else
 \if true
 	\echo 'first thing true'
@@ -2998,22 +4445,60 @@ bar 'bar' "bar"
 	:try_to_quit
 	\echo `nosuchcommand` :foo :'foo' :"foo"
 	\pset fieldsep | `nosuchcommand` :foo :'foo' :"foo"
-	\a \C arg1 \c arg1 arg2 arg3 arg4 \cd arg1 \conninfo
+	\a
+	\C arg1
+	\c arg1 arg2 arg3 arg4
+	\cd arg1
+	\conninfo
 	\copy arg1 arg2 arg3 arg4 arg5 arg6
-	\copyright \dt arg1 \e arg1 arg2
+	\copyright
+	SELECT 1 as one, 2, 3 \crosstabview
+	\dt arg1
+	\e arg1 arg2
 	\ef whole_line
 	\ev whole_line
-	\echo arg1 arg2 arg3 arg4 arg5 \echo arg1 \encoding arg1 \errverbose
-	\g arg1 \gx arg1 \gexec \h \html \i arg1 \ir arg1 \l arg1 \lo arg1 arg2
-	\o arg1 \p \password arg1 \prompt arg1 arg2 \pset arg1 arg2 \q
-	\reset \s arg1 \set arg1 arg2 arg3 arg4 arg5 arg6 arg7 \setenv arg1 arg2
+	\echo arg1 arg2 arg3 arg4 arg5
+	\echo arg1
+	\encoding arg1
+	\errverbose
+	\f arg1
+	\g arg1
+	\gx arg1
+	\gexec
+	SELECT 1 AS one \gset
+	\h
+	\?
+	\html
+	\i arg1
+	\ir arg1
+	\l arg1
+	\lo arg1 arg2
+invalid command \lo
+	\lo_list
+	\o arg1
+	\p
+	\password arg1
+	\prompt arg1 arg2
+	\pset arg1 arg2
+	\q
+	\reset
+	\s arg1
+	\set arg1 arg2 arg3 arg4 arg5 arg6 arg7
+	\setenv arg1 arg2
 	\sf whole_line
 	\sv whole_line
-	\t arg1 \T arg1 \timing arg1 \unset arg1 \w arg1 \watch arg1 \x arg1
+	\t arg1
+	\T arg1
+	\timing arg1
+	\unset arg1
+	\w arg1
+	\watch arg1
+	\x arg1
 	-- \else here is eaten as part of OT_FILEPIPE argument
 	\w |/no/such/file \else
 	-- \endif here is eaten as part of whole-line argument
 	\! whole_line \endif
+	\z
 \else
 	\echo 'should print #8-1'
 should print #8-1
@@ -3160,6 +4645,26 @@ number of rows: 0
 last error message: table "this_table_does_not_exist" does not exist
 \echo 'last error code:' :LAST_ERROR_SQLSTATE
 last error code: 42P01
+-- nondefault verbosity error settings (except verbose, which is too unstable)
+\set VERBOSITY terse
+SELECT 1 UNION;
+ERROR:  syntax error at or near ";" at character 15
+\echo 'error:' :ERROR
+error: true
+\echo 'error code:' :SQLSTATE
+error code: 42601
+\echo 'last error message:' :LAST_ERROR_MESSAGE
+last error message: syntax error at or near ";"
+\set VERBOSITY sqlstate
+SELECT 1/0;
+ERROR:  22012
+\echo 'error:' :ERROR
+error: true
+\echo 'error code:' :SQLSTATE
+error code: 22012
+\echo 'last error message:' :LAST_ERROR_MESSAGE
+last error message: division by zero
+\set VERBOSITY default
 -- working \gdesc
 SELECT 3 AS three, 4 AS four \gdesc
  Column |  Type   
@@ -3247,3 +4752,430 @@ last error message: division by zero
 \echo 'last error code:' :LAST_ERROR_SQLSTATE
 last error code: 22012
 \unset FETCH_COUNT
+create schema testpart;
+create role regress_partitioning_role;
+alter schema testpart owner to regress_partitioning_role;
+set role to regress_partitioning_role;
+-- run test inside own schema and hide other partitions
+set search_path to testpart;
+create table testtable_apple(logdate date);
+create table testtable_orange(logdate date);
+create index testtable_apple_index on testtable_apple(logdate);
+create index testtable_orange_index on testtable_orange(logdate);
+create table testpart_apple(logdate date) partition by range(logdate);
+create table testpart_orange(logdate date) partition by range(logdate);
+create index testpart_apple_index on testpart_apple(logdate);
+create index testpart_orange_index on testpart_orange(logdate);
+-- only partition related object should be displayed
+\dP test*apple*
+                                         List of partitioned relations
+  Schema  |         Name         |           Owner           |       Type        | Parent name |     Table      
+----------+----------------------+---------------------------+-------------------+-------------+----------------
+ testpart | testpart_apple       | regress_partitioning_role | partitioned table |             | 
+ testpart | testpart_apple_index | regress_partitioning_role | partitioned index |             | testpart_apple
+(2 rows)
+
+\dPt test*apple*
+                     List of partitioned tables
+  Schema  |      Name      |           Owner           | Parent name 
+----------+----------------+---------------------------+-------------
+ testpart | testpart_apple | regress_partitioning_role | 
+(1 row)
+
+\dPi test*apple*
+                                List of partitioned indexes
+  Schema  |         Name         |           Owner           | Parent name |     Table      
+----------+----------------------+---------------------------+-------------+----------------
+ testpart | testpart_apple_index | regress_partitioning_role |             | testpart_apple
+(1 row)
+
+drop table testtable_apple;
+drop table testtable_orange;
+drop table testpart_apple;
+drop table testpart_orange;
+create table parent_tab (id int) partition by range (id);
+create index parent_index on parent_tab (id);
+create table child_0_10 partition of parent_tab
+  for values from (0) to (10);
+create table child_10_20 partition of parent_tab
+  for values from (10) to (20);
+create table child_20_30 partition of parent_tab
+  for values from (20) to (30);
+insert into parent_tab values (generate_series(0,29));
+create table child_30_40 partition of parent_tab
+for values from (30) to (40)
+  partition by range(id);
+create table child_30_35 partition of child_30_40
+  for values from (30) to (35);
+create table child_35_40 partition of child_30_40
+   for values from (35) to (40);
+insert into parent_tab values (generate_series(30,39));
+\dPt
+            List of partitioned tables
+  Schema  |    Name    |           Owner           
+----------+------------+---------------------------
+ testpart | parent_tab | regress_partitioning_role
+(1 row)
+
+\dPi
+                   List of partitioned indexes
+  Schema  |     Name     |           Owner           |   Table    
+----------+--------------+---------------------------+------------
+ testpart | parent_index | regress_partitioning_role | parent_tab
+(1 row)
+
+\dP testpart.*
+                                       List of partitioned relations
+  Schema  |        Name        |           Owner           |       Type        | Parent name  |    Table    
+----------+--------------------+---------------------------+-------------------+--------------+-------------
+ testpart | parent_tab         | regress_partitioning_role | partitioned table |              | 
+ testpart | child_30_40        | regress_partitioning_role | partitioned table | parent_tab   | 
+ testpart | parent_index       | regress_partitioning_role | partitioned index |              | parent_tab
+ testpart | child_30_40_id_idx | regress_partitioning_role | partitioned index | parent_index | child_30_40
+(4 rows)
+
+\dP
+                            List of partitioned relations
+  Schema  |     Name     |           Owner           |       Type        |   Table    
+----------+--------------+---------------------------+-------------------+------------
+ testpart | parent_tab   | regress_partitioning_role | partitioned table | 
+ testpart | parent_index | regress_partitioning_role | partitioned index | parent_tab
+(2 rows)
+
+\dPtn
+                    List of partitioned tables
+  Schema  |    Name     |           Owner           | Parent name 
+----------+-------------+---------------------------+-------------
+ testpart | parent_tab  | regress_partitioning_role | 
+ testpart | child_30_40 | regress_partitioning_role | parent_tab
+(2 rows)
+
+\dPin
+                              List of partitioned indexes
+  Schema  |        Name        |           Owner           | Parent name  |    Table    
+----------+--------------------+---------------------------+--------------+-------------
+ testpart | parent_index       | regress_partitioning_role |              | parent_tab
+ testpart | child_30_40_id_idx | regress_partitioning_role | parent_index | child_30_40
+(2 rows)
+
+\dPn
+                                       List of partitioned relations
+  Schema  |        Name        |           Owner           |       Type        | Parent name  |    Table    
+----------+--------------------+---------------------------+-------------------+--------------+-------------
+ testpart | parent_tab         | regress_partitioning_role | partitioned table |              | 
+ testpart | child_30_40        | regress_partitioning_role | partitioned table | parent_tab   | 
+ testpart | parent_index       | regress_partitioning_role | partitioned index |              | parent_tab
+ testpart | child_30_40_id_idx | regress_partitioning_role | partitioned index | parent_index | child_30_40
+(4 rows)
+
+\dPn testpart.*
+                                       List of partitioned relations
+  Schema  |        Name        |           Owner           |       Type        | Parent name  |    Table    
+----------+--------------------+---------------------------+-------------------+--------------+-------------
+ testpart | parent_tab         | regress_partitioning_role | partitioned table |              | 
+ testpart | child_30_40        | regress_partitioning_role | partitioned table | parent_tab   | 
+ testpart | parent_index       | regress_partitioning_role | partitioned index |              | parent_tab
+ testpart | child_30_40_id_idx | regress_partitioning_role | partitioned index | parent_index | child_30_40
+(4 rows)
+
+drop table parent_tab cascade;
+drop schema testpart;
+set search_path to default;
+set role to default;
+drop role regress_partitioning_role;
+-- \d on toast table (use pg_statistic's toast table, which has a known name)
+\d pg_toast.pg_toast_2619
+TOAST table "pg_toast.pg_toast_2619"
+   Column   |  Type   
+------------+---------
+ chunk_id   | oid
+ chunk_seq  | integer
+ chunk_data | bytea
+Owning table: "pg_catalog.pg_statistic"
+Indexes:
+    "pg_toast_2619_index" PRIMARY KEY, btree (chunk_id, chunk_seq)
+
+-- check printing info about access methods
+\dA
+List of access methods
+  Name  | Type  
+--------+-------
+ brin   | Index
+ btree  | Index
+ gin    | Index
+ gist   | Index
+ hash   | Index
+ heap   | Table
+ heap2  | Table
+ spgist | Index
+(8 rows)
+
+\dA *
+List of access methods
+  Name  | Type  
+--------+-------
+ brin   | Index
+ btree  | Index
+ gin    | Index
+ gist   | Index
+ hash   | Index
+ heap   | Table
+ heap2  | Table
+ spgist | Index
+(8 rows)
+
+\dA h*
+List of access methods
+ Name  | Type  
+-------+-------
+ hash  | Index
+ heap  | Table
+ heap2 | Table
+(3 rows)
+
+\dA foo
+List of access methods
+ Name | Type 
+------+------
+(0 rows)
+
+\dA foo bar
+List of access methods
+ Name | Type 
+------+------
+(0 rows)
+
+\dA: extra argument "bar" ignored
+\dA+
+                             List of access methods
+  Name  | Type  |       Handler        |              Description               
+--------+-------+----------------------+----------------------------------------
+ brin   | Index | brinhandler          | block range index (BRIN) access method
+ btree  | Index | bthandler            | b-tree index access method
+ gin    | Index | ginhandler           | GIN index access method
+ gist   | Index | gisthandler          | GiST index access method
+ hash   | Index | hashhandler          | hash index access method
+ heap   | Table | heap_tableam_handler | heap table access method
+ heap2  | Table | heap_tableam_handler | 
+ spgist | Index | spghandler           | SP-GiST index access method
+(8 rows)
+
+\dA+ *
+                             List of access methods
+  Name  | Type  |       Handler        |              Description               
+--------+-------+----------------------+----------------------------------------
+ brin   | Index | brinhandler          | block range index (BRIN) access method
+ btree  | Index | bthandler            | b-tree index access method
+ gin    | Index | ginhandler           | GIN index access method
+ gist   | Index | gisthandler          | GiST index access method
+ hash   | Index | hashhandler          | hash index access method
+ heap   | Table | heap_tableam_handler | heap table access method
+ heap2  | Table | heap_tableam_handler | 
+ spgist | Index | spghandler           | SP-GiST index access method
+(8 rows)
+
+\dA+ h*
+                     List of access methods
+ Name  | Type  |       Handler        |       Description        
+-------+-------+----------------------+--------------------------
+ hash  | Index | hashhandler          | hash index access method
+ heap  | Table | heap_tableam_handler | heap table access method
+ heap2 | Table | heap_tableam_handler | 
+(3 rows)
+
+\dA+ foo
+       List of access methods
+ Name | Type | Handler | Description 
+------+------+---------+-------------
+(0 rows)
+
+\dAc brin pg*.oid*
+                      List of operator classes
+  AM  | Input type | Storage type |    Operator class    | Default? 
+------+------------+--------------+----------------------+----------
+ brin | oid        |              | oid_bloom_ops        | no
+ brin | oid        |              | oid_minmax_multi_ops | no
+ brin | oid        |              | oid_minmax_ops       | yes
+(3 rows)
+
+\dAf spgist
+          List of operator families
+   AM   | Operator family | Applicable types 
+--------+-----------------+------------------
+ spgist | box_ops         | box
+ spgist | kd_point_ops    | point
+ spgist | network_ops     | inet
+ spgist | poly_ops        | polygon
+ spgist | quad_point_ops  | point
+ spgist | range_ops       | anyrange
+ spgist | text_ops        | text
+(7 rows)
+
+\dAf btree int4
+              List of operator families
+  AM   | Operator family |     Applicable types      
+-------+-----------------+---------------------------
+ btree | integer_ops     | smallint, integer, bigint
+(1 row)
+
+\dAo+ btree float_ops
+                                List of operators of operator families
+  AM   | Operator family |               Operator                | Strategy | Purpose | Sort opfamily 
+-------+-----------------+---------------------------------------+----------+---------+---------------
+ btree | float_ops       | <(double precision,double precision)  |        1 | search  | 
+ btree | float_ops       | <=(double precision,double precision) |        2 | search  | 
+ btree | float_ops       | =(double precision,double precision)  |        3 | search  | 
+ btree | float_ops       | >=(double precision,double precision) |        4 | search  | 
+ btree | float_ops       | >(double precision,double precision)  |        5 | search  | 
+ btree | float_ops       | <(real,real)                          |        1 | search  | 
+ btree | float_ops       | <=(real,real)                         |        2 | search  | 
+ btree | float_ops       | =(real,real)                          |        3 | search  | 
+ btree | float_ops       | >=(real,real)                         |        4 | search  | 
+ btree | float_ops       | >(real,real)                          |        5 | search  | 
+ btree | float_ops       | <(double precision,real)              |        1 | search  | 
+ btree | float_ops       | <=(double precision,real)             |        2 | search  | 
+ btree | float_ops       | =(double precision,real)              |        3 | search  | 
+ btree | float_ops       | >=(double precision,real)             |        4 | search  | 
+ btree | float_ops       | >(double precision,real)              |        5 | search  | 
+ btree | float_ops       | <(real,double precision)              |        1 | search  | 
+ btree | float_ops       | <=(real,double precision)             |        2 | search  | 
+ btree | float_ops       | =(real,double precision)              |        3 | search  | 
+ btree | float_ops       | >=(real,double precision)             |        4 | search  | 
+ btree | float_ops       | >(real,double precision)              |        5 | search  | 
+(20 rows)
+
+\dAo * pg_catalog.jsonb_path_ops
+             List of operators of operator families
+ AM  | Operator family |      Operator      | Strategy | Purpose 
+-----+-----------------+--------------------+----------+---------
+ gin | jsonb_path_ops  | @>(jsonb,jsonb)    |        7 | search
+ gin | jsonb_path_ops  | @?(jsonb,jsonpath) |       15 | search
+ gin | jsonb_path_ops  | @@(jsonb,jsonpath) |       16 | search
+(3 rows)
+
+\dAp+ btree float_ops
+                                                         List of support functions of operator families
+  AM   | Operator family | Registered left type | Registered right type | Number |                                   Function                                   
+-------+-----------------+----------------------+-----------------------+--------+------------------------------------------------------------------------------
+ btree | float_ops       | double precision     | double precision      |      1 | btfloat8cmp(double precision,double precision)
+ btree | float_ops       | double precision     | double precision      |      2 | btfloat8sortsupport(internal)
+ btree | float_ops       | double precision     | double precision      |      3 | in_range(double precision,double precision,double precision,boolean,boolean)
+ btree | float_ops       | real                 | real                  |      1 | btfloat4cmp(real,real)
+ btree | float_ops       | real                 | real                  |      2 | btfloat4sortsupport(internal)
+ btree | float_ops       | double precision     | real                  |      1 | btfloat84cmp(double precision,real)
+ btree | float_ops       | real                 | double precision      |      1 | btfloat48cmp(real,double precision)
+ btree | float_ops       | real                 | double precision      |      3 | in_range(real,real,double precision,boolean,boolean)
+(8 rows)
+
+\dAp * pg_catalog.uuid_ops
+                            List of support functions of operator families
+  AM   | Operator family | Registered left type | Registered right type | Number |      Function      
+-------+-----------------+----------------------+-----------------------+--------+--------------------
+ btree | uuid_ops        | uuid                 | uuid                  |      1 | uuid_cmp
+ btree | uuid_ops        | uuid                 | uuid                  |      2 | uuid_sortsupport
+ btree | uuid_ops        | uuid                 | uuid                  |      4 | btequalimage
+ hash  | uuid_ops        | uuid                 | uuid                  |      1 | uuid_hash
+ hash  | uuid_ops        | uuid                 | uuid                  |      2 | uuid_hash_extended
+(5 rows)
+
+-- check \df, \do with argument specifications
+\df *sqrt
+                             List of functions
+   Schema   |     Name     | Result data type | Argument data types | Type 
+------------+--------------+------------------+---------------------+------
+ pg_catalog | dsqrt        | double precision | double precision    | func
+ pg_catalog | numeric_sqrt | numeric          | numeric             | func
+ pg_catalog | sqrt         | double precision | double precision    | func
+ pg_catalog | sqrt         | numeric          | numeric             | func
+(4 rows)
+
+\df *sqrt num*
+                             List of functions
+   Schema   |     Name     | Result data type | Argument data types | Type 
+------------+--------------+------------------+---------------------+------
+ pg_catalog | numeric_sqrt | numeric          | numeric             | func
+ pg_catalog | sqrt         | numeric          | numeric             | func
+(2 rows)
+
+\df int*pl
+                            List of functions
+   Schema   |    Name     | Result data type | Argument data types | Type 
+------------+-------------+------------------+---------------------+------
+ pg_catalog | int24pl     | integer          | smallint, integer   | func
+ pg_catalog | int28pl     | bigint           | smallint, bigint    | func
+ pg_catalog | int2pl      | smallint         | smallint, smallint  | func
+ pg_catalog | int42pl     | integer          | integer, smallint   | func
+ pg_catalog | int48pl     | bigint           | integer, bigint     | func
+ pg_catalog | int4pl      | integer          | integer, integer    | func
+ pg_catalog | int82pl     | bigint           | bigint, smallint    | func
+ pg_catalog | int84pl     | bigint           | bigint, integer     | func
+ pg_catalog | int8pl      | bigint           | bigint, bigint      | func
+ pg_catalog | interval_pl | interval         | interval, interval  | func
+(10 rows)
+
+\df int*pl int4
+                          List of functions
+   Schema   |  Name   | Result data type | Argument data types | Type 
+------------+---------+------------------+---------------------+------
+ pg_catalog | int42pl | integer          | integer, smallint   | func
+ pg_catalog | int48pl | bigint           | integer, bigint     | func
+ pg_catalog | int4pl  | integer          | integer, integer    | func
+(3 rows)
+
+\df int*pl * pg_catalog.int8
+                          List of functions
+   Schema   |  Name   | Result data type | Argument data types | Type 
+------------+---------+------------------+---------------------+------
+ pg_catalog | int28pl | bigint           | smallint, bigint    | func
+ pg_catalog | int48pl | bigint           | integer, bigint     | func
+ pg_catalog | int8pl  | bigint           | bigint, bigint      | func
+(3 rows)
+
+\df acl* aclitem[]
+                                                                    List of functions
+   Schema   |    Name     | Result data type |                                        Argument data types                                         | Type 
+------------+-------------+------------------+----------------------------------------------------------------------------------------------------+------
+ pg_catalog | aclcontains | boolean          | aclitem[], aclitem                                                                                 | func
+ pg_catalog | aclexplode  | SETOF record     | acl aclitem[], OUT grantor oid, OUT grantee oid, OUT privilege_type text, OUT is_grantable boolean | func
+ pg_catalog | aclinsert   | aclitem[]        | aclitem[], aclitem                                                                                 | func
+ pg_catalog | aclremove   | aclitem[]        | aclitem[], aclitem                                                                                 | func
+(4 rows)
+
+\df has_database_privilege oid text
+                                  List of functions
+   Schema   |          Name          | Result data type | Argument data types | Type 
+------------+------------------------+------------------+---------------------+------
+ pg_catalog | has_database_privilege | boolean          | oid, text           | func
+ pg_catalog | has_database_privilege | boolean          | oid, text, text     | func
+(2 rows)
+
+\df has_database_privilege oid text -
+                                  List of functions
+   Schema   |          Name          | Result data type | Argument data types | Type 
+------------+------------------------+------------------+---------------------+------
+ pg_catalog | has_database_privilege | boolean          | oid, text           | func
+(1 row)
+
+\dfa bit* small*
+                          List of functions
+   Schema   |  Name   | Result data type | Argument data types | Type 
+------------+---------+------------------+---------------------+------
+ pg_catalog | bit_and | smallint         | smallint            | agg
+ pg_catalog | bit_or  | smallint         | smallint            | agg
+ pg_catalog | bit_xor | smallint         | smallint            | agg
+(3 rows)
+
+\do - pg_catalog.int4
+                               List of operators
+   Schema   | Name | Left arg type | Right arg type | Result type | Description 
+------------+------+---------------+----------------+-------------+-------------
+ pg_catalog | -    |               | integer        | integer     | negate
+(1 row)
+
+\do && anyarray *
+                               List of operators
+   Schema   | Name | Left arg type | Right arg type | Result type | Description 
+------------+------+---------------+----------------+-------------+-------------
+ pg_catalog | &&   | anyarray      | anyarray       | boolean     | overlaps
+(1 row)
+

@@ -7,7 +7,7 @@ For All Releases (major, minor, beta, RC)
 
 * Release notes
 	o run git log and, if useful, src/tools/git_changelog
-	o update doc/src/sgml/release.sgml
+	o update doc/src/sgml/release-NN.sgml in relevant branches
 	o run spellchecker on result
 	o add SGML markup
 
@@ -30,6 +30,11 @@ For Major Releases
 ==================
 (in addition to the above)
 
+Note that once the release branch has been forked off in git,
+release-note editing happens in that branch, not in master.
+Updates to the rest of the documentation usually need to happen
+in both master and the branch.
+
 * Release notes
 	o use src/tools/git_changelog
 	o retain the relevant commits
@@ -51,37 +56,65 @@ For Major Releases
 	o document all new features
 	o update help output from inside the programs
 	o doc/src/sgml/ref manual pages
-	o update the sizes specified for installation requirements
-	  (doc/src/sgml/installation.sgml, section "install-requirements")
-	o update the shared memory size requirement table
-	  (doc/src/sgml/runtime.sgml, section "shared-memory-parameters")
 
 * Ports
-	o update config.guess and config.sub at the start of beta
-	  (from http://savannah.gnu.org/projects/config)
 	o update ports list in doc/src/sgml/installation.sgml
-	o update platform-specific FAQ's, if needed
 
-* Update inet/cidr data types with newest Bind patches
+
+Pre-Beta Tasks
+==============
+
+These things should be done at least once per development cycle.
+Typically we do them between feature freeze and start of beta test,
+but there may be reasons to do them at other times as well.
+
+* Run mechanical code beautification tools:
+  pgindent, pgperltidy, and "make reformat-dat-files"
+  (complete steps from src/tools/pgindent/README)
+
+* Renumber any manually-assigned OIDs between 8000 and 9999
+  to lower numbers, using renumber_oids.pl (see notes in bki.sgml)
+
+* Update config.guess and config.sub
+  (from https://savannah.gnu.org/projects/config)
+
+* Update Unicode data: Edit UNICODE_VERSION and CLDR_VERSION in
+  src/Makefile.global.in, run make update-unicode, and commit.
 
 
 Starting a New Development Cycle
 ================================
 
-* Typically, we do pgindent and perltidy runs just before branching
+* Typically, we do pgindent and perltidy runs just before branching,
+  as well as before beta (complete steps from src/tools/pgindent/README)
 
 * Create a branch in git for maintenance of the previous release
 	o on master branch, do:
 		git pull           # be sure you have the latest "master"
-		git push origin master:refs/heads/"new-branch-name"
+		git branch "new-branch-name"
+		git push -u origin  "new-branch-name"
 	  for example,
-		git push origin master:refs/heads/REL_10_STABLE
+		git branch REL_11_STABLE
+		git push -u origin REL_11_STABLE
 
 * Add new branch's name to list in src/tools/git_changelog
 
 * Increment the major version number in src/tools/version_stamp.pl
 
 * Run "src/tools/version_stamp.pl devel", then run autoconf
+
+* Create a new doc/src/sgml/release-NN.sgml file (initially just a
+  placeholder), "git rm" the previous one, and update release.sgml and
+  filelist.sgml to match.
+
+* Notify the private committers email list, to ensure all committers
+  are aware of the new branch even if they're not paying close attention
+  to pgsql-hackers.
+
+* Get the buildfarm's 'branches_of_interest.txt' file updated with the new
+  branch.  Once the buildfarm server is accepting reports, notify the
+  buildfarm owners' email list, for the benefit of owners who use manual
+  branch scheduling.
 
 
 Creating Back-Branch Release Notes
@@ -92,21 +125,34 @@ Creating Back-Branch Release Notes
   branch tag and not the release date, as commits could have been done
   between branch stamping and the release date.
 
-* On the git master branch, edit and create SGML markup for the most recent
-  branch in that branch's release-N.N.sgml file.  Minor release notes
-  should include more small change details because testing is limited.
-
-* Copy this into older branches' release-N.N.sgml files, then remove
-  items that do not apply based on commit logs for that branch.
-
-* Add any older branch commits not in the newest branch.  This can be
-  accomplished by diff'ing the newest and older branch commit logs and
-  looking for lines that only appear in the older branch, e.g.:
+* Remember to include any older branch commits not in the newest branch.
+  This can be accomplished by diff'ing the newest and older branch commit
+  logs and looking for lines that only appear in the older branch, e.g.:
 
        diff commit-N.N.log commit-O.O.log | grep '^>'
 
-* Copy the appropriate release-N.N.sgml files into each back branch SGML
-  directory.
+* On the most recent release branch (*not* in master), edit and create SGML
+  markup for relevant changes in that branch's release-NN.sgml file.
+  Minor release notes should include more small change details because
+  testing is limited.
+
+* Copy this text into older branches' release-NN.sgml files, then remove
+  items that do not apply based on commit logs for that branch.
+
+* The minor release notes for the oldest active branch should always
+  include a warning about its impending EOL.  Use the same boilerplate
+  text used in previous branches.
+
+
+Retiring a Branch
+=================
+
+* Notify the private committers email list, to ensure all committers
+  are aware of the branch being dead.
+
+* Get the buildfarm's 'branches_of_interest.txt' file updated to remove
+  the retired branch.  Then notify the buildfarm owners' email list,
+  for the benefit of owners who use manual branch scheduling.
 
 
 

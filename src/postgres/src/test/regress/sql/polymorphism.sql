@@ -1,8 +1,183 @@
--- Currently this tests polymorphic aggregates and indirectly does some
--- testing of polymorphic SQL functions.  It ought to be extended.
+--
+-- Tests for polymorphic SQL functions and aggregates based on them.
 -- Tests for other features related to function-calling have snuck in, too.
+--
+
+create function polyf(x anyelement) returns anyelement as $$
+  select x + 1
+$$ language sql;
+
+select polyf(42) as int, polyf(4.5) as num;
+select polyf(point(3,4));  -- fail for lack of + operator
+
+drop function polyf(x anyelement);
+
+create function polyf(x anyelement) returns anyarray as $$
+  select array[x + 1, x + 2]
+$$ language sql;
+
+select polyf(42) as int, polyf(4.5) as num;
+
+drop function polyf(x anyelement);
+
+create function polyf(x anyarray) returns anyelement as $$
+  select x[1]
+$$ language sql;
+
+select polyf(array[2,4]) as int, polyf(array[4.5, 7.7]) as num;
+
+select polyf(stavalues1) from pg_statistic;  -- fail, can't infer element type
+
+drop function polyf(x anyarray);
+
+create function polyf(x anyarray) returns anyarray as $$
+  select x
+$$ language sql;
+
+select polyf(array[2,4]) as int, polyf(array[4.5, 7.7]) as num;
+
+select polyf(stavalues1) from pg_statistic;  -- fail, can't infer element type
+
+drop function polyf(x anyarray);
+
+-- fail, can't infer type:
+create function polyf(x anyelement) returns anyrange as $$
+  select array[x + 1, x + 2]
+$$ language sql;
+
+create function polyf(x anyrange) returns anyarray as $$
+  select array[lower(x), upper(x)]
+$$ language sql;
+
+select polyf(int4range(42, 49)) as int, polyf(float8range(4.5, 7.8)) as num;
+
+drop function polyf(x anyrange);
+
+create function polyf(x anycompatible, y anycompatible) returns anycompatiblearray as $$
+  select array[x, y]
+$$ language sql;
+
+select polyf(2, 4) as int, polyf(2, 4.5) as num;
+
+drop function polyf(x anycompatible, y anycompatible);
+
+create function polyf(x anycompatiblerange, y anycompatible, z anycompatible) returns anycompatiblearray as $$
+  select array[lower(x), upper(x), y, z]
+$$ language sql;
+
+select polyf(int4range(42, 49), 11, 2::smallint) as int, polyf(float8range(4.5, 7.8), 7.8, 11::real) as num;
+
+select polyf(int4range(42, 49), 11, 4.5) as fail;  -- range type doesn't fit
+
+drop function polyf(x anycompatiblerange, y anycompatible, z anycompatible);
+
+create function polyf(x anycompatiblemultirange, y anycompatible, z anycompatible) returns anycompatiblearray as $$
+  select array[lower(x), upper(x), y, z]
+$$ language sql;
+
+select polyf(multirange(int4range(42, 49)), 11, 2::smallint) as int, polyf(multirange(float8range(4.5, 7.8)), 7.8, 11::real) as num;
+
+select polyf(multirange(int4range(42, 49)), 11, 4.5) as fail;  -- range type doesn't fit
+
+drop function polyf(x anycompatiblemultirange, y anycompatible, z anycompatible);
+
+-- fail, can't infer type:
+create function polyf(x anycompatible) returns anycompatiblerange as $$
+  select array[x + 1, x + 2]
+$$ language sql;
+
+create function polyf(x anycompatiblerange, y anycompatiblearray) returns anycompatiblerange as $$
+  select x
+$$ language sql;
+
+select polyf(int4range(42, 49), array[11]) as int, polyf(float8range(4.5, 7.8), array[7]) as num;
+
+drop function polyf(x anycompatiblerange, y anycompatiblearray);
+
+-- fail, can't infer type:
+create function polyf(x anycompatible) returns anycompatiblemultirange as $$
+  select array[x + 1, x + 2]
+$$ language sql;
+
+create function polyf(x anycompatiblemultirange, y anycompatiblearray) returns anycompatiblemultirange as $$
+  select x
+$$ language sql;
+
+select polyf(multirange(int4range(42, 49)), array[11]) as int, polyf(multirange(float8range(4.5, 7.8)), array[7]) as num;
+
+drop function polyf(x anycompatiblemultirange, y anycompatiblearray);
+
+create function polyf(a anyelement, b anyarray,
+                      c anycompatible, d anycompatible,
+                      OUT x anyarray, OUT y anycompatiblearray)
+as $$
+  select a || b, array[c, d]
+$$ language sql;
+
+select x, pg_typeof(x), y, pg_typeof(y)
+  from polyf(11, array[1, 2], 42, 34.5);
+select x, pg_typeof(x), y, pg_typeof(y)
+  from polyf(11, array[1, 2], point(1,2), point(3,4));
+select x, pg_typeof(x), y, pg_typeof(y)
+  from polyf(11, '{1,2}', point(1,2), '(3,4)');
+select x, pg_typeof(x), y, pg_typeof(y)
+  from polyf(11, array[1, 2.2], 42, 34.5);  -- fail
+
+drop function polyf(a anyelement, b anyarray,
+                    c anycompatible, d anycompatible);
+
+create function polyf(anyrange) returns anymultirange
+as 'select multirange($1);' language sql;
+
+select polyf(int4range(1,10));
+select polyf(null);
+
+drop function polyf(anyrange);
+
+create function polyf(anymultirange) returns anyelement
+as 'select lower($1);' language sql;
+
+select polyf(int4multirange(int4range(1,10), int4range(20,30)));
+select polyf(null);
+
+drop function polyf(anymultirange);
+
+create function polyf(anycompatiblerange) returns anycompatiblemultirange
+as 'select multirange($1);' language sql;
+
+select polyf(int4range(1,10));
+select polyf(null);
+
+drop function polyf(anycompatiblerange);
+
+create function polyf(anymultirange) returns anyrange
+as 'select range_merge($1);' language sql;
+
+select polyf(int4multirange(int4range(1,10), int4range(20,30)));
+select polyf(null);
+
+drop function polyf(anymultirange);
+
+create function polyf(anycompatiblemultirange) returns anycompatiblerange
+as 'select range_merge($1);' language sql;
+
+select polyf(int4multirange(int4range(1,10), int4range(20,30)));
+select polyf(null);
+
+drop function polyf(anycompatiblemultirange);
+
+create function polyf(anycompatiblemultirange) returns anycompatible
+as 'select lower($1);' language sql;
+
+select polyf(int4multirange(int4range(1,10), int4range(20,30)));
+select polyf(null);
+
+drop function polyf(anycompatiblemultirange);
 
 
+--
+-- Polymorphic aggregate tests
+--
 -- Legend:
 -----------
 -- A = type is ANY
@@ -394,17 +569,17 @@ select q2, sql_if(q2 > 0, q2, q2 + 1) from int8_tbl;
 
 -- another sort of polymorphic aggregate
 
-CREATE AGGREGATE array_cat_accum (anyarray)
+CREATE AGGREGATE array_larger_accum (anyarray)
 (
-    sfunc = array_cat,
+    sfunc = array_larger,
     stype = anyarray,
     initcond = '{}'
 );
 
-SELECT array_cat_accum(i)
+SELECT array_larger_accum(i)
 FROM (VALUES (ARRAY[1,2]), (ARRAY[3,4])) as t(i);
 
-SELECT array_cat_accum(i)
+SELECT array_larger_accum(i)
 FROM (VALUES (ARRAY[row(1,2),row(3,4)]), (ARRAY[row(5,6),row(7,8)])) as t(i);
 
 -- another kind of polymorphic aggregate
@@ -445,6 +620,9 @@ create aggregate build_group(int8, integer) (
 
 -- check proper resolution of data types for polymorphic transfn/finalfn
 
+create function first_el_transfn(anyarray, anyelement) returns anyarray as
+'select $1 || $2' language sql immutable;
+
 create function first_el(anyarray) returns anyelement as
 'select $1[1]' language sql strict immutable;
 
@@ -455,7 +633,7 @@ create aggregate first_el_agg_f8(float8) (
 );
 
 create aggregate first_el_agg_any(anyelement) (
-  SFUNC = array_append,
+  SFUNC = first_el_transfn,
   STYPE = anyarray,
   FINALFUNC = first_el
 );
@@ -472,6 +650,11 @@ where histogram_bounds is not null;
 -- such functions must protect themselves if varying element type isn't OK
 -- (WHERE clause here is to avoid possibly getting a collation error instead)
 select max(histogram_bounds) from pg_stats where tablename = 'pg_am';
+
+-- another corner case is the input functions for polymorphic pseudotypes
+select array_in('{1,2,3}','int4'::regtype,-1);  -- this has historically worked
+select * from array_in('{1,2,3}','int4'::regtype,-1);  -- this not
+select anyrange_in('[10,20)','int4range'::regtype,-1);
 
 -- test variadic polymorphic functions
 
@@ -814,3 +997,141 @@ select * from dfview;
 
 drop view dfview;
 drop function dfunc(anyelement, anyelement, bool);
+
+--
+-- Tests for ANYCOMPATIBLE polymorphism family
+--
+
+create function anyctest(anycompatible, anycompatible)
+returns anycompatible as $$
+  select greatest($1, $2)
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, 12) x;
+select x, pg_typeof(x) from anyctest(11, 12.3) x;
+select x, pg_typeof(x) from anyctest(11, point(1,2)) x;  -- fail
+select x, pg_typeof(x) from anyctest('11', '12.3') x;  -- defaults to text
+
+drop function anyctest(anycompatible, anycompatible);
+
+create function anyctest(anycompatible, anycompatible)
+returns anycompatiblearray as $$
+  select array[$1, $2]
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, 12) x;
+select x, pg_typeof(x) from anyctest(11, 12.3) x;
+select x, pg_typeof(x) from anyctest(11, array[1,2]) x;  -- fail
+
+drop function anyctest(anycompatible, anycompatible);
+
+create function anyctest(anycompatible, anycompatiblearray)
+returns anycompatiblearray as $$
+  select array[$1] || $2
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, array[12]) x;
+select x, pg_typeof(x) from anyctest(11, array[12.3]) x;
+select x, pg_typeof(x) from anyctest(12.3, array[13]) x;
+select x, pg_typeof(x) from anyctest(12.3, '{13,14.4}') x;
+select x, pg_typeof(x) from anyctest(11, array[point(1,2)]) x;  -- fail
+select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
+
+drop function anyctest(anycompatible, anycompatiblearray);
+
+create function anyctest(anycompatible, anycompatiblerange)
+returns anycompatiblerange as $$
+  select $2
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, int4range(4,7)) x;
+select x, pg_typeof(x) from anyctest(11, numrange(4,7)) x;
+select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
+select x, pg_typeof(x) from anyctest(11.2, int4range(4,7)) x;  -- fail
+select x, pg_typeof(x) from anyctest(11.2, '[4,7)') x;  -- fail
+
+drop function anyctest(anycompatible, anycompatiblerange);
+
+create function anyctest(anycompatiblerange, anycompatiblerange)
+returns anycompatible as $$
+  select lower($1) + upper($2)
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(int4range(11,12), int4range(4,7)) x;
+select x, pg_typeof(x) from anyctest(int4range(11,12), numrange(4,7)) x; -- fail
+
+drop function anyctest(anycompatiblerange, anycompatiblerange);
+
+-- fail, can't infer result type:
+create function anyctest(anycompatible)
+returns anycompatiblerange as $$
+  select $1
+$$ language sql;
+
+create function anyctest(anycompatible, anycompatiblemultirange)
+returns anycompatiblemultirange as $$
+  select $2
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, multirange(int4range(4,7))) x;
+select x, pg_typeof(x) from anyctest(11, multirange(numrange(4,7))) x;
+select x, pg_typeof(x) from anyctest(11, 12) x;  -- fail
+select x, pg_typeof(x) from anyctest(11.2, multirange(int4range(4,7))) x;  -- fail
+select x, pg_typeof(x) from anyctest(11.2, '{[4,7)}') x;  -- fail
+
+drop function anyctest(anycompatible, anycompatiblemultirange);
+
+create function anyctest(anycompatiblemultirange, anycompatiblemultirange)
+returns anycompatible as $$
+  select lower($1) + upper($2)
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(multirange(int4range(11,12)), multirange(int4range(4,7))) x;
+select x, pg_typeof(x) from anyctest(multirange(int4range(11,12)), multirange(numrange(4,7))) x; -- fail
+
+drop function anyctest(anycompatiblemultirange, anycompatiblemultirange);
+
+-- fail, can't infer result type:
+create function anyctest(anycompatible)
+returns anycompatiblemultirange as $$
+  select $1
+$$ language sql;
+
+create function anyctest(anycompatiblenonarray, anycompatiblenonarray)
+returns anycompatiblearray as $$
+  select array[$1, $2]
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, 12) x;
+select x, pg_typeof(x) from anyctest(11, 12.3) x;
+select x, pg_typeof(x) from anyctest(array[11], array[1,2]) x;  -- fail
+
+drop function anyctest(anycompatiblenonarray, anycompatiblenonarray);
+
+create function anyctest(a anyelement, b anyarray,
+                         c anycompatible, d anycompatible)
+returns anycompatiblearray as $$
+  select array[c, d]
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, array[1, 2], 42, 34.5) x;
+select x, pg_typeof(x) from anyctest(11, array[1, 2], point(1,2), point(3,4)) x;
+select x, pg_typeof(x) from anyctest(11, '{1,2}', point(1,2), '(3,4)') x;
+select x, pg_typeof(x) from anyctest(11, array[1, 2.2], 42, 34.5) x;  -- fail
+
+drop function anyctest(a anyelement, b anyarray,
+                       c anycompatible, d anycompatible);
+
+create function anyctest(variadic anycompatiblearray)
+returns anycompatiblearray as $$
+  select $1
+$$ language sql;
+
+select x, pg_typeof(x) from anyctest(11, 12) x;
+select x, pg_typeof(x) from anyctest(11, 12.2) x;
+select x, pg_typeof(x) from anyctest(11, '12') x;
+select x, pg_typeof(x) from anyctest(11, '12.2') x;  -- fail
+select x, pg_typeof(x) from anyctest(variadic array[11, 12]) x;
+select x, pg_typeof(x) from anyctest(variadic array[11, 12.2]) x;
+
+drop function anyctest(variadic anycompatiblearray);

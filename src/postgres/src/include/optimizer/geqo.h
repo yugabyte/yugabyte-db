@@ -3,7 +3,7 @@
  * geqo.h
  *	  prototypes for various files in optimizer/geqo
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/geqo.h
@@ -22,7 +22,7 @@
 #ifndef GEQO_H
 #define GEQO_H
 
-#include "nodes/relation.h"
+#include "nodes/pathnodes.h"
 #include "optimizer/geqo_gene.h"
 
 
@@ -79,7 +79,7 @@ typedef struct
 
 /* routines in geqo_main.c */
 extern RelOptInfo *geqo(PlannerInfo *root,
-	 int number_of_rels, List *initial_rels);
+						int number_of_rels, List *initial_rels);
 
 /* routines in geqo_eval.c */
 extern Cost geqo_eval(PlannerInfo *root, Gene *tour, int num_gene);

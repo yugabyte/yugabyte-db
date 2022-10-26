@@ -3,7 +3,7 @@
  * orderedsetaggs.c
  *		Ordered-set aggregate functions.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-#include <float.h>
 #include <math.h>
 
 #include "catalog/pg_aggregate.h"
@@ -23,7 +22,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/tlist.h"
+#include "optimizer/optimizer.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -216,7 +215,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 			 * Get a tupledesc corresponding to the aggregated inputs
 			 * (including sort expressions) of the agg.
 			 */
-			qstate->tupdesc = ExecTypeFromTL(aggref->args, false);
+			qstate->tupdesc = ExecTypeFromTL(aggref->args);
 
 			/* If we need a flag column, hack the tupledesc to include that */
 			if (ishypothetical)
@@ -224,7 +223,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 				TupleDesc	newdesc;
 				int			natts = qstate->tupdesc->natts;
 
-				newdesc = CreateTemplateTupleDesc(natts + 1, false);
+				newdesc = CreateTemplateTupleDesc(natts + 1);
 				for (i = 1; i <= natts; i++)
 					TupleDescCopyEntry(newdesc, i, qstate->tupdesc, i);
 
@@ -240,7 +239,8 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 			}
 
 			/* Create slot we'll use to store/retrieve rows */
-			qstate->tupslot = MakeSingleTupleTableSlot(qstate->tupdesc);
+			qstate->tupslot = MakeSingleTupleTableSlot(qstate->tupdesc,
+													   &TTSOpsMinimalTuple);
 		}
 		else
 		{
@@ -755,7 +755,7 @@ percentile_disc_multi_final(PG_FUNCTION_ARGS)
 
 	deconstruct_array(param, FLOAT8OID,
 	/* hard-wired info on type float8 */
-					  8, FLOAT8PASSBYVAL, 'd',
+					  sizeof(float8), FLOAT8PASSBYVAL, TYPALIGN_DOUBLE,
 					  &percentiles_datum,
 					  &percentiles_null,
 					  &num_percentiles);
@@ -879,7 +879,7 @@ percentile_cont_multi_final_common(FunctionCallInfo fcinfo,
 
 	deconstruct_array(param, FLOAT8OID,
 	/* hard-wired info on type float8 */
-					  8, FLOAT8PASSBYVAL, 'd',
+					  sizeof(float8), FLOAT8PASSBYVAL, TYPALIGN_DOUBLE,
 					  &percentiles_datum,
 					  &percentiles_null,
 					  &num_percentiles);
@@ -1002,7 +1002,9 @@ percentile_cont_float8_multi_final(PG_FUNCTION_ARGS)
 	return percentile_cont_multi_final_common(fcinfo,
 											  FLOAT8OID,
 	/* hard-wired info on type float8 */
-											  8, FLOAT8PASSBYVAL, 'd',
+											  sizeof(float8),
+											  FLOAT8PASSBYVAL,
+											  TYPALIGN_DOUBLE,
 											  float8_lerp);
 }
 
@@ -1015,7 +1017,7 @@ percentile_cont_interval_multi_final(PG_FUNCTION_ARGS)
 	return percentile_cont_multi_final_common(fcinfo,
 											  INTERVALOID,
 	/* hard-wired info on type interval */
-											  16, false, 'd',
+											  16, false, TYPALIGN_DOUBLE,
 											  interval_lerp);
 }
 
@@ -1084,7 +1086,7 @@ mode_final(PG_FUNCTION_ARGS)
 			last_abbrev_val = abbrev_val;
 		}
 		else if (abbrev_val == last_abbrev_val &&
-				 DatumGetBool(FunctionCall2(equalfn, val, last_val)))
+				 DatumGetBool(FunctionCall2Coll(equalfn, PG_GET_COLLATION(), val, last_val)))
 		{
 			/* value equal to previous value, count it */
 			if (last_val_is_mode)
@@ -1345,6 +1347,7 @@ hypothetical_dense_rank_final(PG_FUNCTION_ARGS)
 											  numDistinctCols,
 											  sortColIdx,
 											  osastate->qstate->eqOperators,
+											  osastate->qstate->sortCollations,
 											  NULL);
 		MemoryContextSwitchTo(oldContext);
 		osastate->qstate->compareTuple = compareTuple;
@@ -1376,7 +1379,8 @@ hypothetical_dense_rank_final(PG_FUNCTION_ARGS)
 	 * previous row available for comparisons.  This is accomplished by
 	 * swapping the slot pointer variables after each row.
 	 */
-	extraslot = MakeSingleTupleTableSlot(osastate->qstate->tupdesc);
+	extraslot = MakeSingleTupleTableSlot(osastate->qstate->tupdesc,
+										 &TTSOpsMinimalTuple);
 	slot2 = extraslot;
 
 	/* iterate till we find the hypothetical row */

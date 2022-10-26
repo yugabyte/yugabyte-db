@@ -22,19 +22,22 @@ teardown
   DROP FUNCTION unlck();
 }
 
-session "s1"
-step "s1i"	{
+session s1
+step s1i	{
 		CREATE INDEX CONCURRENTLY mcic_one_pkey ON mcic_one (id)
 		WHERE lck_shr(281457);
 	}
 teardown	{ SELECT unlck(); }
 
 
-session "s2"
-step "s2l"  { SELECT pg_advisory_lock(281457); }
-step "s2i"	{
+session s2
+step s2l	{ SELECT pg_advisory_lock(281457); }
+step s2i	{
 		CREATE INDEX CONCURRENTLY mcic_two_pkey ON mcic_two (id)
 		WHERE unlck();
 	}
 
-permutation "s2l" "s1i" "s2i"
+# (*) marker ensures that s2i is reported as "waiting", even if it
+# completes very quickly
+
+permutation s2l s1i s2i(*)

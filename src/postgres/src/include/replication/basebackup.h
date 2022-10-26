@@ -3,7 +3,7 @@
  * basebackup.h
  *	  Exports from replication/basebackup.c.
  *
- * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2021, PostgreSQL Global Development Group
  *
  * src/include/replication/basebackup.h
  *
@@ -20,17 +20,20 @@
 #define MAX_RATE_LOWER	32
 #define MAX_RATE_UPPER	1048576
 
-
+/*
+ * Information about a tablespace
+ *
+ * In some usages, "path" can be NULL to denote the PGDATA directory itself.
+ */
 typedef struct
 {
-	char	   *oid;
-	char	   *path;
-	char	   *rpath;			/* relative path within PGDATA, or NULL */
-	int64		size;
+	char	   *oid;			/* tablespace's OID, as a decimal string */
+	char	   *path;			/* full path to tablespace's directory */
+	char	   *rpath;			/* relative path if it's within PGDATA, else
+								 * NULL */
+	int64		size;			/* total size as sent; -1 if not known */
 } tablespaceinfo;
 
 extern void SendBaseBackup(BaseBackupCmd *cmd);
-
-extern int64 sendTablespace(char *path, bool sizeonly);
 
 #endif							/* _BASEBACKUP_H */

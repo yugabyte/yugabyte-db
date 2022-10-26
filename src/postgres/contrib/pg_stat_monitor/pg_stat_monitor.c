@@ -17,18 +17,13 @@
 #include "postgres.h"
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
-
-/* YB includes. */
-#include "common/pg_yb_common.h"
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/server/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.9.0"
 #define PG_STAT_STATEMENTS_COLS         51  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
-
-#define YB_PGSM_TEXT_FILE_PREFIX		"pg_stat_monitor_query"
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
@@ -204,7 +199,6 @@ void
 _PG_init(void)
 {
 	int i;
-	const char *yb_tmp_dir = YbGetTmpDir();
 
 	elog(DEBUG2, "pg_stat_monitor: %s()", __FUNCTION__);
 	/*
@@ -224,11 +218,7 @@ _PG_init(void)
 	for (i = 0; i < PGSM_MAX_BUCKETS; i++)
 	{
 		char file_name[1024];
-		if (yb_tmp_dir)
-			snprintf(file_name, 1024, "%s/%s.%d", yb_tmp_dir,
-					 YB_PGSM_TEXT_FILE_PREFIX, i);
-		else
-			snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, i);
+		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, i);
 		unlink(file_name);
 	}
 
@@ -1688,7 +1678,6 @@ get_next_wbucket(pgssSharedState *pgss)
 	uint64          current_usec;
 	uint64          bucket_id;
 	struct tm       *lt;
-	const  char     *yb_tmp_dir = YbGetTmpDir();
 
 	gettimeofday(&tv,NULL);
 	current_usec = (TimestampTz) tv.tv_sec - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
@@ -1705,12 +1694,7 @@ get_next_wbucket(pgssSharedState *pgss)
 		buf = pgss_qbuf[bucket_id];
 		hash_entry_dealloc(bucket_id);
 		hash_query_entry_dealloc(bucket_id);
-		if (yb_tmp_dir)
-			snprintf(file_name, 1024, "%s/%s.%d", yb_tmp_dir,
-					 YB_PGSM_TEXT_FILE_PREFIX, (int) bucket_id);
-		else
-			snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
-
+		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
 		unlink(file_name);
 
 		/* reset the query buffer */
@@ -2903,14 +2887,8 @@ dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len)
 {
     int  fd = 0;
 	char file_name[1024];
-	const char *yb_tmp_dir = YbGetTmpDir();
 
-	if (yb_tmp_dir)
-		snprintf(file_name, 1024, "%s/%s.%d", yb_tmp_dir,
-				 YB_PGSM_TEXT_FILE_PREFIX, bucket_id);
-	else
-		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
-
+	snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
 	fd = OpenTransientFile(file_name, O_RDWR | O_CREAT | O_APPEND | PG_BINARY);
     if (fd < 0)
 		ereport(LOG,
@@ -2935,15 +2913,9 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt)
 	char          file_name[1024];
 	unsigned char *buf = NULL;
 	int           off = 0;
-	const char	  *yb_tmp_dir = YbGetTmpDir();
 
-	if (yb_tmp_dir)
-		snprintf(file_name, 1024, "%s/%s.%d", yb_tmp_dir,
-				 YB_PGSM_TEXT_FILE_PREFIX, bucket_id);
-	else
-		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
-
-	fd = OpenTransientFile(file_name, O_RDONLY | PG_BINARY);
+	snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, bucket_id);
+    fd = OpenTransientFile(file_name, O_RDONLY | PG_BINARY);
 	if (fd < 0)
 		goto exit;
 

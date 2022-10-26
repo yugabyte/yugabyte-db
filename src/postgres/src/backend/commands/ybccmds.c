@@ -25,16 +25,17 @@
 
 #include "miscadmin.h"
 #include "access/sysattr.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
-#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -46,6 +47,7 @@
 #include "commands/ybccmds.h"
 
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -65,9 +67,6 @@
 #include "parser/parse_coerce.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
-
-/* Yugabyte includes */
-#include "catalog/pg_yb_tablegroup.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -95,24 +94,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
-				  bool *retry_on_oid_collision)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
-	if (YBIsDBCatalogVersionMode())
-	{
-		/*
-		 * In per database catalog version mode, disallow create database
-		 * if we come too close to the limit.
-		 */
-		int64_t num_databases = YbGetNumberOfDatabases();
-		int64_t num_reserved =
-			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
-		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("too many databases")));
-	}
-
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
@@ -121,24 +104,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	
-	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
-	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
-	if (retry_on_oid_collision)
-	{
-		*retry_on_oid_collision = createdb_status &&
-				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
-				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
-		
-		if (*retry_on_oid_collision)
-		{
-			YBCFreeStatus(createdb_status);
-			return;
-		}
-	}
-
-	HandleYBStatus(createdb_status);
-
+	HandleYBStatus(YBCPgExecCreateDatabase(handle));
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }
@@ -229,6 +195,8 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	ListCell  *cell;
 	IndexElem *index_elem;
 
+#ifdef NEIL_OID
+	/* OID is now a regular column */
 	/* For tables created WITH (oids = true), we expect oid column to be the only PK. */
 	if (desc->tdhasoid)
 	{
@@ -266,7 +234,8 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 												 is_desc,
 												 is_nulls_first));
 	}
-	else if (primary_key != NULL)
+#endif
+	if (primary_key != NULL)
 	{
 		/* Add all key columns first with respect to compound key order */
 		foreach(cell, primary_key->yb_index_params)
@@ -439,7 +408,7 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			} else {
 				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
 				bool is_pg_catalog_table_ =
-					IsSystemNamespace(namespaceId) && IsToastNamespace(namespaceId);
+					IsCatalogNamespace(namespaceId) && IsToastNamespace(namespaceId);
 				/*
 				 * Checking if  table_oid is valid simple means if the table is
 				 * part of a tablegroup.
@@ -554,7 +523,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		RangeVar   *rv = (RangeVar *) lfirst(list_head(stmt->inhRelations));
 		Oid	parentOid = RangeVarGetRelid(rv, NoLock, false);
 
-		Relation parentRel = heap_open(parentOid, NoLock);
+		Relation parentRel = table_open(parentOid, NoLock);
 		Assert(!OidIsValid(tablegroupId));
 		tablegroupId = YbGetTableProperties(parentRel)->tablegroup_oid;
 		List *idxlist = RelationGetIndexList(parentRel);
@@ -571,18 +540,12 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 				relation_close(idxRel, AccessShareLock);
 				continue;
 			}
-			AttrNumber *attmap;
-			IndexStmt  *idxstmt;
-			Oid         constraintOid;
+			AttrMap *attmap;
+			IndexStmt *idxstmt;
+			Oid constraintOid;
 
-			attmap = convert_tuples_by_name_map(
-				RelationGetDescr(rel), RelationGetDescr(parentRel),
-				gettext_noop("could not convert row type"),
-				false /* yb_ignore_type_mismatch */);
-			idxstmt =
-				generateClonedIndexStmt(NULL, RelationGetRelid(rel), idxRel,
-						attmap, RelationGetDescr(rel)->natts,
-						&constraintOid);
+			attmap = build_attrmap_by_name(RelationGetDescr(rel), RelationGetDescr(parentRel));
+			idxstmt = generateClonedIndexStmt(NULL, idxRel, attmap, &constraintOid);
 
 			primary_key = makeNode(Constraint);
 			primary_key->contype      = CONSTR_PRIMARY;
@@ -602,8 +565,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 			relation_close(idxRel, AccessShareLock);
 		}
-		heap_close(parentRel, NoLock);
-		heap_close(rel, AccessShareLock);
+		table_close(parentRel, NoLock);
+		table_close(rel, AccessShareLock);
 	}
 
 	/* By default, inherit the colocated option from the database */
@@ -615,17 +578,12 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
-		/*
-		 * A check in parse_utilcmd.c makes sure only one of these two options
-		 * can be specified.
-		 */
-		if (strcmp(def->defname, "colocated") == 0 ||
-			strcmp(def->defname, "colocation") == 0)
+		if (strcmp(def->defname, "colocated") == 0)
 		{
 			if (OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
+						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
 
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
@@ -633,7 +591,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			else if (colocated_relopt)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set colocation true on a non-colocated"
+						 errmsg("cannot set colocated true on a non-colocated"
 								" database")));
 			/* The following break is fine because there should only be one
 			 * colocated reloption at this point due to checks in
@@ -651,43 +609,6 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated table")));
-
-	/*
-	 * Lazily create an underlying tablegroup in a colocated database if needed.
-	 */
-	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
-	{
-		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
-		/* Default tablegroup doesn't exist, so create it. */
-		if (!OidIsValid(tablegroupId))
-		{
-			/*
-			 * Regardless of the current user, let postgres be the owner of the
-			 * default tablegroup in a colocated database.
-			 */
-			RoleSpec *spec = makeNode(RoleSpec);
-			spec->roletype = ROLESPEC_CSTRING;
-			spec->rolename = pstrdup("postgres");
-
-			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
-			tablegroup_stmt->tablegroupname = DEFAULT_TABLEGROUP_NAME;
-			tablegroup_stmt->implicit = true;
-			tablegroup_stmt->owner = spec;
-			tablegroupId = CreateTableGroup(tablegroup_stmt);
-			stmt->tablegroupname = pstrdup(DEFAULT_TABLEGROUP_NAME);
-		}
-		/* Record dependency between the table and default tablegroup. */
-		ObjectAddress myself, default_tablegroup;
-		myself.classId = RelationRelationId;
-		myself.objectId = relationId;
-		myself.objectSubId = 0;
-
-		default_tablegroup.classId = YbTablegroupRelationId;
-		default_tablegroup.objectId = tablegroupId;
-		default_tablegroup.objectSubId = 0;
-
-		recordDependencyOn(&myself, &default_tablegroup, DEPENDENCY_NORMAL);
-	}
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
@@ -776,67 +697,16 @@ YBCDropTable(Relation relation)
 													   false, /* if_exists */
 													   &handle),
 													   &not_found);
-		if (not_found)
-		{
-			return;
-		}
-		/*
-		 * YSQL DDL Rollback is not yet supported for colocated tables.
-		 */
-		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
-			!yb_props->is_colocated)
+		const bool valid_handle = !not_found;
+		if (valid_handle)
 		{
 			/*
-			 * The following issues a request to the YB-Master to drop the
-			 * table once this transaction commits.
+			 * We cannot abort drop in DocDB so postpone the execution until
+			 * the rest of the statement/txn is finished executing.
 			 */
-			HandleYBStatusIgnoreNotFound(YBCPgExecDropTable(handle),
-											&not_found);
-			return;
+			YBSaveDdlHandle(handle);
 		}
-		/*
-		 * YSQL DDL Rollback is disabled/unsupported. This means DocDB will not
-		 * rollback the drop if the transaction ends up failing. We cannot
-		 * abort drop in DocDB so postpone the execution until the rest of the
-		 * statement/txn finishes executing.
-		 */
-		YBSaveDdlHandle(handle);
 	}
-}
-
-/*
- * This function is inspired by RelationSetNewRelfilenode() in
- * backend/utils/cache/relcache.c It updates the tuple corresponding to the
- * truncated relation in pg_class in the sys cache.
- */
-static void
-YbOnTruncateUpdateCatalog(Relation rel)
-{
-	Relation	  pg_class;
-	HeapTuple	  tuple;
-	Form_pg_class classform;
-
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-
-	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(RelationGetRelid(rel)));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for relation %u", RelationGetRelid(rel));
-	classform = (Form_pg_class) GETSTRUCT(tuple);
-
-	if (rel->rd_rel->relkind != RELKIND_SEQUENCE)
-	{
-		classform->relpages = 0;
-		classform->reltuples = 0;
-		classform->relallvisible = 0;
-	}
-
-	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
-
-	heap_freetuple(tuple);
-	heap_close(pg_class, RowExclusiveLock);
-
-	/* This makes the pg_class row change visible. */
-	CommandCounterIncrement();
 }
 
 void
@@ -871,9 +741,6 @@ YbTruncate(Relation rel)
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
-	/* Update catalog metadata of the truncated table */
-	YbOnTruncateUpdateCatalog(rel);
-
 	if (!rel->rd_rel->relhasindex)
 		return;
 
@@ -883,19 +750,16 @@ YbTruncate(Relation rel)
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
+
+		/* PK index is not secondary index, skip */
+		if (indexId == rel->rd_pkindex)
+			continue;
+
 		/*
 		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
-
-		/* PK index is not secondary index, perform only catalog update */
-		if (indexId == rel->rd_pkindex) {
-			YbOnTruncateUpdateCatalog(indexRel);
-			index_close(indexRel, AccessExclusiveLock);
-			continue;
-		}
-
 		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
@@ -908,8 +772,7 @@ static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
                               TupleDesc desc,
                               OptSplit *split_options,
-                              int16 * coloptions,
-                              int numIndexKeyAttrs)
+                              int16 * coloptions)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -929,7 +792,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 			/* Construct array to SPLIT column datatypes */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
 			int attr_count;
-			for (attr_count = 0; attr_count < numIndexKeyAttrs; ++attr_count)
+			for (attr_count = 0; attr_count < desc->natts; ++attr_count)
 			{
 				attrs[attr_count] = TupleDescAttr(desc, attr_count);
 			}
@@ -955,7 +818,6 @@ YBCCreateIndex(const char *indexName,
 			   Relation rel,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
-			   bool is_colocated,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId)
@@ -980,9 +842,7 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
-									   false /* if_not_exists */,
-									   MyDatabaseColocated && is_colocated
-									   /* is_colocated_via_database */,
+									   false, /* if_not_exists */
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
@@ -1022,8 +882,7 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
-		                              indexInfo->ii_NumIndexKeyAttrs);
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
@@ -1080,9 +939,13 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				}
 			}
 
+			/* YB_TODO(neil@yugabyte)
+			 * Read typeOid from "values" and "nulls" instead of tuple header.
+			 */
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
-			typeOid = HeapTupleGetOid(typeTuple);
+			typeOid = YbHeapTupleGetOid(typeTuple);
 			ReleaseSysCache(typeTuple);
+
 			order = RelationGetNumberOfAttributes(rel) + *col;
 			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
@@ -1152,7 +1015,17 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 
 		case AT_AlterColumnType:
 		{
+			/*
+			 * Only supports variants that don't require on-disk changes.
+			 * For now, that is just varchar and varbit.
+			 */
+			ColumnDef*			colDef = (ColumnDef *) cmd->def;
 			HeapTuple			typeTuple;
+			Form_pg_attribute	attTup;
+			Oid					curTypId;
+			Oid					newTypId;
+			int32				curTypMod;
+			int32				newTypMod;
 
 			/* Get current typid and typmod of the column. */
 			typeTuple = SearchSysCacheAttName(relationId, cmd->name);
@@ -1162,7 +1035,64 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						errmsg("column \"%s\" of relation \"%s\" does not exist",
 								cmd->name, RelationGetRelationName(rel))));
 			}
+			attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
+			curTypId = attTup->atttypid;
+			curTypMod = attTup->atttypmod;
 			ReleaseSysCache(typeTuple);
+
+			/* Get the new typid and typmod of the column. */
+			typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
+
+			/* Only varbit and varchar don't cause on-disk changes. */
+			switch (newTypId)
+			{
+				case VARCHAROID:
+				case VARBITOID:
+				{
+					/*
+					* Check for type equality, and that the new size is greater than or equal
+					* to the old size, unless the current size is infinite (-1).
+					*/
+					if (newTypId != curTypId ||
+						(newTypMod < curTypMod && newTypMod != -1) ||
+						(newTypMod > curTypMod && curTypMod == -1))
+					{
+						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This ALTER TABLE command is not yet supported.")));
+					}
+					break;
+				}
+
+				default:
+				{
+					if (newTypId == curTypId && newTypMod == curTypMod)
+					{
+						/* Types are the same, no changes will occur. */
+						break;
+					}
+					/* timestamp <-> timestamptz type change is allowed
+						if no rewrite is needed */
+					if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
+						!TimestampTimestampTzRequiresRewrite()) {
+						break;
+					}
+					if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
+						!TimestampTimestampTzRequiresRewrite()) {
+						break;
+					}
+					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("This ALTER TABLE command is not yet supported.")));
+				}
+			}
+			/*
+			 * Do not allow collation update because that requires different collation
+			 * encoding and therefore can cause on-disk changes.
+			 */
+			Oid cur_collation_id = attTup->attcollation;
+			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
+			if (cur_collation_id != new_collation_id)
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
@@ -1227,21 +1157,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
-				RangeVar *partition_rv = ((PartitionCmd *)cmd->def)->name;
-				Relation r = relation_openrv(partition_rv, AccessExclusiveLock);
-				char relkind = r->rd_rel->relkind;
-				relation_close(r, AccessShareLock);
-				/*
-				 * If alter is performed on an index as opposed to a table
-				 * skip schema version increment.
-				 */
-				if (relkind == RELKIND_INDEX ||
-					relkind == RELKIND_PARTITIONED_INDEX)
-				{
-					return handles;
-				}
-
-				dependent_rel = heap_openrv(partition_rv, AccessExclusiveLock);
+				dependent_rel = table_openrv(((PartitionCmd *)cmd->def)->name,
+											AccessExclusiveLock);
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.
@@ -1249,7 +1166,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				if (!IsYBBackedRelation(dependent_rel) ||
 					dependent_rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 				{
-					heap_close(dependent_rel, AccessExclusiveLock);
+					table_close(dependent_rel, AccessExclusiveLock);
 					dependent_rel = NULL;
 				}
 			}
@@ -1260,8 +1177,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			else if (cmd->subtype == AT_AddConstraintRecurse &&
 					 ((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 			{
-				dependent_rel = heap_openrv(((Constraint *) cmd->def)->pktable,
-											AccessExclusiveLock);
+				dependent_rel = table_openrv(((Constraint *) cmd->def)->pktable,
+											 AccessExclusiveLock);
 			}
 			/*
 			 * For drop foreign key case, assigning the primary key table
@@ -1273,7 +1190,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
 				if (!HeapTupleIsValid(reltup))
 					elog(ERROR,
-						 "cache lookup failed for relation %u",
+						 "Cache lookup failed for relation %u",
 						  relationId);
 				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
 				ReleaseSysCache(reltup);
@@ -1303,8 +1220,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					if (con->contype == CONSTRAINT_FOREIGN &&
 						relationId != con->confrelid)
 					{
-						dependent_rel = heap_open(con->confrelid,
-												  AccessExclusiveLock);
+						dependent_rel = table_open(con->confrelid,
+												   AccessExclusiveLock);
 					}
 				}
 			}
@@ -1326,7 +1243,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 							 errmsg("This ALTER TABLE command is"
 									" not yet supported.")));
 				}
-				dependent_rel = heap_openrv(index->relation,
+				dependent_rel = table_openrv(index->relation,
 											AccessExclusiveLock);
 			}
 			/*
@@ -1344,7 +1261,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				HandleYBStatus(
 					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 				handles = lappend(handles, alter_cmd_handle);
-				heap_close(dependent_rel, AccessExclusiveLock);
+				table_close(dependent_rel, AccessExclusiveLock);
 			}
 			*needsYBAlter = true;
 			break;
@@ -1402,13 +1319,6 @@ YBCPrepareAlterTable(List** subcmds,
 	}
 
 	return handles;
-}
-
-void
-YBCSetTableIdForAlterTable(YBCPgStatement handle, Oid databaseId,
-						   Oid relationId)
-{
-	HandleYBStatus(YBCPgAlterTableSetTableId(handle, databaseId, relationId));
 }
 
 void
@@ -1566,7 +1476,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 
 	heapId = IndexGetRelation(indexId, false);
 	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
-	heapRel = heap_open(heapId, ShareLock);
+	heapRel = table_open(heapId, ShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -1598,7 +1508,7 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 				   out_param);
 
 	index_close(indexRel, ShareLock);
-	heap_close(heapRel, ShareLock);
+	table_close(heapRel, ShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);
@@ -1607,7 +1517,8 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	/* output tuples */
-	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt));
+	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt),
+									  &TTSOpsVirtual);
 	do_text_output_oneline(tstate, out_param->bfoutput->data);
 	end_tup_output(tstate);
 }
@@ -1617,24 +1528,23 @@ TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
 	Oid			result_type = TEXTOID;
 
 	/* Need a tuple descriptor representing a single TEXT or XML column */
-	tupdesc = CreateTemplateTupleDesc(1, false);
+	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
 					   result_type, -1, 0);
 	return tupdesc;
 }
 
 void
-YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel, AttrNumber *new_to_old_attmap) {
+YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel,
+					   AttrMap *new_to_old_attmap)
+{
 	Relation index_rel = index_open(index_oid, AccessExclusiveLock);
 
 	/* Construct the new CREATE INDEX stmt */
-
 	IndexStmt* index_stmt = generateClonedIndexStmt(NULL /* heapRel, we provide an oid instead */,
-					new_rel_id,
-					index_rel,
-					new_to_old_attmap,
-					RelationGetDescr(old_rel)->natts,
-					NULL /* parent constraint OID pointer */);
+													index_rel,
+													new_to_old_attmap,
+													NULL /* parent constraint OID pointer */);
 
 	const char* index_name = RelationGetRelationName(index_rel);
 	const char* index_namespace_name = get_namespace_name(index_rel->rd_rel->relnamespace);

@@ -9,7 +9,7 @@
  * proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,7 +35,6 @@
 #include "common/username.h"
 #include "port/atomics.h"
 #include "postmaster/postmaster.h"
-#include "storage/s_lock.h"
 #include "storage/spin.h"
 #include "tcop/tcopprot.h"
 #include "utils/help_config.h"
@@ -101,42 +100,24 @@ PostgresServerProcessMain(int argc, char *argv[])
 	MemoryContextInit();
 
 	/*
-	 * Set up locale information from environment.  Note that LC_CTYPE and
-	 * LC_COLLATE will be overridden later from pg_control if we are in an
-	 * already-initialized database.  We set them here so that they will be
-	 * available to fill pg_control during initdb.  LC_MESSAGES will get set
-	 * later during GUC option processing, but we set it here to allow startup
-	 * error messages to be localized.
+	 * Set up locale information
 	 */
-
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("postgres"));
 
-#ifdef WIN32
-
 	/*
-	 * Windows uses codepages rather than the environment, so we work around
-	 * that by querying the environment explicitly first for LC_COLLATE and
-	 * LC_CTYPE. We have to do this because initdb passes those values in the
-	 * environment. If there is nothing there we fall back on the codepage.
+	 * In the postmaster, absorb the environment values for LC_COLLATE and
+	 * LC_CTYPE.  Individual backends will change these later to settings
+	 * taken from pg_database, but the postmaster cannot do that.  If we leave
+	 * these set to "C" then message localization might not work well in the
+	 * postmaster.
 	 */
-	{
-		char	   *env_locale;
-
-		if ((env_locale = getenv("LC_COLLATE")) != NULL)
-			init_locale("LC_COLLATE", LC_COLLATE, env_locale);
-		else
-			init_locale("LC_COLLATE", LC_COLLATE, "");
-
-		if ((env_locale = getenv("LC_CTYPE")) != NULL)
-			init_locale("LC_CTYPE", LC_CTYPE, env_locale);
-		else
-			init_locale("LC_CTYPE", LC_CTYPE, "");
-	}
-#else
 	init_locale("LC_COLLATE", LC_COLLATE, "");
 	init_locale("LC_CTYPE", LC_CTYPE, "");
-#endif
 
+	/*
+	 * LC_MESSAGES will get set later during GUC option processing, but we set
+	 * it here to allow startup error messages to be localized.
+	 */
 #ifdef LC_MESSAGES
 	init_locale("LC_MESSAGES", LC_MESSAGES, "");
 #endif
@@ -206,33 +187,23 @@ PostgresServerProcessMain(int argc, char *argv[])
 	 * Dispatch to one of various subprograms depending on first argument.
 	 */
 
+	if (argc > 1 && strcmp(argv[1], "--check") == 0)
+		BootstrapModeMain(argc, argv, true);
+	else if (argc > 1 && strcmp(argv[1], "--boot") == 0)
+		BootstrapModeMain(argc, argv, false);
 #ifdef EXEC_BACKEND
-	if (argc > 1 && strncmp(argv[1], "--fork", 6) == 0)
-		SubPostmasterMain(argc, argv);	/* does not return */
+	else if (argc > 1 && strncmp(argv[1], "--fork", 6) == 0)
+		SubPostmasterMain(argc, argv);
 #endif
-
-#ifdef WIN32
-
-	/*
-	 * Start our win32 signal implementation
-	 *
-	 * SubPostmasterMain() will do this for itself, but the remaining modes
-	 * need it here
-	 */
-	pgwin32_signal_initialize();
-#endif
-
-	if (argc > 1 && strcmp(argv[1], "--boot") == 0)
-		AuxiliaryProcessMain(argc, argv);	/* does not return */
 	else if (argc > 1 && strcmp(argv[1], "--describe-config") == 0)
-		GucInfoMain();			/* does not return */
+		GucInfoMain();
 	else if (argc > 1 && strcmp(argv[1], "--single") == 0)
-		PostgresMain(argc, argv,
-					 NULL,		/* no dbname */
-					 strdup(get_user_name_or_exit(progname)));	/* does not return */
+		PostgresSingleUserMain(argc, argv,
+							   strdup(get_user_name_or_exit(progname)));
 	else
-		PostmasterMain(argc, argv); /* does not return */
-	abort();					/* should not get here */
+		PostmasterMain(argc, argv);
+	/* the functions above should not return */
+	abort();
 }
 
 
@@ -348,7 +319,6 @@ help(const char *progname)
 	printf(_("  -l                 enable SSL connections\n"));
 #endif
 	printf(_("  -N MAX-CONNECT     maximum number of allowed connections\n"));
-	printf(_("  -o OPTIONS         pass \"OPTIONS\" to each server process (obsolete)\n"));
 	printf(_("  -p PORT            port number to listen on\n"));
 	printf(_("  -s                 show statistics after each query\n"));
 	printf(_("  -S WORK-MEM        set amount of memory for sorts (in kB)\n"));
@@ -376,14 +346,15 @@ help(const char *progname)
 
 	printf(_("\nOptions for bootstrapping mode:\n"));
 	printf(_("  --boot             selects bootstrapping mode (must be first argument)\n"));
+	printf(_("  --check            selects check mode (must be first argument)\n"));
 	printf(_("  DBNAME             database name (mandatory argument in bootstrapping mode)\n"));
 	printf(_("  -r FILENAME        send stdout and stderr to given file\n"));
-	printf(_("  -x NUM             internal use\n"));
 
 	printf(_("\nPlease read the documentation for the complete list of run-time\n"
 			 "configuration settings and how to set them on the command line or in\n"
 			 "the configuration file.\n\n"
-			 "Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+			 "Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }
 
 

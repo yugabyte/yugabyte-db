@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 use strict;
 use warnings;
 
@@ -22,9 +25,14 @@ command_ok([ 'pg_ctl', 'initdb', '-D', "$tempdir/data", '-o', '-N' ],
 	'pg_ctl initdb');
 command_ok([ $ENV{PG_REGRESS}, '--config-auth', "$tempdir/data" ],
 	'configure authentication');
+my $node_port = PostgresNode::get_free_port();
 open my $conf, '>>', "$tempdir/data/postgresql.conf";
 print $conf "fsync = off\n";
-if (!$windows_os)
+print $conf "port = $node_port\n";
+print $conf TestLib::slurp_file($ENV{TEMP_CONFIG})
+  if defined $ENV{TEMP_CONFIG};
+
+if ($use_unix_sockets)
 {
 	print $conf "listen_addresses = ''\n";
 	print $conf "unix_socket_directories = '$tempdir_short'\n";

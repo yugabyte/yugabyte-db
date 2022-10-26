@@ -14,9 +14,18 @@
 <!-- Parameters -->
 <xsl:param name="make.valid.html" select="1"></xsl:param>
 <xsl:param name="generate.id.attributes" select="1"></xsl:param>
+<xsl:param name="make.graphic.viewport" select="0"/>
 <xsl:param name="link.mailto.url">pgsql-docs@lists.postgresql.org</xsl:param>
 <xsl:param name="toc.max.depth">2</xsl:param>
 
+<!--
+  The below allows the stylesheets provided by the website to be applied fully
+  to the generated HTML.
+  -->
+<xsl:template name="body.attributes">
+  <xsl:attribute name="id">docContent</xsl:attribute>
+  <xsl:attribute name="class">container-fluid col-10</xsl:attribute>
+</xsl:template>
 
 <!-- Change display of some elements -->
 

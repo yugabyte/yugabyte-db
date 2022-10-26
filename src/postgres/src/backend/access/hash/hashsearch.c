@@ -3,7 +3,7 @@
  * hashsearch.c
  *	  search code for postgres hash tables
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,17 +18,17 @@
 #include "access/relscan.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "utils/rel.h"
 #include "storage/predicate.h"
+#include "utils/rel.h"
 
 static bool _hash_readpage(IndexScanDesc scan, Buffer *bufP,
-			   ScanDirection dir);
-static int _hash_load_qualified_items(IndexScanDesc scan, Page page,
-						   OffsetNumber offnum, ScanDirection dir);
+						   ScanDirection dir);
+static int	_hash_load_qualified_items(IndexScanDesc scan, Page page,
+									   OffsetNumber offnum, ScanDirection dir);
 static inline void _hash_saveitem(HashScanOpaque so, int itemIndex,
-			   OffsetNumber offnum, IndexTuple itup);
+								  OffsetNumber offnum, IndexTuple itup);
 static void _hash_readnext(IndexScanDesc scan, Buffer *bufp,
-			   Page *pagep, HashPageOpaque *opaquep);
+						   Page *pagep, HashPageOpaque *opaquep);
 
 /*
  *	_hash_next() -- Get the next item in a scan.
@@ -119,7 +119,7 @@ _hash_next(IndexScanDesc scan, ScanDirection dir)
 
 	/* OK, itemIndex says what to return */
 	currItem = &so->currPos.items[so->currPos.itemIndex];
-	scan->xs_ctup.t_self = currItem->heapTid;
+	scan->xs_heaptid = currItem->heapTid;
 
 	return true;
 }
@@ -432,7 +432,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* OK, itemIndex says what to return */
 	currItem = &so->currPos.items[so->currPos.itemIndex];
-	scan->xs_ctup.t_self = currItem->heapTid;
+	scan->xs_heaptid = currItem->heapTid;
 
 	/* if we're here, _hash_readpage found a valid tuples */
 	return true;

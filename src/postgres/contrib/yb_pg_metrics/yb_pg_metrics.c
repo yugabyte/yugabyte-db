@@ -37,7 +37,7 @@
 #include "utils/catcache.h"
 #include "utils/datetime.h"
 #include "utils/syscache.h"
-#include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb/server/pgsql_webserver_wrapper.h"
 
 #include "pg_yb_utils.h"
 
@@ -96,7 +96,8 @@ int port = 0;
 static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
-PgBackendStatus *backendStatusArray = NULL;
+PgBackendStatus **backendStatusArrayPointer = NULL;
+extern int too_many_conn;
 extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
@@ -206,6 +207,9 @@ getElapsedMs(TimestampTz start_time, TimestampTz stop_time)
 void
 pullRpczEntries(void)
 {
+  if (!(*backendStatusArrayPointer))
+    elog(LOG, "Backend Status Array hasn't been initialized yet.");
+
   ybrpczMemoryContext = AllocSetContextCreate(TopMemoryContext,
                                              "YB RPCz memory context",
                                              ALLOCSET_SMALL_SIZES);
@@ -214,7 +218,9 @@ pullRpczEntries(void)
   rpcz = (rpczEntry *) palloc(sizeof(rpczEntry) * NumBackendStatSlots);
 
   num_backends = NumBackendStatSlots;
-  volatile PgBackendStatus *beentry = backendStatusArray;
+  volatile PgBackendStatus *beentry;
+
+  beentry = *backendStatusArrayPointer;
 
   for (int i = 0; i < NumBackendStatSlots; i++)
   {
@@ -232,6 +238,7 @@ pullRpczEntries(void)
       before_changecount = beentry->st_changecount;
 
       rpcz[i].proc_id = beentry->st_procpid;
+      rpcz[i].new_conn = beentry->yb_new_conn;
 
       /* avoid filling any more fields if invalid */
       if (beentry->st_procpid <= 0) {
@@ -334,24 +341,19 @@ freeRpczEntries(void)
 void
 webserver_worker_main(Datum unused)
 {
-  YBCInitThreading();
   /*
-   * We call YBCInit here so that HandleYBStatus can correctly report potential error.
+   * We need to use a pointer to a pointer here because the shared memory for BackendStatusArray
+   * is not allocated when we enter this function. The memory is allocated after the background
+   * works are registered.
    */
-  HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
 
-  backendStatusArray = getBackendStatusArray();
+  YBCInitThreading();
+
+  backendStatusArrayPointer = getBackendStatusArrayPointer();
 
   BackgroundWorkerUnblockSignals();
 
-  /*
-   * Assert that shared memory is allocated to backendStatusArray before this webserver
-   * is started.
-  */
-  if (!backendStatusArray)
-    ereport(FATAL,
-            (errcode(ERRCODE_INTERNAL_ERROR),
-             errmsg("Shared memory not allocated to BackendStatusArray before starting YSQL webserver")));
+  HandleYBStatus(YBCInitGFlags(NULL /* argv[0] */));
 
   webserver = CreateWebserver(ListenAddresses, port);
 
@@ -364,12 +366,8 @@ webserver_worker_main(Datum unused)
   callbacks.getTimestampTzDiffMs = getElapsedMs;
   callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  YbConnectionMetrics conn_metrics;
-  conn_metrics.max_conn = &MaxConnections;
-  conn_metrics.too_many_conn = yb_too_many_conn;
-  conn_metrics.new_conn = yb_new_conn;
+  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &too_many_conn, &MaxConnections);
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
   HandleYBStatus(StartWebserver(webserver));
 
   WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
@@ -579,7 +577,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 	ybpgm_Store(type, time, rows_count);
 
-  if (queryDesc->estate->yb_es_is_single_row_modify_txn)
+  if (queryDesc->estate->yb_es_is_single_row_modify_txn) 
   {
     ybpgm_Store(Single_Shard_Transaction, time, rows_count);
     ybpgm_Store(SingleShardTransaction, time, rows_count);
@@ -714,8 +712,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     bool is_breaking_catalog_change = false;
     if (IsTransactionalDdlStatement(pstmt,
                                     &is_catalog_version_increment,
-                                    &is_breaking_catalog_change,
-                                    context))
+                                    &is_breaking_catalog_change))
     {
       ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
     }

@@ -3,7 +3,7 @@
  * be-fsstubs.c
  *	  Builtin functions for open/close/read/write operations on large objects
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -62,7 +62,7 @@
  * A non-null entry is a pointer to a LargeObjectDesc allocated in the
  * LO private memory context "fscxt".  The cookies array itself is also
  * dynamically allocated in that context.  Its current allocated size is
- * cookies_len entries, of which any unused entries will be NULL.
+ * cookies_size entries, of which any unused entries will be NULL.
  */
 static LargeObjectDesc **cookies = NULL;
 static int	cookies_size = 0;
@@ -95,7 +95,7 @@ be_lo_open(PG_FUNCTION_ARGS)
 	LargeObjectDesc *lobjDesc;
 	int			fd;
 
-#if FSDB
+#ifdef FSDB
 	elog(DEBUG4, "lo_open(%u,%d)", lobjId, mode);
 #endif
 
@@ -118,7 +118,7 @@ be_lo_close(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("invalid large-object descriptor: %d", fd)));
 
-#if FSDB
+#ifdef FSDB
 	elog(DEBUG4, "lo_close(%d)", fd);
 #endif
 
@@ -455,7 +455,12 @@ lo_import_internal(text *filename, Oid lobjOid)
 						fnamebuf)));
 
 	inv_close(lobj);
-	CloseTransientFile(fd);
+
+	if (CloseTransientFile(fd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m",
+						fnamebuf)));
 
 	return oid;
 }
@@ -498,13 +503,11 @@ be_lo_export(PG_FUNCTION_ARGS)
 		fd = OpenTransientFilePerm(fnamebuf, O_CREAT | O_WRONLY | O_TRUNC | PG_BINARY,
 								   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		umask(oumask);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	umask(oumask);
 	if (fd < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -524,7 +527,12 @@ be_lo_export(PG_FUNCTION_ARGS)
 							fnamebuf)));
 	}
 
-	CloseTransientFile(fd);
+	if (CloseTransientFile(fd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m",
+						fnamebuf)));
+
 	inv_close(lobj);
 
 	PG_RETURN_INT32(1);

@@ -4,7 +4,7 @@
  * exprparse.y
  *	  bison grammar for a simple expression syntax
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pgbench/exprparse.y
@@ -19,6 +19,7 @@
 #define PGBENCH_NARGS_VARIABLE	(-1)
 #define PGBENCH_NARGS_CASE		(-2)
 #define PGBENCH_NARGS_HASH		(-3)
+#define PGBENCH_NARGS_PERMUTE	(-4)
 
 PgBenchExpr *expr_parse_result;
 
@@ -61,7 +62,8 @@ static PgBenchExpr *make_case(yyscan_t yyscanner, PgBenchExprList *when_then_lis
 %type <bval> BOOLEAN_CONST
 %type <str> VARIABLE FUNCTION
 
-%token NULL_CONST INTEGER_CONST DOUBLE_CONST BOOLEAN_CONST VARIABLE FUNCTION
+%token NULL_CONST INTEGER_CONST MAXINT_PLUS_ONE_CONST DOUBLE_CONST
+%token BOOLEAN_CONST VARIABLE FUNCTION
 %token AND_OP OR_OP NOT_OP NE_OP LE_OP GE_OP LS_OP RS_OP IS_OP
 %token CASE_KW WHEN_KW THEN_KW ELSE_KW END_KW
 
@@ -90,6 +92,9 @@ expr: '(' expr ')'			{ $$ = $2; }
 	/* unary minus "-x" implemented as "0 - x" */
 	| '-' expr %prec UNARY	{ $$ = make_op(yyscanner, "-",
 										   make_integer_constant(0), $2); }
+	/* special PG_INT64_MIN handling, only after a unary minus */
+	| '-' MAXINT_PLUS_ONE_CONST %prec UNARY
+							{ $$ = make_integer_constant(PG_INT64_MIN); }
 	/* binary ones complement "~x" implemented as 0xffff... xor x" */
 	| '~' expr				{ $$ = make_op(yyscanner, "#",
 										   make_integer_constant(~INT64CONST(0)), $2); }
@@ -366,6 +371,9 @@ static const struct
 	{
 		"hash_fnv1a", PGBENCH_NARGS_HASH, PGBENCH_HASH_FNV1A
 	},
+	{
+		"permute", PGBENCH_NARGS_PERMUTE, PGBENCH_PERMUTE
+	},
 	/* keep as last array element */
 	{
 		NULL, 0, 0
@@ -472,6 +480,19 @@ make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 								  PGBENCH_FUNCTIONS[fnumber].fname);
 
 			if (len == 1)
+			{
+				PgBenchExpr *var = make_variable("default_seed");
+				args = make_elist(var, args);
+			}
+			break;
+
+		/* pseudorandom permutation function with optional seed argument */
+		case PGBENCH_NARGS_PERMUTE:
+			if (len < 2 || len > 3)
+				expr_yyerror_more(yyscanner, "unexpected number of arguments",
+								  PGBENCH_FUNCTIONS[fnumber].fname);
+
+			if (len == 2)
 			{
 				PgBenchExpr *var = make_variable("default_seed");
 				args = make_elist(var, args);

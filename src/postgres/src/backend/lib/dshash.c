@@ -20,7 +20,7 @@
  * Future versions may support iterators and incremental resizing; for now
  * the implementation is minimalist.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,11 +31,11 @@
 
 #include "postgres.h"
 
+#include "common/hashfn.h"
 #include "lib/dshash.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"
-#include "utils/hsearch.h"
 #include "utils/memutils.h"
 
 /*
@@ -160,28 +160,28 @@ struct dshash_table
 									   hash_table->size_log2)])
 
 static void delete_item(dshash_table *hash_table,
-			dshash_table_item *item);
+						dshash_table_item *item);
 static void resize(dshash_table *hash_table, size_t new_size);
 static inline void ensure_valid_bucket_pointers(dshash_table *hash_table);
 static inline dshash_table_item *find_in_bucket(dshash_table *hash_table,
-			   const void *key,
-			   dsa_pointer item_pointer);
+												const void *key,
+												dsa_pointer item_pointer);
 static void insert_item_into_bucket(dshash_table *hash_table,
-						dsa_pointer item_pointer,
-						dshash_table_item *item,
-						dsa_pointer *bucket);
+									dsa_pointer item_pointer,
+									dshash_table_item *item,
+									dsa_pointer *bucket);
 static dshash_table_item *insert_into_bucket(dshash_table *hash_table,
-				   const void *key,
-				   dsa_pointer *bucket);
+											 const void *key,
+											 dsa_pointer *bucket);
 static bool delete_key_from_bucket(dshash_table *hash_table,
-					   const void *key,
-					   dsa_pointer *bucket_head);
+								   const void *key,
+								   dsa_pointer *bucket_head);
 static bool delete_item_from_bucket(dshash_table *hash_table,
-						dshash_table_item *item,
-						dsa_pointer *bucket_head);
+									dshash_table_item *item,
+									dsa_pointer *bucket_head);
 static inline dshash_hash hash_key(dshash_table *hash_table, const void *key);
 static inline bool equal_keys(dshash_table *hash_table,
-		   const void *a, const void *b);
+							  const void *a, const void *b);
 
 #define PARTITION_LOCK(hash_table, i)			\
 	(&(hash_table)->control->partitions[(i)].lock)
@@ -375,7 +375,7 @@ dshash_get_hash_table_handle(dshash_table *hash_table)
  * the caller must take care to ensure that the entry is not left corrupted.
  * The lock mode is either shared or exclusive depending on 'exclusive'.
  *
- * The caller must not lock a lock already.
+ * The caller must not hold a lock already.
  *
  * Note that the lock held is in fact an LWLock, so interrupts will be held on
  * return from this function, and not resumed until dshash_release_lock is
@@ -409,7 +409,7 @@ dshash_find(dshash_table *hash_table, const void *key, bool exclusive)
 	}
 	else
 	{
-		/* The caller will free the lock by calling dshash_release. */
+		/* The caller will free the lock by calling dshash_release_lock. */
 		hash_table->find_locked = true;
 		hash_table->find_exclusively_locked = exclusive;
 		return ENTRY_FROM_ITEM(item);

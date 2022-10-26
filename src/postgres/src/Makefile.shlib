@@ -49,7 +49,6 @@
 # installdirs-lib       create installation directory $(libdir)
 # uninstall-lib         remove the libraries from $(libdir)
 # clean-lib             delete the static and shared libraries from the build dir
-# maintainer-clean-lib  delete .def files built for win32
 #
 # Typically you would add `all-lib' to the `all' target so that `make all'
 # builds the libraries.  In the most simple case it would look like this:
@@ -139,57 +138,42 @@ ifeq ($(PORTNAME), darwin)
 endif
 
 ifeq ($(PORTNAME), openbsd)
-  ifdef ELF_SYSTEM
-    LINK.shared		= $(COMPILER) -shared
-    ifdef soname
-      LINK.shared	+= -Wl,-x,-soname,$(soname)
-    endif
-    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
-    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
-    ifneq (,$(exports_file))
-      LINK.shared	+= -Wl,--version-script=$(exports_file)
-    endif
-    SHLIB_LINK		+= -lc
-  else
-    LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
+  LINK.shared		= $(COMPILER) -shared
+  ifdef soname
+    LINK.shared		+= -Wl,-x,-soname,$(soname)
   endif
+  BUILD.exports		= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+  exports_file		= $(SHLIB_EXPORTS:%.txt=%.list)
+  ifneq (,$(exports_file))
+    LINK.shared		+= -Wl,--version-script=$(exports_file)
+  endif
+  SHLIB_LINK		+= -lc
 endif
 
 ifeq ($(PORTNAME), freebsd)
-  ifdef ELF_SYSTEM
-    ifdef SO_MAJOR_VERSION
-      shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
-    endif
-    LINK.shared		= $(COMPILER) -shared
-    ifdef soname
-      LINK.shared	+= -Wl,-x,-soname,$(soname)
-    endif
-    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
-    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
-    ifneq (,$(exports_file))
-      LINK.shared	+= -Wl,--version-script=$(exports_file)
-    endif
-  else
-    ifdef SO_MAJOR_VERSION
-      shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
-    endif
-    LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
+  ifdef SO_MAJOR_VERSION
+    shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
+  endif
+  LINK.shared		= $(COMPILER) -shared
+  ifdef soname
+    LINK.shared		+= -Wl,-x,-soname,$(soname)
+  endif
+  BUILD.exports		= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+  exports_file		= $(SHLIB_EXPORTS:%.txt=%.list)
+  ifneq (,$(exports_file))
+    LINK.shared		+= -Wl,--version-script=$(exports_file)
   endif
 endif
 
 ifeq ($(PORTNAME), netbsd)
-  ifdef ELF_SYSTEM
-    LINK.shared		= $(COMPILER) -shared
-    ifdef soname
-      LINK.shared	+= -Wl,-x,-soname,$(soname)
-    endif
-    BUILD.exports	= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
-    exports_file	= $(SHLIB_EXPORTS:%.txt=%.list)
-    ifneq (,$(exports_file))
-      LINK.shared	+= -Wl,--version-script=$(exports_file)
-    endif
-  else
-    LINK.shared		= $(LD) -x -Bshareable -Bforcearchive
+  LINK.shared		= $(COMPILER) -shared
+  ifdef soname
+    LINK.shared		+= -Wl,-x,-soname,$(soname)
+  endif
+  BUILD.exports		= ( echo '{ global:'; $(AWK) '/^[^\#]/ {printf "%s;\n",$$1}' $<; echo ' local: *; };' ) >$@
+  exports_file		= $(SHLIB_EXPORTS:%.txt=%.list)
+  ifneq (,$(exports_file))
+    LINK.shared		+= -Wl,--version-script=$(exports_file)
   endif
 endif
 
@@ -345,7 +329,11 @@ $(shlib): $(OBJS) | $(SHLIB_PREREQS)
 	rm -f $(stlib)
 	$(LINK.static) $(stlib) $^
 	$(RANLIB) $(stlib)
+ifeq (,$(SHLIB_EXPORTS))
 	$(MKLDEXPORT) $(stlib) $(shlib) >$(exports_file)
+else
+	( echo '#! $(shlib)'; $(AWK) '/^[^#]/ {printf "%s\n",$$1}' $(SHLIB_EXPORTS) ) >$(exports_file)
+endif
 	$(COMPILER) -o $(shlib) $(stlib) -Wl,-bE:$(exports_file) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK)
 	rm -f $(stlib)
 	$(AR) $(AROPT) $(stlib) $(shlib)
@@ -359,12 +347,11 @@ ifeq ($(PORTNAME), cygwin)
 # Cygwin case
 
 $(shlib): $(OBJS) | $(SHLIB_PREREQS)
-	$(CC) $(CFLAGS)  -shared -o $@  $(OBJS) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) $(LIBS) $(LDAP_LIBS_BE)
+	$(CC) $(CFLAGS)  -shared -o $@ -Wl,--out-implib=$(stlib) $(OBJS) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) $(LIBS) $(LDAP_LIBS_BE)
 
-$(stlib): $(OBJS) | $(SHLIB_PREREQS)
-	rm -f $@
-	$(LINK.static) $@ $^
-	$(RANLIB) $@
+# see notes in src/backend/parser/Makefile  about use of this type of rule
+$(stlib): $(shlib)
+	touch $@
 
 else
 
@@ -390,6 +377,13 @@ DLL_DEFFILE = lib$(NAME)dll.def
 
 $(shlib): $(OBJS) $(DLL_DEFFILE) | $(SHLIB_PREREQS)
 	$(CC) $(CFLAGS)  -shared -static-libgcc -o $@  $(OBJS) $(DLL_DEFFILE) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) $(LIBS) -Wl,--out-implib=$(stlib)
+
+UC_NAME = $(shell echo $(NAME) | tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
+$(DLL_DEFFILE): $(SHLIB_EXPORTS)
+	echo 'LIBRARY LIB$(UC_NAME).dll' >$@
+	echo 'EXPORTS' >>$@
+	sed -e '/^#/d' -e 's/^\(.*[ 	]\)\([0-9][0-9]*\)/    \1@ \2/' $< >>$@
 endif
 
 endif # PORTNAME == cygwin
@@ -397,46 +391,25 @@ endif # PORTNAME == cygwin || PORTNAME == win32
 
 
 %.pc: $(MAKEFILE_LIST)
-	echo 'Name: lib$(NAME)' >$@
+	echo 'prefix=$(prefix)' >$@
+	echo 'exec_prefix=$(patsubst $(prefix),$${prefix},$(exec_prefix))' >>$@
+	echo 'libdir=$(patsubst $(exec_prefix)/%,$${exec_prefix}/%,$(libdir))' >>$@
+	echo 'includedir=$(patsubst $(prefix)/%,$${prefix}/%,$(includedir))' >>$@
+	echo >>$@
+	echo 'Name: lib$(NAME)' >>$@
 	echo 'Description: PostgreSQL lib$(NAME) library' >>$@
-	echo 'Url: http://www.postgresql.org/' >>$@
+	echo 'Url: $(PACKAGE_URL)' >>$@
 	echo 'Version: $(VERSION)' >>$@
 	echo 'Requires: ' >>$@
 	echo 'Requires.private: $(PKG_CONFIG_REQUIRES_PRIVATE)' >>$@
-	echo 'Cflags: -I$(includedir)' >>$@
-	echo 'Libs: -L$(libdir) -l$(NAME)' >>$@
+	echo 'Cflags: -I$${includedir}' >>$@
+	echo 'Libs: -L$${libdir} -l$(NAME)' >>$@
 # Record -L flags that the user might have passed in to the PostgreSQL
 # build to locate third-party libraries (e.g., ldap, ssl).  Filter out
 # those that point inside the build or source tree.  Use sort to
 # remove duplicates.  Also record the -l flags necessary for static
 # linking, but not those already covered by Requires.private.
-	echo 'Libs.private: $(sort $(filter-out -L.% -L$(top_srcdir)/%,$(filter -L%,$(LDFLAGS) $(SHLIB_LINK)))) $(filter-out $(PKG_CONFIG_REQUIRES_PRIVATE:lib%=-l%),$(filter -l%,$(SHLIB_LINK)))' >>$@
-
-
-# We need several not-quite-identical variants of .DEF files to build
-# DLLs for Windows.  These are made from the single source file
-# exports.txt.  Since we can't assume that Windows boxes will have
-# sed, the .DEF files are always built and included in distribution
-# tarballs.
-
-ifneq (,$(SHLIB_EXPORTS))
-distprep: lib$(NAME)dll.def lib$(NAME)ddll.def
-
-UC_NAME = $(shell echo $(NAME) | tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-
-lib$(NAME)dll.def: $(SHLIB_EXPORTS)
-	echo '; DEF file for Makefile.shlib (MinGW)' >$@
-	echo 'LIBRARY LIB$(UC_NAME).dll' >>$@
-	echo 'EXPORTS' >>$@
-	sed -e '/^#/d' -e 's/^\(.*[ 	]\)\([0-9][0-9]*\)/    \1@ \2/' $< >>$@
-
-lib$(NAME)ddll.def: $(SHLIB_EXPORTS)
-	echo '; DEF file for Makefile.shlib (MinGW)' >$@
-	echo 'LIBRARY LIB$(UC_NAME)D.dll' >>$@
-	echo 'EXPORTS' >>$@
-	sed -e '/^#/d' -e 's/^\(.*[ 	]\)\([0-9][0-9]*\)/    \1@ \2/' $< >>$@
-
-endif # SHLIB_EXPORTS
+	echo 'Libs.private: $(sort $(filter-out -L.% -L$(top_srcdir)/%,$(filter -L%,$(LDFLAGS) $(SHLIB_LINK)))) $(filter-out $(PKG_CONFIG_REQUIRES_PRIVATE:lib%=-l%),$(filter -l%,$(SHLIB_LINK_INTERNAL:%_shlib=%) $(SHLIB_LINK)))' >>$@
 
 
 ##
@@ -521,8 +494,6 @@ endif # no soname
 .PHONY: clean-lib
 clean-lib:
 	rm -f $(shlib) $(shlib_bare) $(shlib_major) $(stlib) $(exports_file) lib$(NAME).pc
-
-ifneq (,$(SHLIB_EXPORTS))
-maintainer-clean-lib:
-	rm -f lib$(NAME)dll.def lib$(NAME)ddll.def
+ifneq (,$(DLL_DEFFILE))
+	rm -f $(DLL_DEFFILE)
 endif

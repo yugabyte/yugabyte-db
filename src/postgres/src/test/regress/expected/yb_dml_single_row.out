@@ -1,6 +1,5 @@
 -- Regression tests for UPDATE/DELETE single row operations.
--- Expression pushdown is disabled.
-SET yb_enable_expression_pushdown to off;
+-- Expression pushdown is disabled (current default).
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
 --

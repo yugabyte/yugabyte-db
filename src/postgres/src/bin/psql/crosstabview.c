@@ -1,18 +1,18 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2021, PostgreSQL Global Development Group
  *
  * src/bin/psql/crosstabview.c
  */
 #include "postgres_fe.h"
 
 #include "common.h"
+#include "common/logging.h"
 #include "crosstabview.h"
 #include "pqexpbuffer.h"
 #include "psqlscanslash.h"
 #include "settings.h"
-
 
 /*
  * Value/position from the resultset that goes into the horizontal or vertical
@@ -78,13 +78,13 @@ typedef struct _avl_tree
 
 
 static bool printCrosstab(const PGresult *results,
-			  int num_columns, pivot_field *piv_columns, int field_for_columns,
-			  int num_rows, pivot_field *piv_rows, int field_for_rows,
-			  int field_for_data);
+						  int num_columns, pivot_field *piv_columns, int field_for_columns,
+						  int num_rows, pivot_field *piv_rows, int field_for_rows,
+						  int field_for_data);
 static void avlInit(avl_tree *tree);
 static void avlMergeValue(avl_tree *tree, char *name, char *sort_value);
-static int avlCollectFields(avl_tree *tree, avl_node *node,
-				 pivot_field *fields, int idx);
+static int	avlCollectFields(avl_tree *tree, avl_node *node,
+							 pivot_field *fields, int idx);
 static void avlFree(avl_tree *tree, avl_node *node);
 static void rankSort(int num_columns, pivot_field *piv_columns);
 static int	indexOfColumn(char *arg, const PGresult *res);
@@ -120,13 +120,13 @@ PrintResultsInCrosstab(const PGresult *res)
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		psql_error("\\crosstabview: statement did not return a result set\n");
+		pg_log_error("\\crosstabview: statement did not return a result set");
 		goto error_return;
 	}
 
 	if (PQnfields(res) < 3)
 	{
-		psql_error("\\crosstabview: query must return at least three columns\n");
+		pg_log_error("\\crosstabview: query must return at least three columns");
 		goto error_return;
 	}
 
@@ -153,7 +153,7 @@ PrintResultsInCrosstab(const PGresult *res)
 	/* Insist that header columns be distinct */
 	if (field_for_columns == field_for_rows)
 	{
-		psql_error("\\crosstabview: vertical and horizontal headers must be different columns\n");
+		pg_log_error("\\crosstabview: vertical and horizontal headers must be different columns");
 		goto error_return;
 	}
 
@@ -169,7 +169,7 @@ PrintResultsInCrosstab(const PGresult *res)
 		 */
 		if (PQnfields(res) != 3)
 		{
-			psql_error("\\crosstabview: data column must be specified when query returns more than three columns\n");
+			pg_log_error("\\crosstabview: data column must be specified when query returns more than three columns");
 			goto error_return;
 		}
 
@@ -225,8 +225,8 @@ PrintResultsInCrosstab(const PGresult *res)
 
 		if (piv_columns.count > CROSSTABVIEW_MAX_COLUMNS)
 		{
-			psql_error("\\crosstabview: maximum number of columns (%d) exceeded\n",
-					   CROSSTABVIEW_MAX_COLUMNS);
+			pg_log_error("\\crosstabview: maximum number of columns (%d) exceeded",
+						 CROSSTABVIEW_MAX_COLUMNS);
 			goto error_return;
 		}
 
@@ -394,11 +394,11 @@ printCrosstab(const PGresult *results,
 			 */
 			if (cont.cells[idx] != NULL)
 			{
-				psql_error("\\crosstabview: query result contains multiple data values for row \"%s\", column \"%s\"\n",
-						   rp->name ? rp->name :
-						   (popt.nullPrint ? popt.nullPrint : "(null)"),
-						   cp->name ? cp->name :
-						   (popt.nullPrint ? popt.nullPrint : "(null)"));
+				pg_log_error("\\crosstabview: query result contains multiple data values for row \"%s\", column \"%s\"",
+							 rp->name ? rp->name :
+							 (popt.nullPrint ? popt.nullPrint : "(null)"),
+							 cp->name ? cp->name :
+							 (popt.nullPrint ? popt.nullPrint : "(null)"));
 				goto error;
 			}
 
@@ -642,8 +642,8 @@ indexOfColumn(char *arg, const PGresult *res)
 		idx = atoi(arg) - 1;
 		if (idx < 0 || idx >= PQnfields(res))
 		{
-			psql_error("\\crosstabview: column number %d is out of range 1..%d\n",
-					   idx + 1, PQnfields(res));
+			pg_log_error("\\crosstabview: column number %d is out of range 1..%d",
+						 idx + 1, PQnfields(res));
 			return -1;
 		}
 	}
@@ -667,7 +667,7 @@ indexOfColumn(char *arg, const PGresult *res)
 				if (idx >= 0)
 				{
 					/* another idx was already found for the same name */
-					psql_error("\\crosstabview: ambiguous column name: \"%s\"\n", arg);
+					pg_log_error("\\crosstabview: ambiguous column name: \"%s\"", arg);
 					return -1;
 				}
 				idx = i;
@@ -675,7 +675,7 @@ indexOfColumn(char *arg, const PGresult *res)
 		}
 		if (idx == -1)
 		{
-			psql_error("\\crosstabview: column name not found: \"%s\"\n", arg);
+			pg_log_error("\\crosstabview: column name not found: \"%s\"", arg);
 			return -1;
 		}
 	}

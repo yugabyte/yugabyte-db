@@ -3,7 +3,7 @@
  * path.c
  *	  portable path handling routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -45,7 +45,7 @@
 #endif
 
 static void make_relative_path(char *ret_path, const char *target_path,
-				   const char *bin_path, const char *my_exec_path);
+							   const char *bin_path, const char *my_exec_path);
 static void trim_directory(char *path);
 static void trim_trailing_separator(char *path);
 
@@ -106,7 +106,7 @@ first_dir_separator(const char *filename)
 
 	for (p = skip_drive(filename); *p; p++)
 		if (IS_DIR_SEP(*p))
-			return (char *) p;
+			return unconstify(char *, p);
 	return NULL;
 }
 
@@ -124,7 +124,7 @@ first_path_var_separator(const char *pathlist)
 	/* skip_drive is not needed */
 	for (p = pathlist; *p; p++)
 		if (IS_PATH_VAR_SEP(*p))
-			return (char *) p;
+			return unconstify(char *, p);
 	return NULL;
 }
 
@@ -143,7 +143,7 @@ last_dir_separator(const char *filename)
 	for (p = skip_drive(filename); *p; p++)
 		if (IS_DIR_SEP(*p))
 			ret = p;
-	return (char *) ret;
+	return unconstify(char *, ret);
 }
 
 

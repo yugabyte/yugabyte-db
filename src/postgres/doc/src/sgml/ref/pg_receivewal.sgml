@@ -9,7 +9,7 @@ PostgreSQL documentation
  </indexterm>
 
  <refmeta>
-  <refentrytitle>pg_receivewal</refentrytitle>
+  <refentrytitle><application>pg_receivewal</application></refentrytitle>
   <manvolnum>1</manvolnum>
   <refmiscinfo>Application</refmiscinfo>
  </refmeta>
@@ -27,9 +27,7 @@ PostgreSQL documentation
  </refsynopsisdiv>
 
  <refsect1>
-  <title>
-   Description
-  </title>
+  <title>Description</title>
   <para>
    <application>pg_receivewal</application> is used to stream the write-ahead log
    from a running <productname>PostgreSQL</productname> cluster. The write-ahead
@@ -52,18 +50,29 @@ PostgreSQL documentation
    Unlike the WAL receiver of a PostgreSQL standby server, <application>pg_receivewal</application>
    by default flushes WAL data only when a WAL file is closed.
    The option <option>--synchronous</option> must be specified to flush WAL data
-   in real time.
+   in real time. Since <application>pg_receivewal</application> does not
+   apply WAL, you should not allow it to become a synchronous standby when
+   <xref linkend="guc-synchronous-commit"/> equals
+   <literal>remote_apply</literal>. If it does, it will appear to be a
+   standby that never catches up, and will cause transaction commits to
+   block. To avoid this, you should either configure an appropriate value
+   for <xref linkend="guc-synchronous-standby-names"/>, or specify
+   <varname>application_name</varname> for
+   <application>pg_receivewal</application> that does not match it, or
+   change the value of <varname>synchronous_commit</varname> to
+   something other than <literal>remote_apply</literal>.
   </para>
 
   <para>
    The write-ahead log is streamed over a regular
    <productname>PostgreSQL</productname> connection and uses the replication
-   protocol. The connection must be made with a superuser or a user
-   having <literal>REPLICATION</literal> permissions (see
-   <xref linkend="role-attributes"/>), and <filename>pg_hba.conf</filename>
-   must permit the replication connection. The server must also be
-   configured with <xref linkend="guc-max-wal-senders"/> set high enough to
-   leave at least one session available for the stream.
+   protocol. The connection must be made with a user having
+   <literal>REPLICATION</literal> permissions (see
+   <xref linkend="role-attributes"/>) or a superuser, and
+   <filename>pg_hba.conf</filename> must permit the replication connection.
+   The server must also be configured with
+   <xref linkend="guc-max-wal-senders"/> set high enough to leave at least
+   one session available for the stream.
   </para>
 
   <para>
@@ -243,8 +252,9 @@ PostgreSQL documentation
       <term><option>--dbname=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
-        Specifies parameters used to connect to the server, as a connection
-        string. See <xref linkend="libpq-connstring"/> for more information.
+        Specifies parameters used to connect to the server, as a <link
+        linkend="libpq-connstring">connection string</link>;  these
+        will override any conflicting command line options.
        </para>
        <para>
         The option is called <literal>--dbname</literal> for consistency with other
@@ -408,6 +418,12 @@ PostgreSQL documentation
    (see <xref linkend="libpq-envars"/>).
   </para>
 
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
  </refsect1>
 
  <refsect1>

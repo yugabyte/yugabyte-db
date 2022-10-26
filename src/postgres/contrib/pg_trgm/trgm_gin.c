@@ -3,12 +3,10 @@
  */
 #include "postgres.h"
 
-#include "trgm.h"
-
 #include "access/gin.h"
 #include "access/stratnum.h"
 #include "fmgr.h"
-
+#include "trgm.h"
 
 PG_FUNCTION_INFO_V1(gin_extract_trgm);
 PG_FUNCTION_INFO_V1(gin_extract_value_trgm);
@@ -91,13 +89,14 @@ gin_extract_query_trgm(PG_FUNCTION_ARGS)
 		case SimilarityStrategyNumber:
 		case WordSimilarityStrategyNumber:
 		case StrictWordSimilarityStrategyNumber:
+		case EqualStrategyNumber:
 			trg = generate_trgm(VARDATA_ANY(val), VARSIZE_ANY_EXHDR(val));
 			break;
 		case ILikeStrategyNumber:
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case LikeStrategyNumber:
 
 			/*
@@ -111,7 +110,7 @@ gin_extract_query_trgm(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case RegExpStrategyNumber:
 			trg = createTrgmNFA(val, PG_GET_COLLATION(),
 								&graph, GetCurrentMemoryContext());
@@ -221,8 +220,9 @@ gin_trgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case LikeStrategyNumber:
+		case EqualStrategyNumber:
 			/* Check if all extracted trigrams are presented. */
 			res = true;
 			for (i = 0; i < nkeys; i++)
@@ -238,7 +238,7 @@ gin_trgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case RegExpStrategyNumber:
 			if (nkeys < 1)
 			{
@@ -306,8 +306,9 @@ gin_trgm_triconsistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case LikeStrategyNumber:
+		case EqualStrategyNumber:
 			/* Check if all extracted trigrams are presented. */
 			res = GIN_MAYBE;
 			for (i = 0; i < nkeys; i++)
@@ -323,7 +324,7 @@ gin_trgm_triconsistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~* with case-sensitive trigrams");
 #endif
-			/* FALL THRU */
+			switch_fallthrough();
 		case RegExpStrategyNumber:
 			if (nkeys < 1)
 			{

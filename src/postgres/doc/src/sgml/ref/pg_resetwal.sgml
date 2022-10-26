@@ -23,20 +23,20 @@ PostgreSQL documentation
   <cmdsynopsis>
    <command>pg_resetwal</command>
    <group choice="opt">
-    <arg choice="plain"><option>--force</option></arg>
     <arg choice="plain"><option>-f</option></arg>
+    <arg choice="plain"><option>--force</option></arg>
    </group>
    <group choice="opt">
-    <arg choice="plain"><option>--dry-run</option></arg>
     <arg choice="plain"><option>-n</option></arg>
+    <arg choice="plain"><option>--dry-run</option></arg>
    </group>
    <arg rep="repeat"><replaceable>option</replaceable></arg>
    <group choice="plain">
     <group choice="opt">
-     <arg choice="plain"><option>--pgdata</option></arg>
      <arg choice="plain"><option>-D</option></arg>
+     <arg choice="plain"><option>--pgdata</option></arg>
     </group>
-    <replaceable class="parameter"> datadir</replaceable>
+    <replaceable class="parameter">datadir</replaceable>
    </group>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -298,6 +298,26 @@ PostgreSQL documentation
    </varlistentry>
 
    <varlistentry>
+    <term><option>-u <replaceable class="parameter">xid</replaceable></option></term>
+    <term><option>--oldest-transaction-id=<replaceable class="parameter">xid</replaceable></option></term>
+    <listitem>
+     <para>
+      Manually set the oldest unfrozen transaction ID.
+     </para>
+
+     <para>
+      A safe value can be determined by looking for the numerically smallest
+      file name in the directory <filename>pg_xact</filename> under the data directory
+      and then multiplying by 1048576 (0x100000).  Note that the file names are in
+      hexadecimal.  It is usually easiest to specify the option value in
+      hexadecimal too. For example, if <filename>0007</filename> is the smallest entry
+      in <filename>pg_xact</filename>, <literal>-u 0x700000</literal> will work (five
+      trailing zeroes provide the proper multiplier).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><option>-x <replaceable class="parameter">xid</replaceable></option></term>
     <term><option>--next-transaction-id=<replaceable class="parameter">xid</replaceable></option></term>
     <listitem>
@@ -314,6 +334,23 @@ PostgreSQL documentation
       hexadecimal too. For example, if <filename>0011</filename> is the largest entry
       in <filename>pg_xact</filename>, <literal>-x 0x1200000</literal> will work (five
       trailing zeroes provide the proper multiplier).
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

@@ -42,58 +42,8 @@
  * it ends up in infinite recursion, we will PANIC due to error stack
  * overflow.)
  *
- * YB notes:
- * When Postgres code is executed in DocDB environment (what is commonly
- * referenced as "pushdown"), the logging and error handling do not work
- * properly for a number of reasons. First and foremost, Postgres uses global
- * variables to keep error state, and the DocDB environment is multi-threaded,
- * where global variables are accessible from multiple threads, which may
- * conflict. Other is that the errors have to pass through DocDB to be presented
- * to the client, and DocDB has incompatible error handling subsystem.
  *
- * We mitigate many of those problems by replacing Postgres implementation of
- * the error handling API. That implementation detects DocDB environment and
- * uses alternate functions and data structures, designed to work in
- * multi-threaded environment and interface with DocDB logging and error
- * handling.
- *
- * Similar to Postgres, our implementation maintains a stack of error handlers,
- * and error raising functions make long jumps to the next handler. While
- * Postgres sets up top level handlers in its processes' main routines before
- * entering the event loop, DocDB has to set up and tear down one as needed,
- * when a request needs to execute Postgres code. See PG_SETUP_ERROR_REPORTING
- * macro for detail. The PG_TRY macro sets secondary handler, this API works
- * the same in any mode, while internal implementation is different. In
- * multi-threaded mode a thread local variable to hold error state. The
- * variable is of type YbgStatus, which is designed to easily interface with
- * Status, representing DocDB error state. The YbgStatus instance contains
- * "private" data, similar to ErrorData, in multi-threaded mode functions like
- * errmsg() update these "private" data instead, and info is transferred to the
- * YbgStatus at the end. The PG_STATUS_OK macro is used to tear down the top
- * level handler and return YbgStatus if there is any error to deliver to the
- * client.
- *
- * The returned YbgStatus instance is converted to a Status, and it is currently
- * a big limitation that Status is conventionally handled as an error by DocDB,
- * that is, it interrupt execution flow. Therefore there's no way to return
- * non-error messages, such as warnings and notices from "pushed down" code to
- * the client. Though in multi-threaded mode all messages are logged, regardless
- * of the Postgres configuration.
- *
- * The Postgres processes serving PG-compatible clients in Yugabyte are
- * prepared to handle Status instances when communicating to DocDB. Those
- * Statuses may originate from the "pushed down" code, as well as from DocDB
- * itself. The handler raises a Postgres error using information in the
- * Status. While the implementation of the Status-to-PG error conversion
- * matches the opposite conversion, we do not try to distinguish by Status
- * origin, and with backward compatibility in mind can not be strict with
- * regards to the status format. In the cases when DocDB reimplements some
- * Postgres functionality, instead of invoking Postgres code it is recommended
- * to refer YbgStatus-to-Status conversion to make Status instances that would
- * look like original postgres errors.
- *
- *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -112,6 +62,9 @@
 #ifdef HAVE_SYSLOG
 #include <syslog.h>
 #endif
+#ifdef HAVE_EXECINFO_H
+#include <execinfo.h>
+#endif
 
 #include "access/transam.h"
 #include "access/xact.h"
@@ -120,6 +73,8 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "pgstat.h"
+#include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "storage/ipc.h"
@@ -131,7 +86,6 @@
 
 // YB includes.
 #include "pg_yb_utils.h"
-#include "ybgate/ybgate_status.h"
 
 /* In this module, access gettext() via err_gettext() */
 #undef _
@@ -198,182 +152,6 @@ static int	errordata_stack_depth = -1; /* index of topmost active frame */
 static int	recursion_depth = 0;	/* to detect actual recursion */
 
 /*
- * Equivalent of ErrorData for YbGate.
- * Instead of having global variable to store instances of this structure, they
- * are attached to the YbgStatus instance associated with the thread as an
- * untyped pointer.
- * In multithreaded mode err... functions populate the fields of this structure,
- * and at the end of the ereport/elog sequence the data are transferred to the
- * YbgStatus instance to be used later construct DocDB Status.
- * In a case when another error is raised during error handling, multiple
- * YbgErrorData instances may form a stack. Similar to Postgres we limit stack
- * depth.
- */
-typedef struct YbgErrorData
-{
-	int			elevel;
-	const char *errmsg;
-	const char **errargs;
-	int			nargs;
-	int			argsize;
-	int			sqlerrcode; /* encoded ERRSTATE */
-	uint16_t yb_txn_errcode; /* YB transaction error cast to uint16, as returned
-							  * by static_cast of TransactionErrorTag::Decode of
-							  * Status::ErrorData(TransactionErrorTag::kCategory)
-							  */
-	const char *filename;	/* __FILE__ of ereport() call */
-	int			lineno;		/* __LINE__ of ereport() call */
-	const char *funcname;	/* __func__ of ereport() call */
-	int			saved_errno; /* errno at entry */
-	int			errordata_stack_depth;
-	struct YbgErrorData *previous; /* next stack frame */
-} YbgErrorData;
-typedef struct YbgErrorData *YbgError;
-
-/*
- * yb_errstart - YbGate equivalent of errstart
- *
- * Create a YbgErrorData instance and put the parameters into it.
- * Lasily creates YbgStatus instance. If YbgStatus instance already exists, and
- * has a YbgErrorData it is referenced by the new YbgErrorData instance, forming
- * a stack.
- */
-bool
-yb_errstart(int elevel, const char *filename, int lineno, const char *funcname)
-{
-	YbgStatus		status;
-	MemoryContext	error_context;
-	MemoryContext	old_context;
-	YbgError		edata;
-	YbgError		previous;
-
-	Assert(IsMultiThreadedMode());
-	if (filename)
-	{
-		const char *slash;
-
-		/* keep only base name, useful especially for vpath builds */
-		slash = strrchr(filename, '/');
-		if (slash)
-			filename = slash + 1;
-	}
-	status = YBCPgGetThreadLocalErrStatus();
-	if (status == NULL)
-	{
-		/* Lazily create YbgStatus */
-		status = YbgStatusCreate();
-		YBCPgSetThreadLocalErrStatus(status);
-	}
-	error_context = (MemoryContext) YbgStatusGetContext(status);
-	if (error_context == NULL)
-	{
-		/*
-		 * Static constants of YbgStatus type have NULL context. They are read
-		 * only, and can not be used with ereport/elog
-		 */
-		YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
-				   YBShouldLogStackTraceOnError(),
-				   "PG error state is missing memory context");
-		pg_unreachable();
-	}
-	old_context = MemoryContextSwitchTo(error_context);
-	/* Initialize data for this error frame */
-	previous = (YbgError) YbgStatusGetEdata(status);
-	edata = (YbgError) palloc0(sizeof(YbgErrorData));
-	edata->elevel = elevel;
-	edata->previous = previous;
-	edata->errordata_stack_depth =
-		previous ? previous->errordata_stack_depth + 1 : 1;
-	if (edata->errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/* Too deep stack typically indicates recursive error. */
-		YBCPgSetThreadLocalErrStatus(NULL);
-		MemoryContextSwitchTo(old_context);
-		MemoryContextReset(error_context);
-		YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
-				   YBShouldLogStackTraceOnError(),
-				   "Error data stack is too deep");
-		pg_unreachable();
-	}
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
-	/* Select default errcode based on elevel */
-	if (elevel >= ERROR)
-		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
-	else
-		edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
-	/* errno is saved here so that error parameter eval can't change it */
-	edata->saved_errno = errno;
-	YbgStatusSetEdata(status, edata);
-	MemoryContextSwitchTo(old_context);
-	return true;
-}
-
-/*
- * yb_copy_edata_fields_to_status - transfer data from the YbgError frame to
- * the YbgStatus
- *
- * The data is transferred when composing of ereport/elog with severity ERROR or
- * higher is finalized. Since YbgError is private to elog.c, YbGate can not use
- * it directly to construct the Status instance, hence copy. The fields being
- * copied here should match those cleaned up in yb_reset_error_status.
- */
-static void
-yb_copy_edata_fields_to_status(YbgStatus status, YbgError edata)
-{
-	YbgStatusSetLevel(status, edata->elevel);
-	YbgStatusSetMessageAndArgs(status, edata->errmsg, edata->nargs,
-							   edata->errargs);
-	YbgStatusSetSqlError(status, edata->sqlerrcode);
-	YbgStatusSetFilename(status, edata->filename);
-	YbgStatusSetLineNumber(status, edata->lineno);
-	YbgStatusSetFuncname(status, edata->funcname);
-}
-
-/*
- * yb_errfinish - YbGate equivalent of errfinish
- *
- * Move error data from the current YbgError frame to the status, and if error
- * level is severe enough, jump to the current error handler.
- */
-void
-yb_errfinish(int dummy,...)
-{
-	YbgStatus		status = YBCPgGetThreadLocalErrStatus();
-	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-	/*
-	 * Pop current edata frame by setting previous as current.
-	 * Even if we are going to make sigjmp from here, we may end up in a
-	 * PG_CATCH block where the error may be discarded and composing of the
-	 * previous error continued.
-	 */
-	YbgStatusSetEdata(status, edata->previous);
-	if (edata->elevel >= ERROR)
-	{
-		yb_copy_edata_fields_to_status(status, edata);
-		sigjmp_buf *buffer = YBCPgGetThreadLocalJumpBuffer();
-		if (buffer == NULL)
-		{
-			/*
-			 * There is no jump destination, most likely YbGate function was
-			 * invoked without PG_SETUP_ERROR_REPORTING()
-			 * Raise fatal error and provide the filename and line number set
-			 * by the yb_errstart. Note, status is not NULL here, as NULL
-			 * status is not an error.
-			 */
-			const char *filename = YbgStatusGetFilename(status);
-			int lineno = YbgStatusGetLineNumber(status);
-			YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
-					   YBShouldLogStackTraceOnError(),
-					   "PG error reporting has not been set up");
-		}
-		siglongjmp(*buffer, 1);
-		pg_unreachable();
-	}
-}
-
-/*
  * Saved timeval and buffers for formatted timestamps that might be used by
  * both log_line_prefix and csv logs.
  */
@@ -403,9 +181,19 @@ static char formatted_log_time[FORMATTED_TS_LEN];
 		{ \
 			return 0; \
 		} \
-	} while(0)
+	} while(0) \
+
+#define SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt) \
+	do { \
+		if (IsMultiThreadedMode()) \
+		{ \
+			YBCPgSetThreadLocalErrMsg(fmt); \
+			return 0; \
+		} \
+	} while(0) \
 
 static const char *err_gettext(const char *str) pg_attribute_format_arg(1);
+static pg_noinline void set_backtrace(ErrorData *edata, int num_skip);
 static void set_errdata_field(MemoryContextData *cxt, char **ptr, const char *str);
 static void write_console(const char *line, int len);
 static void setup_formatted_log_time(void);
@@ -416,16 +204,102 @@ static void write_csvlog(ErrorData *edata);
 static void send_message_to_server_log(ErrorData *edata);
 static void write_pipe_chunks(char *data, int len, int dest);
 static void send_message_to_frontend(ErrorData *edata);
-static char *expand_fmt_string(const char *fmt, ErrorData *edata);
-static const char *useful_strerror(int errnum);
-static const char *get_errno_symbol(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
-static bool is_log_level_output(int elevel, int log_min_level);
-static void yb_log_errmsg_va(const char* fmt, va_list args);
-static void yb_errmsg_va(const char* fmt, va_list args);
-static void		   yb_message_from_status_data(StringInfo buf, const char *fmt,
-											   const size_t nargs, const char **args);
+
+
+/*
+ * is_log_level_output -- is elevel logically >= log_min_level?
+ *
+ * We use this for tests that should consider LOG to sort out-of-order,
+ * between ERROR and FATAL.  Generally this is the right thing for testing
+ * whether a message should go to the postmaster log, whereas a simple >=
+ * test is correct for testing whether the message should go to the client.
+ */
+static inline bool
+is_log_level_output(int elevel, int log_min_level)
+{
+	if (elevel == LOG || elevel == LOG_SERVER_ONLY)
+	{
+		if (log_min_level == LOG || log_min_level <= ERROR)
+			return true;
+	}
+	else if (elevel == WARNING_CLIENT_ONLY)
+	{
+		/* never sent to log, regardless of log_min_level */
+		return false;
+	}
+	else if (log_min_level == LOG)
+	{
+		/* elevel != LOG */
+		if (elevel >= FATAL)
+			return true;
+	}
+	/* Neither is LOG */
+	else if (elevel >= log_min_level)
+		return true;
+
+	return false;
+}
+
+/*
+ * Policy-setting subroutines.  These are fairly simple, but it seems wise
+ * to have the code in just one place.
+ */
+
+/*
+ * should_output_to_server --- should message of given elevel go to the log?
+ */
+static inline bool
+should_output_to_server(int elevel)
+{
+	return is_log_level_output(elevel, log_min_messages);
+}
+
+/*
+ * should_output_to_client --- should message of given elevel go to the client?
+ */
+static inline bool
+should_output_to_client(int elevel)
+{
+	if (whereToSendOutput == DestRemote && elevel != LOG_SERVER_ONLY)
+	{
+		/*
+		 * client_min_messages is honored only after we complete the
+		 * authentication handshake.  This is required both for security
+		 * reasons and because many clients can't handle NOTICE messages
+		 * during authentication.
+		 */
+		if (ClientAuthInProgress)
+			return (elevel >= ERROR);
+		else
+			return (elevel >= client_min_messages || elevel == INFO);
+	}
+	return false;
+}
+
+
+/*
+ * message_level_is_interesting --- would ereport/elog do anything?
+ *
+ * Returns true if ereport/elog with this elevel will not be a no-op.
+ * This is useful to short-circuit any expensive preparatory work that
+ * might be needed for a logging message.  There is no point in
+ * prepending this to a bare ereport/elog call, however.
+ */
+bool
+message_level_is_interesting(int elevel)
+{
+	/*
+	 * Keep this in sync with the decision-making in errstart().
+	 */
+	if (elevel >= ERROR ||
+		should_output_to_server(elevel) ||
+		should_output_to_client(elevel))
+		return true;
+	return false;
+}
+
 
 /*
  * in_error_recursion_trouble --- are we at risk of infinite error recursion?
@@ -459,28 +333,38 @@ err_gettext(const char *str)
 #endif
 }
 
+/*
+ * errstart_cold
+ *		A simple wrapper around errstart, but hinted to be "cold".  Supporting
+ *		compilers are more likely to move code for branches containing this
+ *		function into an area away from the calling function's code.  This can
+ *		result in more commonly executed code being more compact and fitting
+ *		on fewer cache lines.
+ */
+pg_attribute_cold bool
+errstart_cold(int elevel, const char *domain)
+{
+	return errstart(elevel, domain);
+}
 
 /*
  * errstart --- begin an error-reporting cycle
  *
- * Create a stack entry and store the given parameters in it.  Subsequently,
- * errmsg() and perhaps other routines will be called to further populate
- * the stack entry.  Finally, errfinish() will be called to actually process
- * the error report.
+ * Create and initialize error stack entry.  Subsequently, errmsg() and
+ * perhaps other routines will be called to further populate the stack entry.
+ * Finally, errfinish() will be called to actually process the error report.
  *
  * Returns true in normal case.  Returns false to short-circuit the error
  * report (if it's a warning or lower and not to be reported anywhere).
  */
 bool
-errstart(int elevel, const char *filename, int lineno,
-		 const char *funcname, const char *domain)
+errstart(int elevel, const char *domain)
 {
 	ErrorData  *edata;
 	bool		output_to_server;
 	bool		output_to_client = false;
 	int			i;
 
-	Assert(!IsMultiThreadedMode());
 	/*
 	 * Check some cases in which we want to promote an error into a more
 	 * severe error.  None of this logic applies for non-error messages.
@@ -531,27 +415,8 @@ errstart(int elevel, const char *filename, int lineno,
 	 * warning or less and not enabled for logging, just return false without
 	 * starting up any error logging machinery.
 	 */
-
-	/* Determine whether message is enabled for server log output */
-	output_to_server = is_log_level_output(elevel, log_min_messages);
-
-	/* Determine whether message is enabled for client output */
-	if (whereToSendOutput == DestRemote && elevel != LOG_SERVER_ONLY)
-	{
-		/*
-		 * client_min_messages is honored only after we complete the
-		 * authentication handshake.  This is required both for security
-		 * reasons and because many clients can't handle NOTICE messages
-		 * during authentication.
-		 */
-		if (ClientAuthInProgress)
-			output_to_client = (elevel >= ERROR);
-		else
-			output_to_client = (elevel >= client_min_messages ||
-								elevel == INFO);
-	}
-
-	/* Skip processing effort if non-error message will not be output */
+	output_to_server = should_output_to_server(elevel);
+	output_to_client = should_output_to_client(elevel);
 	if (elevel < ERROR && !output_to_server && !output_to_client)
 		return false;
 
@@ -562,8 +427,7 @@ errstart(int elevel, const char *filename, int lineno,
 	if (ErrorContext == NULL)
 	{
 		/* Oops, hard crash time; very little we can do safely here */
-		write_stderr("error occurred at %s:%d before error message processing is available\n",
-					 filename ? filename : "(unknown file)", lineno);
+		write_stderr("error occurred before error message processing is available\n");
 		exit(2);
 	}
 
@@ -609,18 +473,6 @@ errstart(int elevel, const char *filename, int lineno,
 	edata->elevel = elevel;
 	edata->output_to_server = output_to_server;
 	edata->output_to_client = output_to_client;
-	if (filename)
-	{
-		const char *slash;
-
-		/* keep only base name, useful especially for vpath builds */
-		slash = strrchr(filename, '/');
-		if (slash)
-			filename = slash + 1;
-	}
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
 	/* the default text domain is the backend's */
 	edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
 	/* initialize context_domain the same way (see set_errcontext_domain()) */
@@ -628,7 +480,7 @@ errstart(int elevel, const char *filename, int lineno,
 	/* Select default errcode based on elevel */
 	if (elevel >= ERROR)
 		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
-	else if (elevel == WARNING)
+	else if (elevel >= WARNING)
 		edata->sqlerrcode = ERRCODE_WARNING;
 	else
 		edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
@@ -641,14 +493,33 @@ errstart(int elevel, const char *filename, int lineno,
 	edata->assoc_context = ErrorContext;
 
 	recursion_depth--;
-	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
-	{
-		YBCLogImpl(
-			/* severity (2=ERROR) */ 2,
-			filename, lineno, /* stack_trace */ true,
-			"Postgres error: %s", YBPgErrorLevelToString(elevel));
-	}
 	return true;
+}
+
+/*
+ * Checks whether the given funcname matches backtrace_functions; see
+ * check_backtrace_functions.
+ */
+static bool
+matches_backtrace_functions(const char *funcname)
+{
+	char	   *p;
+
+	if (!backtrace_symbol_list || funcname == NULL || funcname[0] == '\0')
+		return false;
+
+	p = backtrace_symbol_list;
+	for (;;)
+	{
+		if (*p == '\0')			/* end of backtrace_symbol_list */
+			break;
+
+		if (strcmp(funcname, p) == 0)
+			return true;
+		p += strlen(p) + 1;
+	}
+
+	return false;
 }
 
 /*
@@ -656,11 +527,11 @@ errstart(int elevel, const char *filename, int lineno,
  *
  * Produce the appropriate error report(s) and pop the error stack.
  *
- * If elevel is ERROR or worse, control does not return to the caller.
- * See elog.h for the error level definitions.
+ * If elevel, as passed to errstart(), is ERROR or worse, control does not
+ * return to the caller.  See elog.h for the error level definitions.
  */
 void
-errfinish(int dummy,...)
+errfinish(const char *filename, int lineno, const char *funcname)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	int			elevel;
@@ -669,6 +540,26 @@ errfinish(int dummy,...)
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
+
+	/* Save the last few bits of error state into the stack entry */
+	if (filename)
+	{
+		const char *slash;
+
+		/* keep only base name, useful especially for vpath builds */
+		slash = strrchr(filename, '/');
+		if (slash)
+			filename = slash + 1;
+		/* Some Windows compilers use backslashes in __FILE__ strings */
+		slash = strrchr(filename, '\\');
+		if (slash)
+			filename = slash + 1;
+	}
+
+	edata->filename = filename;
+	edata->lineno = lineno;
+	edata->funcname = funcname;
+
 	elevel = edata->elevel;
 
 	/*
@@ -676,6 +567,12 @@ errfinish(int dummy,...)
 	 * to report an error.
 	 */
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
+
+	if (!edata->backtrace &&
+		edata->funcname &&
+		backtrace_functions &&
+		matches_backtrace_functions(edata->funcname))
+		set_backtrace(edata, 2);
 
 	/*
 	 * Call any context callback functions.  Errors occurring in callback
@@ -717,24 +614,13 @@ errfinish(int dummy,...)
 		PG_RE_THROW();
 	}
 
-	/*
-	 * If we are doing FATAL or PANIC, abort any old-style COPY OUT in
-	 * progress, so that we can report the message before dying.  (Without
-	 * this, pq_putmessage will refuse to send the message at all, which is
-	 * what we want for NOTICE messages, but not for fatal exits.) This hack
-	 * is necessary because of poor design of old-style copy protocol.
-	 */
-	if (elevel >= FATAL)
+	/* YB_TODO(neil@yugabyte) Check if this is still needed and the right place for reporting */
+	if (YBShouldLogStackTraceOnError() && elevel >= ERROR)
 	{
-		if (whereToSendOutput == DestRemote)
-			pq_endcopyout(true);
-
-		if (IsYugaByteEnabled())
-			/* When it's FATAL, the memory context that "debug_query_string" points to might have been
-			 * deleted or even corrupted. Set "debug_query_string" to NULL before emitting error.
-			 * The variable "debug_query_string" contains the user statement that is currently executed.
-			 */
-			debug_query_string = NULL;
+		YBCLogImpl(
+			/* severity (2=ERROR) */ 2,
+			filename, lineno, /* stack_trace */ true,
+			"Postgres error: %s", YBPgErrorLevelToString(elevel));
 	}
 
 	/* Emit the message to the right places */
@@ -751,6 +637,8 @@ errfinish(int dummy,...)
 		pfree(edata->hint);
 	if (edata->context)
 		pfree(edata->context);
+	if (edata->backtrace)
+		pfree(edata->backtrace);
 	if (edata->schema_name)
 		pfree(edata->schema_name);
 	if (edata->table_name)
@@ -784,6 +672,13 @@ errfinish(int dummy,...)
 		if (PG_exception_stack == NULL && whereToSendOutput == DestRemote)
 			whereToSendOutput = DestNone;
 
+		if (IsYugaByteEnabled())
+			/* When it's FATAL, the memory context that "debug_query_string" points to might have been
+			 * deleted or even corrupted. Set "debug_query_string" to NULL before emitting error.
+			 * The variable "debug_query_string" contains the user statement that is currently executed.
+			 */
+			debug_query_string = NULL;
+
 		/*
 		 * fflush here is just to improve the odds that we get to see the
 		 * error message, in case things are so hosed that proc_exit crashes.
@@ -792,6 +687,13 @@ errfinish(int dummy,...)
 		 */
 		fflush(stdout);
 		fflush(stderr);
+
+		/*
+		 * Let the statistics collector know. Only mark the session as
+		 * terminated by fatal error if there is no other known cause.
+		 */
+		if (pgStatSessionEndCause == DISCONNECT_NORMAL)
+			pgStatSessionEndCause = DISCONNECT_FATAL;
 
 		/*
 		 * Do normal process-exit cleanup, then return exit code 1 to indicate
@@ -828,18 +730,11 @@ errfinish(int dummy,...)
  * errcode --- add SQLSTATE error code to the current error
  *
  * The code is expected to be represented as per MAKE_SQLSTATE().
- * In YbGate environment set the code on the current YbgError frame.
  */
 int
 errcode(int sqlerrcode)
 {
-	if (IsMultiThreadedMode())
-	{
-		YbgStatus		status = YBCPgGetThreadLocalErrStatus();
-		YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-		edata->sqlerrcode = sqlerrcode;
-		return 0;
-	}
+	RETURN_IF_MULTITHREADED_MODE();
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
@@ -962,10 +857,7 @@ errcode_for_socket_access(void)
 	switch (edata->saved_errno)
 	{
 			/* Loss of connection */
-		case EPIPE:
-#ifdef ECONNRESET
-		case ECONNRESET:
-#endif
+		case ALL_CONNECTION_FAILURE_ERRNOS:
 			edata->sqlerrcode = ERRCODE_CONNECTION_FAILURE;
 			break;
 
@@ -993,13 +885,10 @@ errcode_for_socket_access(void)
  */
 #define EVALUATE_MESSAGE(domain, targetfield, appendval, translateit)	\
 	{ \
-		char		   *fmtbuf; \
 		StringInfoData	buf; \
 		/* Internationalize the error format string */ \
 		if ((translateit) && !in_error_recursion_trouble()) \
 			fmt = dgettext((domain), fmt);				  \
-		/* Expand %m in format string */ \
-		fmtbuf = expand_fmt_string(fmt, edata); \
 		initStringInfo(&buf); \
 		if ((appendval) && edata->targetfield) { \
 			appendStringInfoString(&buf, edata->targetfield); \
@@ -1010,15 +899,14 @@ errcode_for_socket_access(void)
 		{ \
 			va_list		args; \
 			int			needed; \
+			errno = edata->saved_errno; \
 			va_start(args, fmt); \
-			needed = appendStringInfoVA(&buf, fmtbuf, args); \
+			needed = appendStringInfoVA(&buf, fmt, args); \
 			va_end(args); \
 			if (needed == 0) \
 				break; \
 			enlargeStringInfo(&buf, needed); \
 		} \
-		/* Done with expanded fmt */ \
-		pfree(fmtbuf); \
 		/* In YB debug mode, add stack trace info (to first msg only) */ \
 		if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace && !appendval) { \
 			appendStringInfoString(&buf, "\n"); \
@@ -1039,15 +927,12 @@ errcode_for_socket_access(void)
 #define EVALUATE_MESSAGE_PLURAL(domain, targetfield, appendval)  \
 	{ \
 		const char	   *fmt; \
-		char		   *fmtbuf; \
 		StringInfoData	buf; \
 		/* Internationalize the error format string */ \
 		if (!in_error_recursion_trouble()) \
 			fmt = dngettext((domain), fmt_singular, fmt_plural, n); \
 		else \
 			fmt = (n == 1 ? fmt_singular : fmt_plural); \
-		/* Expand %m in format string */ \
-		fmtbuf = expand_fmt_string(fmt, edata); \
 		initStringInfo(&buf); \
 		if ((appendval) && edata->targetfield) { \
 			appendStringInfoString(&buf, edata->targetfield); \
@@ -1058,15 +943,14 @@ errcode_for_socket_access(void)
 		{ \
 			va_list		args; \
 			int			needed; \
+			errno = edata->saved_errno; \
 			va_start(args, n); \
-			needed = appendStringInfoVA(&buf, fmtbuf, args); \
+			needed = appendStringInfoVA(&buf, fmt, args); \
 			va_end(args); \
 			if (needed == 0) \
 				break; \
 			enlargeStringInfo(&buf, needed); \
 		} \
-		/* Done with expanded fmt */ \
-		pfree(fmtbuf); \
 		/* Save the completed message into the stack item */ \
 		if (edata->targetfield) \
 			pfree(edata->targetfield); \
@@ -1087,19 +971,7 @@ errcode_for_socket_access(void)
 int
 errmsg(const char *fmt,...)
 {
-	if (IsMultiThreadedMode())
-	{
-		va_list args;
-		/* Always log, severity depends on current elevel */
-		va_start(args, fmt);
-		yb_log_errmsg_va(fmt, args);
-		va_end(args);
-		/* Update current error message */
-		va_start(args, fmt);
-		yb_errmsg_va(fmt, args);
-		va_end(args);
-		return 0;
-	}
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt);
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1116,6 +988,63 @@ errmsg(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * Add a backtrace to the containing ereport() call.  This is intended to be
+ * added temporarily during debugging.
+ */
+int
+errbacktrace(void)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	set_backtrace(edata, 1);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+
+	return 0;
+}
+
+/*
+ * Compute backtrace data and add it to the supplied ErrorData.  num_skip
+ * specifies how many inner frames to skip.  Use this to avoid showing the
+ * internal backtrace support functions in the backtrace.  This requires that
+ * this and related functions are not inlined.
+ */
+static void
+set_backtrace(ErrorData *edata, int num_skip)
+{
+	StringInfoData errtrace;
+
+	initStringInfo(&errtrace);
+
+#ifdef HAVE_BACKTRACE_SYMBOLS
+	{
+		void	   *buf[100];
+		int			nframes;
+		char	  **strfrms;
+
+		nframes = backtrace(buf, lengthof(buf));
+		strfrms = backtrace_symbols(buf, nframes);
+		if (strfrms == NULL)
+			return;
+
+		for (int i = num_skip; i < nframes; i++)
+			appendStringInfo(&errtrace, "\n%s", strfrms[i]);
+		free(strfrms);
+	}
+#else
+	appendStringInfoString(&errtrace,
+						   "backtrace generation is not supported by this installation");
+#endif
+
+	edata->backtrace = errtrace.data;
+}
 
 /*
  * errmsg_internal --- add a primary error message text to the current error
@@ -1127,14 +1056,11 @@ errmsg(const char *fmt,...)
  * We also use this for certain cases where we *must* not try to translate
  * the message because the translation would fail and result in infinite
  * error recursion.
- *
- * In YbGate environment does nothing, which is probably fine for a case that
- * "can't happen".
  */
 int
 errmsg_internal(const char *fmt,...)
 {
-	RETURN_IF_MULTITHREADED_MODE();
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(fmt);
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1155,32 +1081,12 @@ errmsg_internal(const char *fmt,...)
 /*
  * errmsg_plural --- add a primary error message text to the current error,
  * with support for pluralization of the message text
- *
- * TODO: There is a correctness problem in the YbGate environment. National
- * languages may have multiple plural forms, depending on n. Therefore n
- * should be stored and sent to the client with the Status.
- *
- * However, errmsg_plural is rare, and the "if n = 1 then singular, else plural"
- * logic works for English, hence low priority.
  */
 int
 errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 			  unsigned long n,...)
 {
-	if (IsMultiThreadedMode())
-	{
-		const char *fmt = n == 1 ? fmt_singular : fmt_plural;
-		va_list args;
-		/* Always log, severity depends on current elevel */
-		va_start(args, n);
-		yb_log_errmsg_va(fmt, args);
-		va_end(args);
-		/* Update current error message */
-		va_start(args, n);
-		yb_errmsg_va(fmt, args);
-		va_end(args);
-		return 0;
-	}
+	SET_MSG_AND_RETURN_IF_MULTITHREADED_MODE(n == 1 ? fmt_singular : fmt_plural);
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1344,20 +1250,40 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+
+/*
+ * errhint_plural --- add a hint error message text to the current error,
+ * with support for pluralization of the message text
+ */
+int
+errhint_plural(const char *fmt_singular, const char *fmt_plural,
+			   unsigned long n,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	EVALUATE_MESSAGE_PLURAL(edata->domain, hint, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
+
+
 /*
  * errcontext_msg --- add a context error message text to the current error
  *
  * Unlike other cases, multiple calls are allowed to build up a stack of
  * context information.  We assume earlier calls represent more-closely-nested
  * states.
- *
- * Ignored in YbGate environment.
  */
 int
-errcontext_msg(const char *fmt, ...)
+errcontext_msg(const char *fmt,...)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
 
@@ -1380,24 +1306,10 @@ errcontext_msg(const char *fmt, ...)
  * translate it.  Instead, each errcontext_msg() call should be preceded by
  * a set_errcontext_domain() call to specify the domain.  This is usually
  * done transparently by the errcontext() macro.
- *
- * Although errcontext is primarily meant for use at call sites distant from
- * the original ereport call, there are a few places that invoke errcontext
- * within ereport.  The expansion of errcontext as a comma expression calling
- * set_errcontext_domain then errcontext_msg is problematic in this case,
- * because the intended comma expression becomes two arguments to errfinish,
- * which the compiler is at liberty to evaluate in either order.  But in
- * such a case, the set_errcontext_domain calls must be selecting the same
- * TEXTDOMAIN value that the errstart call did, so order does not matter
- * so long as errstart initializes context_domain along with domain.
- *
- * Ignored in YbGate environment.
  */
 int
 set_errcontext_domain(const char *domain)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1409,18 +1321,15 @@ set_errcontext_domain(const char *domain)
 	return 0;					/* return value does not matter */
 }
 
+
 /*
  * errhidestmt --- optionally suppress STATEMENT: field of log entry
  *
  * This should be called if the message text already includes the statement.
- *
- * Ignored in YbGate environment.
  */
 int
 errhidestmt(bool hide_stmt)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1436,14 +1345,10 @@ errhidestmt(bool hide_stmt)
  *
  * This should only be used for verbose debugging messages where the repeated
  * inclusion of context would bloat the log volume too much.
- *
- * Ignored in YbGate environment.
  */
 int
 errhidecontext(bool hide_ctx)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1455,40 +1360,11 @@ errhidecontext(bool hide_ctx)
 }
 
 /*
- * errfunction --- add reporting function name to the current error
- *
- * This is used when backwards compatibility demands that the function
- * name appear in messages sent to old-protocol clients.  Note that the
- * passed string is expected to be a non-freeable constant string.
- *
- * Ignored in YbGate environment.
- */
-int
-errfunction(const char *funcname)
-{
-	RETURN_IF_MULTITHREADED_MODE();
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
-
-	edata->funcname = funcname;
-	edata->show_funcname = true;
-
-	return 0;					/* return value does not matter */
-}
-
-/*
  * errposition --- add cursor position to the current error
- *
- * Ignored in YbGate environment.
  */
 int
 errposition(int cursorpos)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1501,14 +1377,10 @@ errposition(int cursorpos)
 
 /*
  * internalerrposition --- add internal cursor position to the current error
- *
- * Ignored in YbGate environment.
  */
 int
 internalerrposition(int cursorpos)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1525,14 +1397,10 @@ internalerrposition(int cursorpos)
  * Can also pass NULL to drop the internal query text entry.  This case
  * is intended for use in error callback subroutines that are editorializing
  * on the layout of the error report.
- *
- * Ignored in YbGate environment.
  */
 int
 internalerrquery(const char *query)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1559,14 +1427,10 @@ internalerrquery(const char *query)
  *
  * Most potential callers should not use this directly, but instead prefer
  * higher-level abstractions, such as errtablecol() (see relcache.c).
- *
- * Ignored in YbGate environment.
  */
 int
 err_generic_string(int field, const char *str)
 {
-	RETURN_IF_MULTITHREADED_MODE();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 
 	/* we don't bother incrementing recursion_depth */
@@ -1659,103 +1523,28 @@ getinternalerrposition(void)
 }
 
 /*
- * elog_start --- startup for old-style API
- *
- * All that we do here is stash the hidden filename/lineno/funcname
- * arguments into a stack entry, along with the current value of errno.
- *
- * We need this to be separate from elog_finish because there's no other
- * C89-compliant way to deal with inserting extra arguments into the elog
- * call.  (When using C99's __VA_ARGS__, we could possibly merge this with
- * elog_finish, but there doesn't seem to be a good way to save errno before
- * evaluating the format arguments if we do that.)
+ * When running within DocDB as the execution library we do not have the
+ * error management framework fully set up yet.
+ * So we just do our best to log an error and jump back to the pgapi.c
+ * execution layer which should report the failure to DocDB.
+ * TODO - Investigate how to best integrate with the regular error
+ * framework to get better error messages/reporting (considering globals,
+ * error stack, signal masks, etc.).
  */
-void
-elog_start(const char *filename, int lineno, const char *funcname)
-{
-	ErrorData  *edata;
-
-	Assert(!IsMultiThreadedMode());
-	/* Make sure that memory context initialization has finished */
-	if (ErrorContext == NULL)
+void yb_pgbackend_ereport(int elevel, const char *fmt,...) {
+	if (fmt != NULL)
 	{
-		/* Oops, hard crash time; very little we can do safely here */
-		write_stderr("error occurred at %s:%d before error message processing is available\n",
-					 filename ? filename : "(unknown file)", lineno);
-		exit(2);
+		YBCPgSetThreadLocalErrMsg(fmt);
 	}
-
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.  We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.  Note that the message is intentionally not localized,
-		 * else failure to convert it to client encoding could cause further
-		 * recursion.
-		 */
-		errordata_stack_depth = -1; /* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
-
-	edata = &errordata[errordata_stack_depth];
-	if (filename)
-	{
-		const char *slash;
-
-		/* keep only base name, useful especially for vpath builds */
-		slash = strrchr(filename, '/');
-		if (slash)
-			filename = slash + 1;
-	}
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
-	/* errno is saved now so that error parameter eval can't change it */
-	edata->saved_errno = errno;
-
-	/* Use ErrorContext for any allocations done at this level. */
-	edata->assoc_context = ErrorContext;
+	jmp_buf *buffer = YBCPgGetThreadLocalJumpBuffer();
+	longjmp(*buffer, elevel);
 }
 
-/*
- * elog_finish --- finish up for old-style API
- */
-void
-elog_finish(int elevel, const char *fmt,...)
-{
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
-
-	Assert(!IsMultiThreadedMode());
-	CHECK_STACK_DEPTH();
-
-	/*
-	 * Do errstart() to see if we actually want to report the message.
-	 */
-	errordata_stack_depth--;
-	errno = edata->saved_errno;
-	if (!errstart(elevel, edata->filename, edata->lineno, edata->funcname, NULL))
-		return;					/* nothing to do */
-
-	/*
-	 * Format error message just like errmsg_internal().
-	 */
-	recursion_depth++;
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-	edata->message_id = fmt;
-	EVALUATE_MESSAGE(edata->domain, message, false, false);
-
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-
-	/*
-	 * And let errfinish() finish up.
-	 */
-	errfinish(0);
+/* Dummy function to cause errmsg call to be evaluated. */
+void yb_pgbackend_ereport_dummy(int dummy,...) {
+	/* Nothing to do. */
+	return;
 }
-
 
 /*
  * Functions to allow construction of error message strings separately from
@@ -1812,70 +1601,6 @@ format_elog_string(const char *fmt,...)
 	return edata->message;
 }
 
-/*
- * yb_get_exception_stack
- * Return current PG_exception stack value, or equivalent thread local value in
- * YbGate environment.
- */
-sigjmp_buf *
-yb_get_exception_stack(void)
-{
-	if (IsMultiThreadedMode())
-		return (sigjmp_buf *) YBCPgGetThreadLocalJumpBuffer();
-	else
-		return PG_exception_stack;
-}
-
-/*
- * yb_set_exception_stack
- * Set current PG_exception stack value, or equivalent thread local value in
- * YbGate environment.
- */
-void
-yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf)
-{
-	if (IsMultiThreadedMode())
-		YBCPgSetThreadLocalJumpBuffer(new_sigjmp_buf);
-	else
-		PG_exception_stack = new_sigjmp_buf;
-}
-
-/*
- * yb_reset_error_status - clean error details from the YbgStatus
- * In YbGate environment clean up YbgStatus instance after error is
- * successfully handled.
- *
- * Current error status could be nested, in that case just reset values
- * transferred from the last YbgError and let the current YbgError frame be
- * populated.
- *
- * If last error was outmost, destroy the YbgError and deallocate memory.
- */
-void
-yb_reset_error_status(void)
-{
-	if (IsMultiThreadedMode())
-	{
-		YbgStatus ybg_status = YBCPgSetThreadLocalErrStatus(NULL);
-		if (ybg_status && YbgStatusGetEdata(ybg_status))
-		{
-			/*
-			 * Fields cleaned up here should match those set in
-			 * the yb_copy_edata_fields_to_status function
-			 */
-			YbgStatusSetLevel(ybg_status, 0);
-			YbgStatusSetMessageAndArgs(ybg_status, NULL, 0, NULL);
-			YbgStatusSetSqlError(ybg_status, ERRCODE_SUCCESSFUL_COMPLETION);
-			YbgStatusSetFilename(ybg_status, NULL);
-			YbgStatusSetLineNumber(ybg_status, 0);
-			YbgStatusSetFuncname(ybg_status, NULL);
-			/* Store back the cleaned status */
-			YBCPgSetThreadLocalErrStatus(ybg_status);
-		}
-		else
-			YbgStatusDestroy(ybg_status);
-	}
-}
 
 /*
  * Actual output of the top-of-stack error message
@@ -1929,92 +1654,15 @@ EmitErrorReport(void)
 }
 
 /*
- * ybg_status_to_edata - export info from YbgStatus as ErrorData
- *
- * Equivalent of CopyErrorData for multi-thread mode.
- */
-static ErrorData *
-ybg_status_to_edata(void)
-{
-	YbgStatus ybg_status = YBCPgGetThreadLocalErrStatus();
-	MemoryContext mctx = GetCurrentMemoryContext();
-	/*
-	 * In multi-thread mode current memory context may be null, as well as the
-	 * error context. Here we require they both are set and are different, since
-	 * we are allocating, and expect the error context to be deleted soon.
-	 */
-	Assert(mctx && YbgStatusGetContext(ybg_status) != mctx);
-	/* We do not set most of the field, so nullify the allocated struct */
-	ErrorData *newedata = (ErrorData *) palloc0(sizeof(ErrorData));
-	/* Assuming we are in PG_CATCH, it only can be ERROR */
-	newedata->elevel = ERROR;
-	/* Copy error message. Have to format it now. */
-	const char *fmt = YbgStatusGetMessage(ybg_status);
-	if (fmt)
-	{
-		StringInfoData buf;
-		int nargs;
-		const char **args = YbgStatusGetMessageArgs(ybg_status, &nargs);
-		initStringInfo(&buf);
-		yb_message_from_status_data(&buf, fmt, nargs, args);
-		newedata->message_id = pstrdup(fmt);
-		newedata->message = buf.data;
-	}
-	/* Copy SQL code */
-	newedata->sqlerrcode = YbgStatusGetSqlError(ybg_status);
-	/* Copy location */
-	newedata->filename = YbgStatusGetFilename(ybg_status);
-	newedata->lineno = YbgStatusGetLineNumber(ybg_status);
-	newedata->funcname = YbgStatusGetFuncname(ybg_status);
-	/* Associate current memory context with this edata */
-	newedata->assoc_context = mctx;
-	return newedata;
-}
-
-/*
- * ybg_status_from_edata - import info from ErrorData into YbgStatus
- *
- * Raise error using the information, previously exported as an ErrorData
- * structure in multi-thread mode.
- */
-static void
-ybg_status_from_edata(ErrorData *edata)
-{
-	/* Start error processing */
-	if (!yb_errstart(edata->elevel, edata->filename, edata->lineno,
-					 edata->funcname))
-		return;
-	/* Successful error start makes sure we have memory context and YbgError */
-	YbgStatus ybg_status = YBCPgGetThreadLocalErrStatus();
-	YbgError newedata = (YbgError) YbgStatusGetEdata(ybg_status);
-	MemoryContext error_context =
-		(MemoryContext) YbgStatusGetContext(ybg_status);
-	MemoryContext old_context = MemoryContextSwitchTo(error_context);
-	/* Error message raised that way is not localizable unfortunately */
-	newedata->errmsg = pstrdup(edata->message);
-	newedata->sqlerrcode = edata->sqlerrcode;
-	MemoryContextSwitchTo(old_context);
-	/* Process the error */
-	yb_errfinish(0);
-}
-
-/*
  * CopyErrorData --- obtain a copy of the topmost error stack entry
  *
  * This is only for use in error handler code.  The data is copied into the
  * current memory context, so callers should always switch away from
  * ErrorContext first; otherwise it will be lost when FlushErrorState is done.
- *
- * In multi-thread mode we expect to have a YbgStatus instance which we can
- * use to populate ErrorData structure to possibly make Postgres code happy.
- * Though we do not have everything that may be needed, we do our best.
  */
 ErrorData *
 CopyErrorData(void)
 {
-	if (IsMultiThreadedMode())
-		return ybg_status_to_edata();
-
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	ErrorData  *newedata;
 
@@ -2041,6 +1689,8 @@ CopyErrorData(void)
 		newedata->hint = pstrdup(newedata->hint);
 	if (newedata->context)
 		newedata->context = pstrdup(newedata->context);
+	if (newedata->backtrace)
+		newedata->backtrace = pstrdup(newedata->backtrace);
 	if (newedata->schema_name)
 		newedata->schema_name = pstrdup(newedata->schema_name);
 	if (newedata->table_name)
@@ -2079,6 +1729,8 @@ FreeErrorData(ErrorData *edata)
 		pfree(edata->hint);
 	if (edata->context)
 		pfree(edata->context);
+	if (edata->backtrace)
+		pfree(edata->backtrace);
 	if (edata->schema_name)
 		pfree(edata->schema_name);
 	if (edata->table_name)
@@ -2106,19 +1758,6 @@ void
 FlushErrorState(void)
 {
 	/*
-	 * Teoretically if error is raised and caught during construction of
-	 * another message should leave something in the stack to continue the
-	 * construction. However, it seems like expectation is that FlushErrorState
-	 * should empty out everything, so in multi-thread mode too, remove and
-	 * destroy the status, if set.
-	 */
-	if (IsMultiThreadedMode())
-	{
-		YbgStatusDestroy(YBCPgSetThreadLocalErrStatus(NULL));
-		return;
-	}
-
-	/*
 	 * Reset stack to empty.  The only case where it would be more than one
 	 * deep is if we serviced an error that interrupted construction of
 	 * another message.  We assume control escaped out of that message
@@ -2143,17 +1782,10 @@ FlushErrorState(void)
 void
 ThrowErrorData(ErrorData *edata)
 {
-	if (IsMultiThreadedMode())
-	{
-		ybg_status_from_edata(edata);
-		/* If error level is lower than ERROR ybg_status_from_edata returns */
-		return;
-	}
 	ErrorData  *newedata;
 	MemoryContext oldcontext;
 
-	if (!errstart(edata->elevel, edata->filename, edata->lineno,
-				  edata->funcname, NULL))
+	if (!errstart(edata->elevel, edata->domain))
 		return;					/* error is not to be reported at all */
 
 	newedata = &errordata[errordata_stack_depth];
@@ -2173,6 +1805,8 @@ ThrowErrorData(ErrorData *edata)
 		newedata->hint = pstrdup(edata->hint);
 	if (edata->context)
 		newedata->context = pstrdup(edata->context);
+	if (edata->backtrace)
+		newedata->backtrace = pstrdup(edata->backtrace);
 	/* assume message_id is not available */
 	if (edata->schema_name)
 		newedata->schema_name = pstrdup(edata->schema_name);
@@ -2193,7 +1827,7 @@ ThrowErrorData(ErrorData *edata)
 	recursion_depth--;
 
 	/* Process the error. */
-	errfinish(0);
+	errfinish(edata->filename, edata->lineno, edata->funcname);
 }
 
 /*
@@ -2210,16 +1844,6 @@ ReThrowError(ErrorData *edata)
 	ErrorData  *newedata;
 
 	Assert(edata->elevel == ERROR);
-
-	if (IsMultiThreadedMode())
-	{
-		/* This call should not return because elevel is ERROR */
-		ybg_status_from_edata(edata);
-		YBCLogImpl(/* severity (3=FATAL) */ 3, edata->filename, edata->lineno,
-				   YBShouldLogStackTraceOnError(),
-				   "Unexpected return from ybg_status_from_edata()");
-		pg_unreachable();
-	}
 
 	/* Push the data back into the error context */
 	recursion_depth++;
@@ -2250,6 +1874,8 @@ ReThrowError(ErrorData *edata)
 		newedata->hint = pstrdup(newedata->hint);
 	if (newedata->context)
 		newedata->context = pstrdup(newedata->context);
+	if (newedata->backtrace)
+		newedata->backtrace = pstrdup(newedata->backtrace);
 	if (newedata->schema_name)
 		newedata->schema_name = pstrdup(newedata->schema_name);
 	if (newedata->table_name)
@@ -2276,10 +1902,9 @@ ReThrowError(ErrorData *edata)
 void
 pg_re_throw(void)
 {
-	sigjmp_buf *exception_stack = yb_get_exception_stack();
 	/* If possible, throw the error to the next outer setjmp handler */
-	if (exception_stack != NULL)
-		siglongjmp(*exception_stack, 1);
+	if (PG_exception_stack != NULL)
+		siglongjmp(*PG_exception_stack, 1);
 	else
 	{
 		/*
@@ -2290,29 +1915,6 @@ pg_re_throw(void)
 		 * the correct behavior is to make it FATAL now; that is, emit it and
 		 * then call proc_exit.
 		 */
-		if (IsMultiThreadedMode())
-		{
-			/*
-			 * In YbGate environment that basically means that the
-			 * PG_SETUP_ERROR_REPORTING() has not been invoked.
-			 * Check YbgStatus to see if there is filename/linenumber
-			 * information to include into the fatal error report, as it would
-			 * point to the offending ereport/elog.
-			 */
-			YbgStatus status = YBCPgGetThreadLocalErrStatus();
-			const char *filename = NULL;
-			int lineno = 0;
-			if (status)
-			{
-				filename = YbgStatusGetFilename(status);
-				lineno = YbgStatusGetLineNumber(status);
-			}
-			YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
-					   YBShouldLogStackTraceOnError(),
-					   "PG error reporting has not been set up");
-			pg_unreachable();
-		}
-
 		ErrorData  *edata = &errordata[errordata_stack_depth];
 
 		Assert(errordata_stack_depth >= 0);
@@ -2321,16 +1923,10 @@ pg_re_throw(void)
 
 		/*
 		 * At least in principle, the increase in severity could have changed
-		 * where-to-output decisions, so recalculate.  This should stay in
-		 * sync with errstart(), which see for comments.
+		 * where-to-output decisions, so recalculate.
 		 */
-		if (IsPostmasterEnvironment)
-			edata->output_to_server = is_log_level_output(FATAL,
-														  log_min_messages);
-		else
-			edata->output_to_server = (FATAL >= log_min_messages);
-		if (whereToSendOutput == DestRemote)
-			edata->output_to_client = true;
+		edata->output_to_server = should_output_to_server(FATAL);
+		edata->output_to_client = should_output_to_client(FATAL);
 
 		/*
 		 * We can use errfinish() for the rest, but we don't want it to call
@@ -2339,7 +1935,7 @@ pg_re_throw(void)
 		 */
 		error_context_stack = NULL;
 
-		errfinish(0);
+		errfinish(edata->filename, edata->lineno, edata->funcname);
 	}
 
 	/* Doesn't return ... */
@@ -2668,6 +2264,7 @@ write_eventlog(int level, const char *line, int len)
 			eventlevel = EVENTLOG_INFORMATION_TYPE;
 			break;
 		case WARNING:
+		case WARNING_CLIENT_ONLY:
 			eventlevel = EVENTLOG_WARNING_TYPE;
 			break;
 		case ERROR:
@@ -2782,6 +2379,8 @@ write_console(const char *line, int len)
 	 * Conversion on non-win32 platforms is not implemented yet. It requires
 	 * non-throw version of pg_do_encoding_conversion(), that converts
 	 * unconvertable characters to '?' without errors.
+	 *
+	 * XXX: We have a no-throw version now. It doesn't convert to '?' though.
 	 */
 #endif
 
@@ -2969,6 +2568,23 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 										   padding > 0 ? padding : -padding);
 
 				break;
+			case 'b':
+				{
+					const char *backend_type_str;
+
+					if (MyProcPid == PostmasterPid)
+						backend_type_str = "postmaster";
+					else if (MyBackendType == B_BG_WORKER)
+						backend_type_str = MyBgworkerEntry->bgw_type;
+					else
+						backend_type_str = GetBackendTypeDesc(MyBackendType);
+
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, backend_type_str);
+					else
+						appendStringInfoString(buf, backend_type_str);
+					break;
+				}
 			case 'u':
 				if (MyProcPort)
 				{
@@ -3019,6 +2635,29 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				else
 					appendStringInfo(buf, "%d", MyProcPid);
 				break;
+
+			case 'P':
+				if (MyProc)
+				{
+					PGPROC	   *leader = MyProc->lockGroupLeader;
+
+					/*
+					 * Show the leader only for active parallel workers. This
+					 * leaves out the leader of a parallel group.
+					 */
+					if (leader == NULL || leader->pid == MyProcPid)
+						appendStringInfoSpaces(buf,
+											   padding > 0 ? padding : -padding);
+					else if (padding != 0)
+						appendStringInfo(buf, "%*d", padding, leader->pid);
+					else
+						appendStringInfo(buf, "%d", leader->pid);
+				}
+				else if (padding != 0)
+					appendStringInfoSpaces(buf,
+										   padding > 0 ? padding : -padding);
+				break;
+
 			case 'l':
 				if (padding != 0)
 					appendStringInfo(buf, "%*ld", padding, log_line_number);
@@ -3240,6 +2879,14 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				}
 				break;
 			}
+			case 'Q':
+				if (padding != 0)
+					appendStringInfo(buf, "%*lld", padding,
+									 (long long) pgstat_get_my_query_id());
+				else
+					appendStringInfo(buf, "%lld",
+									 (long long) pgstat_get_my_query_id());
+				break;
 			default:
 				/* format error - ignore it */
 				break;
@@ -3458,10 +3105,39 @@ write_csvlog(ErrorData *edata)
 	if (application_name)
 		appendCSVLiteral(&buf, application_name);
 
+	appendStringInfoChar(&buf, ',');
+
+	/* backend type */
+	if (MyProcPid == PostmasterPid)
+		appendCSVLiteral(&buf, "postmaster");
+	else if (MyBackendType == B_BG_WORKER)
+		appendCSVLiteral(&buf, MyBgworkerEntry->bgw_type);
+	else
+		appendCSVLiteral(&buf, GetBackendTypeDesc(MyBackendType));
+
+	appendStringInfoChar(&buf, ',');
+
+	/* leader PID */
+	if (MyProc)
+	{
+		PGPROC	   *leader = MyProc->lockGroupLeader;
+
+		/*
+		 * Show the leader only for active parallel workers.  This leaves out
+		 * the leader of a parallel group.
+		 */
+		if (leader && leader->pid != MyProcPid)
+			appendStringInfo(&buf, "%d", leader->pid);
+	}
+	appendStringInfoChar(&buf, ',');
+
+	/* query id */
+	appendStringInfo(&buf, "%lld", (long long) pgstat_get_my_query_id());
+
 	appendStringInfoChar(&buf, '\n');
 
 	/* If in the syslogger process, try to write messages direct to file */
-	if (am_syslogger)
+	if (MyBackendType == B_LOGGER)
 		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
 	else
 		write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
@@ -3577,6 +3253,13 @@ send_message_to_server_log(ErrorData *edata)
 								 edata->filename, edata->lineno);
 			}
 		}
+		if (edata->backtrace)
+		{
+			log_line_prefix(&buf, edata);
+			appendStringInfoString(&buf, _("BACKTRACE:  "));
+			append_with_tabs(&buf, edata->backtrace);
+			appendStringInfoChar(&buf, '\n');
+		}
 	}
 
 	/*
@@ -3614,6 +3297,7 @@ send_message_to_server_log(ErrorData *edata)
 				break;
 			case NOTICE:
 			case WARNING:
+			case WARNING_CLIENT_ONLY:
 				syslog_level = LOG_NOTICE;
 				break;
 			case ERROR:
@@ -3648,7 +3332,7 @@ send_message_to_server_log(ErrorData *edata)
 		 * catching stderr output, and we are not ourselves the syslogger.
 		 * Otherwise, just do a vanilla write to stderr.
 		 */
-		if (redirection_done && !am_syslogger)
+		if (redirection_done && MyBackendType != B_LOGGER)
 			write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_STDERR);
 #ifdef WIN32
 
@@ -3667,13 +3351,13 @@ send_message_to_server_log(ErrorData *edata)
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
-	if (am_syslogger)
+	if (MyBackendType == B_LOGGER)
 		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
 	/* Write to CSV log if enabled */
 	if (Log_destination & LOG_DESTINATION_CSVLOG)
 	{
-		if (redirection_done || am_syslogger)
+		if (redirection_done || MyBackendType == B_LOGGER)
 		{
 			/*
 			 * send CSV data if it's safe to do so (syslogger doesn't need the
@@ -3731,11 +3415,16 @@ write_pipe_chunks(char *data, int len, int dest)
 
 	p.proto.nuls[0] = p.proto.nuls[1] = '\0';
 	p.proto.pid = MyProcPid;
+	p.proto.flags = 0;
+	if (dest == LOG_DESTINATION_STDERR)
+		p.proto.flags |= PIPE_PROTO_DEST_STDERR;
+	else if (dest == LOG_DESTINATION_CSVLOG)
+		p.proto.flags |= PIPE_PROTO_DEST_CSVLOG;
 
 	/* write all but the last chunk */
 	while (len > PIPE_MAX_PAYLOAD)
 	{
-		p.proto.is_last = (dest == LOG_DESTINATION_CSVLOG ? 'F' : 'f');
+		/* no need to set PIPE_PROTO_IS_LAST yet */
 		p.proto.len = PIPE_MAX_PAYLOAD;
 		memcpy(p.proto.data, data, PIPE_MAX_PAYLOAD);
 		rc = write(fd, &p, PIPE_HEADER_SIZE + PIPE_MAX_PAYLOAD);
@@ -3745,7 +3434,7 @@ write_pipe_chunks(char *data, int len, int dest)
 	}
 
 	/* write the last chunk */
-	p.proto.is_last = (dest == LOG_DESTINATION_CSVLOG ? 'T' : 't');
+	p.proto.flags |= PIPE_PROTO_IS_LAST;
 	p.proto.len = len;
 	memcpy(p.proto.data, data, len);
 	rc = write(fd, &p, PIPE_HEADER_SIZE + len);
@@ -3781,16 +3470,21 @@ send_message_to_frontend(ErrorData *edata)
 {
 	StringInfoData msgbuf;
 
-	/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
-	pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
-
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
+	/*
+	 * We no longer support pre-3.0 FE/BE protocol, except here.  If a client
+	 * tries to connect using an older protocol version, it's nice to send the
+	 * "protocol version not supported" error in a format the client
+	 * understands.  If protocol hasn't been set yet, early in backend
+	 * startup, assume modern protocol.
+	 */
+	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3 || FrontendProtocol == 0)
 	{
 		/* New style with separate fields */
 		const char *sev;
 		char		tbuf[12];
-		int			ssval;
-		int			i;
+
+		/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
+		pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
 
 		sev = error_severity(edata->elevel);
 		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
@@ -3798,17 +3492,8 @@ send_message_to_frontend(ErrorData *edata)
 		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY_NONLOCALIZED);
 		err_sendstring(&msgbuf, sev);
 
-		/* unpack MAKE_SQLSTATE code */
-		ssval = edata->sqlerrcode;
-		for (i = 0; i < 5; i++)
-		{
-			tbuf[i] = PGUNSIXBIT(ssval);
-			ssval >>= 6;
-		}
-		tbuf[i] = '\0';
-
 		pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
-		err_sendstring(&msgbuf, tbuf);
+		err_sendstring(&msgbuf, unpack_sql_state(edata->sqlerrcode));
 
 		/* M field is required per protocol, so always send something */
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
@@ -3907,6 +3592,8 @@ send_message_to_frontend(ErrorData *edata)
 		}
 
 		pq_sendbyte(&msgbuf, '\0'); /* terminator */
+
+		pq_endmessage(&msgbuf);
 	}
 	else
 	{
@@ -3917,29 +3604,18 @@ send_message_to_frontend(ErrorData *edata)
 
 		appendStringInfo(&buf, "%s:  ", _(error_severity(edata->elevel)));
 
-		if (edata->show_funcname && edata->funcname)
-			appendStringInfo(&buf, "%s: ", edata->funcname);
-
 		if (edata->message)
 			appendStringInfoString(&buf, edata->message);
 		else
 			appendStringInfoString(&buf, _("missing error text"));
 
-		if (edata->cursorpos > 0)
-			appendStringInfo(&buf, _(" at character %d"),
-							 edata->cursorpos);
-		else if (edata->internalpos > 0)
-			appendStringInfo(&buf, _(" at character %d"),
-							 edata->internalpos);
-
 		appendStringInfoChar(&buf, '\n');
 
-		err_sendstring(&msgbuf, buf.data);
+		/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
+		pq_putmessage_v2((edata->elevel < ERROR) ? 'N' : 'E', buf.data, buf.len + 1);
 
 		pfree(buf.data);
 	}
-
-	pq_endmessage(&msgbuf);
 
 	/*
 	 * This flush is normally not necessary, since postgres.c will flush out
@@ -3956,314 +3632,6 @@ send_message_to_frontend(ErrorData *edata)
 /*
  * Support routines for formatting error messages.
  */
-
-
-/*
- * expand_fmt_string --- process special format codes in a format string
- *
- * We must replace %m with the appropriate strerror string, since vsnprintf
- * won't know what to do with it.
- *
- * The result is a palloc'd string.
- */
-static char *
-expand_fmt_string(const char *fmt, ErrorData *edata)
-{
-	StringInfoData buf;
-	const char *cp;
-
-	initStringInfo(&buf);
-
-	for (cp = fmt; *cp; cp++)
-	{
-		if (cp[0] == '%' && cp[1] != '\0')
-		{
-			cp++;
-			if (*cp == 'm')
-			{
-				/*
-				 * Replace %m by system error string.  If there are any %'s in
-				 * the string, we'd better double them so that vsnprintf won't
-				 * misinterpret.
-				 */
-				const char *cp2;
-
-				cp2 = useful_strerror(edata->saved_errno);
-				for (; *cp2; cp2++)
-				{
-					if (*cp2 == '%')
-						appendStringInfoCharMacro(&buf, '%');
-					appendStringInfoCharMacro(&buf, *cp2);
-				}
-			}
-			else
-			{
-				/* copy % and next char --- this avoids trouble with %%m */
-				appendStringInfoCharMacro(&buf, '%');
-				appendStringInfoCharMacro(&buf, *cp);
-			}
-		}
-		else
-			appendStringInfoCharMacro(&buf, *cp);
-	}
-
-	return buf.data;
-}
-
-
-/*
- * A slightly cleaned-up version of strerror()
- */
-static const char *
-useful_strerror(int errnum)
-{
-	/* this buffer is only used if strerror() and get_errno_symbol() fail */
-	static char errorstr_buf[48];
-	const char *str;
-
-#ifdef WIN32
-	/* Winsock error code range, per WinError.h */
-	if (errnum >= 10000 && errnum <= 11999)
-		return pgwin32_socket_strerror(errnum);
-#endif
-	str = strerror(errnum);
-
-	/*
-	 * Some strerror()s return an empty string for out-of-range errno.  This
-	 * is ANSI C spec compliant, but not exactly useful.  Also, we may get
-	 * back strings of question marks if libc cannot transcode the message to
-	 * the codeset specified by LC_CTYPE.  If we get nothing useful, first try
-	 * get_errno_symbol(), and if that fails, print the numeric errno.
-	 */
-	if (str == NULL || *str == '\0' || *str == '?')
-		str = get_errno_symbol(errnum);
-
-	if (str == NULL)
-	{
-		snprintf(errorstr_buf, sizeof(errorstr_buf),
-		/*------
-		  translator: This string will be truncated at 47
-		  characters expanded. */
-				 _("operating system error %d"), errnum);
-		str = errorstr_buf;
-	}
-
-	return str;
-}
-
-/*
- * A multi-thread friendly version of useful_strerror()
- *
- * Uses palloc'd buffer istead of static
- */
-static const char *
-yb_strerror(int errnum)
-{
-	const char *str;
-
-#ifdef WIN32
-	/* Winsock error code range, per WinError.h */
-	if (errnum >= 10000 && errnum <= 11999)
-		return pgwin32_socket_strerror(errnum);
-#endif
-	str = strerror(errnum);
-
-	/*
-	 * Some strerror()s return an empty string for out-of-range errno.  This
-	 * is ANSI C spec compliant, but not exactly useful.  Also, we may get
-	 * back strings of question marks if libc cannot transcode the message to
-	 * the codeset specified by LC_CTYPE.  If we get nothing useful, first try
-	 * get_errno_symbol(), and if that fails, print the numeric errno.
-	 */
-	if (str == NULL || *str == '\0' || *str == '?')
-		str = get_errno_symbol(errnum);
-
-	if (str == NULL)
-	{
-		#define ERRORSTR_BUF_SIZE 48
-		char *errorstr_buf = (char *) palloc(ERRORSTR_BUF_SIZE);
-		snprintf(errorstr_buf, ERRORSTR_BUF_SIZE,
-		/*------
-		  translator: This string will be truncated at 47
-		  characters expanded. */
-				 _("operating system error %d"), errnum);
-		str = errorstr_buf;
-	}
-
-	return str;
-}
-
-/*
- * Returns a symbol (e.g. "ENOENT") for an errno code.
- * Returns NULL if the code is unrecognized.
- */
-static const char *
-get_errno_symbol(int errnum)
-{
-	switch (errnum)
-	{
-		case E2BIG:
-			return "E2BIG";
-		case EACCES:
-			return "EACCES";
-#ifdef EADDRINUSE
-		case EADDRINUSE:
-			return "EADDRINUSE";
-#endif
-#ifdef EADDRNOTAVAIL
-		case EADDRNOTAVAIL:
-			return "EADDRNOTAVAIL";
-#endif
-		case EAFNOSUPPORT:
-			return "EAFNOSUPPORT";
-#ifdef EAGAIN
-		case EAGAIN:
-			return "EAGAIN";
-#endif
-#ifdef EALREADY
-		case EALREADY:
-			return "EALREADY";
-#endif
-		case EBADF:
-			return "EBADF";
-#ifdef EBADMSG
-		case EBADMSG:
-			return "EBADMSG";
-#endif
-		case EBUSY:
-			return "EBUSY";
-		case ECHILD:
-			return "ECHILD";
-#ifdef ECONNABORTED
-		case ECONNABORTED:
-			return "ECONNABORTED";
-#endif
-		case ECONNREFUSED:
-			return "ECONNREFUSED";
-#ifdef ECONNRESET
-		case ECONNRESET:
-			return "ECONNRESET";
-#endif
-		case EDEADLK:
-			return "EDEADLK";
-		case EDOM:
-			return "EDOM";
-		case EEXIST:
-			return "EEXIST";
-		case EFAULT:
-			return "EFAULT";
-		case EFBIG:
-			return "EFBIG";
-#ifdef EHOSTUNREACH
-		case EHOSTUNREACH:
-			return "EHOSTUNREACH";
-#endif
-		case EIDRM:
-			return "EIDRM";
-		case EINPROGRESS:
-			return "EINPROGRESS";
-		case EINTR:
-			return "EINTR";
-		case EINVAL:
-			return "EINVAL";
-		case EIO:
-			return "EIO";
-#ifdef EISCONN
-		case EISCONN:
-			return "EISCONN";
-#endif
-		case EISDIR:
-			return "EISDIR";
-#ifdef ELOOP
-		case ELOOP:
-			return "ELOOP";
-#endif
-		case EMFILE:
-			return "EMFILE";
-		case EMLINK:
-			return "EMLINK";
-		case EMSGSIZE:
-			return "EMSGSIZE";
-		case ENAMETOOLONG:
-			return "ENAMETOOLONG";
-		case ENFILE:
-			return "ENFILE";
-		case ENOBUFS:
-			return "ENOBUFS";
-		case ENODEV:
-			return "ENODEV";
-		case ENOENT:
-			return "ENOENT";
-		case ENOEXEC:
-			return "ENOEXEC";
-		case ENOMEM:
-			return "ENOMEM";
-		case ENOSPC:
-			return "ENOSPC";
-		case ENOSYS:
-			return "ENOSYS";
-#ifdef ENOTCONN
-		case ENOTCONN:
-			return "ENOTCONN";
-#endif
-		case ENOTDIR:
-			return "ENOTDIR";
-#if defined(ENOTEMPTY) && (ENOTEMPTY != EEXIST) /* same code on AIX */
-		case ENOTEMPTY:
-			return "ENOTEMPTY";
-#endif
-#ifdef ENOTSOCK
-		case ENOTSOCK:
-			return "ENOTSOCK";
-#endif
-#ifdef ENOTSUP
-		case ENOTSUP:
-			return "ENOTSUP";
-#endif
-		case ENOTTY:
-			return "ENOTTY";
-		case ENXIO:
-			return "ENXIO";
-#if defined(EOPNOTSUPP) && (!defined(ENOTSUP) || (EOPNOTSUPP != ENOTSUP))
-		case EOPNOTSUPP:
-			return "EOPNOTSUPP";
-#endif
-#ifdef EOVERFLOW
-		case EOVERFLOW:
-			return "EOVERFLOW";
-#endif
-		case EPERM:
-			return "EPERM";
-		case EPIPE:
-			return "EPIPE";
-		case EPROTONOSUPPORT:
-			return "EPROTONOSUPPORT";
-		case ERANGE:
-			return "ERANGE";
-#ifdef EROFS
-		case EROFS:
-			return "EROFS";
-#endif
-		case ESRCH:
-			return "ESRCH";
-#ifdef ETIMEDOUT
-		case ETIMEDOUT:
-			return "ETIMEDOUT";
-#endif
-#ifdef ETXTBSY
-		case ETXTBSY:
-			return "ETXTBSY";
-#endif
-#if defined(EWOULDBLOCK) && (!defined(EAGAIN) || (EWOULDBLOCK != EAGAIN))
-		case EWOULDBLOCK:
-			return "EWOULDBLOCK";
-#endif
-		case EXDEV:
-			return "EXDEV";
-	}
-
-	return NULL;
-}
 
 
 /*
@@ -4297,6 +3665,7 @@ error_severity(int elevel)
 			prefix = gettext_noop("NOTICE");
 			break;
 		case WARNING:
+		case WARNING_CLIENT_ONLY:
 			prefix = gettext_noop("WARNING");
 			break;
 		case ERROR:
@@ -4381,35 +3750,6 @@ write_stderr(const char *fmt,...)
 
 
 /*
- * is_log_level_output -- is elevel logically >= log_min_level?
- *
- * We use this for tests that should consider LOG to sort out-of-order,
- * between ERROR and FATAL.  Generally this is the right thing for testing
- * whether a message should go to the postmaster log, whereas a simple >=
- * test is correct for testing whether the message should go to the client.
- */
-static bool
-is_log_level_output(int elevel, int log_min_level)
-{
-	if (elevel == LOG || elevel == LOG_SERVER_ONLY)
-	{
-		if (log_min_level == LOG || log_min_level <= ERROR)
-			return true;
-	}
-	else if (log_min_level == LOG)
-	{
-		/* elevel != LOG */
-		if (elevel >= FATAL)
-			return true;
-	}
-	/* Neither is LOG */
-	else if (elevel >= log_min_level)
-		return true;
-
-	return false;
-}
-
-/*
  * Adjust the level of a recovery-related message per trace_recovery_messages.
  *
  * The argument is the default log level of the message, eg, DEBUG2.  (This
@@ -4432,374 +3772,4 @@ trace_recovery(int trace_level)
 		return LOG;
 
 	return trace_level;
-}
-
-/*
- * Custom format string handling
- *
- * The main problem we are trying to solve here is the national laguage support.
- * First of all, we do not want to format message in the YbGate environment.
- * There is no information what is the client's locale setting, and if we
- * format untranslated template, we wouldn't be able translate the formatted
- * message. Therefore we need to transmit the original template and the
- * arguments with the status.
- *
- * Next challenge here is that the arguments may be integers, floats, strings of
- * various sizes, and argument type details are defined by the template.
- * Therefore we parse the template to process the arguments.
- *
- * The Status supports transmission of parameters of various types, however if a
- * group of related parameters is transmitted, it is easier if they all of the
- * same type, so we convert all the arguments to strings and transmit them as a
- * vector of strings. The way how we do it is hacky: we parse out next template
- * from the format, make another format string containing the template alone and
- * use that format string to printf the next argument. The advantage of that
- * approach we do not have to be too thorough in template syntax checking, as
- * printf does that, we just need to identify template boundaries.
- *
- * The fact that we transfer arguments as string, not expected data types,
- * requires another custom formatting procedure on the receiving side. The
- * procedure translates the format string into desired language, finds the
- * templates using the same algorithm, and simply substitutes the argument
- * values.
- */
-#define INT_TYPES "cdiouxX"
-#define FLOAT_TYPES "aAeEfFgG"
-#define STR_TYPES "ms"
-#define MODIFIERS " -+*#0123456789.hjlLtz"
-#define MAX_ATTR_LEN 16384
-
-/*
- * yb_is_char_in_str - find if specified character exists in the c-string
- */
-static bool
-yb_is_char_in_str(const char ch, const char *str)
-{
-	while (*str != '\0')
-	{
-		if (*str++ == ch)
-			return true;
-	}
-	return false;
-}
-
-/*
- * yb_next_template - find next template in the format string
- *
- * Scan the format string to find next argument placeholder
- * Returns the pointer to the beginning of the template, and sets following
- * output parameters:
- * len - total template length
- * nstars - if decimal argument template has length/precision qualifier (*[.*]),
- * that many additional arguments are needed to properly format the template.
- * is_long - numeric type has a "long" qualifier.
- */
-static const char *
-yb_next_template(const char *fmt, int *len, int *nstars, bool *is_long)
-{
-	const char *template = NULL;
-	while (fmt != NULL && *fmt != '\0')
-	{
-		if (*fmt == '%')
-		{
-			if (template == NULL)
-				template = fmt; /* potential template start */
-			else if (template == fmt - 1)
-				template = NULL; /* found double %, not a template */
-			else
-				break; /* invalid format */
-		}
-		else if (template) /* template continues */
-		{
-			if (yb_is_char_in_str(*fmt, STR_TYPES INT_TYPES FLOAT_TYPES))
-			{
-				/* template end */
-				*len = fmt - template + 1;
-				return template;
-			}
-			else if (yb_is_char_in_str(*fmt, MODIFIERS))
-			{
-				/* template qualifier */
-				if (is_long && (*fmt == 'l' || *fmt == 'L'))
-					*is_long = true;
-				if (nstars && *fmt == '*')
-					(*nstars)++;
-			}
-			else
-				break; /* invalid format */
-		}
-		fmt++;
-	}
-	return NULL;
-}
-
-/*
- * yb_edata_add_arg - append a string argument to the array in YbgError
- *
- * The argument is copied to the current memory context, capacity is increased
- * if necessary.
- */
-static void
-yb_edata_add_arg(YbgError edata, const char *arg)
-{
-	/* Check capacity */
-	if (edata->nargs >= edata->argsize)
-	{
-		/*
-		 * Four arguments is sufficient in most cases, but it can grow if needed
-		 */
-		edata->argsize += 4;
-		if (edata->errargs)
-			/* Extend existing arguments array */
-			edata->errargs = (const char **)
-				repalloc(edata->errargs, edata->argsize * sizeof(const char *));
-		else
-			/* Create new arguments array */
-			edata->errargs = (const char **)
-				palloc(edata->argsize * sizeof(const char *));
-	}
-	edata->errargs[edata->nargs++] = pstrdup(arg);
-}
-
-/*
- * yb_log_errmsg_va - write error message with arguments to tserver log
- */
-static void
-yb_log_errmsg_va(const char *fmt, va_list args)
-{
-	YbgStatus	status = YBCPgGetThreadLocalErrStatus();
-	YbgError	edata = (YbgError) YbgStatusGetEdata(status);
-	bool is_error = YbgStatusIsError(status);
-	YBCLogVA(is_error ? 2 : 0 /* severity */,
-			 edata->filename,
-			 edata->lineno,
-			 is_error ? YBShouldLogStackTraceOnError() : false,
-			 fmt,
-			 args);
-}
-
-/*
- * Render one argument using the template found in the format string and add
- * the result to the argument list in edata.
- */
-#define FORMAT_ONE_VALUE(edata, one_fmt, _type_, nstars, estimated_size) \
-	do \
-	{ \
-		if ((nstars) < 0 || (nstars) > 2) \
-			return; \
-		const char *one_fmt_ = (one_fmt); \
-		int		star1 = (nstars) > 0 ? va_arg(args, int) : 0; \
-		int		star2 = (nstars) > 1 ? va_arg(args, int) : 0; \
-		_type_	value = va_arg(args, _type_); \
-		int		n = (estimated_size); \
-		bool	done = false; \
-		while (!done) \
-		{ \
-			char	outbuf[n]; \
-			int		actual; \
-			if (nstars == 0) \
-				actual = snprintf(outbuf, n, one_fmt_, value); \
-			else if (nstars == 1) \
-				actual = snprintf(outbuf, n, one_fmt_, star1, value); \
-			else \
-				actual = snprintf(outbuf, n, one_fmt_, star1, star2, value); \
-			if (actual < 0) \
-				return; \
-			if (actual < n) \
-			{ \
-				yb_edata_add_arg(edata, outbuf); \
-				done = true; \
-			} \
-			else \
-			{ \
-				if (n >= MAX_ATTR_LEN - 1) \
-				{ \
-					yb_edata_add_arg(edata, "[argument is too long]"); \
-					done = true; \
-				} \
-				n = Min(Max(2 * n, actual + 1), MAX_ATTR_LEN - 1); \
-			} \
-		} \
-	} while (0)
-
-/*
- * yb_errmsg_va - add error message format strings and arguments to current
- * YbgError frame.
- */
-static void
-yb_errmsg_va(const char *fmt, va_list args)
-{
-	YbgStatus	status = YBCPgGetThreadLocalErrStatus();
-	int			len = 0;
-	int			nstars = 0;
-	bool		is_long = false;
-	const char *next;
-
-	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
-	/*
-	 * The message has already been logged and if severity is low, it won't go
-	 * anywhere. Therefore just ignore the message.
-	 */
-	if (edata->elevel < ERROR)
-		return;
-	MemoryContext	error_context = (MemoryContext) YbgStatusGetContext(status);
-	MemoryContext	old_context = MemoryContextSwitchTo(error_context);
-	/* Save copy of the format string to edata */
-	edata->errmsg = pstrdup(fmt);
-	while ((next = yb_next_template(fmt, &len, &nstars, &is_long)) != NULL)
-	{
-		char *onefmt = pnstrdup(next, len);
-		char ttype = onefmt[len - 1];
-		if (yb_is_char_in_str(ttype, STR_TYPES))
-		{
-			/* %m is a Postgres format extension, obtain system error message */
-			if (ttype == 'm')
-			{
-				const char *err = yb_strerror(edata->saved_errno);
-				yb_edata_add_arg(edata, err);
-			}
-			else
-			{
-				Assert(ttype == 's');
-				/* char * parameter, we can get exact size */
-				FORMAT_ONE_VALUE(edata, onefmt, char *, nstars,
-								 strlen(value) + 1);
-			}
-		}
-		else if (yb_is_char_in_str(ttype, INT_TYPES))
-		{
-			/* integer parameter */
-			if (is_long)
-				FORMAT_ONE_VALUE(edata, onefmt, long long, nstars, 24);
-			else
-				FORMAT_ONE_VALUE(edata, onefmt, int, nstars, 12);
-		} else {
-			Assert(yb_is_char_in_str(ttype, FLOAT_TYPES));
-			/* float parameter */
-			if (is_long)
-				FORMAT_ONE_VALUE(edata, onefmt, long double, nstars, 32);
-			else
-				FORMAT_ONE_VALUE(edata, onefmt, double, nstars, 32);
-		}
-		pfree(onefmt);
-		fmt = next + len;
-		nstars = 0;
-		is_long = false;
-	}
-	MemoryContextSwitchTo(old_context);
-}
-
-/*
- * yb_message_from_status_data - format a string with provided string arguments
- *
- * The function takes printf-like format strings and substitute strings from the
- * args array. Unlike printf, function takes strings instead of values of types
- * defined by the template.
- *
- * Function desined to work with DocDB Status object's data, which carries
- * message arguments as strings. Currently Status only takes the message, in
- * future we may add support for more fields.
- */
-static void
-yb_message_from_status_data(StringInfo buf, const char *fmt, const size_t nargs,
-							const char **args)
-{
-	const char *next;
-	int			len = 0;
-	int			argno = 0;
-	/* If no more arguments left, no need to parse the string */
-	while (argno < nargs &&
-		   (next = yb_next_template(fmt, &len,
-									NULL /* nstars */,
-									NULL /* is_long */)) != NULL)
-	{
-		/* Copy the part of the format string before the template */
-		if (next != fmt)
-			appendBinaryStringInfo(buf, fmt, next - fmt);
-		/* Copy next argument, if present */
-		appendStringInfoString(buf, args[argno++]);
-		/* move the pointer */
-		fmt = next + len;
-	}
-	/* Copy the rest of the format string to the output buffer */
-	appendStringInfoString(buf, fmt);
-}
-
-#define YB_EVALUATE_STATUS_DATA_MESSAGE(field, fmt, nargs, args, dump_stacks) \
-	do { \
-		AssertMacro(!IsMultiThreadedMode()); \
-		MemoryContext oldcontext; \
-		StringInfoData	buf; \
-		oldcontext = MemoryContextSwitchTo(edata->assoc_context); \
-		\
-		/* Internationalize the error format string */ \
-		if (!in_error_recursion_trouble()) \
-			fmt = dgettext(edata->domain, fmt); \
-		initStringInfo(&buf); \
-		yb_message_from_status_data(&buf, fmt, nargs, args); \
-		if (dump_stacks && IsYugaByteEnabled() && \
-			yb_debug_report_error_stacktrace) \
-		{ \
-			appendStringInfoString(&buf, "\n"); \
-			appendStringInfoString(&buf, YBCGetStackTrace()); \
-		} \
-		if (edata->field) \
-			pfree(edata->field); \
-		edata->field = buf.data; \
-		MemoryContextSwitchTo(oldcontext); \
-	} while(0)
-
-/*
- * yb_errmsg_from_status_data - set error message from Status data
- *
- * The yb_errmsg_from_status_data is equivalent of errmsg to work in
- * HandleYBStatus context, rather then in ereport. The
- * yb_errmsg_from_status_data sets message field on current ErrorData frame
- * from the info retrieved from DocDB Status object.
- *
- * Status object carries messages as a format string and string arguments for
- * rendering on the client. Therefore the functions parses the format string
- * only to find template locations, and ignores their data types and formatting
- * flags.
- *
- * Please refer yb_errmsg_va() for details on how message and argument are
- * prepared before they are stored into a Status object.
- */
-int
-yb_errmsg_from_status_data(const char *fmt, const size_t nargs,
-						   const char **args)
-{
-	Assert(!IsMultiThreadedMode());
-	Assert(fmt != NULL);
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-
-	edata->message_id = fmt;
-	YB_EVALUATE_STATUS_DATA_MESSAGE(message, fmt, nargs, args, true);
-
-	recursion_depth--;
-	return 0; /* return value does not matter */
-}
-
-int
-yb_detail_from_status_data(const char *fmt, const size_t nargs,
-						   const char **args)
-{
-	Assert(!IsMultiThreadedMode());
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	if (fmt == NULL)
-		return 0;
-
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-
-	YB_EVALUATE_STATUS_DATA_MESSAGE(detail, fmt, nargs, args, false);
-
-	recursion_depth--;
-	return 0; /* return value does not matter */
 }

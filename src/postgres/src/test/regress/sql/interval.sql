@@ -34,27 +34,27 @@ INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 
 -- test interval operators
 
-SELECT '' AS ten, * FROM INTERVAL_TBL;
+SELECT * FROM INTERVAL_TBL;
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <> interval '@ 10 days';
 
-SELECT '' AS three, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours';
 
-SELECT '' AS three, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 < interval '@ 1 day';
 
-SELECT '' AS one, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 = interval '@ 34 years';
 
-SELECT '' AS five, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 >= interval '@ 1 month';
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
+SELECT * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago';
 
-SELECT '' AS fortyfive, r1.*, r2.*
+SELECT r1.*, r2.*
    FROM INTERVAL_TBL r1, INTERVAL_TBL r2
    WHERE r1.f1 > r2.f1
    ORDER BY r1.f1, r2.f1;
@@ -72,6 +72,9 @@ INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483648 days');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483649 days');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('2147483647 years');
 INSERT INTO INTERVAL_TBL_OF (f1) VALUES ('-2147483648 years');
+
+-- Test edge-case overflow detection in interval multiplication
+select extract(epoch from '256 microseconds'::interval * (2^55)::float8);
 
 SELECT r1.*, r2.*
    FROM INTERVAL_TBL_OF r1, INTERVAL_TBL_OF r2
@@ -124,7 +127,7 @@ DROP TABLE INTERVAL_MULDIV_TBL;
 SET DATESTYLE = 'postgres';
 SET IntervalStyle to postgres_verbose;
 
-SELECT '' AS ten, * FROM INTERVAL_TBL;
+SELECT * FROM INTERVAL_TBL;
 
 -- test avg(interval), which is somewhat fragile since people have been
 -- known to change the allowed input syntax for type interval without
@@ -308,3 +311,47 @@ select make_interval(months := 'NaN'::float::int);
 select make_interval(secs := 'inf');
 select make_interval(secs := 'NaN');
 select make_interval(secs := 7e12);
+
+--
+-- test EXTRACT
+--
+SELECT f1,
+    EXTRACT(MICROSECOND FROM f1) AS MICROSECOND,
+    EXTRACT(MILLISECOND FROM f1) AS MILLISECOND,
+    EXTRACT(SECOND FROM f1) AS SECOND,
+    EXTRACT(MINUTE FROM f1) AS MINUTE,
+    EXTRACT(HOUR FROM f1) AS HOUR,
+    EXTRACT(DAY FROM f1) AS DAY,
+    EXTRACT(MONTH FROM f1) AS MONTH,
+    EXTRACT(QUARTER FROM f1) AS QUARTER,
+    EXTRACT(YEAR FROM f1) AS YEAR,
+    EXTRACT(DECADE FROM f1) AS DECADE,
+    EXTRACT(CENTURY FROM f1) AS CENTURY,
+    EXTRACT(MILLENNIUM FROM f1) AS MILLENNIUM,
+    EXTRACT(EPOCH FROM f1) AS EPOCH
+    FROM INTERVAL_TBL;
+
+SELECT EXTRACT(FORTNIGHT FROM INTERVAL '2 days');  -- error
+SELECT EXTRACT(TIMEZONE FROM INTERVAL '2 days');  -- error
+
+SELECT EXTRACT(DECADE FROM INTERVAL '100 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '99 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '-99 y');
+SELECT EXTRACT(DECADE FROM INTERVAL '-100 y');
+
+SELECT EXTRACT(CENTURY FROM INTERVAL '100 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '99 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '-99 y');
+SELECT EXTRACT(CENTURY FROM INTERVAL '-100 y');
+
+-- date_part implementation is mostly the same as extract, so only
+-- test a few cases for additional coverage.
+SELECT f1,
+    date_part('microsecond', f1) AS microsecond,
+    date_part('millisecond', f1) AS millisecond,
+    date_part('second', f1) AS second,
+    date_part('epoch', f1) AS epoch
+    FROM INTERVAL_TBL;
+
+-- internal overflow test case
+SELECT extract(epoch from interval '1000000000 days');

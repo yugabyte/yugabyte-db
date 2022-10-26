@@ -20,7 +20,8 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#pragma once
+#ifndef YBCCMDS_H
+#define YBCCMDS_H
 
 #include "access/htup.h"
 #include "catalog/dependency.h"
@@ -36,8 +37,7 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
-	bool *retry_on_oid_collision);
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -74,7 +74,6 @@ extern void YBCCreateIndex(const char *indexName,
 						   Relation rel,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
-						   bool is_colocated,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId);
@@ -95,7 +94,10 @@ extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
-extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
+								   AttrMap *newToOldAttmap);
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
+
+#endif

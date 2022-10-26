@@ -429,11 +429,53 @@ EXECUTE foo ('<bar/>');
 ERROR:  prepared statement "foo" does not exist
 EXECUTE foo ('bad');
 ERROR:  prepared statement "foo" does not exist
+SELECT xml '<!DOCTYPE a><a/><b/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!DOCTYPE a><a/><b/>';
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
 SET XML OPTION CONTENT;
 EXECUTE foo ('<bar/>');
 ERROR:  prepared statement "foo" does not exist
 EXECUTE foo ('good');
 ERROR:  prepared statement "foo" does not exist
+SELECT xml '<!-- in SQL:2006+ a doc is content too--> <?y z?> <!DOCTYPE a><a/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!-- in SQL:2006+ a doc is content too--> <?y z?...
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT xml '<?xml version="1.0"?> <!-- hi--> <!DOCTYPE a><a/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<?xml version="1.0"?> <!-- hi--> <!DOCTYPE a><a/...
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT xml '<!DOCTYPE a><a/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!DOCTYPE a><a/>';
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT xml '<!-- hi--> oops <!DOCTYPE a><a/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!-- hi--> oops <!DOCTYPE a><a/>';
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT xml '<!-- hi--> <oops/> <!DOCTYPE a><a/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!-- hi--> <oops/> <!DOCTYPE a><a/>';
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT xml '<!DOCTYPE a><a/><b/>';
+ERROR:  unsupported XML feature
+LINE 1: SELECT xml '<!DOCTYPE a><a/><b/>';
+                   ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
 -- Test backwards parsing
 CREATE VIEW xmlview1 AS SELECT xmlcomment('test');
 CREATE VIEW xmlview2 AS SELECT xmlconcat('hello', 'you');
@@ -1006,6 +1048,14 @@ LINE 3:                       PASSING '<rows xmlns="http://x.y"><row...
                                       ^
 DETAIL:  This functionality requires the server to be built with libxml support.
 HINT:  You need to rebuild PostgreSQL using --with-libxml.
+SELECT * FROM XMLTABLE('.'
+                       PASSING '<foo/>'
+                       COLUMNS a text PATH 'foo/namespace::node()');
+ERROR:  unsupported XML feature
+LINE 2:                        PASSING '<foo/>'
+                                       ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
 -- used in prepare statements
 PREPARE pp AS
 SELECT  xmltable.*
@@ -1343,3 +1393,22 @@ SELECT xmltable.* FROM xmltest2, LATERAL xmltable(('/d/r/' || lower(_path) || 'c
 ---
 (0 rows)
 
+-- XPath result can be boolean or number too
+SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml PATH '.', b text PATH '.', c text PATH '"hi"', d boolean PATH '. = "a"', e integer PATH 'string-length(.)');
+ERROR:  unsupported XML feature
+LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml ...
+                                           ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+\x
+SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH 'node()', y xml PATH '/');
+ERROR:  unsupported XML feature
+LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?...
+                                           ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+\x
+SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.

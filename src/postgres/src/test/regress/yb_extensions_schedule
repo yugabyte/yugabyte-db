@@ -4,6 +4,7 @@
 # Extensions Testsuites
 ####################################################################################################
 test: yb_extensions
+test: yb_pgaudit
 test: yb_pg_hint_plan_init
 test: yb_pg_hint_plan_test1
 test: yb_pg_orafce_init

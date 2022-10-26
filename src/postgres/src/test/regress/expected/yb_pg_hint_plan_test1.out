@@ -436,11 +436,11 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN
------------------------------------
+         QUERY PLAN
+----------------------------
  Nested Loop
    ->  YB Seq Scan on t1
-         Remote Filter: (val < 10)
+         Filter: (val < 10)
    ->  Materialize
          ->  Seq Scan on t4
 (5 rows)
@@ -963,21 +963,19 @@ error hint:
 
 -- single table scan hint test
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
-                QUERY PLAN
-------------------------------------------
+            QUERY PLAN
+-----------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Finalize Aggregate
+     ->  Aggregate
            ->  Seq Scan on t1 v_1
-                 Remote Filter: (id < 10)
-                 Partial Aggregate: true
+                 Filter: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Finalize Aggregate
+     ->  Aggregate
            ->  Seq Scan on t1 v_2
-                 Remote Filter: (id < 10)
-                 Partial Aggregate: true
-(12 rows)
+                 Filter: (id < 10)
+(10 rows)
 
 -- YB_COMMENT
 -- BitmapScan is not supported by YB
@@ -990,21 +988,19 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN
-------------------------------------------
+             QUERY PLAN
+-------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Finalize Aggregate
+     ->  Aggregate
            ->  YB Seq Scan on t1 v_1
-                 Remote Filter: (id < 10)
-                 Partial Aggregate: true
+                 Filter: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Finalize Aggregate
+     ->  Aggregate
            ->  Seq Scan on t1 v_2
-                 Remote Filter: (id < 10)
-                 Partial Aggregate: true
-(12 rows)
+                 Filter: (id < 10)
+(10 rows)
 
 -- /*+BitmapScan(v_2)*/
 -- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -2361,10 +2357,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+IndexScan(t5 t5_id1 t5_id2)*/
@@ -2409,10 +2405,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 -- outer inner
@@ -2425,7 +2421,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -2449,7 +2445,7 @@ Leading((t1))
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -2463,14 +2459,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Nested Loop
    Join Filter: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Materialize
@@ -2496,7 +2492,7 @@ Leading((t1 t2 t3))
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -2508,7 +2504,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.id < 10;
    ->  Seq Scan on t2
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id = t2.id)
-         Remote Filter: (id < 10)
+         Filter: (id < 10)
 (5 rows)
 
 /*+Leading((t1 t2))*/
@@ -2520,12 +2516,12 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN
-----------------------------------
+          QUERY PLAN
+------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-         Remote Filter: (id < 10)
+         Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t2
 (6 rows)
@@ -2539,7 +2535,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -2553,14 +2549,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2576,7 +2572,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Nested Loop
                ->  Seq Scan on t4
@@ -2593,8 +2589,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
-----------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Hash Join
    Hash Cond: (t3.id = t4.id)
    ->  Hash Join
@@ -2602,7 +2598,7 @@ error hint:
          ->  Hash Join
                Hash Cond: (t1.id = t2.id)
                ->  Seq Scan on t1
-                     Remote Filter: (id < 10)
+                     Filter: (id < 10)
                ->  Hash
                      ->  Seq Scan on t2
          ->  Hash
@@ -2620,7 +2616,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -2634,14 +2630,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2662,7 +2658,7 @@ error hint:
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-         Remote Filter: (id < 10)
+         Filter: (id < 10)
    ->  Hash
          ->  Hash Join
                Hash Cond: (t2.val = t3.val)
@@ -2680,7 +2676,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Nested Loop
                ->  Seq Scan on t4
@@ -2704,7 +2700,7 @@ error hint:
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2726,14 +2722,14 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
                  Sort Key: t1_2.id
                  ->  Nested Loop
                        ->  Seq Scan on t2 t2_2
-                             Remote Filter: (val > 100)
+                             Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
    ->  Nested Loop
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < $1)
+               Filter: (id < $1)
    ->  Hash
          ->  Seq Scan on t3
 (18 rows)
@@ -2760,7 +2756,7 @@ error hint:
                  Sort Key: t1_2.id
                  ->  Nested Loop
                        ->  Seq Scan on t2 t2_2
-                             Remote Filter: (val > 100)
+                             Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
    ->  Hash Join
@@ -2768,7 +2764,7 @@ error hint:
          ->  Seq Scan on t3
          ->  Hash
                ->  Seq Scan on t1
-                     Remote Filter: (id < $1)
+                     Filter: (id < $1)
    ->  Hash
          ->  Seq Scan on t2
 (19 rows)
@@ -2783,8 +2779,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN
---------------------------------------------------------------
+                      QUERY PLAN
+-------------------------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    InitPlan 1 (returns $0)
@@ -2796,11 +2792,11 @@ error hint:
                        ->  Seq Scan on t1 t1_2
                        ->  Hash
                              ->  Seq Scan on t2 t2_2
-                                   Remote Filter: (val > 100)
+                                   Filter: (val > 100)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < $0)
+               Filter: (id < $0)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2826,14 +2822,14 @@ error hint:
                  Sort Key: t1_2.id
                  ->  Nested Loop
                        ->  Seq Scan on t2 t2_2
-                             Remote Filter: (val > 100)
+                             Filter: (val > 100)
                        ->  Index Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
    ->  Nested Loop
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < $1)
+               Filter: (id < $1)
    ->  Hash
          ->  Seq Scan on t3
 (18 rows)
@@ -2848,14 +2844,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2872,8 +2868,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
-----------------------------------------------
+              QUERY PLAN
+---------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Merge Join
@@ -2881,7 +2877,7 @@ error hint:
          ->  Sort
                Sort Key: t1.id
                ->  Seq Scan on t1
-                     Remote Filter: (id < 10)
+                     Filter: (id < 10)
          ->  Sort
                Sort Key: t2.id
                ->  Seq Scan on t2
@@ -2899,8 +2895,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN
-----------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Merge Join
    Merge Cond: (t2.val = t3.val)
    ->  Sort
@@ -2908,7 +2904,7 @@ error hint:
          ->  Hash Join
                Hash Cond: (t1.id = t2.id)
                ->  Seq Scan on t1
-                     Remote Filter: (id < 10)
+                     Filter: (id < 10)
                ->  Hash
                      ->  Seq Scan on t2
    ->  Sort
@@ -2926,14 +2922,14 @@ MergeJoin(t1 t3)
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -2949,7 +2945,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t3.id
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Nested Loop
                ->  Seq Scan on t4
@@ -2967,15 +2963,15 @@ MergeJoin(t3 t4)
 duplication hint:
 error hint:
 
-                  QUERY PLAN
-----------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Nested Loop
    ->  Hash Join
          Hash Cond: (t1.val = t3.val)
          ->  Hash Join
                Hash Cond: (t1.id = t2.id)
                ->  Seq Scan on t1
-                     Remote Filter: (id < 10)
+                     Filter: (id < 10)
                ->  Hash
                      ->  Seq Scan on t2
          ->  Hash
@@ -2994,8 +2990,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                     QUERY PLAN
-----------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Merge Join
    Merge Cond: (t3.id = t4.id)
    ->  Sort
@@ -3005,7 +3001,7 @@ error hint:
                ->  Hash Join
                      Hash Cond: (t1.id = t2.id)
                      ->  Seq Scan on t1
-                           Remote Filter: (id < 10)
+                           Filter: (id < 10)
                      ->  Hash
                            ->  Seq Scan on t2
                ->  Hash
@@ -3029,7 +3025,7 @@ error hint:
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-         Remote Filter: (id < 10)
+         Filter: (id < 10)
    ->  Hash
          ->  Hash Join
                Hash Cond: (t2.val = t3.val)
@@ -3052,7 +3048,7 @@ error hint:
  Hash Join
    Hash Cond: (t1.id = t2.id)
    ->  Seq Scan on t1
-         Remote Filter: (id < 10)
+         Filter: (id < 10)
    ->  Hash
          ->  Hash Join
                Hash Cond: (t2.val = t3.val)
@@ -3078,7 +3074,7 @@ error hint:
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -3092,14 +3088,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -3115,14 +3111,14 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN
-----------------------------------------
+             QUERY PLAN
+------------------------------------
  Hash Join
    Hash Cond: (t2.val = t3.val)
    ->  Hash Join
          Hash Cond: (t1.id = t2.id)
          ->  Seq Scan on t1
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
          ->  Hash
                ->  Seq Scan on t2
    ->  Hash
@@ -3146,7 +3142,7 @@ error hint:
          ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id = t2.id)
-               Remote Filter: (id < 10)
+               Filter: (id < 10)
    ->  Hash
          ->  Seq Scan on t3
 (9 rows)
@@ -3485,10 +3481,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3501,10 +3497,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ IndexScan(t5 t5_id[0-9].*)*/
@@ -3517,10 +3513,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 t5_[^i].*)*/
@@ -3565,10 +3561,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3581,10 +3577,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
@@ -3597,10 +3593,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 t5_[^i].*)*/
@@ -3629,10 +3625,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 t5[^_].*)*/
@@ -3645,10 +3641,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -3661,10 +3657,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 /*+ BitmapScan(t5 t5_id[0-9].*)*/
@@ -3677,10 +3673,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t5
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 -- YB_COMMENT
@@ -3738,10 +3734,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN
----------------------------
+     QUERY PLAN
+--------------------
  YB Seq Scan on t1
-   Remote Filter: (id = 1)
+   Filter: (id = 1)
 (2 rows)
 
 SET pg_hint_plan.enable_hint_table = off;

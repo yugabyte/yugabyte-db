@@ -4,7 +4,7 @@
  *	  prototypes for pquery.c.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/tcop/pquery.h
@@ -17,14 +17,8 @@
 #include "nodes/parsenodes.h"
 #include "utils/portal.h"
 
-enum yb_pg_batch_detection_mechanism_options
-{
-  DETECT_BY_PEEKING = 0,
-  ASSUME_ALL_BATCH_EXECUTIONS,
-  IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL
-};
+struct PlannedStmt;				/* avoid including plannodes.h here */
 
-extern int yb_pg_batch_detection_mechanism;
 
 extern PGDLLIMPORT Portal ActivePortal;
 
@@ -36,18 +30,22 @@ extern List *FetchPortalTargetList(Portal portal);
 extern List *FetchStatementTargetList(Node *stmt);
 
 extern void PortalStart(Portal portal, ParamListInfo params,
-			int eflags, Snapshot snapshot);
+						int eflags, Snapshot snapshot);
 
 extern void PortalSetResultFormat(Portal portal, int nFormats,
-					  int16 *formats);
+								  int16 *formats);
 
 extern bool PortalRun(Portal portal, long count, bool isTopLevel,
-		  bool run_once, DestReceiver *dest, DestReceiver *altdest,
-		  char *completionTag);
+					  bool run_once, DestReceiver *dest, DestReceiver *altdest,
+					  QueryCompletion *qc);
 
 extern uint64 PortalRunFetch(Portal portal,
-			   FetchDirection fdirection,
-			   long count,
-			   DestReceiver *dest);
+							 FetchDirection fdirection,
+							 long count,
+							 DestReceiver *dest);
+
+extern bool PlannedStmtRequiresSnapshot(struct PlannedStmt *pstmt);
+
+extern void EnsurePortalSnapshotExists(void);
 
 #endif							/* PQUERY_H */

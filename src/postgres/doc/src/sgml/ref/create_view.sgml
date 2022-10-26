@@ -131,14 +131,14 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
 
       <variablelist>
        <varlistentry>
-        <term><literal>check_option</literal> (<type>string</type>)</term>
+        <term><literal>check_option</literal> (<type>enum</type>)</term>
         <listitem>
          <para>
           This parameter may be either <literal>local</literal> or
           <literal>cascaded</literal>, and is equivalent to specifying
           <literal>WITH [ CASCADED | LOCAL ] CHECK OPTION</literal> (see below).
-          This option can be changed on existing views using <xref
-          linkend="sql-alterview"/>.
+          This option can be changed on existing views using <link
+          linkend="sql-alterview"><command>ALTER VIEW</command></link>.
          </para>
         </listitem>
        </varlistentry>
@@ -152,8 +152,7 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
          </para>
         </listitem>
        </varlistentry>
-      </variablelist>
-     </para>
+      </variablelist></para>
     </listitem>
    </varlistentry>
 
@@ -161,8 +160,8 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
     <term><replaceable class="parameter">query</replaceable></term>
     <listitem>
      <para>
-      A <xref linkend="sql-select"/> or
-      <xref linkend="sql-values"/> command
+      A <link linkend="sql-select"><command>SELECT</command></link> or
+      <link linkend="sql-values"><command>VALUES</command></link> command
       which will provide the columns and rows of the view.
      </para>
     </listitem>
@@ -246,7 +245,7 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
   <title>Notes</title>
 
    <para>
-    Use the <xref linkend="sql-dropview"/>
+    Use the <link linkend="sql-dropview"><command>DROP VIEW</command></link>
     statement to drop views.
    </para>
 
@@ -284,7 +283,7 @@ CREATE VIEW vista AS SELECT text 'Hello World' AS hello;
    </para>
 
   <refsect2 id="sql-createview-updatable-views">
-   <title id="sql-createview-updatable-views-title">Updatable Views</title>
+   <title>Updatable Views</title>
 
    <indexterm zone="sql-createview-updatable-views">
     <primary>updatable views</primary>

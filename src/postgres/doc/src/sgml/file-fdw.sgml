@@ -28,7 +28,8 @@
 
    <listitem>
     <para>
-     Specifies the file to be read.  Must be an absolute path name.
+     Specifies the file to be read.  Relative paths are relative to the
+     data directory.
      Either <literal>filename</literal> or <literal>program</literal> must be
      specified, but not both.
     </para>
@@ -174,9 +175,8 @@
  </variablelist>
 
  <para>
-  <command>COPY</command>'s <literal>OIDS</literal> and
-  <literal>FORCE_QUOTE</literal> options are currently not supported by
-  <literal>file_fdw</literal>.
+  <command>COPY</command>'s <literal>FORCE_QUOTE</literal> option is
+  currently not supported by <literal>file_fdw</literal>.
  </para>
 
  <para>
@@ -187,8 +187,8 @@
 
  <para>
   Changing table-level options requires being a superuser or having the privileges
-  of the default role <literal>pg_read_server_files</literal> (to use a filename) or
-  the default role <literal>pg_execute_server_program</literal> (to use a program),
+  of the role <literal>pg_read_server_files</literal> (to use a filename) or
+  the role <literal>pg_execute_server_program</literal> (to use a program),
   for security reasons: only certain users should be able to control which file is
   read or which program is run.  In principle regular users could be allowed to
   change the other options, but that's not supported at present.
@@ -211,12 +211,14 @@
  </para>
 
  <example>
- <title id="csvlog-fdw">Create a Foreign Table for PostgreSQL CSV Logs</title>
+  <title>Create a Foreign Table for PostgreSQL CSV Logs</title>
 
   <para>
    One of the obvious uses for <literal>file_fdw</literal> is to make
    the PostgreSQL activity log available as a table for querying.  To
-   do this, first you must be logging to a CSV file, which here we
+   do this, first you must be <link
+   linkend="runtime-config-logging-csvlog">logging to a CSV file,</link>
+   which here we
    will call <literal>pglog.csv</literal>.  First, install <literal>file_fdw</literal>
    as an extension:
   </para>
@@ -262,9 +264,12 @@ CREATE FOREIGN TABLE pglog (
   query text,
   query_pos integer,
   location text,
-  application_name text
+  application_name text,
+  backend_type text,
+  leader_pid integer,
+  query_id bigint
 ) SERVER pglog
-OPTIONS ( filename '/home/josh/data/log/pglog.csv', format 'csv' );
+OPTIONS ( filename 'log/pglog.csv', format 'csv' );
 </programlisting>
   </para>
 

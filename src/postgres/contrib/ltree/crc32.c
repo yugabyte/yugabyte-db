@@ -8,6 +8,7 @@
  */
 
 #include "postgres.h"
+#include "ltree.h"
 
 #ifdef LOWER_NODE
 #include <ctype.h>
@@ -16,14 +17,14 @@
 #define TOLOWER(x)	(x)
 #endif
 
-#include "utils/pg_crc.h"
 #include "crc32.h"
+#include "utils/pg_crc.h"
 
 unsigned int
-ltree_crc32_sz(char *buf, int size)
+ltree_crc32_sz(const char *buf, int size)
 {
 	pg_crc32	crc;
-	char	   *p = buf;
+	const char *p = buf;
 
 	INIT_TRADITIONAL_CRC32(crc);
 	while (size > 0)

@@ -48,7 +48,7 @@ select version, tree_level,
     from pgstatindex('test_pkey');
  version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
 ---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
-       3 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
+       4 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
 (1 row)
 
 select version, tree_level,
@@ -58,7 +58,7 @@ select version, tree_level,
     from pgstatindex('test_pkey'::text);
  version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
 ---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
-       3 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
+       4 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
 (1 row)
 
 select version, tree_level,
@@ -68,7 +68,7 @@ select version, tree_level,
     from pgstatindex('test_pkey'::name);
  version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
 ---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
-       3 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
+       4 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
 (1 row)
 
 select version, tree_level,
@@ -78,7 +78,7 @@ select version, tree_level,
     from pgstatindex('test_pkey'::regclass);
  version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
 ---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
-       3 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
+       4 |          0 |          1 |             0 |              0 |          0 |           0 |             0 |              NaN |                NaN
 (1 row)
 
 select pg_relpages('test');
@@ -155,13 +155,17 @@ create table test_partitioned (a int) partition by range (a);
 create index test_partitioned_index on test_partitioned(a);
 -- these should all fail
 select pgstattuple('test_partitioned');
-ERROR:  "test_partitioned" (partitioned table) is not supported
+ERROR:  cannot get tuple-level statistics for relation "test_partitioned"
+DETAIL:  This operation is not supported for partitioned tables.
 select pgstattuple('test_partitioned_index');
-ERROR:  "test_partitioned_index" (partitioned index) is not supported
+ERROR:  cannot get tuple-level statistics for relation "test_partitioned_index"
+DETAIL:  This operation is not supported for partitioned indexes.
 select pgstattuple_approx('test_partitioned');
-ERROR:  "test_partitioned" is not a table or materialized view
+ERROR:  relation "test_partitioned" is of wrong relation kind
+DETAIL:  This operation is not supported for partitioned tables.
 select pg_relpages('test_partitioned');
-ERROR:  "test_partitioned" is not a table, index, materialized view, sequence, or TOAST table
+ERROR:  cannot get page count of relation "test_partitioned"
+DETAIL:  This operation is not supported for partitioned tables.
 select pgstatindex('test_partitioned');
 ERROR:  relation "test_partitioned" is not a btree index
 select pgstatginindex('test_partitioned');
@@ -171,11 +175,14 @@ ERROR:  "test_partitioned" is not an index
 create view test_view as select 1;
 -- these should all fail
 select pgstattuple('test_view');
-ERROR:  "test_view" (view) is not supported
+ERROR:  cannot get tuple-level statistics for relation "test_view"
+DETAIL:  This operation is not supported for views.
 select pgstattuple_approx('test_view');
-ERROR:  "test_view" is not a table or materialized view
+ERROR:  relation "test_view" is of wrong relation kind
+DETAIL:  This operation is not supported for views.
 select pg_relpages('test_view');
-ERROR:  "test_view" is not a table, index, materialized view, sequence, or TOAST table
+ERROR:  cannot get page count of relation "test_view"
+DETAIL:  This operation is not supported for views.
 select pgstatindex('test_view');
 ERROR:  relation "test_view" is not a btree index
 select pgstatginindex('test_view');
@@ -187,11 +194,14 @@ create server dummy_server foreign data wrapper dummy;
 create foreign table test_foreign_table () server dummy_server;
 -- these should all fail
 select pgstattuple('test_foreign_table');
-ERROR:  "test_foreign_table" (foreign table) is not supported
+ERROR:  cannot get tuple-level statistics for relation "test_foreign_table"
+DETAIL:  This operation is not supported for foreign tables.
 select pgstattuple_approx('test_foreign_table');
-ERROR:  "test_foreign_table" is not a table or materialized view
+ERROR:  relation "test_foreign_table" is of wrong relation kind
+DETAIL:  This operation is not supported for foreign tables.
 select pg_relpages('test_foreign_table');
-ERROR:  "test_foreign_table" is not a table, index, materialized view, sequence, or TOAST table
+ERROR:  cannot get page count of relation "test_foreign_table"
+DETAIL:  This operation is not supported for foreign tables.
 select pgstatindex('test_foreign_table');
 ERROR:  relation "test_foreign_table" is not a btree index
 select pgstatginindex('test_foreign_table');
@@ -218,6 +228,25 @@ select pg_relpages('test_partition');
            0
 (1 row)
 
+-- toast tables should work
+select pgstattuple((select reltoastrelid from pg_class where relname = 'test'));
+     pgstattuple     
+---------------------
+ (0,0,0,0,0,0,0,0,0)
+(1 row)
+
+select pgstattuple_approx((select reltoastrelid from pg_class where relname = 'test'));
+  pgstattuple_approx   
+-----------------------
+ (0,0,0,0,0,0,0,0,0,0)
+(1 row)
+
+select pg_relpages((select reltoastrelid from pg_class where relname = 'test'));
+ pg_relpages 
+-------------
+           0
+(1 row)
+
 -- not for the index calls though, of course
 select pgstatindex('test_partition');
 ERROR:  relation "test_partition" is not a btree index
@@ -232,7 +261,7 @@ create index test_partition_hash_idx on test_partition using hash (a);
 select pgstatindex('test_partition_idx');
          pgstatindex          
 ------------------------------
- (3,0,8192,0,0,0,0,0,NaN,NaN)
+ (4,0,8192,0,0,0,0,0,NaN,NaN)
 (1 row)
 
 select pgstathashindex('test_partition_hash_idx');

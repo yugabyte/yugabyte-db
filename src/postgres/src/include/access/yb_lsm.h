@@ -20,7 +20,8 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#pragma once
+#ifndef YB_LSM_H
+#define YB_LSM_H
 
 #include "access/amapi.h"
 #include "nodes/execnodes.h"
@@ -30,11 +31,11 @@
  */
 extern IndexBuildResult *ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo);
 extern void ybcinbuildempty(Relation index);
-extern bool ybcininsert(Relation rel, Datum *values, bool *isnull, Datum ybctid, Relation heapRel,
-						IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo,
+extern bool ybcininsert(Relation rel, Datum *values, bool *isnull, ItemPointer tid,
+						Relation heapRel, IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo,
 						bool sharedInsert);
-extern void ybcindelete(Relation rel, Datum *values, bool *isnull, Datum ybctid, Relation heapRel,
-						struct IndexInfo *indexInfo);
+extern void ybcindelete(Relation rel, Datum *values, bool *isnull, Datum ybctid,
+						Relation heapRel, struct IndexInfo *indexInfo);
 extern IndexBuildResult *ybcinbackfill(Relation heap,
 									   Relation index,
 									   struct IndexInfo *indexInfo,
@@ -67,3 +68,5 @@ extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 						ScanKey orderbys, int norderbys);
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybcinendscan(IndexScanDesc scan);
+
+#endif							/* YB_LSM_H */

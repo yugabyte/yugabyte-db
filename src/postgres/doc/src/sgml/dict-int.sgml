@@ -15,11 +15,17 @@
   unique words, which greatly affects the performance of searching.
  </para>
 
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
+ </para>
+
  <sect2>
   <title>Configuration</title>
 
   <para>
-   The dictionary accepts two options:
+   The dictionary accepts three options:
   </para>
 
   <itemizedlist>
@@ -38,6 +44,15 @@
      <literal>true</literal>, the dictionary treats an overlength integer as a stop
      word, so that it will not be indexed.  Note that this also means that
      such an integer cannot be searched for.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     The <literal>absval</literal> parameter specifies whether leading
+     <quote><literal>+</literal></quote> or <quote><literal>-</literal></quote>
+     signs should be removed from integer words.  The default
+     is <literal>false</literal>.  When <literal>true</literal>, the sign is
+     removed before <literal>maxlen</literal> is applied.
     </para>
    </listitem>
   </itemizedlist>

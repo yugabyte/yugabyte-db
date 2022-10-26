@@ -10,7 +10,8 @@
  *-------------------------------------------------------------------------
  */
 
-#pragma once
+#ifndef YB_CATALOG_VERSION_H
+#define YB_CATALOG_VERSION_H
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -35,8 +36,7 @@ extern YbCatalogVersionType yb_catalog_version_type;
 extern uint64_t YbGetMasterCatalogVersion();
 
 /* Send a request to increment the master catalog version. */
-extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
-													  bool is_global_ddl);
+extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
 
 /* Send a request to create the master catalog version for the given database. */
 extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
@@ -45,14 +45,21 @@ extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
 extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
-extern bool YbMarkStatementIfCatalogVersionIncrement(
-	YBCPgStatement ybc_stmt,
-	Relation rel);
-
-extern bool YbIsSystemCatalogChange(Relation rel);
+bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
+											  Relation rel);
 
 /* Return the catalog version type. */
-extern YbCatalogVersionType YbGetCatalogVersionType();
+YbCatalogVersionType YbGetCatalogVersionType();
 
 /* Get actual db_oid for pg_yb_catalog_version */
 Oid YbMasterCatalogVersionTableDBOid();
+
+/* Return the catalog version info that is fetched from the local tserver. */
+YbTserverCatalogInfo YbGetTserverCatalogVersionInfo();
+
+/*
+ * Return the tserver catalog version info of MyDatabaseId.
+ */
+YbTserverCatalogVersion *YbGetTserverCatalogVersion();
+
+#endif							/* YB_CATALOG_VERSION_H */

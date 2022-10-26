@@ -35,7 +35,7 @@
  * our errcode() function.  Since it's likely to get included by standard
  * system headers, pre-emptively include it now.
  */
-#if _MSC_VER >= 1400 || defined(HAVE_CRTDEFS_H)
+#if defined(_MSC_VER) || defined(HAVE_CRTDEFS_H)
 #define errcode __msvc_errcode
 #include <crtdefs.h>
 #undef errcode
@@ -56,3 +56,14 @@
 #else
 #define PGDLLEXPORT
 #endif
+
+/*
+ * Windows headers don't define this structure, but you can define it yourself
+ * to use the functionality.
+ */
+struct sockaddr_un
+{
+	unsigned short sun_family;
+	char		sun_path[108];
+};
+#define HAVE_STRUCT_SOCKADDR_UN 1

@@ -3,7 +3,7 @@
  * walsender.h
  *	  Exports from replication/walsender.c.
  *
- * Portions Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2021, PostgreSQL Global Development Group
  *
  * src/include/replication/walsender.h
  *
@@ -13,8 +13,6 @@
 #define _WALSENDER_H
 
 #include <signal.h>
-
-#include "fmgr.h"
 
 /*
  * What to do with a snapshot in create replication slot command.
@@ -40,6 +38,7 @@ extern bool log_replication_commands;
 extern void InitWalSender(void);
 extern bool exec_replication_command(const char *query_string);
 extern void WalSndErrorCleanup(void);
+extern void WalSndResourceCleanup(bool isCommit);
 extern void WalSndSignals(void);
 extern Size WalSndShmemSize(void);
 extern void WalSndShmemInit(void);
