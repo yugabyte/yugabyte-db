@@ -93,7 +93,7 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
