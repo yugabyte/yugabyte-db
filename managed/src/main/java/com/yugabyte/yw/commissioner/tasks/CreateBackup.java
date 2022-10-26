@@ -19,6 +19,7 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -129,10 +130,22 @@ public class CreateBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
+        getRunnableTask().runSubTasks();
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-        getRunnableTask().runSubTasks();
 
+        Backup currentBackup = Backup.getOrBadRequest(params().customerUUID, backup.backupUUID);
+        if (ybcBackup) {
+          if (!currentBackup.baseBackupUUID.equals(currentBackup.backupUUID)) {
+            Backup baseBackup =
+                Backup.getOrBadRequest(params().customerUUID, currentBackup.baseBackupUUID);
+            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
+            // Unset expiry time for increment, only the base backup's expiry is what we need.
+            currentBackup.onCompletion();
+          } else {
+            currentBackup.onCompletion();
+          }
+        }
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
@@ -141,6 +154,8 @@ public class CreateBackup extends UniverseTaskBase {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
             .forEach(backup -> backup.transitionState(BackupState.Stopped));
+        unlockUniverseForUpdate(false);
+        isUniverseLocked = false;
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
