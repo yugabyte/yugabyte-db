@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
+import com.google.inject.Provider;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
@@ -60,6 +61,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.Application;
 import play.api.Play;
 
 /**
@@ -140,6 +142,8 @@ public class TaskExecutor {
 
   // A utility for Platform HA.
   private final PlatformReplicationManager replicationManager;
+
+  private final Provider<Application> application;
 
   private final AtomicBoolean isShutdown = new AtomicBoolean();
 
@@ -249,9 +253,11 @@ public class TaskExecutor {
 
   @Inject
   public TaskExecutor(
+      Provider<Application> application,
       ShutdownHookHandler shutdownHookHandler,
       ExecutorServiceProvider executorServiceProvider,
       PlatformReplicationManager replicationManager) {
+    this.application = application;
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
@@ -308,7 +314,7 @@ public class TaskExecutor {
   public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams) {
     checkNotNull(taskType, "Task type must be set");
     checkNotNull(taskParams, "Task params must be set");
-    ITask task = Play.current().injector().instanceOf(taskTypeClassBiMap.get(taskType));
+    ITask task = this.application.get().injector().instanceOf(taskTypeClassBiMap.get(taskType));
     task.initialize(taskParams);
     return createRunnableTask(task);
   }
@@ -902,6 +908,7 @@ public class TaskExecutor {
       checkArgument(
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
+      taskInfo.refresh();
       ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
@@ -933,7 +940,6 @@ public class TaskExecutor {
 
       ObjectNode details = taskDetails.deepCopy();
       details.put("errorString", errorString);
-      taskInfo.refresh();
       taskInfo.setTaskState(state);
       taskInfo.setTaskDetails(details);
       taskInfo.update();
@@ -1008,7 +1014,7 @@ public class TaskExecutor {
         taskCache.clear();
         // Update the customer task to a completed state.
         CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
-        if (customerTask != null) {
+        if (customerTask != null && !isShutdown.get()) {
           customerTask.markAsCompleted();
         }
 

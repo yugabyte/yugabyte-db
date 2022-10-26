@@ -183,7 +183,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "Master HTTP port")
   public int masterHttpPort = 7000;
 
-  @ApiModelProperty(value = "Master RCP port")
+  @ApiModelProperty(value = "Master RPC port")
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
