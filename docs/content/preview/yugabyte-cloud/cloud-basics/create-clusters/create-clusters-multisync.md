@@ -28,7 +28,7 @@ Multi-region replicated clusters include the following features:
 
 ## Preferred region
 
-You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. If the cluster has read replicas, and a client connects to a read replica, reads will served from the replica; writes continue to be handled by the preferred region.
+You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
 Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred.
 
