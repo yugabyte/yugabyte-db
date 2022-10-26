@@ -68,7 +68,7 @@ public class HookInserterTest extends UpgradeTaskTest {
     attachHooks("RestartUniverse");
     universeScope =
         HookScope.create(
-            defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, defaultUniverse);
+            defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, defaultUniverse, null);
     providerScope =
         HookScope.create(
             defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, defaultProvider);

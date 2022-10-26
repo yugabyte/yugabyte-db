@@ -3,28 +3,27 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.HookScopeFormData;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import play.data.Form;
 import play.mvc.Result;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Api(
@@ -46,8 +45,8 @@ public class HookScopeController extends AuthenticatedController {
       response = HookScope.class,
       responseContainer = "List")
   public Result list(UUID customerUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     List<HookScope> hookScopes = HookScope.getAll(customerUUID);
     return PlatformResults.withData(hookScopes);
   }
@@ -64,15 +63,20 @@ public class HookScopeController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.HookScopeFormData",
           required = true))
   public Result create(UUID customerUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     Form<HookScopeFormData> formData = formFactory.getFormDataOrBadRequest(HookScopeFormData.class);
     HookScopeFormData form = formData.get();
     form.verify(customerUUID);
     HookScope hookScope;
     if (form.getUniverseUUID() != null) { // Universe Scope
       Universe universe = Universe.getValidUniverseOrBadRequest(form.getUniverseUUID(), customer);
-      hookScope = HookScope.create(customerUUID, form.getTriggerType(), universe);
+
+      // We can create hook_scopes for clusters that do not exist yet.
+      // This is an explicit requirement for the CDC / AddOn cluster work where we want to have
+      // the hooks run as part of cluster creation.
+      hookScope =
+          HookScope.create(customerUUID, form.getTriggerType(), universe, form.getClusterUUID());
     } else if (form.getProviderUUID() != null) { // Provider Scope
       Provider provider = Provider.getOrBadRequest(customerUUID, form.getProviderUUID());
       hookScope = HookScope.create(customerUUID, form.getTriggerType(), provider);
@@ -95,7 +99,8 @@ public class HookScopeController extends AuthenticatedController {
       nickname = "deleteHookScope",
       response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID hookScopeUUID) {
-    verifyAuth();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     log.info("Deleting hook scope with UUID {}", hookScopeUUID);
     hookScope.delete();
@@ -113,8 +118,8 @@ public class HookScopeController extends AuthenticatedController {
       nickname = "addHook",
       response = HookScope.class)
   public Result addHook(UUID customerUUID, UUID hookScopeUUID, UUID hookUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
     hookScope.addHook(hook);
@@ -129,8 +134,8 @@ public class HookScopeController extends AuthenticatedController {
       nickname = "removeHook",
       response = HookScope.class)
   public Result removeHook(UUID customerUUID, UUID hookScopeUUID, UUID hookUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
     if (hook.hookScope == null || !hook.hookScope.uuid.equals(hookScopeUUID)) {
@@ -148,10 +153,19 @@ public class HookScopeController extends AuthenticatedController {
     return PlatformResults.withData(hookScope);
   }
 
-  public void verifyAuth() {
-    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+  public void verifyAuth(Customer customer) {
+    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
-    tokenAuthenticator.superAdminOrThrow(ctx());
+    boolean cloudEnabled = rConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    if (cloudEnabled) {
+      log.warn(
+          "Not performing SuperAdmin authorization for this endpoint, customer={} as platform is in"
+              + " cloud mode",
+          customer.uuid);
+      tokenAuthenticator.adminOrThrow(ctx());
+    } else {
+      tokenAuthenticator.superAdminOrThrow(ctx());
+    }
   }
 }
