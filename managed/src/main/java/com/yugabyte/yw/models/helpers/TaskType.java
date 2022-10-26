@@ -62,6 +62,9 @@ public enum TaskType {
 
   RunApiTriggeredHooks("RunApiTriggeredHooks"),
 
+  AddOnClusterCreate("AddOnClusterCreate"),
+  AddOnClusterDelete("AddOnClusterDelete"),
+
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
 
@@ -141,18 +144,17 @@ public enum TaskType {
   KubernetesCheckStorageClass("subtasks.KubernetesCheckStorageClass"),
 
   StartMasterOnNode("StartMasterOnNode"),
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
+  SyncXClusterConfig("SyncXClusterConfig"),
+
+  CreateSupportBundle("CreateSupportBundle"),
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
   EditXClusterConfig("EditXClusterConfig"),
 
   RestartXClusterConfig("RestartXClusterConfig"),
-
-  DeleteXClusterConfig("DeleteXClusterConfig"),
-
-  SyncXClusterConfig("SyncXClusterConfig"),
-
-  CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey("subtasks.AddAuthorizedKey"),

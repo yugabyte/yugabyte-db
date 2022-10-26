@@ -290,12 +290,9 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-  message("Adding tcmalloc as a dependency of yb_util")
-  list(APPEND UTIL_LIBS tcmalloc)
-else()
-  message("Not adding tcmalloc as a dependency of yb_util")
-endif()
+# We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
+# as a static library directy into each executable, to ensure that it is initialized earlier than
+# any shared library.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)

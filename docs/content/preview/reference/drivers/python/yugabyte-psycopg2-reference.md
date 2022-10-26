@@ -47,13 +47,13 @@ The Yugabyte Psycopg2 smart driver has the following load balancing features:
 
 The Yugabyte Psycopg2 driver can be configured with pooling as well.
 
-## Quick start
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/python/ysql-psycopg2/).
+Learn how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
 
 ## Download the driver dependency
 
-Building Psycopg requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
+Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
 
@@ -69,16 +69,6 @@ Or, you can use the setup.py script if you've downloaded the source package loca
 $ python setup.py build
 $ sudo python setup.py install
 ```
-
-## Fundamentals
-
-Learn how to perform the common tasks required for Python application development using the YugabyteDB psycopg2 smart driver.
-<!--  -->
-<!-- {{< note title="Note">}} -->
-<!--  -->
-<!-- The driver requires YugabyteDB version 2.7.2.0 or higher. -->
-<!--  -->
-<!-- {{< /note >}} -->
 
 ### Load balancing connection properties
 

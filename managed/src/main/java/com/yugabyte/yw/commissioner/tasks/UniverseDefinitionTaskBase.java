@@ -54,13 +54,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -120,6 +120,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public static final String NODE_NAME_KEY = "Name";
 
   private static class TemplatedTags {
+
     private static final String DOLLAR = "$";
     private static final String LBRACE = "{";
     private static final String PREFIX = DOLLAR + LBRACE;
@@ -149,10 +150,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * are not saved to the DB in this method.
    *
    * @param universe
-   * @param isReadOnlyCreate
+   * @param taskParams
+   * @param isNonPrimaryCreate
    */
   public static void setUserIntentToUniverse(
-      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isReadOnlyCreate) {
+      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isNonPrimaryCreate) {
     // Persist the updated information about the universe.
     // It should have been marked as being edited in lockUniverseForUpdate().
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -161,7 +163,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    if (!isReadOnlyCreate) {
+    if (!isNonPrimaryCreate) {
       universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
       universeDetails.nodePrefix = taskParams.nodePrefix;
       universeDetails.useNewHelmNamingStyle = taskParams.useNewHelmNamingStyle;
@@ -180,23 +182,34 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
-      } // else read only cluster edit mode.
+      } // else non-primary (read-only / add-on) cluster edit mode.
     } else {
-      // Combine the existing nodes with new read only cluster nodes.
+      // Combine the existing nodes with new non-primary (read-only / add-on) cluster nodes.
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
-    taskParams
-        .getReadOnlyClusters()
-        .forEach(
-            async -> {
-              // Update read replica cluster TLS params to be same as primary cluster
-              async.userIntent.enableNodeToNodeEncrypt =
-                  universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-              async.userIntent.enableClientToNodeEncrypt =
-                  universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-              universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
-            });
+
+    setEncryptionIntentForNonPrimaryClusters(
+        taskParams.getClusterByType(ClusterType.ASYNC), taskParams, universeDetails);
+    setEncryptionIntentForNonPrimaryClusters(
+        taskParams.getClusterByType(ClusterType.ADDON), taskParams, universeDetails);
+
     universe.setUniverseDetails(universeDetails);
+  }
+
+  private static void setEncryptionIntentForNonPrimaryClusters(
+      List<Cluster> clusters,
+      UniverseDefinitionTaskParams taskParams,
+      UniverseDefinitionTaskParams universeDetails) {
+    clusters.forEach(
+        cluster -> {
+          // Update read replica cluster TLS params to be same as primary cluster
+          cluster.userIntent.enableNodeToNodeEncrypt =
+              taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+          cluster.userIntent.enableClientToNodeEncrypt =
+              taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+          universeDetails.upsertCluster(
+              cluster.userIntent, cluster.placementInfo, cluster.uuid, cluster.clusterType);
+        });
   }
 
   /**
@@ -335,14 +348,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     String newName = "";
-    if (cluster.clusterType == ClusterType.ASYNC) {
+    if (cluster.clusterType == ClusterType.ASYNC || cluster.clusterType == ClusterType.ADDON) {
+      String discriminator;
+      switch (cluster.clusterType) {
+        case ASYNC:
+          discriminator = Universe.READONLY;
+          break;
+        case ADDON:
+          discriminator = Universe.ADDON;
+          break;
+        default:
+          throw new IllegalArgumentException("Invalid cluster type " + cluster.clusterType);
+      }
+
       if (tagValue.isEmpty()) {
-        newName = prefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
+        newName = prefix + discriminator + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
       } else {
         newName =
-            getTagBasedName(tagValue, cluster, nodeIdx, region, az)
-                + Universe.READONLY
-                + cluster.index;
+            getTagBasedName(tagValue, cluster, nodeIdx, region, az) + discriminator + cluster.index;
       }
     } else {
       if (tagValue.isEmpty()) {
@@ -1213,8 +1236,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
             Map<String, String> curAZsOverrides = univCluster.userIntent.azOverrides;
             Map<String, String> newAZsOverrides = cluster.userIntent.azOverrides;
-            if (curAZsOverrides == null) curAZsOverrides = new HashMap<>();
-            if (newAZsOverrides == null) newAZsOverrides = new HashMap<>();
+            if (curAZsOverrides == null) {
+              curAZsOverrides = new HashMap<>();
+            }
+            if (newAZsOverrides == null) {
+              newAZsOverrides = new HashMap<>();
+            }
             if (curAZsOverrides.size() != newAZsOverrides.size()) {
               throw new IllegalArgumentException(
                   "Kubernetes overrides can't be modified during the edit operation.");
@@ -1876,15 +1903,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public boolean createProvisionNodeTasks(
       Universe universe,
-      Set<NodeDetails> nodesToBeProvisioned,
+      Set<NodeDetails> nodesToBeCreated,
       boolean isShellMode,
       boolean ignoreNodeStatus,
       boolean ignoreUseCustomImageConfig) {
     boolean isFallThrough =
         createCreateNodeTasks(
-            universe, nodesToBeProvisioned, ignoreNodeStatus, ignoreUseCustomImageConfig);
+            universe, nodesToBeCreated, ignoreNodeStatus, ignoreUseCustomImageConfig);
+
     return createConfigureNodeTasks(
-        universe, nodesToBeProvisioned, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
+        universe, nodesToBeCreated, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
   }
 
   /**

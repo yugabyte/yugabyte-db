@@ -1774,7 +1774,7 @@ YbGetTablePropertiesCommon(Relation rel)
 	if (rel->yb_table_properties)
 	{
 		/* Already loaded, nothing to do */
-		return YBCStatusOKValue;
+		return NULL;
 	}
 
 	Oid dbid          = YBCGetDatabaseOid(rel);
@@ -1782,18 +1782,14 @@ YbGetTablePropertiesCommon(Relation rel)
 
 	YBCPgTableDesc desc = NULL;
 	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
-	if (!YBCStatusIsOK(status))
-	{
+	if (status)
 		return status;
-	}
 
 	/* Relcache entry data must live in CacheMemoryContext */
 	rel->yb_table_properties =
 		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbTablePropertiesData));
 
-	HandleYBStatus(YBCPgGetTableProperties(desc, rel->yb_table_properties));
-
-	return YBCStatusOKValue;
+	return YBCPgGetTableProperties(desc, rel->yb_table_properties);
 }
 
 YbTableProperties
@@ -1844,8 +1840,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), &typesize);
-		if (unlikely(!YBCStatusIsOK(status)))
+		if (unlikely(status))
 		{
+			YBCFreeStatus(status);
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("Unsupported datatype given to yb_hash_code"),
@@ -1871,8 +1868,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size_t written;
 		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), arg_buf_pos, &written);
-		if (unlikely(!YBCStatusIsOK(status)))
+		if (unlikely(status))
 		{
+			YBCFreeStatus(status);
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("Unsupported datatype given to yb_hash_code"),
