@@ -1,3 +1,4 @@
+import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
 export interface PlacementAZ {
@@ -219,6 +220,17 @@ export interface Universe {
   version: number;
 }
 
+export interface YBTable {
+  isIndexTable: boolean;
+  keySpace: string;
+  pgSchemaName: string;
+  relationType: YBTableRelationType;
+  sizeBytes: number;
+  tableName: string;
+  tableType: TableType;
+  tableUUID: string;
+}
+
 // Provider.java
 export interface Provider {
   uuid: string;
@@ -354,14 +366,13 @@ export const TABLE_TYPE_MAP: Record<TableType, string> = {
   REDIS_TABLE_TYPE: 'REDIS'
 };
 
-
 export interface MetricsData {
   type: string;
   metricsKey: string[];
   nodePrefixes: string;
   selectedUniverse: any;
   title: string;
-  tableName?: string
+  tableName?: string;
 }
 
 export interface GraphFilter {

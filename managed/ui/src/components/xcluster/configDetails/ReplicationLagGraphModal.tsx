@@ -1,8 +1,9 @@
 import React, { FC } from 'react';
-import { YBModal } from '../../common/forms/fields';
 
-import { YBTable } from '../XClusterTypes';
+import { YBModal } from '../../common/forms/fields';
 import { TableLagGraph } from './TableLagGraph';
+
+import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './ReplicationLagGraphModal.module.scss';
 
