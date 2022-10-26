@@ -2,38 +2,37 @@
 
 package com.yugabyte.yw.controllers;
 
-import org.apache.commons.io.IOUtils;
 import com.google.inject.Inject;
-import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.HookRequestData;
-import com.yugabyte.yw.models.Hook;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.UUID;
-import java.util.List;
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.BufferedInputStream;
-import play.libs.Json;
+import java.util.List;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.IOUtils;
 import play.data.Form;
-import play.mvc.Result;
+import play.libs.Json;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
-import lombok.extern.slf4j.Slf4j;
+import play.mvc.Result;
 
 @Slf4j
 @Api(
@@ -59,16 +58,16 @@ public class HookController extends AuthenticatedController {
       response = Hook.class,
       responseContainer = "List")
   public Result list(UUID customerUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     List<Hook> hooks = Hook.getAll(customerUUID);
     return PlatformResults.withData(hooks);
   }
 
   @ApiOperation(value = "Create a Hook", nickname = "createHook", response = Hook.class)
   public Result create(UUID customerUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
     boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
@@ -106,7 +105,8 @@ public class HookController extends AuthenticatedController {
 
   @ApiOperation(value = "Delete a hook", nickname = "deleteHook", response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID hookUUID) {
-    verifyAuth();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
     log.info("Deleting hook {} with UUID {}", hook.name, hookUUID);
     hook.delete();
@@ -118,8 +118,8 @@ public class HookController extends AuthenticatedController {
 
   @ApiOperation(value = "Update a hook", nickname = "updateHook", response = Hook.class)
   public Result update(UUID customerUUID, UUID hookUUID) {
-    verifyAuth();
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
     boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
@@ -157,14 +157,14 @@ public class HookController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Run API Triggered hooks", nickname = "runHooks", response = YBPTask.class)
-  public Result run(UUID customerUUID, UUID universeUUID, Boolean isRolling) {
-    verifyAuth();
+  public Result run(UUID customerUUID, UUID universeUUID, Boolean isRolling, UUID clusterUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    verifyAuth(customer);
     if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_API_HOOK_RUN_PATH)) {
       throw new PlatformServiceException(
           UNAUTHORIZED,
           "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
     }
-    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
     taskParams.universeUUID = universe.universeUUID;
@@ -172,23 +172,31 @@ public class HookController extends AuthenticatedController {
     taskParams.isRolling = isRolling.booleanValue();
 
     log.info(
-        "Running API Triggered hooks for {} [ {} ] customer {}.",
+        "Running API Triggered hooks for {} [ {} ] customer {}, cluster {}.",
         universe.name,
         universe.universeUUID,
-        customer.uuid);
+        customer.uuid,
+        clusterUUID);
+
+    CustomerTask.TargetType target = CustomerTask.TargetType.Universe;
+    if (clusterUUID != null) {
+      target = CustomerTask.TargetType.Cluster;
+      taskParams.clusterUUID = clusterUUID;
+    }
 
     UUID taskUUID = commissioner.submit(TaskType.RunApiTriggeredHooks, taskParams);
     CustomerTask.create(
         customer,
         universeUUID,
         taskUUID,
-        CustomerTask.TargetType.Universe,
+        target,
         CustomerTask.TaskType.RunApiTriggeredHooks,
         universe.name);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
-            Audit.TargetType.Universe,
+            Audit.TargetType.Universe, // TODO: do we need this to be cluster as well? There is no
+            // Audit.TargetType.Cluster
             universe.universeUUID.toString(),
             Audit.ActionType.RunApiTriggeredHooks,
             taskUUID);
@@ -206,10 +214,19 @@ public class HookController extends AuthenticatedController {
     }
   }
 
-  public void verifyAuth() {
-    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+  public void verifyAuth(Customer customer) {
+    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
-    tokenAuthenticator.superAdminOrThrow(ctx());
+    boolean cloudEnabled = rConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    if (cloudEnabled) {
+      log.warn(
+          "Not performing SuperAdmin authorization for this endpoint, customer={} as platform is in"
+              + " cloud mode",
+          customer.uuid);
+      tokenAuthenticator.adminOrThrow(ctx());
+    } else {
+      tokenAuthenticator.superAdminOrThrow(ctx());
+    }
   }
 }

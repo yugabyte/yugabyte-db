@@ -2,60 +2,60 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Hook.ExecutionLang.*;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static com.yugabyte.yw.models.Hook.ExecutionLang.*;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static play.test.Helpers.contentAsString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.contentAsString;
 
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
-import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Hook.ExecutionLang;
-import com.yugabyte.yw.models.Hook;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.Hook.ExecutionLang;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.mvc.Result;
 import play.mvc.Http;
+import play.mvc.Result;
 import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -373,6 +373,34 @@ public class HookControllerTest extends WithApplication {
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
     assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void runApiTriggeredHooksForCluster() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID clusterUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse();
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/run_hooks"
+            + "?clusterUUID="
+            + clusterUUID;
+
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(customerTask);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
+    assertTrue(customerTask.getTarget().equals(CustomerTask.TargetType.Cluster));
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
