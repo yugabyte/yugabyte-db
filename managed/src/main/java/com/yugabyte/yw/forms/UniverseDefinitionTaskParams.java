@@ -11,7 +11,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -237,6 +236,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // This is set internally by the placement util in the server, client should not set it.
     @ApiModelProperty public int index = 0;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public List<Region> regions;
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());
@@ -250,15 +252,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       assert clusterType != null && userIntent != null;
       this.clusterType = clusterType;
       this.userIntent = userIntent;
-    }
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    public List<Region> getRegions() {
-      List<Region> regions = ImmutableList.of();
-      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        regions = Region.find.query().where().idIn(userIntent.regionList).findList();
-      }
-      return regions.isEmpty() ? null : regions;
     }
 
     public boolean equals(Cluster other) {

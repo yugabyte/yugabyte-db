@@ -18,16 +18,20 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
 
@@ -42,6 +46,7 @@ public class UniverseResp {
     UniverseResourceDetails.Context context = new Context(config, universe);
     UniverseResourceDetails resourceDetails =
         UniverseResourceDetails.create(universe.getUniverseDetails(), context);
+    fillRegions(Collections.singletonList(universe));
     return new UniverseResp(universe, taskUUID, resourceDetails);
   }
 
@@ -51,6 +56,7 @@ public class UniverseResp {
         universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     UniverseResourceDetails.Context context =
         new Context(config, customer, universeDefinitionTaskParams);
+    fillRegions(universeList);
     return universeList
         .stream()
         .map(
@@ -64,6 +70,38 @@ public class UniverseResp {
                             universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context)))
         .collect(Collectors.toList());
+  }
+
+  private static void fillRegions(List<Universe> universes) {
+    Set<UUID> regionUuids =
+        universes
+            .stream()
+            .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
+            .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
+            .flatMap(cluster -> cluster.userIntent.regionList.stream())
+            .collect(Collectors.toSet());
+    if (CollectionUtils.isEmpty(regionUuids)) {
+      return;
+    }
+    Map<UUID, Region> regionMap =
+        Region.findByUuids(regionUuids)
+            .stream()
+            .collect(Collectors.toMap(region -> region.uuid, Function.identity()));
+    universes
+        .stream()
+        .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
+        .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
+        .forEach(
+            cluster -> {
+              cluster.regions =
+                  cluster
+                      .userIntent
+                      .regionList
+                      .stream()
+                      .filter(regionMap::containsKey)
+                      .map(regionMap::get)
+                      .collect(Collectors.toList());
+            });
   }
 
   @ApiModelProperty(value = "Universe UUID")
