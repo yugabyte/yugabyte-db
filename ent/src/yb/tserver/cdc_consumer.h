@@ -66,6 +66,8 @@ struct CDCClient {
   void Shutdown();
 };
 
+typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
+
 class CDCConsumer {
  public:
   static Result<std::unique_ptr<CDCConsumer>> Create(
@@ -179,7 +181,7 @@ class CDCConsumer {
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, uint32_t> stream_to_schema_version_
+  std::unordered_map<std::string, SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;

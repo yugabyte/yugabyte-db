@@ -1563,15 +1563,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
-Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
+Status YBClient::UpdateConsumerOnProducerMetadata(
     const string& producer_id,
     const CDCStreamId& stream_id,
-    const tablet::ChangeMetadataRequestPB& meta_info) {
+    const tablet::ChangeMetadataRequestPB& meta_info,
+    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
   if (producer_id.empty()) {
     return STATUS(InvalidArgument, "Producer id is required.");
   }
   if (stream_id.empty()) {
     return STATUS(InvalidArgument, "Stream id is required.");
+  }
+  if (resp == nullptr) {
+    return STATUS(InvalidArgument, "Response pointer is required.");
   }
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
@@ -1579,9 +1583,8 @@ Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
   req.set_stream_id(stream_id);
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
-  master::UpdateConsumerOnProducerMetadataResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerMetadata);
-  return resp.should_wait();
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
 }
 
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {

@@ -278,6 +278,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   SchemaVersion schema_version(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
+  Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
+
+  Result<SchemaVersion> schema_version(const Uuid& cotable_id) const;
+
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
   bool is_index(const TableId& table_id = "") const;

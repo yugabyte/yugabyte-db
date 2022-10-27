@@ -84,8 +84,22 @@ class ColumnOpCounter {
   int partial_col_in_count_ = 0;
 };
 
+class AnalyzeStepState {
+ public:
+  explicit AnalyzeStepState(MCList<PartitionKeyOp> *partition_key_ops)
+      : partition_key_ops_(partition_key_ops) {}
+
+  virtual ~AnalyzeStepState() = default;
+
+  virtual Status AnalyzePartitionKeyOp(SemContext *sem_context,
+                                       const PTRelationExpr *expr,
+                                       PTExprPtr value);
+ private:
+  MCList<PartitionKeyOp> *partition_key_ops_;
+};
+
 // State variables for where clause.
-class WhereExprState {
+class WhereExprState : public AnalyzeStepState {
  public:
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
@@ -97,11 +111,11 @@ class WhereExprState {
                  TreeNodeOpcode statement_type,
                  MCList<FuncOp> *func_ops,
                  MCList<MultiColumnOp> *multi_col_ops)
-    : ops_(ops),
+    : AnalyzeStepState(partition_key_ops),
+      ops_(ops),
       key_ops_(key_ops),
       subscripted_col_ops_(subscripted_col_ops),
       json_col_ops_(json_col_ops),
-      partition_key_ops_(partition_key_ops),
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
       statement_type_(statement_type),
@@ -126,8 +140,8 @@ class WhereExprState {
                                        PTBcallPtr call);
 
   Status AnalyzePartitionKeyOp(SemContext *sem_context,
-                                       const PTRelationExpr *expr,
-                                       PTExprPtr value);
+                               const PTRelationExpr *expr,
+                               PTExprPtr value) override;
 
   MCList<FuncOp> *func_ops() {
     return func_ops_;
@@ -144,8 +158,6 @@ class WhereExprState {
 
   // Operators on json columns (e.g. c1->'a'->'b'->>'c')
   MCList<JsonColumnOp> *json_col_ops_;
-
-  MCList<PartitionKeyOp> *partition_key_ops_;
 
   // Counters of '=', '<', and '>' operators for each column in the where expression.
   MCVector<ColumnOpCounter> *op_counters_;

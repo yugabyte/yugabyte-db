@@ -85,6 +85,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
     DCHECK(shutdown_);
   }
 
+  // Sets the last compatible consumer schema version
+  void SetLastCompatibleConsumerSchemaVersion(uint32_t schema_version) override;
+
   Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
   void Shutdown() override {
@@ -117,6 +120,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
         consumer_tablet_info_.table_id,
         consumer_tablet_info_.tablet_id);
   }
+
+  void SetLastCompatibleConsumerSchemaVersionUnlocked(uint32_t schema_version) REQUIRES(lock_);
 
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
@@ -193,6 +198,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
+  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
+
   // This will cache the response to an ApplyChanges() request.
   cdc::GetChangesResponsePB twodc_resp_copy_;
 
@@ -223,6 +230,21 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
         << "Aborting ApplyChanges since the output client is shutting down."; \
     return; \
   }
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersionUnlocked(
+    SchemaVersion schema_version) {
+  if (schema_version != cdc::kInvalidSchemaVersion &&
+      schema_version > last_compatible_consumer_schema_version_) {
+    LOG(INFO) << "Last compatible consumer schema version updated to  "
+              << schema_version;
+    last_compatible_consumer_schema_version_ = schema_version;
+  }
+}
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
+  std::lock_guard<decltype(lock_)> lock(lock_);
+  SetLastCompatibleConsumerSchemaVersionUnlocked(schema_version);
+}
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
   // ApplyChanges is called in a single threaded manner.
@@ -448,7 +470,8 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
     auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
       .tablet_id = tablet_id,
       .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
-      .status_tablet_id = status_tablet_id
+      .status_tablet_id = status_tablet_id,
+      .last_compatible_consumer_schema_version = last_compatible_consumer_schema_version_
     }, record);
     if (!status.ok()) {
       error_status_ = status;
@@ -501,6 +524,7 @@ bool TwoDCOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 
 Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
   uint32_t wait_for_version = 0;
+  uint32_t last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
   if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
     // Construct and send the update request.
     master::ProducerSplitTabletInfoPB split_info;
@@ -518,12 +542,17 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
-    bool should_halt = VERIFY_RESULT(local_client_->client->UpdateConsumerOnProducerMetadata(
+    master::UpdateConsumerOnProducerMetadataResponsePB resp;
+    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerMetadata(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id,
-        record.change_metadata_request()));
-    if (should_halt) {
-      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id;
+        record.change_metadata_request(), &resp));
+    if (resp.should_wait()) {
       wait_for_version = record.change_metadata_request().schema_version();
+      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id
+                << " due to schema change. Waiting for Schema version: " << wait_for_version;
+    }
+    if (resp.has_last_compatible_consumer_schema_version()) {
+      last_compatible_consumer_schema_version = resp.last_compatible_consumer_schema_version();
     }
   }
 
@@ -533,6 +562,7 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
     wait_for_version_ = wait_for_version;
+    SetLastCompatibleConsumerSchemaVersionUnlocked(last_compatible_consumer_schema_version);
     DCHECK(wait_for_version == 0 || done); // If (should_wait) then done.
   }
   return done;

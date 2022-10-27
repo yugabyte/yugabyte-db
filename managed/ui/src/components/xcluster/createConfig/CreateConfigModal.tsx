@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
-
 import { FormikActions, FormikProps } from 'formik';
 
 import {
@@ -25,8 +24,8 @@ import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/Universe
 import { assertUnreachableCase } from '../../../utils/ErrorUtils';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 
-import { TableType, Universe } from '../../../redesign/helpers/dtos';
-import { XClusterTableType, YBTable } from '../XClusterTypes';
+import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterTableType } from '../XClusterTypes';
 
 import styles from './CreateConfigModal.module.scss';
 
@@ -48,6 +47,15 @@ export interface CreateXClusterConfigFormErrors {
   parallelThreads: string;
 }
 
+export interface CreateXClusterConfigFormWarnings {
+  configName?: string;
+  targetUniverse?: string;
+  tableUUIDs?: { title: string; body: string };
+  // Bootstrap fields
+  storageConfig?: string;
+  parallelThreads?: string;
+}
+
 interface ConfigureReplicationModalProps {
   onHide: Function;
   visible: boolean;
@@ -59,7 +67,6 @@ const MODAL_TITLE = 'Configure Replication';
 export enum FormStep {
   SELECT_TARGET_UNIVERSE = 'selectTargetUniverse',
   SELECT_TABLES = 'selectTables',
-  ENABLE_REPLICATION = 'enableReplication',
   CONFIGURE_BOOTSTRAP = 'configureBootstrap'
 }
 
@@ -83,8 +90,15 @@ export const CreateConfigModal = ({
 }: ConfigureReplicationModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
+  const [isTableSelectionValidated, setIsTableSelectionValidated] = useState(false);
+  const [formWarnings, setFormWarnings] = useState<CreateXClusterConfigFormWarnings>({});
 
-  // SelectTablesStep.tsx state
+  // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
+  // to the user submitting their target universe step.
+  // This value updates whenever the user submits SelectTargetUniverseStep with a new
+  // target universe.
+  const [committedTargetUniverseUUID, setCommittedTargetUniverseUUID] = useState<string>();
+
   // Need to store this in CreateConfigModal.tsx to support navigating back to this step.
   const [tableType, setTableType] = useState<XClusterTableType>(DEFAULT_TABLE_TYPE);
   const [selectedKeyspaces, setSelectedKeyspaces] = useState<string[]>([]);
@@ -151,9 +165,19 @@ export const CreateConfigModal = ({
     }
   );
 
+  const tablesQuery = useQuery<YBTable[]>(['universe', currentUniverseUUID, 'tables'], () =>
+    fetchTablesInUniverse(currentUniverseUUID).then((response) => response.data)
+  );
+
+  const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
+    api.fetchUniverse(currentUniverseUUID)
+  );
+
   const resetModalState = () => {
     setCurrentStep(FormStep.SELECT_TARGET_UNIVERSE);
     setBootstrapRequiredTableUUIDs([]);
+    setIsTableSelectionValidated(false);
+    setFormWarnings({});
     setTableType(DEFAULT_TABLE_TYPE);
     setSelectedKeyspaces([]);
   };
@@ -163,35 +187,66 @@ export const CreateConfigModal = ({
     onHide();
   };
 
-  const tablesQuery = useQuery<YBTable[]>(['universe', currentUniverseUUID, 'tables'], () =>
-    fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
-  );
+  /**
+   * Wrapper around setFieldValue from formik.
+   * Reset `isTableSelectionValidated` to false if changing
+   * a validated table selection.
+   */
+  const setTableUUIDs = (
+    tableUUIDs: string[],
+    formikActions: FormikActions<CreateXClusterConfigFormValues>
+  ) => {
+    const { setFieldValue } = formikActions;
+    if (isTableSelectionValidated) {
+      setIsTableSelectionValidated(false);
+    }
+    setFieldValue('tableUUIDs', tableUUIDs);
+  };
 
-  const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
-    api.fetchUniverse(currentUniverseUUID)
-  );
+  const resetTableSelection = (formikActions: FormikActions<CreateXClusterConfigFormValues>) => {
+    setTableUUIDs([], formikActions);
+    setSelectedKeyspaces([]);
+    setFormWarnings((formWarnings) => {
+      const { tableUUIDs, ...newformWarnings } = formWarnings;
+      return newformWarnings;
+    });
+  };
 
+  const isBootstrapStepRequired = bootstrapRequiredTableUUIDs.length > 0;
   const handleFormSubmit = async (
     values: CreateXClusterConfigFormValues,
     actions: FormikActions<CreateXClusterConfigFormValues>
   ) => {
     switch (currentStep) {
       case FormStep.CONFIGURE_BOOTSTRAP:
-      case FormStep.ENABLE_REPLICATION:
         xClusterConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
         return;
       case FormStep.SELECT_TARGET_UNIVERSE:
+        if (values.targetUniverse.value.universeUUID !== committedTargetUniverseUUID) {
+          // Reset table selection when changing target universe.
+          // This is because the current table selection may be invalid for
+          // the new target universe.
+          resetTableSelection(actions);
+          setCommittedTargetUniverseUUID(values.targetUniverse.value.universeUUID);
+        }
         setCurrentStep(FormStep.SELECT_TABLES);
         actions.setSubmitting(false);
-
         return;
       case FormStep.SELECT_TABLES:
-        if (bootstrapRequiredTableUUIDs.length > 0) {
-          setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
-        } else {
-          setCurrentStep(FormStep.ENABLE_REPLICATION);
+        if (!isTableSelectionValidated) {
+          // Validation in validateForm just passed.
+          setIsTableSelectionValidated(true);
+          actions.setSubmitting(false);
+          return;
         }
-        actions.setSubmitting(false);
+
+        // Table selection has already been validated.
+        if (isBootstrapStepRequired) {
+          setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
+          actions.setSubmitting(false);
+          return;
+        }
+        xClusterConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
         return;
       default:
         assertUnreachableCase(currentStep);
@@ -203,7 +258,6 @@ export const CreateConfigModal = ({
       case FormStep.SELECT_TABLES:
         setCurrentStep(FormStep.SELECT_TARGET_UNIVERSE);
         return;
-      case FormStep.ENABLE_REPLICATION:
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentStep(FormStep.SELECT_TABLES);
         return;
@@ -212,6 +266,11 @@ export const CreateConfigModal = ({
     }
   };
 
+  const submitLabel = getFormSubmitLabel(
+    currentStep,
+    isBootstrapStepRequired,
+    isTableSelectionValidated
+  );
   if (tablesQuery.isLoading || universeQuery.isLoading) {
     return (
       <YBModal
@@ -221,7 +280,7 @@ export const CreateConfigModal = ({
         onHide={() => {
           closeModal();
         }}
-        submitLabel={getFormSubmitLabel(currentStep)}
+        submitLabel={submitLabel}
       >
         <YBLoading />
       </YBModal>
@@ -254,14 +313,21 @@ export const CreateConfigModal = ({
       title={MODAL_TITLE}
       visible={visible}
       validate={(values: CreateXClusterConfigFormValues) =>
-        validateForm(values, currentStep, universeQuery.data, setBootstrapRequiredTableUUIDs)
+        validateForm(
+          values,
+          currentStep,
+          universeQuery.data,
+          isTableSelectionValidated,
+          setBootstrapRequiredTableUUIDs,
+          setFormWarnings
+        )
       }
       // Perform validation for select table when user submits.
       validateOnChange={currentStep !== FormStep.SELECT_TABLES}
       validateOnBlur={currentStep !== FormStep.SELECT_TABLES}
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
-      submitLabel={getFormSubmitLabel(currentStep)}
+      submitLabel={submitLabel}
       onHide={() => {
         closeModal();
       }}
@@ -304,7 +370,6 @@ export const CreateConfigModal = ({
               />
             );
           case FormStep.SELECT_TABLES:
-          case FormStep.ENABLE_REPLICATION:
             return (
               <SelectTablesStep
                 {...{
@@ -313,10 +378,13 @@ export const CreateConfigModal = ({
                   currentUniverseUUID,
                   currentStep,
                   setCurrentStep,
+                  setTableUUIDs: (tableUUIDs: string[]) =>
+                    setTableUUIDs(tableUUIDs, formik.current),
                   tableType,
                   setTableType,
                   selectedKeyspaces,
-                  setSelectedKeyspaces
+                  setSelectedKeyspaces,
+                  formWarnings
                 }}
               />
             );
@@ -342,7 +410,9 @@ const validateForm = async (
   values: CreateXClusterConfigFormValues,
   currentStep: FormStep,
   currentUniverse: Universe,
-  setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void
+  isTableSelectionValidated: boolean,
+  setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
+  setFormWarnings: (formWarnings: CreateXClusterConfigFormWarnings) => void
 ) => {
   // Since our formik verision is < 2.0 , we need to throw errors instead of
   // returning them in custom async validation:
@@ -383,57 +453,59 @@ const validateForm = async (
     }
     case FormStep.SELECT_TABLES: {
       const errors: Partial<CreateXClusterConfigFormErrors> = {};
-
-      if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
-        errors.tableUUIDs = {
-          title: 'No tables selected.',
-          body: 'Select at least 1 table to proceed'
-        };
-      }
-
-      // Check if bootstrap is required, for each selected table
-      const bootstrapTests = await isBootstrapRequired(
-        currentUniverse.universeUUID,
-        values.tableUUIDs.map(adaptTableUUID)
-      );
-
-      const bootstrapTableUUIDs = bootstrapTests.reduce(
-        (bootstrapTableUUIDs: string[], bootstrapTest) => {
-          // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-          // Until the backend supports multiple tableUUIDs per request, the response object
-          // will only contain one tableUUID.
-          // Note: Once backend does support multiple tableUUIDs per request, we will replace this
-          //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
-          const tableUUID = Object.keys(bootstrapTest)[0];
-
-          if (bootstrapTest[tableUUID]) {
-            bootstrapTableUUIDs.push(tableUUID);
-          }
-          return bootstrapTableUUIDs;
-        },
-        []
-      );
-      setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
-
-      // If some tables require bootstrapping, we need to validate the source universe has enough
-      // disk space.
-      if (bootstrapTableUUIDs.length > 0) {
-        // Disk space validation
-        const currentUniverseNodePrefix = currentUniverse.universeDetails.nodePrefix;
-        const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
-        const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
-          (trace) => trace.name === 'free'
-        );
-        const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
-
-        if (freeDiskSpace !== undefined && freeDiskSpace < MIN_FREE_DISK_SPACE_GB) {
+      const warnings: CreateXClusterConfigFormWarnings = {};
+      if (!isTableSelectionValidated) {
+        if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
           errors.tableUUIDs = {
-            title: 'Insufficient disk space.',
-            body: `Some selected tables require bootstrapping. Please ensure the source universe has at least ${MIN_FREE_DISK_SPACE_GB} GB of free disk space.`
+            title: 'No tables selected.',
+            body: 'Select at least 1 table to proceed'
           };
         }
-      }
 
+        // Check if bootstrap is required, for each selected table
+        const bootstrapTests = await isBootstrapRequired(
+          currentUniverse.universeUUID,
+          values.tableUUIDs.map(adaptTableUUID)
+        );
+
+        const bootstrapTableUUIDs = bootstrapTests.reduce(
+          (bootstrapTableUUIDs: string[], bootstrapTest) => {
+            // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
+            // Until the backend supports multiple tableUUIDs per request, the response object
+            // will only contain one tableUUID.
+            // Note: Once backend does support multiple tableUUIDs per request, we will replace this
+            //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
+            const tableUUID = Object.keys(bootstrapTest)[0];
+
+            if (bootstrapTest[tableUUID]) {
+              bootstrapTableUUIDs.push(tableUUID);
+            }
+            return bootstrapTableUUIDs;
+          },
+          []
+        );
+        setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
+
+        // If some tables require bootstrapping, we need to validate the source universe has enough
+        // disk space.
+        if (bootstrapTableUUIDs.length > 0) {
+          // Disk space validation
+          const currentUniverseNodePrefix = currentUniverse.universeDetails.nodePrefix;
+          const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
+          const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
+            (trace) => trace.name === 'free'
+          );
+          const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
+
+          if (freeDiskSpace !== undefined && freeDiskSpace < MIN_FREE_DISK_SPACE_GB) {
+            warnings.tableUUIDs = {
+              title: 'Insufficient disk space.',
+              body: `Some selected tables require bootstrapping. We recommend having at least ${MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+            };
+          }
+        }
+        setFormWarnings(warnings);
+      }
       throw errors;
     }
     case FormStep.CONFIGURE_BOOTSTRAP: {
@@ -459,13 +531,21 @@ const validateForm = async (
   }
 };
 
-const getFormSubmitLabel = (formStep: FormStep) => {
+const getFormSubmitLabel = (
+  formStep: FormStep,
+  bootstrapRequired: boolean,
+  validTableSelection: boolean
+) => {
   switch (formStep) {
     case FormStep.SELECT_TARGET_UNIVERSE:
       return 'Next: Select Tables';
     case FormStep.SELECT_TABLES:
-      return 'Validate Connectivity and Schema';
-    case FormStep.ENABLE_REPLICATION:
+      if (!validTableSelection) {
+        return 'Validate Table Selection';
+      }
+      if (bootstrapRequired) {
+        return 'Next: Configure Bootstrap';
+      }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
       return 'Bootstrap and Enable Replication';
