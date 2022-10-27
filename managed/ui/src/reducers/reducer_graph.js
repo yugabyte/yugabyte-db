@@ -44,12 +44,18 @@ export default function (state = INITIAL_STATE, action) {
     }
     case QUERY_METRICS_FAILURE: {
       const metricData = state.metrics;
-      metricData[action.panelType] = {};
+      metricData[action.panelType] = { error: true };
       return { ...state, metrics: metricData, error: action.payload.response, loading: false };
     }
     case RESET_METRICS:
       // Graph Filter needs to be reset when user jumps to metrics view in different places
-      return { ...state, metrics: {}, loading: false, panelType: null, graphFilter: DEFAULT_GRAPH_FILTER };
+      return {
+        ...state,
+        metrics: {},
+        loading: false,
+        panelType: null,
+        graphFilter: DEFAULT_GRAPH_FILTER
+      };
     case TOGGLE_PROMETHEUS_QUERY:
       return { ...state, prometheusQueryEnabled: !state.prometheusQueryEnabled };
     default:
