@@ -155,6 +155,7 @@ using yb::master::ReservePgsqlOidsRequestPB;
 using yb::master::ReservePgsqlOidsResponsePB;
 using yb::master::GetYsqlCatalogConfigRequestPB;
 using yb::master::GetYsqlCatalogConfigResponsePB;
+using yb::master::GetYsqlCatalogVersion; //Imported necessary namespace object-> GetYsqlCatalogVersion for issue #11096
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -1020,7 +1021,7 @@ Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
 Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   GetYsqlCatalogConfigRequestPB req;
   GetYsqlCatalogConfigResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogConfig);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogVersion); //Replaced last parameter of GetYsqlCatalogConfig with GetYsqlCatalogVersion for issue #11096
   *ysql_catalog_version = resp.version();
   return Status::OK();
 }
