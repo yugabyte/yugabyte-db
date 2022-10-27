@@ -167,7 +167,7 @@ You can manually provision each node using the preprovisioning Python script, as
 Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
 
     ```bash
-    bash-4.4# /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
+    /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
     ```
 
     Expect the following output and prompt:
@@ -305,7 +305,7 @@ For airgapped environments, make sure your Yum repository mirror contains these 
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
-    sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
+    sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
     ```
 
 1. Perform the following to prepare and mount the data volume (separate partition for database data):
