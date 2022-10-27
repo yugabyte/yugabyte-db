@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_OUTBOUND_CALL_H_
-#define YB_RPC_OUTBOUND_CALL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -433,4 +432,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_OUTBOUND_CALL_H_

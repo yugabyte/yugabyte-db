@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_H
-#define YB_DOCDB_DOC_WRITE_BATCH_H
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -365,4 +364,3 @@ Result<std::string> WriteBatchToString(
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOC_WRITE_BATCH_H

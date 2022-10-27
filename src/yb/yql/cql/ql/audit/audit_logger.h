@@ -19,8 +19,7 @@
 // and thus isn't thread-safe.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
-#define YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
+#pragma once
 
 #include <boost/uuid/uuid_generators.hpp>
 
@@ -127,4 +126,3 @@ class AuditLogger {
 } // namespace yb
 
 
-#endif // YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_

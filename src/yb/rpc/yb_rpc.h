@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_YB_RPC_H
-#define YB_RPC_YB_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -262,4 +261,3 @@ class YBOutboundConnectionContext : public YBConnectionContext {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_YB_RPC_H

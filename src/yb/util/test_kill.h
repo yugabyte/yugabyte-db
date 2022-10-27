@@ -28,8 +28,7 @@
 #include <vector>
 #include <functional>
 
-#ifndef YB_UTIL_TEST_KILL_H
-#define YB_UTIL_TEST_KILL_H
+#pragma once
 
 // This is only set from db_stress.cc and for testing only.
 // If non-zero, kill at various points in source code with probability 1/this
@@ -64,4 +63,3 @@ extern void TestKillRandom(std::string kill_point, int odds,
 
 #endif // NDEBUG
 
-#endif //  YB_UTIL_TEST_KILL_H

@@ -31,8 +31,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_SPLIT_H
-#define YB_GUTIL_STRINGS_SPLIT_H
+#pragma once
 
 #include <stddef.h>
 #include <algorithm>
@@ -1191,4 +1190,3 @@ bool SplitStringAndParseToList(
 // END DOXYGEN SplitFunctions grouping
 /* @} */
 
-#endif  // YB_GUTIL_STRINGS_SPLIT_H

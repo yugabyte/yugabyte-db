@@ -4,8 +4,7 @@
 // This module defines and executes expression-related operations in DocDB.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_DOCDB_DOC_EXPR_H_
-#define YB_DOCDB_DOC_EXPR_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 
@@ -88,4 +87,3 @@ class DocExprExecutor : public QLExprExecutor {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_DOC_EXPR_H_

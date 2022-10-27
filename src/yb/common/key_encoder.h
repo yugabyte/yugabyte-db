@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_KEY_ENCODER_H
-#define YB_COMMON_KEY_ENCODER_H
+#pragma once
 
 #include <arpa/inet.h>
 
@@ -459,4 +458,3 @@ extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
 
-#endif // YB_COMMON_KEY_ENCODER_H

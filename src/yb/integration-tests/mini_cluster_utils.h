@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_UTILS_H
-#define YB_INTEGRATION_TESTS_MINI_CLUSTER_UTILS_H
+#pragma once
 
 #include <stddef.h>
 
@@ -27,4 +26,3 @@ void AssertRunningTransactionsCountLessOrEqualTo(
 
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_MINI_CLUSTER_UTILS_H

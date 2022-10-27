@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METADATA_H
-#define YB_TABLET_TABLET_METADATA_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -637,4 +636,3 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 } // namespace tablet
 } // namespace yb
 
-#endif /* YB_TABLET_TABLET_METADATA_H */

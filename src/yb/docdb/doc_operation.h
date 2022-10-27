@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_OPERATION_H_
-#define YB_DOCDB_DOC_OPERATION_H_
+#pragma once
 
 #include <boost/container/small_vector.hpp>
 
@@ -97,4 +96,3 @@ typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOC_OPERATION_H_

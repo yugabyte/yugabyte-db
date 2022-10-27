@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H
-#define YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -52,4 +51,3 @@ class TruncateOperation : public OperationBase<OperationType::kTruncate, Truncat
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_TRUNCATE_OPERATION_H

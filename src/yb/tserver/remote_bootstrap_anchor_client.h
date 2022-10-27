@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 
@@ -92,4 +91,3 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_REMOTE_BOOTSTRAP_ANCHOR_CLIENT_H

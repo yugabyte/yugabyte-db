@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_BULK_LOAD_UTILS_H
-#define YB_TOOLS_BULK_LOAD_UTILS_H
+#pragma once
 
 #include <set>
 
@@ -41,4 +40,3 @@ CsvTokenizer Tokenize(const std::string& line, char delimiter, char quote_char);
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_BULK_LOAD_UTILS_H

@@ -13,8 +13,7 @@
 //
 // This file contains QLScanSpec that implements a QL scan (SELECT) specification.
 
-#ifndef YB_COMMON_QL_SCANSPEC_H
-#define YB_COMMON_QL_SCANSPEC_H
+#pragma once
 
 #include <map>
 
@@ -202,4 +201,3 @@ class PgsqlScanSpec : public YQLScanSpec {
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_SCANSPEC_H

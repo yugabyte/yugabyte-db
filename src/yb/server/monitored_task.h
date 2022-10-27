@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_MONITORED_TASK_H
-#define YB_SERVER_MONITORED_TASK_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -124,4 +123,3 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 } // namespace server
 } // namespace yb
 
-#endif  // YB_SERVER_MONITORED_TASK_H

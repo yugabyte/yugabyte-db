@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_TEST_BASE_H
-#define YB_TABLET_TABLET_TEST_BASE_H
+#pragma once
 
 #include <algorithm>
 #include <limits>
@@ -335,4 +334,3 @@ class TabletTestBase : public TabletTestPreBase {
 } // namespace tablet
 } // namespace yb
 
-#endif  // YB_TABLET_TABLET_TEST_BASE_H"

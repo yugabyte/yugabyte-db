@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
-#define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
+#pragma once
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
@@ -158,4 +157,3 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H

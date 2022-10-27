@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HDR_HISTOGRAM_H
-#define YB_UTIL_HDR_HISTOGRAM_H
+#pragma once
 
 // C++ (TR1) port of HdrHistogram.
 // Original java implementation: http://giltene.github.io/HdrHistogram/
@@ -382,4 +381,3 @@ class PercentileIterator : public AbstractHistogramIterator {
 
 } // namespace yb
 
-#endif // YB_UTIL_HDR_HISTOGRAM_H

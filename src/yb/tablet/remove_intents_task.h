@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_REMOVE_INTENTS_TASK_H
-#define YB_TABLET_REMOVE_INTENTS_TASK_H
+#pragma once
 
 #include "yb/rpc/strand.h"
 
@@ -49,4 +48,3 @@ class RemoveIntentsTask : public rpc::StrandTask {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_REMOVE_INTENTS_TASK_H

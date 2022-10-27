@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_MASTER_RESTORE_SYS_CATALOG_STATE_H
-#define ENT_SRC_YB_MASTER_RESTORE_SYS_CATALOG_STATE_H
+#pragma once
 
 #include <unordered_map>
 
@@ -181,4 +180,3 @@ class RestoreSysCatalogState {
 }  // namespace master
 }  // namespace yb
 
-#endif // ENT_SRC_YB_MASTER_RESTORE_SYS_CATALOG_STATE_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_REDIS_OPERATION_H
-#define YB_DOCDB_REDIS_OPERATION_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
 
@@ -148,4 +147,3 @@ class RedisReadOperation {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_REDIS_OPERATION_H

@@ -24,8 +24,7 @@
 // non-const method, all threads accessing the same Status must use
 // external synchronization.
 
-#ifndef YB_UTIL_STATUS_H_
-#define YB_UTIL_STATUS_H_
+#pragma once
 
 #include <string>
 
@@ -267,4 +266,3 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-#endif  // YB_UTIL_STATUS_H_

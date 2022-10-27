@@ -21,8 +21,7 @@
 // New code should use one of the targeted libraries that provide hash
 // interfaces for the types needed. See //util/hash/README for details.
 
-#ifndef YB_GUTIL_HASH_LEGACY_HASH_H
-#define YB_GUTIL_HASH_LEGACY_HASH_H
+#pragma once
 
 #include "yb/gutil/hash/builtin_type_hash.h"
 #include "yb/gutil/hash/jenkins.h"
@@ -95,4 +94,3 @@ inline uint16 HashTo16(const char *s, uint64 slen) {
   return retval == kIllegalHash16 ? static_cast<uint16>(retval-1) : retval;
 }
 
-#endif  // YB_GUTIL_HASH_LEGACY_HASH_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_TOOLS_TEST_UTILS_H
-#define YB_TOOLS_TOOLS_TEST_UTILS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -47,4 +46,3 @@ class TmpDirProvider {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_TOOLS_TEST_UTILS_H

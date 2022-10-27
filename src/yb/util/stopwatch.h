@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_STOPWATCH_H
-#define YB_UTIL_STOPWATCH_H
+#pragma once
 
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -367,4 +366,3 @@ class LogTiming {
 } // namespace sw_internal
 } // namespace yb
 
-#endif  // YB_UTIL_STOPWATCH_H

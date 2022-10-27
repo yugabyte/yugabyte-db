@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CONFLICT_RESOLUTION_H
-#define YB_DOCDB_CONFLICT_RESOLUTION_H
+#pragma once
 
 #include <boost/function.hpp>
 
@@ -111,4 +110,3 @@ std::string DebugIntentKeyToString(Slice intent_key);
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_CONFLICT_RESOLUTION_H

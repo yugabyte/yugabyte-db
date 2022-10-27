@@ -13,8 +13,7 @@
 
 // Utilities for encoding and decoding key/value pairs that are used in the DocDB code.
 
-#ifndef YB_DOCDB_DOC_KV_UTIL_H_
-#define YB_DOCDB_DOC_KV_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -146,4 +145,3 @@ Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_KV_UTIL_H_

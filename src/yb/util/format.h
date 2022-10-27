@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_FORMAT_H
-#define YB_UTIL_FORMAT_H
+#pragma once
 
 #include "yb/util/tostring.h" // for ToString
 
@@ -226,4 +225,3 @@ inline std::string Format(const char* format) {
 
 } // namespace yb
 
-#endif // YB_UTIL_FORMAT_H

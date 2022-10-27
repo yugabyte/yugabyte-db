@@ -36,8 +36,7 @@
 // non-const method, all threads accessing the same WriteBatch must use
 // external synchronization.
 
-#ifndef YB_ROCKSDB_WRITE_BATCH_H
-#define YB_ROCKSDB_WRITE_BATCH_H
+#pragma once
 
 #include <stdint.h>
 
@@ -301,4 +300,3 @@ class WriteBatch : public WriteBatchBase {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_WRITE_BATCH_H

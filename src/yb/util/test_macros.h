@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_TEST_MACROS_H
-#define YB_UTIL_TEST_MACROS_H
+#pragma once
 
 #include <set>
 #include <sstream>
@@ -368,4 +367,3 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
     } \
   } while (false)
 
-#endif  // YB_UTIL_TEST_MACROS_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H
+#pragma once
 
 #include <chrono>
 
@@ -266,4 +265,3 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
 }  // namespace yb
 
-#endif /* YB_INTEGRATION_TESTS_TABLET_SPLIT_ITEST_BASE_H */

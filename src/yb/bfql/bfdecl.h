@@ -16,8 +16,7 @@
 // metadata of a builtin function.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFDECL_H_
-#define YB_BFQL_BFDECL_H_
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -138,4 +137,3 @@ class BFDecl {
 } // namespace bfql
 } // namespace yb
 
-#endif  // YB_BFQL_BFDECL_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
-#define YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -273,4 +272,3 @@ struct Transactions {
 } // namespace ql
 } // namespace yb
 
-#endif // YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_

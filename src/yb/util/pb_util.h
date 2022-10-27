@@ -33,8 +33,7 @@
 // Utilities for dealing with protocol buffers.
 // These are mostly just functions similar to what are found in the protobuf
 // library itself, but using yb::faststring instances instead of STL strings.
-#ifndef YB_UTIL_PB_UTIL_H
-#define YB_UTIL_PB_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -352,4 +351,3 @@ using RepeatedBytes = google::protobuf::RepeatedPtrField<std::string>;
 
 } // namespace yb
 
-#endif // YB_UTIL_PB_UTIL_H

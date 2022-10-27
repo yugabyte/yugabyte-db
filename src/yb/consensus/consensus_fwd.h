@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_FWD_H
-#define YB_CONSENSUS_CONSENSUS_FWD_H
+#pragma once
 
 #include <memory>
 #include <type_traits>
@@ -88,4 +87,3 @@ YB_STRONGLY_TYPED_BOOL(PreElection);
 
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_FWD_H

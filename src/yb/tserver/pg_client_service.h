@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_CLIENT_SERVICE_H
-#define YB_TSERVER_PG_CLIENT_SERVICE_H
+#pragma once
 
 #include <future>
 
@@ -98,4 +97,3 @@ class PgClientServiceImpl : public PgClientServiceIf {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_PG_CLIENT_SERVICE_H

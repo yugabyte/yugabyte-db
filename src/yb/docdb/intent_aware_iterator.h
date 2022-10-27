@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_INTENT_AWARE_ITERATOR_H_
-#define YB_DOCDB_INTENT_AWARE_ITERATOR_H_
+#pragma once
 
 #include <boost/optional/optional.hpp>
 
@@ -345,4 +344,3 @@ class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_INTENT_AWARE_ITERATOR_H_

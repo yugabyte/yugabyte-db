@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_QUEUE_H_
-#define YB_CONSENSUS_CONSENSUS_QUEUE_H_
+#pragma once
 
 #include <iosfwd>
 #include <map>
@@ -662,4 +661,3 @@ Status ValidateFlags();
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_QUEUE_H_

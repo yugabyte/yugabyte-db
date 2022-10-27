@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_KV_UTIL_H
-#define YB_UTIL_KV_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -144,4 +143,3 @@ inline void AppendBigEndianUInt64(uint64_t u, Buffer* dest) {
 } // namespace util
 } // namespace yb
 
-#endif // YB_UTIL_KV_UTIL_H

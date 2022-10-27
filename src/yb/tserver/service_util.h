@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TSERVER_SERVICE_UTIL_H
-#define YB_TSERVER_SERVICE_UTIL_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -241,4 +240,3 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
     }                                                          \
   } while (0)
 
-#endif // YB_TSERVER_SERVICE_UTIL_H

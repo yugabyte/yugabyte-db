@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGWRAPPER_YSQL_UPGRADE_H
-#define YB_YQL_PGWRAPPER_YSQL_UPGRADE_H
+#pragma once
 
 #include "libpq-fe.h" // NOLINT
 
@@ -80,4 +79,3 @@ class YsqlUpgradeHelper {
 }  // namespace pgwrapper
 }  // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_YSQL_UPGRADE_H

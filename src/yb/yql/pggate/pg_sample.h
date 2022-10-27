@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_SAMPLE_H_
-#define YB_YQL_PGGATE_PG_SAMPLE_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_select_index.h"
 
@@ -93,4 +92,3 @@ class PgSamplePicker : public PgSelectIndex {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_SAMPLE_H_

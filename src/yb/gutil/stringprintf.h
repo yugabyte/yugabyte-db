@@ -21,8 +21,7 @@
 //      SStringPrintf(&result, "%d %s\n", 10, "hello");
 //      StringAppendF(&result, "%d %s\n", 20, "there");
 
-#ifndef _BASE_STRINGPRINTF_H
-#define _BASE_STRINGPRINTF_H
+#pragma once
 
 #include <stdarg.h>
 #include <string>
@@ -57,4 +56,3 @@ extern const int kStringPrintfVectorMaxArgs;
 // StringPrintfVector will LOG(FATAL) if v.size() > kStringPrintfVectorMaxArgs
 extern std::string StringPrintfVector(const char* format, const std::vector<std::string>& v);
 
-#endif /* _BASE_STRINGPRINTF_H */
