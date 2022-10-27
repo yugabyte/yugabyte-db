@@ -295,13 +295,13 @@ class GraphPanel extends Component {
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
-    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
+    const splitTopNodes = isNonEmptyString(nodeName) && nodeName === 'top' ? 1 : 0;
     const metricsWithSettings = panelTypes[type].metrics.map((metric) => {
       return {
         metric: metric,
         splitTopNodes: splitTopNodes
-      }
-    })
+      };
+    });
     const params = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
@@ -354,13 +354,12 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics, prometheusQueryEnabled },
+      graph: { metrics, prometheusQueryEnabled, loading },
       customer: { currentUser }
     } = this.props;
     const { nodeName } = this.props.graph.graphFilter;
-
     let panelData = <YBLoading />;
-
+    if (loading) panelData = <YBLoading />;
     if (
       insecureLoginToken &&
       !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')
@@ -376,7 +375,6 @@ class GraphPanel extends Component {
         and group metrics by panel type and filter out anything that is empty.
         */
         const width = this.props.width;
-
         panelData = panelTypes[type].metrics
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
@@ -404,26 +402,30 @@ class GraphPanel extends Component {
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
         if (nodeName.match('yb-tserver-') != null) {
-          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced') {
+          if (
+            panelTypes[type].title === 'Master Server' ||
+            panelTypes[type].title === 'Master Server Advanced'
+          ) {
             return null;
           }
         }
         //Hide empty panels for master pods.
         if (nodeName.match('yb-master-') != null) {
-          const skipList = ['Tablet Server',
+          const skipList = [
+            'Tablet Server',
             'YSQL Ops and Latency',
             'YCQL Ops and Latency',
             'YEDIS Ops and Latency',
             'YEDIS Advanced',
             'YSQL Advanced',
-            'YCQL Advanced']
+            'YCQL Advanced'
+          ];
           if (skipList.includes(panelTypes[type].title)) {
             return null;
           }
         }
       }
-
-      if (isEmptyArray(panelData)) {
+      if (isEmptyArray(panelData) || metrics[type]?.error) {
         panelData = 'Error receiving response from Graph Server';
       }
     }
