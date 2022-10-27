@@ -81,7 +81,7 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
 DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
 DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
-            "Whether disable packed row for colocated tables.");
+            "Whether to enable packed row for colocated tables.");
 
 DEFINE_uint64(
     ysql_packed_row_size_limit, 0,
