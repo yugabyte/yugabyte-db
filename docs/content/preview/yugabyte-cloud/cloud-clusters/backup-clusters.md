@@ -40,22 +40,20 @@ The following operations lock the cluster and only one can happen at the same ti
 - pause and resume
 - scaling the cluster, including adding and removing nodes
 - create, delete, and edit of read replicas
-- any scheduled maintenance, including database upgrades, certificate rotations, and cluster maintenance
+- any scheduled maintenance, including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
 
 Backups that don't run are postponed until the next scheduled backup. You can also perform a manual backup after the blocking operation completes.
 
-A backup is run automatically before a database upgrade.
-
-To avoid blocking a backup from running:
+## Recommendations
 
 - Don't perform cluster operations at the same time as your scheduled backup.
 - Configure your [maintenance window](../cloud-maintenance/) and [backup schedule](#schedule-backups) so that they do not conflict.
+- Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
+- Avoid running a backup during or before a scheduled maintenance.
 
 ## On demand backups
 
 Typically, you perform on-demand backups before making critical planned changes to the database.
-
-Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup. Avoid running a backup during or before a scheduled maintenance.
 
 To back up a cluster:
 
