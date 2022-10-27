@@ -428,6 +428,10 @@
    to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/csharp/ysql/"
+   to = "/preview/drivers-orms/csharp/postgres-npgsql/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
 

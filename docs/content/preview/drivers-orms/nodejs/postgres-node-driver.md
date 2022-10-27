@@ -46,7 +46,7 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the PostgreSQL node-postgres smart driver.
+The following sections demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -111,9 +111,9 @@ client.connect()
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
 
-### Step 3: Query the YugabyteDB cluster from your application
+### Step 3: Write your application
 
 Create a new JavaScript file called `QuickStartApp.js` in your project directory.
 
@@ -169,6 +169,70 @@ async.series([
 });
 ```
 
+Copy the following sample code to QuickStartApp.js and replace the values for the `config` object as appropriate for your cluster if you're using SSL.
+
+```js
+var pg = require('pg');
+const async = require('async');
+const assert = require('assert');
+const fs = require('fs');
+const config = {
+  user: 'admin',
+  database: 'yugabyte',
+  host: '22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io',
+  password: 'xxxxxx',
+  port: 5433,
+  // this object will be passed to the TLSSocket constructor
+  ssl: {
+    rejectUnauthorized: false,
+  },
+}
+
+var client = new pg.Client(config);
+
+async.series([
+  function connect(next) {
+    client.connect(next);
+  },
+  function createTable(next) {
+    // The create table statement.
+    const create_table = 'CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, ' +
+                                                               'name varchar, ' +
+                                                               'age int, ' +
+                                                               'language varchar);';
+    // Create the table.
+    console.log('Creating table employee');
+    client.query(create_table, next);
+  },
+  function insert(next) {
+    // Create a variable with the insert statement.
+    const insert = "INSERT INTO employee (id, name, age, language) " +
+                                         "VALUES (2, 'John', 35, 'NodeJS + SSL');";
+    // Insert a row with the employee data.
+    console.log('Inserting row with: %s', insert)
+    client.query(insert, next);
+  },
+  function select(next) {
+    // Query the row for employee id 2 and print the results to the console.
+    const select = 'SELECT name, age, language FROM employee WHERE id = 2;';
+    client.query(select, function (err, result) {
+      if (err) return next(err);
+      var row = result.rows[0];
+      console.log('Query for id=2 returned: name=%s, age=%d, language=%s',
+                                            row.name, row.age, row.language);
+      next();
+    });
+  }
+], function (err) {
+  if (err) {
+    console.error('There was an error', err.message, err.stack);
+  }
+  console.log('Shutting down');
+  client.end();
+});
+
+```
+
 Run the application `QuickStartApp.js` using the following command:
 
 ```js
@@ -181,6 +245,15 @@ You should see output similar to the following:
 Creating table employee
 Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');
 Query for id=1 returned: name=John, age=35, language=NodeJS
+Shutting down
+```
+
+You should see output similar to the following if you're using SSL:
+
+```output
+Creating table employee
+Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (2, 'John', 35, 'NodeJS + SSL');
+Query for id=2 returned: name=John, age=35, language=NodeJS + SSL
 Shutting down
 ```
 

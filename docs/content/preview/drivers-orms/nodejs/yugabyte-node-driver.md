@@ -46,7 +46,7 @@ The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-pos
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB node-postgres smart driver.
+The following sections demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -101,7 +101,7 @@ If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/manage
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-### Step 3: Query the YugabyteDB cluster from your application
+### Step 3: Write your application
 
 Create a new JavaScript file called `QuickStartApp.js` in your project directory.
 
