@@ -134,6 +134,7 @@ void RestorationState::PrepareOperations(
       .sys_catalog_restore_needed = !schedule_id_.IsNil(),
       .is_tablet_part_of_snapshot = snapshot_tablets.count(data.id) != 0,
       .db_oid = db_oid,
+      .schedule_id = schedule_id_,
     });
     return true;
   });
