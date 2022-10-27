@@ -730,7 +730,6 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.provider`, primaryClusterProviderUUID);
       this.providerChanged(primaryClusterProviderUUID);
     }
-    this.props.fetchRunTimeConfigs();
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -1701,9 +1700,13 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const isAuthEnforced = !(
-      featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth
+    const authEnforcedObject = (this.props.runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.universe.create.is_auth_enforced')
     );
+    // Runtime config sends value as string, so need to parse it
+    // TODO: Ask server team to do a future improvement to send boolean
+    const isAuthEnforced = !!(authEnforcedObject?.value === 'true');
+
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -2052,6 +2055,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
+
       enableYSQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>

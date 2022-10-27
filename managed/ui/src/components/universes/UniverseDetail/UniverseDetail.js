@@ -111,7 +111,10 @@ class UniverseDetail extends Component {
         this.props.getHealthCheck(uuid);
       }
     }
-    this.props.fetchRunTimeConfigs(this.props.uuid);
+    // Runtime config should by default be called at customer scope
+    // If a specific universe is selected then fall back to universe scope
+    const runTimeConfigUUID = this.props.uuid ?? this.props.customer?.currentCustomer?.data?.uuid;
+    this.props.fetchRunTimeConfigs(runTimeConfigUUID);
   }
 
   componentDidUpdate(prevProps) {
