@@ -200,7 +200,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
       VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
-      CHECK_OK(SetFlagDefaultAndCurrent("initial_sys_catalog_snapshot_path", candidate_dir));
+      CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(initial_sys_catalog_snapshot_path, candidate_dir));
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";

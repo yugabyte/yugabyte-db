@@ -372,7 +372,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   // rpc_connection_timeout less than kGcTimeout.
   FLAGS_rpc_connection_timeout_ms = MonoDelta(kGcTimeout).ToMilliseconds() / 2;
   FLAGS_enable_rpc_keepalive = true;
-  EnableVerboseLoggingForModule("yb_rpc", 5);
+  ASSERT_OK(EnableVerboseLoggingForModule("yb_rpc", 5));
   // Set up server.
   HostPort server_addr;
   StartTestServer(&server_addr, options);
