@@ -281,7 +281,7 @@ class AbstractInstancesMethod(AbstractMethod):
     def update_open_ssh_port(self, args):
         ssh_port_updated = False
         ssh_ports = [self.extra_vars["ssh_port"]]
-        if int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
+        if args.custom_ssh_port and int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
             ssh_ports.append(int(args.custom_ssh_port))
         ssh_port = self.cloud.wait_for_ssh_ports(
             self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
@@ -732,7 +732,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         else:
             raise YBOpsRecoverableError("Could not ssh into node {}:{} using username {}"
                                         .format(self.extra_vars["ssh_host"],
-                                        self.extra_vars["ssh_port"], self.extra_vars["ssh_user"]))
+                                                self.extra_vars["ssh_port"],
+                                                self.extra_vars["ssh_user"]))
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",

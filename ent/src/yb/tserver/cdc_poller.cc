@@ -87,11 +87,13 @@ CDCPoller::CDCPoller(
     CDCConsumer* cdc_consumer,
     bool use_local_tserver,
     client::YBTablePtr global_transaction_status_table,
-    bool enable_replicate_transaction_status_table)
+    bool enable_replicate_transaction_status_table,
+    SchemaVersion last_compatible_consumer_schema_version)
     : producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       op_id_(consensus::MinimumOpId()),
       validated_schema_version_(0),
+      last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
       resp_(std::make_unique<cdc::GetChangesResponsePB>()),
       output_client_(CreateTwoDCOutputClient(
           cdc_consumer,
@@ -161,22 +163,31 @@ bool CDCPoller::CheckOffline() { return shutdown_.load(); }
   RETURN_WHEN_OFFLINE(); \
   std::lock_guard<std::mutex> l(data_mutex_);
 
-void CDCPoller::SetSchemaVersion(uint32_t cur_version) {
+void CDCPoller::SetSchemaVersion(SchemaVersion cur_version,
+                                 SchemaVersion last_compatible_consumer_schema_version) {
   RETURN_WHEN_OFFLINE();
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoSetSchemaVersion,
-                                                 shared_from_this(), cur_version)),
+                                                 shared_from_this(), cur_version,
+                                                 last_compatible_consumer_schema_version)),
               "Could not submit SetSchemaVersion to thread pool");
 }
 
-void CDCPoller::DoSetSchemaVersion(uint32_t cur_version) {
+void CDCPoller::DoSetSchemaVersion(SchemaVersion cur_version,
+                                   SchemaVersion current_consumer_schema_version) {
   ACQUIRE_MUTEX_IF_ONLINE();
+
+  if (last_compatible_consumer_schema_version_ < current_consumer_schema_version) {
+    last_compatible_consumer_schema_version_ = current_consumer_schema_version;
+  }
 
   if (validated_schema_version_ < cur_version) {
     validated_schema_version_ = cur_version;
     // re-enable polling.
     if (!is_polling_) {
       is_polling_ = true;
-      LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id;
+      LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
+                << " Producer schema version : " << validated_schema_version_
+                << " Consumer schema version : " << last_compatible_consumer_schema_version_;
       WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, shared_from_this())),
                   "Could not submit Poll to thread pool");
     }
@@ -333,6 +344,7 @@ void CDCPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesRespo
   poll_failures_ = std::max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
 
   // Success Case: ApplyChanges() from Poll
+  output_client_->SetLastCompatibleConsumerSchemaVersion(last_compatible_consumer_schema_version_);
   WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
 }
 
@@ -353,6 +365,8 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
     int64_t delay = (1 << apply_failures_) -1;
     SleepFor(MonoDelta::FromMilliseconds(delay));
+    output_client_->SetLastCompatibleConsumerSchemaVersion(
+        last_compatible_consumer_schema_version_);
     WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
     return;
   }

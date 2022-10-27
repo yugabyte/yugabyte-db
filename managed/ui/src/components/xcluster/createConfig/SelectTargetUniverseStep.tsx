@@ -77,7 +77,6 @@ export const SelectTargetUniverseStep = ({
           label="Replication Name"
           component={YBFormInput}
         />
-
         <Field
           name="targetUniverse"
           component={YBFormSelect}

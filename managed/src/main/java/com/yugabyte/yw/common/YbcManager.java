@@ -10,14 +10,23 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -25,14 +34,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
-import java.util.regex.Matcher;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -267,7 +268,10 @@ public class YbcManager {
     Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
     String ybServerPackage =
-        nodeManager.getYbServerPackageName(ybSoftwareVersion, nodeCluster.getRegions().get(0));
+        nodeManager.getYbServerPackageName(
+            ybSoftwareVersion,
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -297,7 +301,8 @@ public class YbcManager {
             ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
     String ybcServerPackage =
         releaseMetadata.getFilePath(
-            Universe.getCluster(universe, node.nodeName).getRegions().get(0));
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
@@ -447,5 +452,12 @@ public class YbcManager {
         ybcClientService.closeClient(ybcClient);
       }
     }
+  }
+
+  private Region getFirstRegion(Universe universe, Cluster cluster) {
+    Customer customer = Customer.get(universe.customerId);
+    UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
+    UUID regionUuid = cluster.userIntent.regionList.get(0);
+    return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
   }
 }

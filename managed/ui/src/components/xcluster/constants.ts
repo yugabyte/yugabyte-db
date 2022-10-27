@@ -17,13 +17,13 @@ export const XClusterConfigState = {
 export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
 
 export const XClusterTableStatus = {
-  OPERATIONAL: 'operational',
-  FAILED: 'failed',
-  WARNING: 'warning',
-  ERROR: 'error',
-  IN_PROGRESS: 'inProgress',
-  VALIDATING: 'validating',
-  BOOTSTRAPPING: 'bootstrapping'
+  RUNNING: 'Running',
+  FAILED: 'Failed',
+  WARNING: 'Warning',
+  ERROR: 'Error',
+  UPDATING: 'Updating',
+  VALIDATED: 'Validated',
+  BOOTSTRAPPING: 'Bootstrapping'
 } as const;
 
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
@@ -41,15 +41,6 @@ export const ReplicationAction = {
 } as const;
 
 export type ReplicationAction = typeof ReplicationAction[keyof typeof ReplicationAction];
-
-export const YBTableRelationType = {
-  SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
-  USER_TABLE_RELATION: 'USER_TABLE_RELATION',
-  INDEX_TABLE_RELATION: 'INDEX_TABLE_RELATION',
-  MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION'
-} as const;
-
-export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
 
 // Time range selector constants
 
@@ -137,7 +128,8 @@ export const TRANSITORY_STATES = [
   ReplicationStatus.UPDATING
 ] as const;
 
-export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 10_000;
+export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
 
 /**
  * Values are mapped to the sort order strings from

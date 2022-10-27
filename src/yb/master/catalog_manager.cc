@@ -895,6 +895,8 @@ Status CatalogManager::Init() {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
+  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
@@ -9499,8 +9501,6 @@ Status CatalogManager::EnableBgTasks() {
 
   cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
-
   return Status::OK();
 }
 
@@ -10195,7 +10195,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table));
+    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);

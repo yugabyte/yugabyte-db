@@ -12,8 +12,7 @@ import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
   editXClusterState,
-  queryLagMetricsForTable,
-  isCatchUpBootstrapRequired
+  queryLagMetricsForTable
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -28,7 +27,9 @@ import {
   TRANSITORY_STATES,
   XClusterConfigState,
   XClusterModalName,
-  XCLUSTER_CONFIG_REFETCH_INTERVAL_MS
+  XClusterTableStatus,
+  XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
 } from '../constants';
 import {
   MaxAcceptableLag,
@@ -97,28 +98,6 @@ export function ReplicationDetails({
     }))
   ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
 
-  const countBootstrapRequiredTablesQuery = useQuery(
-    ['Xcluster', 'needBootstrap', xClusterConfigQuery.data?.tables, 'count'],
-    () =>
-      isCatchUpBootstrapRequired(
-        xClusterConfigQuery.data?.uuid,
-        xClusterConfigQuery.data?.tables
-      ).then((bootstrapTests) => {
-        let numTablesRequiringBootstrap = 0;
-        for (const bootstrapTest of bootstrapTests) {
-          // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-          // Until the backend supports multiple tableUUIDs per request, the response object
-          const tableUUID = Object.keys(bootstrapTest)[0];
-
-          if (bootstrapTest[tableUUID]) {
-            numTablesRequiringBootstrap += 1;
-          }
-        }
-        return numTablesRequiringBootstrap;
-      }),
-    { enabled: !!xClusterConfigQuery.data }
-  );
-
   const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: currentUniverseUUID
@@ -157,18 +136,22 @@ export function ReplicationDetails({
 
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric');
-    if (_.includes(TRANSITORY_STATES, xClusterConfig?.status)) {
-      queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+    if (_.includes(TRANSITORY_STATES, xClusterConfigQuery.data?.status)) {
+      queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
     }
+  }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
+
+  useInterval(() => {
+    queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (
     xClusterConfigQuery.isLoading ||
-    xClusterConfigQuery.isIdle ||
+    (xClusterConfigQuery.isIdle && !xClusterConfigQuery.data) ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle ||
+    (sourceUniverseQuery.isIdle && !sourceUniverseQuery.data) ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle
+    (targetUniverseQuery.isIdle && !targetUniverseQuery.data)
   ) {
     return <YBLoading />;
   }
@@ -203,7 +186,14 @@ export function ReplicationDetails({
   const xClusterConfig = xClusterConfigQuery.data;
   const sourceUniverse = sourceUniverseQuery.data;
   const targetUniverse = targetUniverseQuery.data;
-  const numTablesRequiringBootstrap = countBootstrapRequiredTablesQuery.data ?? 0;
+  const numTablesRequiringBootstrap = xClusterConfig.tableDetails.reduce(
+    (errorCount: number, xClusterTableDetails) => {
+      return xClusterTableDetails.status === XClusterTableStatus.ERROR
+        ? errorCount + 1
+        : errorCount;
+    },
+    0
+  );
   const enabledConfigActions = getEnabledConfigActions(xClusterConfig);
 
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
@@ -375,7 +365,7 @@ export function ReplicationDetails({
                   )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationTables replication={xClusterConfig} />
+                  <ReplicationTables xClusterConfig={xClusterConfig} />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer

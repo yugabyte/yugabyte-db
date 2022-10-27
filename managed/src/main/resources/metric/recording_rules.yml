@@ -140,3 +140,8 @@ groups:
         expr: 'irate(cpu_stime[{{ range }}])'
         labels:
           saved_name: cpu_stime_irate
+
+      - record: node_filesystem_used_bytes
+        expr: 'node_filesystem_size_bytes - ignoring(saved_name)  node_filesystem_free_bytes'
+        labels:
+          saved_name: node_filesystem_used_bytes
