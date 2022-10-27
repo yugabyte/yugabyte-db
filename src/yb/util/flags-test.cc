@@ -23,6 +23,8 @@
 using std::string;
 
 DEFINE_int32(flagstest_testflag, 0, "test flag");
+bool ValidateTestFlag(const char* flag_name, const int32 new_val) { return new_val >= 0; }
+DEFINE_validator(flagstest_testflag, &ValidateTestFlag);
 DECLARE_string(vmodule);
 
 namespace yb {
@@ -41,13 +43,16 @@ TEST_F(FlagsTest, TestRefreshFlagsFile) {
 TEST_F(FlagsTest, TestSetFlagDefault) {
   ASSERT_EQ(0, FLAGS_flagstest_testflag);
   FLAGS_flagstest_testflag = 2;
-  ASSERT_OK(SetFlagDefaultAndCurrent("flagstest_testflag", "1"));
+  ASSERT_OK(SET_FLAG_DEFAULT_AND_CURRENT(flagstest_testflag, 1));
   ASSERT_EQ(1, FLAGS_flagstest_testflag);
 
-  ASSERT_NOK(SetFlagDefaultAndCurrent("flagstest_testflag", "NA"));
+  // Make sure validator is called. Set to a non valid number.
+  ASSERT_NOK(SET_FLAG_DEFAULT_AND_CURRENT(flagstest_testflag, -1));
 }
 
 TEST_F(FlagsTest, TestVmodule) {
+  using flags_internal::SetFlagForce;
+  using flags_internal::SetFlagResult;
   const string file_name = std::filesystem::path(__FILE__).stem();
   ASSERT_EQ(FLAGS_vmodule, "");
   ASSERT_FALSE(VLOG_IS_ON(1));
@@ -57,8 +62,25 @@ TEST_F(FlagsTest, TestVmodule) {
   string old_value, output_msg;
   auto res = SetFlag("vmodule", "BadValue", SetFlagForce::kFalse, &old_value, &output_msg);
   ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+
+  res = SetFlag("vmodule", "files=", SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+
+  res =
+      SetFlag("vmodule", "biggerThanInt=2147483648", SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+
+  res = SetFlag("vmodule", "files=-1b", SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, SetFlagResult::BAD_VALUE);
+
   ASSERT_EQ(FLAGS_vmodule, expected_old);
   ASSERT_FALSE(VLOG_IS_ON(1));
+
+  res = SetFlag("vmodule", "", SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, SetFlagResult::SUCCESS);
+  ASSERT_EQ(old_value, expected_old);
+  ASSERT_EQ(FLAGS_vmodule, "");
+  expected_old = FLAGS_vmodule;
 
   // Add a new module to the list
   res = SetFlag("vmodule", file_name + "=1", SetFlagForce::kFalse, &old_value, &output_msg);
@@ -83,6 +105,12 @@ TEST_F(FlagsTest, TestVmodule) {
   ASSERT_EQ(old_value, expected_old);
   ASSERT_EQ(FLAGS_vmodule, file_name + "=3,file_not_exist=0");
   ASSERT_TRUE(VLOG_IS_ON(3));
+  expected_old = FLAGS_vmodule;
+
+  res = SetFlag("vmodule", "", SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, SetFlagResult::SUCCESS);
+  ASSERT_EQ(old_value, expected_old);
+  ASSERT_EQ(FLAGS_vmodule, file_name + "=0,file_not_exist=0");
   expected_old = FLAGS_vmodule;
 }
 } // namespace yb
