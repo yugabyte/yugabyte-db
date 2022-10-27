@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_COMPACTION_FILE_FILTER_H_
-#define YB_DOCDB_COMPACTION_FILE_FILTER_H_
+#pragma once
 
 #include <memory>
 #include "yb/docdb/docdb_fwd.h"
@@ -108,4 +107,3 @@ class DocDBCompactionFileFilterFactory : public rocksdb::CompactionFileFilterFac
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_COMPACTION_FILE_FILTER_H_

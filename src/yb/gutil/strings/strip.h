@@ -18,8 +18,7 @@
 // This file contains functions that remove a defined part from the string,
 // i.e., strip the string.
 
-#ifndef YB_GUTIL_STRINGS_STRIP_H
-#define YB_GUTIL_STRINGS_STRIP_H
+#pragma once
 
 #include <stddef.h>
 #include <string>
@@ -283,4 +282,3 @@ size_t memrm(char* str, size_t strlen, char c);
 size_t strrmm(char* str, const char* chars);
 size_t strrmm(std::string* str, const std::string& chars);
 
-#endif  // YB_GUTIL_STRINGS_STRIP_H

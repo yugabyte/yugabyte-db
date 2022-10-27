@@ -23,8 +23,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_POLLER_H
-#define ENT_SRC_YB_TSERVER_CDC_POLLER_H
+#pragma once
 
 namespace yb {
 
@@ -135,4 +134,3 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 } // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_CDC_POLLER_H

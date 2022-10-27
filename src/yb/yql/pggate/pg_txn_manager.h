@@ -13,8 +13,7 @@
 
 // No include guards here because this file is expected to be included multiple times.
 
-#ifndef YB_YQL_PGGATE_PG_TXN_MANAGER_H_
-#define YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+#pragma once
 
 #include <mutex>
 
@@ -136,4 +135,3 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
 }  // namespace pggate
 }  // namespace yb
-#endif // YB_YQL_PGGATE_PG_TXN_MANAGER_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
-#define YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -76,4 +75,3 @@ class SnapshotOperation :
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H

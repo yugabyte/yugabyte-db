@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_TRANSACTION_DUMP_H
-#define YB_DOCDB_TRANSACTION_DUMP_H
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
@@ -87,4 +86,3 @@ void TransactionDump(TransactionDumpOp op, Args&&... args) {
 } // namespace docdb
 } // namespace yb
 
-#endif  // YB_DOCDB_TRANSACTION_DUMP_H

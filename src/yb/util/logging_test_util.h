@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_LOGGING_TEST_UTIL_H
-#define YB_UTIL_LOGGING_TEST_UTIL_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -105,4 +104,3 @@ struct ScopedRegisterSink {
 
 } // namespace yb
 
-#endif  // YB_UTIL_LOGGING_TEST_UTIL_H

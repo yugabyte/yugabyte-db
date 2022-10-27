@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_STATISTICS_H
-#define YB_ROCKSDB_STATISTICS_H
+#pragma once
 
 #include <atomic>
 #include <cstddef>
@@ -427,4 +426,3 @@ std::shared_ptr<Statistics> CreateDBStatisticsForTests(bool for_intents = false)
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_STATISTICS_H

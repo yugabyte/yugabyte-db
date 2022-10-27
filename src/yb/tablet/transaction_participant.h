@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_PARTICIPANT_H
-#define YB_TABLET_TRANSACTION_PARTICIPANT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -248,4 +247,3 @@ class TransactionParticipant : public TransactionStatusManager {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_PARTICIPANT_H

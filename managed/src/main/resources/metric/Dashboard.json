@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 149,
+    "id" : 153,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 150
+    "id" : 154
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 151
+    "id" : 155
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -693,6 +693,98 @@
       "y" : 55
     }
   }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Persistent Volume Usage Percent",
+    "id" : 5,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Container Usage",
+      "expr" : "((sum(kubelet_volume_stats_used_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824)/(sum(kubelet_volume_stats_capacity_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824))*100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 55
+    }
+  }, {
     "collapsed" : false,
     "datasource" : "$datasource",
     "gridPos" : {
@@ -704,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 152
+    "id" : 156
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -784,7 +876,7 @@
       "alignLevel" : null
     },
     "title" : "UpdateConsensus / sec",
-    "id" : 42,
+    "id" : 46,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "UpdateConsensus",
@@ -876,7 +968,7 @@
       "alignLevel" : null
     },
     "title" : "UpdateConsensus Latency",
-    "id" : 43,
+    "id" : 47,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "UpdateConsensus",
@@ -968,7 +1060,7 @@
       "alignLevel" : null
     },
     "title" : "CPU Util Secs / Sec",
-    "id" : 44,
+    "id" : 48,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "System",
@@ -1065,7 +1157,7 @@
       "alignLevel" : null
     },
     "title" : "GetTabletLocations / sec",
-    "id" : 45,
+    "id" : 49,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "GetTabletLocations",
@@ -1157,7 +1249,7 @@
       "alignLevel" : null
     },
     "title" : "MultiRaftUpdateConsensus / sec",
-    "id" : 62,
+    "id" : 66,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -1249,7 +1341,7 @@
       "alignLevel" : null
     },
     "title" : "MultiRaftUpdateConsensus Latency",
-    "id" : 63,
+    "id" : 67,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -1341,7 +1433,7 @@
       "alignLevel" : null
     },
     "title" : "Overall RPCs / sec",
-    "id" : 64,
+    "id" : 68,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RPCs",
@@ -1433,7 +1525,7 @@
       "alignLevel" : null
     },
     "title" : "Create/Delete Table RPCs",
-    "id" : 65,
+    "id" : 69,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Create Table",
@@ -1530,7 +1622,7 @@
       "alignLevel" : null
     },
     "title" : "TS Heartbeats / sec",
-    "id" : 68,
+    "id" : 72,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Heartbeats",
@@ -1622,7 +1714,7 @@
       "alignLevel" : null
     },
     "title" : "Master TSService Reads / sec",
-    "id" : 69,
+    "id" : 73,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Reads",
@@ -1714,7 +1806,7 @@
       "alignLevel" : null
     },
     "title" : "Master TS Read Latency",
-    "id" : 70,
+    "id" : 74,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TSService Read Latency",
@@ -1806,7 +1898,7 @@
       "alignLevel" : null
     },
     "title" : "Master TSService Writes / sec",
-    "id" : 71,
+    "id" : 75,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Writes",
@@ -1898,7 +1990,7 @@
       "alignLevel" : null
     },
     "title" : "Master TS Write Latency",
-    "id" : 72,
+    "id" : 76,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TSService Write Latency",
@@ -1990,7 +2082,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 73,
+    "id" : 77,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -2082,7 +2174,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 132,
+    "id" : 136,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Master RPC",
@@ -2107,7 +2199,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 153
+    "id" : 157
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2187,7 +2279,7 @@
       "alignLevel" : null
     },
     "title" : "Glog messages",
-    "id" : 46,
+    "id" : 50,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Warning",
@@ -2289,7 +2381,7 @@
       "alignLevel" : null
     },
     "title" : "Average Latency",
-    "id" : 47,
+    "id" : 51,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RPC Latency",
@@ -2381,7 +2473,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Read / Sec / Node",
-    "id" : 48,
+    "id" : 52,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -2473,7 +2565,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec / Node",
-    "id" : 49,
+    "id" : 53,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -2565,7 +2657,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 50,
+    "id" : 54,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -2667,7 +2759,7 @@
       "alignLevel" : null
     },
     "title" : "Average SSTables",
-    "id" : 51,
+    "id" : 55,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SST Files",
@@ -2759,7 +2851,7 @@
       "alignLevel" : null
     },
     "title" : "Cache Hit & Miss",
-    "id" : 52,
+    "id" : 56,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Hit",
@@ -2856,7 +2948,7 @@
       "alignLevel" : null
     },
     "title" : "Block cache usage",
-    "id" : 53,
+    "id" : 57,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Multi Touch",
@@ -2953,7 +3045,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Blooms usefulness",
-    "id" : 54,
+    "id" : 58,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Blooms Useful",
@@ -3050,7 +3142,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction",
-    "id" : 55,
+    "id" : 59,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -3147,7 +3239,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction num files",
-    "id" : 56,
+    "id" : 60,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Num Files",
@@ -3239,7 +3331,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction time",
-    "id" : 57,
+    "id" : 61,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Avg",
@@ -3331,7 +3423,7 @@
       "alignLevel" : null
     },
     "title" : "Flush write",
-    "id" : 58,
+    "id" : 62,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -3423,7 +3515,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seeks / Sec / Node",
-    "id" : 59,
+    "id" : 63,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -3515,7 +3607,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
-    "id" : 60,
+    "id" : 64,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -3617,7 +3709,7 @@
       "alignLevel" : null
     },
     "title" : "SSTable size",
-    "id" : 61,
+    "id" : 65,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Size",
@@ -3709,7 +3801,7 @@
       "alignLevel" : null
     },
     "title" : "TCMalloc Stats",
-    "id" : 66,
+    "id" : 70,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "In Use",
@@ -3806,7 +3898,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Running",
-    "id" : 67,
+    "id" : 71,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Running",
@@ -3831,7 +3923,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 154
+    "id" : 158
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -3897,7 +3989,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "GB"
     }, {
       "format" : "short",
       "label" : null,
@@ -3910,1482 +4002,19 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Cache Hit & Miss",
-    "id" : 102,
+    "title" : "Disk Capacity",
+    "id" : 20,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Hit",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "legendFormat" : "Disk Capacity",
+      "expr" : "sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824",
       "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Miss",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
-      "refId" : "B"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
       "x" : 12,
       "y" : 202
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "MB"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Compaction",
-    "id" : 103,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Written",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Read",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 211
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "WAL Bytes Written / Sec",
-    "id" : 104,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Written",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(log_bytes_logged{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 211
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "us"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "WAL Latency",
-    "id" : 105,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Sync",
-      "expr" : "(avg(rate(log_sync_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_sync_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Commit",
-      "expr" : "(avg(rate(log_group_commit_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_group_commit_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Append",
-      "expr" : "(avg(rate(log_append_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_append_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 220
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "WAL Ops / Sec",
-    "id" : 106,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Sync",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_sync_latency_count\"}[300s]))) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Append",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_append_latency_count\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Commit",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_group_commit_latency_count\"}[300s]))) by (saved_name)",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 220
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Memory Pressure Rejections",
-    "id" : 107,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Leader",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"leader_memory_pressure_rejections\"}[300s]))) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Follower",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"follower_memory_pressure_rejections\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Operations",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 229
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Operations Inflight",
-    "id" : 108,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Write",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"write_operations_inflight\"}[300s]))) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "All",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"all_operations_inflight\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 229
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "us"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Read Op Latency (Avg)",
-    "id" : 109,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Read",
-      "expr" : "(avg(rate(ql_read_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 238
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "us"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Read Ops / Sec",
-    "id" : 110,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Read",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 238
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
-    "id" : 111,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Seek",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_seek\"}[300s]))) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Prev",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_prev\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Next",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_next\"}[300s]))) by (saved_name)",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 247
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Write Rejections",
-    "id" : 112,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Rejections",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(majority_sst_files_rejections{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 247
-    }
-  }, {
-    "collapsed" : false,
-    "datasource" : "$datasource",
-    "gridPos" : {
-      "w" : 24,
-      "h" : 1,
-      "x" : 0,
-      "y" : 248
-    },
-    "panels" : [ ],
-    "type" : "row",
-    "title" : "Node Metrics",
-    "id" : 155
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "%"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "CPU Usage",
-    "id" : 5,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "System",
-      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "User",
-      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 248
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "%"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "CPU Usage (System)",
-    "id" : 6,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : null,
-      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 257
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "%"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "CPU Usage (User)",
-    "id" : 7,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : null,
-      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 257
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Disk Bytes / Sec / Node",
-    "id" : 18,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Read",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_read_bytes_irate\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Write",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_write_bytes_irate\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 266
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Disk IOPS / Node",
-    "id" : 19,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Reads",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_reads_irate\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Writes",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_writes_irate\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 266
     }
   }, {
     "aliasColors" : { },
@@ -5466,1001 +4095,18 @@
       "alignLevel" : null
     },
     "title" : "Disk Usage",
-    "id" : 20,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "free",
-      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "size",
-      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 275
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "GB"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Memory Usage",
-    "id" : 74,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Free",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemFree_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Cached",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Cached_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Buffered",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Buffers_bytes\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 275
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Network Bytes / Sec / Node",
-    "id" : 75,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "TX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_bytes_irate\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "RX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_bytes_irate\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 284
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Network Errors / Sec / Node",
-    "id" : 76,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "RX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_errs_irate\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "TX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_errs_irate\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 284
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Network Packets / Sec / Node",
-    "id" : 77,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "TX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_packets_irate\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "RX",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_packets_irate\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 293
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "us"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Clock Skew",
-    "id" : 78,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Max",
-      "expr" : "max(max_over_time(hybrid_clock_skew{node_prefix=~\"$dbcluster\", export_type=~\"(tserver_export|master_export)\"}[300s])) by (saved_name)",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 293
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "node_up",
-    "id" : 79,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "",
-      "expr" : "avg(up{node_prefix=~\"$dbcluster\"}) by (instance)",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 302
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "System Load Over Time",
-    "id" : 101,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "5 minutes",
-      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load5\"}) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "1 minute",
-      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load1\"}) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "15 minutes",
-      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load15\"}) by (saved_name)",
-      "refId" : "C"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 302
-    }
-  }, {
-    "collapsed" : false,
-    "datasource" : "$datasource",
-    "gridPos" : {
-      "w" : 24,
-      "h" : 1,
-      "x" : 0,
-      "y" : 303
-    },
-    "panels" : [ ],
-    "type" : "row",
-    "title" : "RocksDB",
-    "id" : 156
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "%"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Transaction pool cache hits",
-    "id" : 22,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Cache hits",
-      "expr" : "(avg(increase(transaction_pool_cache_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(increase(transaction_pool_cache_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 12,
-      "y" : 303
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Average SSTables / Node",
-    "id" : 23,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Files",
-      "expr" : "avg(sum by (exported_instance)(rocksdb_current_version_num_sst_files{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}))",
-      "refId" : "A"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 312
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Cache Add",
     "id" : 24,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Multi Touch Add",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_multi_touch_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "legendFormat" : "Disk Usage",
+      "expr" : "sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824",
       "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Add",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Single Touch Add",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_single_touch_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
-      "refId" : "C"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 312
+      "x" : 0,
+      "y" : 211
     }
   }, {
     "aliasColors" : { },
@@ -6541,217 +4187,23 @@
       "alignLevel" : null
     },
     "title" : "Cache Hit & Miss",
-    "id" : 25,
+    "id" : 106,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Hit",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Miss",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 321
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : "GB"
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "Block cache usage",
-    "id" : 26,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Multi Touch",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"block_cache_multi_touch_usage\", export_type=\"tserver_export\"}[300s])) by (saved_name) / 1073741824",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Single Touch",
-      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"block_cache_single_touch_usage\", export_type=\"tserver_export\"}[300s])) by (saved_name) / 1073741824",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 321
-    }
-  }, {
-    "aliasColors" : { },
-    "bars" : false,
-    "collapsed" : false,
-    "dashLength" : 10,
-    "dashes" : false,
-    "datasource" : "$datasource",
-    "fieldConfig" : {
-      "defaults" : {
-        "custom" : { }
-      },
-      "overrides" : [ ]
-    },
-    "fill" : 1,
-    "fillGradient" : 0,
-    "hiddenSeries" : false,
-    "legend" : {
-      "alignAsTable" : true,
-      "avg" : false,
-      "current" : true,
-      "max" : true,
-      "min" : false,
-      "show" : true,
-      "total" : false,
-      "values" : true
-    },
-    "lines" : true,
-    "linewidth" : 1,
-    "nullPointMode" : "null",
-    "options" : {
-      "dataLinks" : [ ]
-    },
-    "percentage" : false,
-    "pointradius" : 2,
-    "points" : false,
-    "renderer" : "flot",
-    "repeat" : null,
-    "repeatDirection" : "v",
-    "seriesOverrides" : [ ],
-    "spaceLength" : 10,
-    "stack" : false,
-    "steppedLine" : false,
-    "thresholds" : [ ],
-    "timeFrom" : null,
-    "timeRegions" : [ ],
-    "timeShift" : null,
-    "tooltip" : {
-      "shared" : true,
-      "sort" : 0,
-      "value_type" : "individual"
-    },
-    "type" : "graph",
-    "xaxis" : {
-      "buckets" : null,
-      "mode" : "time",
-      "name" : null,
-      "show" : true,
-      "values" : [ ]
-    },
-    "yaxes" : [ {
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : true,
-      "format" : ""
-    }, {
-      "format" : "short",
-      "label" : null,
-      "logBase" : 1,
-      "max" : null,
-      "min" : null,
-      "show" : false
-    } ],
-    "yaxis" : {
-      "align" : false,
-      "alignLevel" : null
-    },
-    "title" : "LSM-DB Blooms usefulness",
-    "id" : 27,
-    "targets" : [ {
-      "hide" : false,
-      "legendFormat" : "Blooms Useful",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_useful\"}[300s]))) by (saved_name)",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Blooms Checked",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_checked\"}[300s]))) by (saved_name)",
-      "refId" : "B"
-    } ],
-    "gridPos" : {
-      "w" : 12,
-      "h" : 9,
-      "x" : 0,
-      "y" : 330
+      "y" : 211
     }
   }, {
     "aliasColors" : { },
@@ -6832,17 +4284,2545 @@
       "alignLevel" : null
     },
     "title" : "Compaction",
-    "id" : 28,
+    "id" : 107,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Read",
-      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
       "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 220
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "WAL Bytes Written / Sec",
+    "id" : 108,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Written",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(log_bytes_logged{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 220
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "WAL Latency",
+    "id" : 109,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Sync",
+      "expr" : "(avg(rate(log_sync_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_sync_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Commit",
+      "expr" : "(avg(rate(log_group_commit_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_group_commit_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Append",
+      "expr" : "(avg(rate(log_append_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_append_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 229
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "WAL Ops / Sec",
+    "id" : 110,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Sync",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_sync_latency_count\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Append",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_append_latency_count\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Commit",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_group_commit_latency_count\"}[300s]))) by (saved_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 229
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Memory Pressure Rejections",
+    "id" : 111,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Leader",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"leader_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Follower",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"follower_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Operations",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 238
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Operations Inflight",
+    "id" : 112,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Write",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"write_operations_inflight\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "All",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"all_operations_inflight\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 238
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Read Op Latency (Avg)",
+    "id" : 113,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Read",
+      "expr" : "(avg(rate(ql_read_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 247
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Read Ops / Sec",
+    "id" : 114,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Read",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 247
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
+    "id" : 115,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Seek",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_seek\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Prev",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_prev\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Next",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_next\"}[300s]))) by (saved_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 256
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Write Rejections",
+    "id" : 116,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Rejections",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(majority_sst_files_rejections{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 256
+    }
+  }, {
+    "collapsed" : false,
+    "datasource" : "$datasource",
+    "gridPos" : {
+      "w" : 24,
+      "h" : 1,
+      "x" : 0,
+      "y" : 257
+    },
+    "panels" : [ ],
+    "type" : "row",
+    "title" : "Node Metrics",
+    "id" : 159
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "CPU Usage",
+    "id" : 6,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "System",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "User",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 257
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "CPU Usage (System)",
+    "id" : 7,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 266
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "CPU Usage (User)",
+    "id" : 8,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 266
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Disk Bytes / Sec / Node",
+    "id" : 19,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Read",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_read_bytes_irate\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Write",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_write_bytes_irate\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 275
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Disk IOPS / Node",
+    "id" : 21,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Reads",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_reads_irate\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Writes",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_writes_irate\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 275
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "GB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Disk Usage",
+    "id" : 22,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "free",
+      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "size",
+      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 284
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Disk Usage Percent",
+    "id" : 23,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Disk Usage",
+      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824)/(sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824))*100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 284
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "GB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Memory Usage",
+    "id" : 78,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Free",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemFree_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Cached",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Cached_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Buffered",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Buffers_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 293
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Network Bytes / Sec / Node",
+    "id" : 79,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "TX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_bytes_irate\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_bytes_irate\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 293
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Network Errors / Sec / Node",
+    "id" : 80,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "RX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_errs_irate\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "TX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_errs_irate\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 302
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Network Packets / Sec / Node",
+    "id" : 81,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "TX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_transmit_packets_irate\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RX",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_network_receive_packets_irate\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 302
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Clock Skew",
+    "id" : 82,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Max",
+      "expr" : "max(max_over_time(hybrid_clock_skew{node_prefix=~\"$dbcluster\", export_type=~\"(tserver_export|master_export)\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 311
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "node_up",
+    "id" : 83,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "",
+      "expr" : "avg(up{node_prefix=~\"$dbcluster\"}) by (instance)",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 311
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "System Load Over Time",
+    "id" : 105,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "5 minutes",
+      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load5\"}) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "1 minute",
+      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load1\"}) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "15 minutes",
+      "expr" : "avg({node_prefix=~\"$dbcluster\", saved_name=\"node_load15\"}) by (saved_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 320
+    }
+  }, {
+    "collapsed" : false,
+    "datasource" : "$datasource",
+    "gridPos" : {
+      "w" : 24,
+      "h" : 1,
+      "x" : 0,
+      "y" : 321
+    },
+    "panels" : [ ],
+    "type" : "row",
+    "title" : "RocksDB",
+    "id" : 160
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Transaction pool cache hits",
+    "id" : 26,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Cache hits",
+      "expr" : "(avg(increase(transaction_pool_cache_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(increase(transaction_pool_cache_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 321
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Average SSTables / Node",
+    "id" : 27,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Files",
+      "expr" : "avg(sum by (exported_instance)(rocksdb_current_version_num_sst_files{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 330
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Cache Add",
+    "id" : 28,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Multi Touch Add",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_multi_touch_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Add",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Single Touch Add",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_single_touch_add\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "refId" : "C"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -6928,8 +6908,396 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Compaction num files",
+    "title" : "Cache Hit & Miss",
     "id" : 29,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Hit",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Miss",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 339
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "GB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Block cache usage",
+    "id" : 30,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Multi Touch",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"block_cache_multi_touch_usage\", export_type=\"tserver_export\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Single Touch",
+      "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"block_cache_single_touch_usage\", export_type=\"tserver_export\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 339
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "LSM-DB Blooms usefulness",
+    "id" : 31,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Blooms Useful",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_useful\"}[300s]))) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Blooms Checked",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_checked\"}[300s]))) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 348
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "MB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Compaction",
+    "id" : 32,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Written",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Read",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 348
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Compaction num files",
+    "id" : 33,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Avg",
@@ -6940,7 +7308,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 339
+      "y" : 357
     }
   }, {
     "aliasColors" : { },
@@ -7021,7 +7389,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction tasks",
-    "id" : 30,
+    "id" : 34,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -7032,7 +7400,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 339
+      "y" : 357
     }
   }, {
     "aliasColors" : { },
@@ -7113,7 +7481,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction time",
-    "id" : 31,
+    "id" : 35,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Avg",
@@ -7124,7 +7492,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 348
+      "y" : 366
     }
   }, {
     "aliasColors" : { },
@@ -7205,7 +7573,7 @@
       "alignLevel" : null
     },
     "title" : "Flush write",
-    "id" : 32,
+    "id" : 36,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Flush",
@@ -7216,7 +7584,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 348
+      "y" : 366
     }
   }, {
     "aliasColors" : { },
@@ -7297,7 +7665,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Get Latencies",
-    "id" : 33,
+    "id" : 37,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Get",
@@ -7308,7 +7676,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 357
+      "y" : 375
     }
   }, {
     "aliasColors" : { },
@@ -7389,7 +7757,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Mutex Wait Latencies",
-    "id" : 34,
+    "id" : 38,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Mutex",
@@ -7400,7 +7768,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 357
+      "y" : 375
     }
   }, {
     "aliasColors" : { },
@@ -7481,7 +7849,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek Latencies",
-    "id" : 35,
+    "id" : 39,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -7492,7 +7860,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 366
+      "y" : 384
     }
   }, {
     "aliasColors" : { },
@@ -7573,7 +7941,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Write Latencies",
-    "id" : 36,
+    "id" : 40,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -7584,7 +7952,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 366
+      "y" : 384
     }
   }, {
     "aliasColors" : { },
@@ -7665,7 +8033,7 @@
       "alignLevel" : null
     },
     "title" : "Memory Pressure Rejections",
-    "id" : 37,
+    "id" : 41,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Leader",
@@ -7686,7 +8054,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 375
+      "y" : 393
     }
   }, {
     "aliasColors" : { },
@@ -7767,7 +8135,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek/Next/Prev Ops / Sec / Node",
-    "id" : 38,
+    "id" : 42,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -7788,7 +8156,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 375
+      "y" : 393
     }
   }, {
     "aliasColors" : { },
@@ -7869,7 +8237,7 @@
       "alignLevel" : null
     },
     "title" : "Stalls",
-    "id" : 39,
+    "id" : 43,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Stalls",
@@ -7880,7 +8248,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 384
+      "y" : 402
     }
   }, {
     "aliasColors" : { },
@@ -7961,7 +8329,7 @@
       "alignLevel" : null
     },
     "title" : "SSTable size / Node",
-    "id" : 40,
+    "id" : 44,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Size",
@@ -7972,7 +8340,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 384
+      "y" : 402
     }
   }, {
     "aliasColors" : { },
@@ -8053,7 +8421,7 @@
       "alignLevel" : null
     },
     "title" : "Write Rejections",
-    "id" : 41,
+    "id" : 45,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejections",
@@ -8064,7 +8432,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 393
+      "y" : 411
     }
   }, {
     "collapsed" : false,
@@ -8073,12 +8441,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 394
+      "y" : 412
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Tablet Server",
-    "id" : 157
+    "id" : 161
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8158,7 +8526,7 @@
       "alignLevel" : null
     },
     "title" : "Transaction",
-    "id" : 21,
+    "id" : 25,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Conflicts",
@@ -8174,7 +8542,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 394
+      "y" : 412
     }
   }, {
     "aliasColors" : { },
@@ -8255,7 +8623,7 @@
       "alignLevel" : null
     },
     "title" : "Total Ops / Sec",
-    "id" : 113,
+    "id" : 117,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -8276,7 +8644,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 403
+      "y" : 421
     }
   }, {
     "aliasColors" : { },
@@ -8357,7 +8725,7 @@
       "alignLevel" : null
     },
     "title" : "Async Replication Lag",
-    "id" : 114,
+    "id" : 118,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -8368,7 +8736,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 403
+      "y" : 421
     }
   }, {
     "aliasColors" : { },
@@ -8449,7 +8817,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Cache Num Ops / Node",
-    "id" : 115,
+    "id" : 119,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Num Ops",
@@ -8460,7 +8828,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 412
+      "y" : 430
     }
   }, {
     "aliasColors" : { },
@@ -8541,7 +8909,7 @@
       "alignLevel" : null
     },
     "title" : "Total Consensus Change Config",
-    "id" : 116,
+    "id" : 120,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -8567,7 +8935,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 412
+      "y" : 430
     }
   }, {
     "aliasColors" : { },
@@ -8648,7 +9016,7 @@
       "alignLevel" : null
     },
     "title" : "Change Config Latency",
-    "id" : 117,
+    "id" : 121,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -8659,7 +9027,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 421
+      "y" : 439
     }
   }, {
     "aliasColors" : { },
@@ -8740,7 +9108,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Rpc Latencies",
-    "id" : 118,
+    "id" : 122,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -8761,7 +9129,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 421
+      "y" : 439
     }
   }, {
     "aliasColors" : { },
@@ -8842,7 +9210,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Ops / Sec",
-    "id" : 119,
+    "id" : 123,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -8863,7 +9231,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 430
+      "y" : 448
     }
   }, {
     "aliasColors" : { },
@@ -8944,7 +9312,7 @@
       "alignLevel" : null
     },
     "title" : "Context Switches",
-    "id" : 120,
+    "id" : 124,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Voluntary",
@@ -8960,7 +9328,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 430
+      "y" : 448
     }
   }, {
     "aliasColors" : { },
@@ -9041,7 +9409,7 @@
       "alignLevel" : null
     },
     "title" : "CPU Util Secs / Sec",
-    "id" : 121,
+    "id" : 125,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "System",
@@ -9057,7 +9425,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 439
+      "y" : 457
     }
   }, {
     "aliasColors" : { },
@@ -9138,7 +9506,7 @@
       "alignLevel" : null
     },
     "title" : "Glog messages",
-    "id" : 122,
+    "id" : 126,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Warning",
@@ -9159,7 +9527,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 439
+      "y" : 457
     }
   }, {
     "aliasColors" : { },
@@ -9240,7 +9608,7 @@
       "alignLevel" : null
     },
     "title" : "Reactor Delays",
-    "id" : 123,
+    "id" : 127,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -9261,7 +9629,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 448
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9342,7 +9710,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Read / Sec / Node",
-    "id" : 124,
+    "id" : 128,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -9353,7 +9721,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 448
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9434,7 +9802,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec / Node",
-    "id" : 125,
+    "id" : 129,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -9445,7 +9813,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 457
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9526,7 +9894,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 126,
+    "id" : 130,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -9547,7 +9915,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 457
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9628,7 +9996,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Ops / Sec / Node",
-    "id" : 127,
+    "id" : 131,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -9649,7 +10017,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 466
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -9730,7 +10098,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Stats / Node",
-    "id" : 128,
+    "id" : 132,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Bytes Read",
@@ -9746,7 +10114,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 466
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -9827,7 +10195,7 @@
       "alignLevel" : null
     },
     "title" : "Average Latency",
-    "id" : 129,
+    "id" : 133,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -9848,7 +10216,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 475
+      "y" : 493
     }
   }, {
     "aliasColors" : { },
@@ -9929,7 +10297,7 @@
       "alignLevel" : null
     },
     "title" : "Remote Bootstraps",
-    "id" : 130,
+    "id" : 134,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Remote Bootstraps",
@@ -9940,7 +10308,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 475
+      "y" : 493
     }
   }, {
     "aliasColors" : { },
@@ -10021,7 +10389,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 131,
+    "id" : 135,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YCQL RPC",
@@ -10032,7 +10400,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 484
+      "y" : 502
     }
   }, {
     "aliasColors" : { },
@@ -10113,7 +10481,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 134,
+    "id" : 138,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
@@ -10124,7 +10492,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 484
+      "y" : 502
     }
   }, {
     "aliasColors" : { },
@@ -10205,7 +10573,7 @@
       "alignLevel" : null
     },
     "title" : "tserver_rpcs_per_sec_by_universe",
-    "id" : 135,
+    "id" : 139,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -10216,7 +10584,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 493
+      "y" : 511
     }
   }, {
     "aliasColors" : { },
@@ -10297,7 +10665,7 @@
       "alignLevel" : null
     },
     "title" : "Ops / Sec / Node",
-    "id" : 136,
+    "id" : 140,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -10318,7 +10686,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 493
+      "y" : 511
     }
   }, {
     "aliasColors" : { },
@@ -10399,7 +10767,7 @@
       "alignLevel" : null
     },
     "title" : "SpinLock Time/Server",
-    "id" : 137,
+    "id" : 141,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SpinLock",
@@ -10410,7 +10778,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 502
+      "y" : 520
     }
   }, {
     "aliasColors" : { },
@@ -10491,7 +10859,7 @@
       "alignLevel" : null
     },
     "title" : "TCMalloc Stats",
-    "id" : 138,
+    "id" : 142,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "In Use",
@@ -10507,7 +10875,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 502
+      "y" : 520
     }
   }, {
     "aliasColors" : { },
@@ -10588,7 +10956,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Running",
-    "id" : 139,
+    "id" : 143,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Running",
@@ -10599,7 +10967,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 511
+      "y" : 529
     }
   }, {
     "aliasColors" : { },
@@ -10680,7 +11048,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Started",
-    "id" : 140,
+    "id" : 144,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Started",
@@ -10691,7 +11059,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 511
+      "y" : 529
     }
   }, {
     "aliasColors" : { },
@@ -10772,7 +11140,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 141,
+    "id" : 145,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -10783,7 +11151,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 520
+      "y" : 538
     }
   }, {
     "collapsed" : false,
@@ -10792,12 +11160,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 521
+      "y" : 539
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 158
+    "id" : 162
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -10877,7 +11245,7 @@
       "alignLevel" : null
     },
     "title" : "Reactor Delays",
-    "id" : 8,
+    "id" : 9,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -10898,7 +11266,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 521
+      "y" : 539
     }
   }, {
     "aliasColors" : { },
@@ -10979,7 +11347,7 @@
       "alignLevel" : null
     },
     "title" : "YCQL Op Latency (P95)",
-    "id" : 9,
+    "id" : 10,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -11015,7 +11383,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 530
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11096,7 +11464,7 @@
       "alignLevel" : null
     },
     "title" : "YCQL Op Latency (P99)",
-    "id" : 10,
+    "id" : 11,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -11132,7 +11500,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 530
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11213,7 +11581,7 @@
       "alignLevel" : null
     },
     "title" : "Total YCQL Ops / Sec",
-    "id" : 11,
+    "id" : 12,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -11249,7 +11617,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 539
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11330,7 +11698,7 @@
       "alignLevel" : null
     },
     "title" : "YCQL Op Latency (Avg)",
-    "id" : 12,
+    "id" : 13,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -11366,7 +11734,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 539
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11447,7 +11815,7 @@
       "alignLevel" : null
     },
     "title" : "YCQL Latency Breakdown",
-    "id" : 13,
+    "id" : 14,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Analyze",
@@ -11473,7 +11841,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 548
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11554,7 +11922,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Latency",
-    "id" : 14,
+    "id" : 15,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -11565,7 +11933,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 548
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11646,7 +12014,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Ops Local vs Remote",
-    "id" : 15,
+    "id" : 16,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -11657,7 +12025,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 557
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -11738,7 +12106,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 16,
+    "id" : 17,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -11749,7 +12117,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 557
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -11830,7 +12198,7 @@
       "alignLevel" : null
     },
     "title" : "Transaction",
-    "id" : 17,
+    "id" : 18,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Avg",
@@ -11841,7 +12209,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 566
+      "y" : 584
     }
   }, {
     "aliasColors" : { },
@@ -11922,7 +12290,7 @@
       "alignLevel" : null
     },
     "title" : "Response Size (bytes)",
-    "id" : 100,
+    "id" : 104,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Response Size",
@@ -11933,7 +12301,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 566
+      "y" : 584
     }
   }, {
     "collapsed" : false,
@@ -11942,12 +12310,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 567
+      "y" : 585
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 159
+    "id" : 163
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -12027,7 +12395,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (Avg)",
-    "id" : 80,
+    "id" : 84,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -12038,7 +12406,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 567
+      "y" : 585
     }
   }, {
     "aliasColors" : { },
@@ -12119,7 +12487,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Hash",
-    "id" : 81,
+    "id" : 85,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HIncrBy",
@@ -12185,7 +12553,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 576
+      "y" : 594
     }
   }, {
     "aliasColors" : { },
@@ -12266,7 +12634,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Others",
-    "id" : 82,
+    "id" : 86,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Auth",
@@ -12317,7 +12685,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 576
+      "y" : 594
     }
   }, {
     "aliasColors" : { },
@@ -12398,7 +12766,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Set",
-    "id" : 83,
+    "id" : 87,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SCard",
@@ -12434,7 +12802,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 585
+      "y" : 603
     }
   }, {
     "aliasColors" : { },
@@ -12515,7 +12883,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Sorted Set",
-    "id" : 84,
+    "id" : 88,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ZRem",
@@ -12546,7 +12914,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 585
+      "y" : 603
     }
   }, {
     "aliasColors" : { },
@@ -12627,7 +12995,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Str",
-    "id" : 85,
+    "id" : 89,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "GetRange",
@@ -12693,7 +13061,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 594
+      "y" : 612
     }
   }, {
     "aliasColors" : { },
@@ -12774,7 +13142,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- TS",
-    "id" : 86,
+    "id" : 90,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TsGet",
@@ -12800,7 +13168,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 594
+      "y" : 612
     }
   }, {
     "aliasColors" : { },
@@ -12881,7 +13249,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Reactor Delays",
-    "id" : 87,
+    "id" : 91,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -12902,7 +13270,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 603
+      "y" : 621
     }
   }, {
     "aliasColors" : { },
@@ -12983,7 +13351,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec",
-    "id" : 88,
+    "id" : 92,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -12994,7 +13362,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 603
+      "y" : 621
     }
   }, {
     "aliasColors" : { },
@@ -13075,7 +13443,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Hash",
-    "id" : 89,
+    "id" : 93,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HGetAll",
@@ -13141,7 +13509,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 612
+      "y" : 630
     }
   }, {
     "aliasColors" : { },
@@ -13222,7 +13590,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Others",
-    "id" : 90,
+    "id" : 94,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Echo",
@@ -13273,7 +13641,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 612
+      "y" : 630
     }
   }, {
     "aliasColors" : { },
@@ -13354,7 +13722,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Set",
-    "id" : 91,
+    "id" : 95,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SCard",
@@ -13390,7 +13758,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 621
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13471,7 +13839,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Sorted Set",
-    "id" : 92,
+    "id" : 96,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ZRangeByScore",
@@ -13502,7 +13870,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 621
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13583,7 +13951,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Str",
-    "id" : 93,
+    "id" : 97,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MGet",
@@ -13649,7 +14017,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 630
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13730,7 +14098,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- TS",
-    "id" : 94,
+    "id" : 98,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TsGet",
@@ -13756,7 +14124,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 630
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13837,7 +14205,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (P95)",
-    "id" : 95,
+    "id" : 99,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -13848,7 +14216,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 639
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -13929,7 +14297,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (P99)",
-    "id" : 96,
+    "id" : 100,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -13940,7 +14308,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 639
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -14021,7 +14389,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Latency Local vs Remote",
-    "id" : 97,
+    "id" : 101,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -14032,7 +14400,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 648
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -14113,7 +14481,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Ops Local vs Remote",
-    "id" : 98,
+    "id" : 102,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -14124,7 +14492,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 648
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -14205,7 +14573,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 99,
+    "id" : 103,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -14216,7 +14584,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 657
+      "y" : 675
     }
   }, {
     "aliasColors" : { },
@@ -14297,7 +14665,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 133,
+    "id" : 137,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YEDIS RPC",
@@ -14308,7 +14676,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 657
+      "y" : 675
     }
   }, {
     "collapsed" : false,
@@ -14317,12 +14685,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 658
+      "y" : 676
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Connections",
-    "id" : 160
+    "id" : 164
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -14402,7 +14770,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections",
-    "id" : 142,
+    "id" : 146,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -14418,7 +14786,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 658
+      "y" : 676
     }
   }, {
     "collapsed" : false,
@@ -14427,12 +14795,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 659
+      "y" : 677
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 161
+    "id" : 165
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -14512,7 +14880,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 143,
+    "id" : 147,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Begin",
@@ -14543,7 +14911,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 659
+      "y" : 677
     }
   }, {
     "aliasColors" : { },
@@ -14624,7 +14992,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (P95)",
-    "id" : 144,
+    "id" : 148,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -14650,7 +15018,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 668
+      "y" : 686
     }
   }, {
     "aliasColors" : { },
@@ -14731,7 +15099,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (P99)",
-    "id" : 145,
+    "id" : 149,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -14757,7 +15125,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 668
+      "y" : 686
     }
   }, {
     "aliasColors" : { },
@@ -14838,7 +15206,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 146,
+    "id" : 150,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -14864,7 +15232,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 677
+      "y" : 695
     }
   }, {
     "aliasColors" : { },
@@ -14945,7 +15313,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 147,
+    "id" : 151,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rollback",
@@ -14976,7 +15344,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 677
+      "y" : 695
     }
   }, {
     "aliasColors" : { },
@@ -15057,7 +15425,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 148,
+    "id" : 152,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -15083,7 +15451,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 686
+      "y" : 704
     }
   } ]
 }

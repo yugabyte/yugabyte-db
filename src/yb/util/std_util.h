@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STD_UTIL_H
-#define YB_UTIL_STD_UTIL_H
+#pragma once
 
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
@@ -87,4 +86,3 @@ constexpr bool cmp_greater_equal(T t, U u) noexcept {
 
 } // namespace yb
 
-#endif  // YB_UTIL_STD_UTIL_H

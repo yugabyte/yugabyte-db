@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_RESULT_H
-#define YB_UTIL_RESULT_H
+#pragma once
 
 #include <string>
 #include <type_traits>
@@ -403,4 +402,3 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 
 } // namespace yb
 
-#endif // YB_UTIL_RESULT_H

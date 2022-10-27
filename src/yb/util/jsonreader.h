@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_JSONREADER_H_
-#define YB_UTIL_JSONREADER_H_
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -105,4 +104,3 @@ class JsonReader {
 
 } // namespace yb
 
-#endif // YB_UTIL_JSONREADER_H_

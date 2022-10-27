@@ -30,8 +30,7 @@
 // under the License.
 //
 // Base test class, with various utility functions.
-#ifndef YB_UTIL_TEST_UTIL_H
-#define YB_UTIL_TEST_UTIL_H
+#pragma once
 
 #include <dirent.h>
 
@@ -242,4 +241,3 @@ class StopOnFailure {
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())
 
-#endif  // YB_UTIL_TEST_UTIL_H

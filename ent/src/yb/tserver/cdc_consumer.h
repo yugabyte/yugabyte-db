@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
-#define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
+#pragma once
 
 #include <condition_variable>
 #include <unordered_map>
@@ -229,4 +228,3 @@ class CDCConsumer {
 } // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_CDC_CONSUMER_H

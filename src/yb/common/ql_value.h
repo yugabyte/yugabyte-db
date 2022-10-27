@@ -13,8 +13,7 @@
 //
 // This file contains the QLValue class that represents QL values.
 
-#ifndef YB_COMMON_QL_VALUE_H
-#define YB_COMMON_QL_VALUE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -608,4 +607,3 @@ std::vector<QLValuePB> SortTuplesbyOrdering(
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_VALUE_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H
+#pragma once
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -63,4 +62,3 @@ class RemoteBootstrapSnapshotsSource : public RemoteBootstrapSource {
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H

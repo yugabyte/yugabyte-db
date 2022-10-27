@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_TOSTRING_H
-#define YB_UTIL_TOSTRING_H
+#pragma once
 
 #include <float.h>
 
@@ -363,4 +362,3 @@ std::string AsString(T&&... t) {
 #error "Compiler not supported -- BOOST_PP_VARIADICS is not set. See https://bit.ly/2ZF7rTu."
 #endif
 
-#endif // YB_UTIL_TOSTRING_H

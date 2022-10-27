@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_MANAGER_H
-#define YB_MASTER_TABLET_SPLIT_MANAGER_H
+#pragma once
 
 #include <unordered_set>
 
@@ -120,4 +119,3 @@ class TabletSplitManager {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_TABLET_SPLIT_MANAGER_H

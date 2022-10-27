@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_QUORUM_UTIL_H_
-#define YB_CONSENSUS_QUORUM_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -124,4 +123,3 @@ Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_QUORUM_UTIL_H_ */

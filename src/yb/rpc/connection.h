@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CONNECTION_H_
-#define YB_RPC_CONNECTION_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -285,4 +284,3 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_CONNECTION_H_

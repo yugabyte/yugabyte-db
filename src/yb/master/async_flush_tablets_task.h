@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
-#define YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
+#pragma once
 
 #include "yb/master/async_rpc_tasks.h"
 
@@ -54,4 +53,3 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H

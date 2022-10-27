@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_OPTIONS_H
-#define YB_ROCKSDB_OPTIONS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1664,4 +1663,3 @@ struct CompactRangeOptions {
 };
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_OPTIONS_H

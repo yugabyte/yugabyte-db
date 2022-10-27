@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_CAPABILITIES_H
-#define YB_UTIL_CAPABILITIES_H
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -42,4 +41,3 @@ std::vector<CapabilityId> Capabilities();
 
 } // namespace yb
 
-#endif // YB_UTIL_CAPABILITIES_H

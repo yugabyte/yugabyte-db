@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_TEST_BASE_H_
-#define YB_MASTER_SYS_CATALOG_TEST_BASE_H_
+#pragma once
 
 #include <gtest/gtest.h>
 
@@ -122,4 +121,3 @@ std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b)
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_SYS_CATALOG_TEST_BASE_H_

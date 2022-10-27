@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_CLOCK_H
-#define YB_COMMON_CLOCK_H
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/hybrid_time.h"
@@ -43,4 +42,3 @@ Result<HybridTime> WaitUntil(ClockBase* clock, HybridTime hybrid_time, CoarseTim
 
 } // namespace yb
 
-#endif // YB_COMMON_CLOCK_H

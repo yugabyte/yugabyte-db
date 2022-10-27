@@ -13,8 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
-#define YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
+#pragma once
 
 #include "yb/common/ql_rowblock.h"
 
@@ -227,4 +226,3 @@ class QLTestBase : public YBTest {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_

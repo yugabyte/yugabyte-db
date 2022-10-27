@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_PARTITIONS_VTABLE_H
-#define YB_MASTER_YQL_PARTITIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/yql_virtual_table.h"
@@ -97,4 +96,3 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_PARTITIONS_VTABLE_H

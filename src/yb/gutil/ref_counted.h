@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_REF_COUNTED_H
-#define YB_GUTIL_REF_COUNTED_H
+#pragma once
 
 #include <atomic>
 #include <ostream>
@@ -489,4 +488,3 @@ bool operator!=(const scoped_refptr<T>& lhs, const scoped_refptr<U>& rhs) {
 
 #undef INVOKE_REF_COUNTED_DEBUG_HOOK
 
-#endif // YB_GUTIL_REF_COUNTED_H

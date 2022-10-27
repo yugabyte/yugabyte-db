@@ -70,8 +70,7 @@
 // The file "/yb/yql/cql/ql/ptree/pt_bfunc.cc" can be used as example at the moment.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFPG_H
-#define YB_BFPG_BFPG_H
+#pragma once
 
 #include <vector>
 #include <list>
@@ -372,4 +371,3 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
 // include header file "gen_bfunc_table.h" at the end of this file.
 #include "yb/bfpg/gen_bfunc_table.h"
 
-#endif  // YB_BFPG_BFPG_H

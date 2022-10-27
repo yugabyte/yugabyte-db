@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_RPC_FWD_H
-#define YB_RPC_RPC_FWD_H
+#pragma once
 
 #include <chrono>
 #include <functional>
@@ -153,4 +152,3 @@ using CallResponsePtr = std::shared_ptr<CallResponse>;
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_FWD_H

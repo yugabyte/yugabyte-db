@@ -18,8 +18,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_JOIN_H
-#define YB_GUTIL_STRINGS_JOIN_H
+#pragma once
 
 #include <stdio.h>
 #include <string.h>
@@ -365,4 +364,3 @@ inline std::string JoinInts(const CONTAINER& components,
   return JoinElements(components, delim);
 }
 
-#endif  // YB_GUTIL_STRINGS_JOIN_H

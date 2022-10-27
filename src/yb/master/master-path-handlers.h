@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
-#define YB_MASTER_MASTER_PATH_HANDLERS_H
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -272,4 +271,3 @@ void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebRes
 
 } // namespace master
 } // namespace yb
-#endif /* YB_MASTER_MASTER_PATH_HANDLERS_H */

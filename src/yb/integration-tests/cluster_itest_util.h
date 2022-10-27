@@ -38,8 +38,7 @@
 // belonging in the MiniCluster / ExternalMiniCluster classes themselves. But
 // consider just putting stuff like that in those classes.
 
-#ifndef YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
-#define YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
+#pragma once
 
 #include <inttypes.h>
 
@@ -546,4 +545,3 @@ Status GetLastOpIdForMasterReplica(
 } // namespace itest
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_

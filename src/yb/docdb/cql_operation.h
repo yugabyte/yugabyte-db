@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CQL_OPERATION_H
-#define YB_DOCDB_CQL_OPERATION_H
+#pragma once
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/typedefs.h"
@@ -247,4 +246,3 @@ class QLReadOperation : public DocExprExecutor {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_CQL_OPERATION_H

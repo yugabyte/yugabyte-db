@@ -47,6 +47,8 @@ export const MetricTypesWithOperations = {
       'cpu_usage',
       'memory_usage',
       'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -177,7 +179,11 @@ export const MetricTypesWithOperations = {
   },
   container: {
     title: 'Container',
-    metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
+    metrics: [
+      'container_cpu_usage',
+      'container_memory_usage',
+      'container_volume_stats',
+      'container_volume_usage_percent']
   },
   sql: {
     title: 'YSQL Advanced',

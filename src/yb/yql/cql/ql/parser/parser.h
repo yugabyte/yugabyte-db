@@ -15,8 +15,7 @@
 // Entry point for the parsing process. Conducting the whole scanning and parsing of SQL statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PARSER_PARSER_H_
-#define YB_YQL_CQL_QL_PARSER_PARSER_H_
+#pragma once
 
 #include <cstddef>
 
@@ -118,4 +117,3 @@ class Parser {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PARSER_PARSER_H_

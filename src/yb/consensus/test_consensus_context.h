@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
-#define YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
+#pragma once
 
 #include <unordered_set>
 
@@ -46,4 +45,3 @@ class TestConsensusContext : public ConsensusContext {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H

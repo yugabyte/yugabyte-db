@@ -128,8 +128,7 @@
 //
 // To fetch the list of tags associated with a flag, use 'GetFlagTags'.
 
-#ifndef YB_UTIL_FLAG_TAGS_H
-#define YB_UTIL_FLAG_TAGS_H
+#pragma once
 
 #include <string>
 #include <unordered_set>
@@ -254,4 +253,3 @@ class FlagTagger {
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description);
 
-#endif /* YB_UTIL_FLAG_TAGS_H */

@@ -18,8 +18,7 @@
 // should be an abstract interface and let the server (such as proxy server) defines the content.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_QL_ENV_H_
-#define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -236,4 +235,3 @@ class QLEnv {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_UTIL_QL_ENV_H_

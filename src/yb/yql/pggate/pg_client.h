@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_CLIENT_H
-#define YB_YQL_PGGATE_PG_CLIENT_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -150,4 +149,3 @@ class PgClient {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_CLIENT_H

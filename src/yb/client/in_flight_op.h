@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_IN_FLIGHT_OP_H
-#define YB_CLIENT_IN_FLIGHT_OP_H
+#pragma once
 
 #include <string>
 
@@ -71,4 +70,3 @@ struct InFlightOp {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_IN_FLIGHT_OP_H

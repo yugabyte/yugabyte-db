@@ -43,8 +43,7 @@
 // - Second API:
 //   All hash and regular primary columns can be specified together in a list.
 //   Function YBSchemaBuilder::SetPrimaryKey().
-#ifndef YB_CLIENT_SCHEMA_H
-#define YB_CLIENT_SCHEMA_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -375,4 +374,3 @@ inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_SCHEMA_H

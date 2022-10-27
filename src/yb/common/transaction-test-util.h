@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_COMMON_TRANSACTION_TEST_UTIL_H
-#define YB_COMMON_TRANSACTION_TEST_UTIL_H
+#pragma once
 
 #include <functional>
 #include <type_traits>
@@ -95,4 +94,3 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
 } // namespace yb
 
-#endif // YB_COMMON_TRANSACTION_TEST_UTIL_H

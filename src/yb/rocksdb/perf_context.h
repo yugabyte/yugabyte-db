@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_PERF_CONTEXT_H
-#define YB_ROCKSDB_PERF_CONTEXT_H
+#pragma once
 
 #include <string>
 
@@ -115,4 +114,3 @@ extern __thread PerfContext perf_context;
 
 } // namespace rocksdb
 
-#endif // YB_ROCKSDB_PERF_CONTEXT_H
