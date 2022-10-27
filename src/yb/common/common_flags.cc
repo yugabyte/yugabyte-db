@@ -39,9 +39,7 @@ DEFINE_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
 
 DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");

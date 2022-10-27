@@ -426,10 +426,7 @@ DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
              "from pg catalog tables. A value of -1 disables the refresh task.");
 TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
 
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
-             "splitting is disabled if this value is set to 0.");
-TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
+DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
 
 DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 8,
              "The per-node tablet count until which a table is splitting at the phase 1 threshold, "

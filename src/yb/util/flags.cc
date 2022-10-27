@@ -510,7 +510,7 @@ bool ValidateVmodule(const char* flag_name, const string& new_value) {
 
     char* end;
     errno = 0;
-    const long value = strtol(kv[1].c_str(), &end, 10);
+    const int64 value = strtol(kv[1].c_str(), &end, 10);
     if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
       LOG(ERROR) << Format(
           "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
@@ -622,6 +622,20 @@ Status SetFlag(const std::string* flag_ptr, const char* flag_name, const std::st
 Status SetFlagDefaultAndCurrent(
     const std::string* flag_ptr, const char* flag_name, const std::string& new_value) {
   return SetFlagDefaultAndCurrentInternal(flag_ptr, flag_name, new_value);
+}
+
+void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_yyyy) {
+  gflags::CommandLineFlagInfo info;
+  if (!gflags::GetCommandLineFlagInfo(flagname.c_str(), &info)) {
+    LOG(DFATAL) << "Internal error -- called WarnFlagDeprecated on undefined flag " << flagname;
+    return;
+  }
+  if (!info.is_default) {
+    LOG(WARNING) << "Found explicit setting for deprecated flag " << flagname << ". "
+                 << "This flag has been deprecated since " << date_mm_yyyy << ". "
+                 << "Please remove this from your configuration, as this may cause the process to "
+                 << "crash in future releases.";
+  }
 }
 
 SetFlagResult SetFlag(

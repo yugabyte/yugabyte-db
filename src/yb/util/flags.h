@@ -102,6 +102,10 @@ Status SetFlagDefaultAndCurrent(const T* flag_ptr, const char* flag_name, const 
   return SetFlagDefaultAndCurrentInternal(flag_ptr, flag_name, std::to_string(new_value));
 }
 
+// Warn if flag associated with flagname has explicit setting in current configuration. Do not use
+// this method directly. Instead, use the DEPRECATE_FLAG macro below.
+void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_yyyy);
+
 YB_STRONGLY_TYPED_BOOL(SetFlagForce);
 YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE));
 
@@ -112,5 +116,22 @@ SetFlagResult SetFlag(
     std::string* old_value, std::string* output_msg);
 
 }  // namespace flags_internal
+
+// In order to mark a flag as deprecated, use this macro:
+//   DEPRECATE_FLAG(int32, foo_flag, "10_2022")
+// This will print a warning at startup if a process has been configured with the specified flag or
+// any time the flags are updated at runtime with this flag.
+//
+// The third argument is a date in the format of "MM_YYYY" to make it easy to track when a flag was
+// deprecated, so we may fully remove declarations in future releases.
+#define DEPRECATE_FLAG(type, name, date_mm_yyyy)                                              \
+    namespace deprecated_flag_do_not_use {                                                    \
+    type default_##name;                                                                      \
+    DEFINE_##type(name, default_##name, "Deprecated");                                        \
+    TAG_FLAG(name, hidden);                                                                   \
+    REGISTER_CALLBACK(name,                                                                   \
+                      "Warn deprecated flag",                                                 \
+                      []() { yb::flags_internal::WarnFlagDeprecated(#name, date_mm_yyyy); }); \
+    }
 
 } // namespace yb
