@@ -34,6 +34,11 @@ If the scheduled maintenance is a database upgrade, you can start the upgrade by
 
 ## Set the cluster maintenance window schedule
 
+Maintenance operations, including database upgrades, certificate rotations, and cluster maintenance, block other cluster operations such as backups. When setting your maintenance window, keep in mind the following:
+
+- set the window so that it doesn't conflict with [scheduled backups](../backup-clusters/)
+- set the window for low traffic periods to reduce the impact of rolling updates
+
 To set the maintenance window for a cluster:
 
 1. On the **Maintenance** tab, click **Edit Maintenance Preferences** to display the **Maintenance Preferences** dialog.

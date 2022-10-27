@@ -30,9 +30,32 @@ To delete a backup, click the **Delete** icon.
 
 To review previous backups, click **Backup**. To review previous restores, click **Restore**.
 
+## Limitations
+
+If some cluster operations are run during a scheduled backup, the backup may be prevented from running.
+
+The following operations lock the cluster and only one can happen at the same time:
+
+- backup and restore
+- pause and resume
+- scaling the cluster, including adding and removing nodes
+- create, delete, and edit of read replicas
+- any scheduled maintenance, including database upgrades, certificate rotations, and cluster maintenance
+
+Backups that don't run are postponed until the next scheduled backup. You can also perform a manual backup after the blocking operation completes.
+
+A backup is run automatically before a database upgrade.
+
+To avoid blocking a backup from running:
+
+- Don't perform cluster operations at the same time as your scheduled backup.
+- Configure your [maintenance window](../cloud-maintenance/) and [backup schedule](#schedule-backups) so that they do not conflict.
+
 ## On demand backups
 
 Typically, you perform on-demand backups before making critical planned changes to the database.
+
+Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup. Avoid running a backup during or before a scheduled maintenance.
 
 To back up a cluster:
 
