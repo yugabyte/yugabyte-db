@@ -18,6 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+import org.yb.util.YBTestRunner;
+
+@RunWith(value = YBTestRunner.class)
 public class PerformanceRecommendationServiceTest extends MockServer {
 
   private PerformanceRecommendationService performanceRecommendationService;
