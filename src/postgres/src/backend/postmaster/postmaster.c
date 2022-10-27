@@ -3730,6 +3730,12 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 						procname, pid, WEXITSTATUS(exitstatus)),
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 	else if (WIFSIGNALED(exitstatus))
+	{
+		if (WTERMSIG(exitstatus) == SIGKILL)
+			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+		else if (WTERMSIG(exitstatus) == SIGSEGV)
+			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
+
 #if defined(WIN32)
 		ereport(lev,
 
@@ -3761,6 +3767,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 						procname, pid, WTERMSIG(exitstatus)),
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 #endif
+	}
 	else
 		ereport(lev,
 

@@ -2848,7 +2848,7 @@ pgstat_initialize(void)
  * --------
  */
 void
-pgstat_report_query_termination(const char *termination_reason, Oid db_oid, int32 backend_pid, int backend_id)
+pgstat_report_query_termination(const char *termination_reason, int32 backend_pid)
 {
 	PgStat_MsgQueryTermination msg;
 
@@ -2856,7 +2856,7 @@ pgstat_report_query_termination(const char *termination_reason, Oid db_oid, int3
 		return;
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
-	msg.m_databaseoid = db_oid;
+	msg.m_databaseoid = MyBEEntry->st_databaseid;
 	msg.backend_pid = backend_pid;
 
 	msg.activity_start_timestamp = MyBEEntry->st_activity_start_timestamp;
@@ -4213,8 +4213,9 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
  *	Return a string representing the current activity of the backend with
  *	the specified PID.  Like the function above, but reads shared memory with
  *	the expectation that it may be corrupt.  On success, copy the string
- *	into the "buffer" argument and return that pointer.  On failure,
- *	return NULL.
+ *	into the "buffer" argument and return that pointer.  We also set MyBEEntry
+ *  to the correct BackendStatus entry for use during error reporting. On
+ *  failure, return NULL.
  *
  *	This function is only intended to be used by the postmaster to report the
  *	query that crashed a backend.  In particular, no attempt is made to
@@ -4271,6 +4272,7 @@ pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
 			 */
 			ascii_safe_strlcpy(buffer, activity,
 							   Min(buflen, pgstat_track_activity_query_size));
+			MyBEEntry = (PgBackendStatus *) beentry;
 
 			return buffer;
 		}
