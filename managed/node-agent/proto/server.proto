@@ -6,6 +6,9 @@ option java_package = "com.yugabyte.yw.nodeagent";
 
 service NodeAgent {
     rpc Ping(PingRequest) returns (PingResponse);
+    rpc ExecuteCommand(ExecuteCommandRequest) returns (stream ExecuteCommandResponse);
+    rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+    rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
 }
 
 message PingRequest {
@@ -14,4 +17,42 @@ message PingRequest {
 
 message PingResponse {
     string data = 1;
+}
+
+message ExecuteCommandRequest {
+    repeated string command = 1;
+}
+
+message ExecuteCommandResponse {
+    oneof data {
+        string output = 1;
+        Error error = 2;
+    }
+}
+
+message Error {
+    int32 code = 1;
+    string message = 2;
+}
+
+message UploadFileRequest {
+    oneof data {
+        FileInfo fileInfo = 1;
+        bytes chunkData = 2;
+    };
+}
+
+message FileInfo {
+    string filename = 1;
+}
+
+message UploadFileResponse {
+}
+
+message DownloadFileRequest {
+    string filename = 1;
+}
+
+message DownloadFileResponse {
+    bytes chunkData = 1;
 }

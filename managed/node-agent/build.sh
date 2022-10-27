@@ -306,6 +306,7 @@ fi
 if [ "$test" == "true" ]; then
     help_needed=false
     echo "Running tests..."
+    prepare
     run_tests
 fi
 
