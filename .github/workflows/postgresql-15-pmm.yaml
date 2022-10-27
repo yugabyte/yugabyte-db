@@ -1,9 +1,9 @@
-name: postgresql-14-pmm-integration
+name: postgresql-15-pmm-integration
 on: push
 
 jobs:
   build:
-    name: pg-14-pgsm-pmm-integration-test
+    name: pg-15-pgsm-pmm-integration-test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -18,11 +18,11 @@ jobs:
         run: echo 'The branch and Repo Name is' ${{ github.head_ref }} ${{ github.actor }}/pg_stat_monitor
 
       - name: Run PMM & PGSM Setup, E2E Tests
-        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=14 --pgstat-monitor-branch=REL_1_1_1
+        run: bash -xe ./pmm_pgsm_setup/pmm_pgsm_setup.sh --pgsql-version=15 --pgstat-monitor-branch=REL_1_1_1
 
       - name: Get PMM-Agent Logs from the Container
         if: success() || failure()    # run this step even if previous step failed
-        run: docker exec pgsql_pgsm_14 cat pmm-agent.log > ./pmm-ui-tests/tests/output/pmm-agent.log
+        run: docker exec pgsql_pgsm_15 cat pmm-agent.log > ./pmm-ui-tests/tests/output/pmm-agent.log
 
       - name: Upload Tests Artifacts
         uses: actions/upload-artifact@v3
