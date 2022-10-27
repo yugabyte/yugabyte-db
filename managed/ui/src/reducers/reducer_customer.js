@@ -48,6 +48,7 @@ import {
   SET_RUNTIME_CONFIG_RESPONSE,
   DELETE_RUNTIME_CONFIG,
   DELETE_RUNTIME_CONFIG_RESPONSE,
+  RESET_RUNTIME_CONFIGS,
   FETCH_CUSTOMER_CONFIGS,
   FETCH_CUSTOMER_CONFIGS_RESPONSE,
   DELETE_CUSTOMER_CONFIG,
@@ -131,6 +132,7 @@ const INITIAL_STATE = {
   alertDestinations: getInitialState([]),
   alertTemplates: getInitialState([]),
   alertConfigs: getInitialState([]),
+  customers: getInitialState([]),
   deleteDestination: getInitialState([]),
   deleteAlertConfig: getInitialState([]),
   hostInfo: null,
@@ -394,6 +396,8 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'runtimeConfigs', []);
     case FETCH_RUNTIME_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'runtimeConfigs', action);
+    case RESET_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:
       return setLoadingState(state, 'updateRuntimeConfig', {});
     case SET_RUNTIME_CONFIG_RESPONSE:

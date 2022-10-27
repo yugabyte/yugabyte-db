@@ -456,3 +456,17 @@ export enum RecommendationTypeEnum {
   CpuSkew = 'CpuSkew',
   CpuUsage = 'CpuUsage'
 }
+
+export interface RunTimeConfigData {
+  configID: number;
+  configKey: string;
+  configValue: string;
+  isConfigInherited: boolean;
+}
+
+export enum RunTimeConfigScope {
+  GLOBAL = 'GLOBAL',
+  UNIVERSE = 'UNIVERSE',
+  PROVIDER = 'PROVIDER',
+  CUSTOMER = 'CUSTOMER'
+}

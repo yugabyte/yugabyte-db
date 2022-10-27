@@ -43,10 +43,10 @@ class AuthenticatedComponent extends Component {
   hasPendingCustomerTasks = (taskList) => {
     return isNonEmptyArray(taskList)
       ? taskList.some(
-          (task) =>
-            (task.status === 'Running' || task.status === 'Initializing') &&
-            Number(task.percentComplete) !== 100
-        )
+        (task) =>
+          (task.status === 'Running' || task.status === 'Initializing') &&
+          Number(task.percentComplete) !== 100
+      )
       : false;
   };
 
