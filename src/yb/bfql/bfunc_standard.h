@@ -22,8 +22,7 @@
 // See the header of file "/util/bfql/bfql.h" for more general info.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFUNC_STANDARD_H_
-#define YB_BFQL_BFUNC_STANDARD_H_
+#pragma once
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -445,4 +444,3 @@ Status ListFrozen(const std::vector<PTypePtr>& params, RTypePtr result) {
 } // namespace bfql
 } // namespace yb
 
-#endif  // YB_BFQL_BFUNC_STANDARD_H_

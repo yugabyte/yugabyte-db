@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_ALLOCATION_TRACKER_H
-#define YB_UTIL_ALLOCATION_TRACKER_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -65,4 +64,3 @@ class AllocationTracker : public AllocationTrackerBase {
 
 } // namespace yb
 
-#endif // YB_UTIL_ALLOCATION_TRACKER_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_VALUE_TYPE_H_
-#define YB_DOCDB_VALUE_TYPE_H_
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -309,4 +308,3 @@ inline bool IsMergeRecord(const Slice& value) {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_VALUE_TYPE_H_

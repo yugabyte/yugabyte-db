@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
-#define YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
+#pragma once
 
 namespace yb {
 namespace consensus {
@@ -94,4 +93,3 @@ struct StateChangeContext {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_STATE_CHANGE_CONTEXT_H

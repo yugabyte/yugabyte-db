@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
-#define YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
+#pragma once
 
 #include "yb/consensus/consensus.pb.h"
 
@@ -38,4 +37,3 @@ class HistoryCutoffOperation
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H

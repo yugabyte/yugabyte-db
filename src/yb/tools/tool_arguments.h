@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_TOOL_ARGUMENTS_H
-#define YB_TOOLS_TOOL_ARGUMENTS_H
+#pragma once
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/program_options.hpp>
@@ -197,4 +196,3 @@ int ExecuteTool(int argc, char** argv) {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_TOOL_ARGUMENTS_H

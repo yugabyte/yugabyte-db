@@ -12,8 +12,7 @@
 
 // C wrappers around "pggate" for PostgreSQL to call.
 
-#ifndef YB_YQL_PGGATE_YBC_PGGATE_H
-#define YB_YQL_PGGATE_YBC_PGGATE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -640,4 +639,3 @@ void YBCInitPgGateEx(
 } // namespace yb
 #endif
 
-#endif  // YB_YQL_PGGATE_YBC_PGGATE_H

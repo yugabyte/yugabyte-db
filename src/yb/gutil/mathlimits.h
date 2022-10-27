@@ -42,8 +42,7 @@
 // numeric_limits for the compilers we use.
 //
 
-#ifndef YB_GUTIL_MATHLIMITS_H
-#define YB_GUTIL_MATHLIMITS_H
+#pragma once
 
 #include <cfloat>
 #include <cmath>
@@ -265,4 +264,3 @@ DECL_FP_LIMITS(long double, LDBL)
 
 // ========================================================================= //
 
-#endif  // YB_GUTIL_MATHLIMITS_H

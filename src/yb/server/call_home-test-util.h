@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_SERVER_CALL_HOME_TEST_UTIL_H
-#define YB_SERVER_CALL_HOME_TEST_UTIL_H
+#pragma once
 
 #include "yb/server/call_home.h"
 #include "yb/util/jsonreader.h"
@@ -170,4 +169,3 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
 
 }  // namespace yb
 
-#endif  // YB_SERVER_CALL_HOME_TEST_UTIL_H

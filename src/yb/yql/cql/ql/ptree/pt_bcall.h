@@ -15,8 +15,7 @@
 // Tree node definitions for expression.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
-#define YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/bfql/gen_opcodes.h"
@@ -186,4 +185,3 @@ class PTPartitionHash : public PTToken {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_BCALL_H_

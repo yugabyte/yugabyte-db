@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_WRITE_OPERATION_H
-#define YB_TABLET_OPERATIONS_WRITE_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -111,4 +110,3 @@ class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_WRITE_OPERATION_H

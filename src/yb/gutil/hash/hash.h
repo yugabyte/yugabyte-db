@@ -84,8 +84,7 @@
 // property.  We already have several such functions; see
 // hash_unittest.cc for the details and unittests.
 
-#ifndef YB_GUTIL_HASH_HASH_H
-#define YB_GUTIL_HASH_HASH_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>     // for uintptr_t
@@ -264,4 +263,3 @@ struct GoodFastHash<const std::basic_string<_CharT, _Traits, _Alloc> > {
   static const size_t min_buckets = 8;  // 4 and 8 are defaults.
 };
 
-#endif  // YB_GUTIL_HASH_HASH_H

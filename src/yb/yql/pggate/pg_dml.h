@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DML_H_
-#define YB_YQL_PGGATE_PG_DML_H_
+#pragma once
 
 #include <boost/unordered_map.hpp>
 
@@ -258,4 +257,3 @@ class PgDml : public PgStatement {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DML_H_

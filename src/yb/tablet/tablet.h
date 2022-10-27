@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_H_
-#define YB_TABLET_TABLET_H_
+#pragma once
 
 #include <boost/intrusive/list.hpp>
 
@@ -1100,4 +1099,3 @@ bool IsSchemaVersionCompatible(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TABLET_H_

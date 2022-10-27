@@ -15,8 +15,7 @@
 // Tree node definitions for CREATE TABLE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -240,4 +239,3 @@ class PTCreateTable : public TreeNode {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_

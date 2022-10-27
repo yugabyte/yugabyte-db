@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
-#define YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
+#pragma once
 
 #include "yb/master/master_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -37,4 +36,3 @@ class TabletSplitCandidateFilterIf {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H

@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_TYPE_H_
-#define YB_YQL_PGGATE_PG_TYPE_H_
+#pragma once
 
 #include <unordered_map>
 
@@ -38,4 +37,3 @@ class PgTypeInfo {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_TYPE_H_

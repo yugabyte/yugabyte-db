@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_MINI_TABLET_SERVER_H
-#define YB_TSERVER_MINI_TABLET_SERVER_H
+#pragma once
 
 #include <string>
 
@@ -159,4 +158,3 @@ class MiniTabletServer {
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_MINI_TABLET_SERVER_H

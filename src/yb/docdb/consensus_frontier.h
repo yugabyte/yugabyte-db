@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CONSENSUS_FRONTIER_H
-#define YB_DOCDB_CONSENSUS_FRONTIER_H
+#pragma once
 
 #include <unordered_map>
 
@@ -144,4 +143,3 @@ void AddTableSchemaVersion(
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_CONSENSUS_FRONTIER_H

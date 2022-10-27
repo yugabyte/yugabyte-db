@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_KEY_BYTES_H_
-#define YB_DOCDB_KEY_BYTES_H_
+#pragma once
 
 #include <string>
 
@@ -282,4 +281,3 @@ void AppendHash(uint16_t hash, KeyBytes* key);
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_KEY_BYTES_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROCKSDB_STORAGE_H
-#define YB_DOCDB_QL_ROCKSDB_STORAGE_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -90,4 +89,3 @@ class QLRocksDBStorage : public YQLStorageIf {
 
 }  // namespace docdb
 }  // namespace yb
-#endif // YB_DOCDB_QL_ROCKSDB_STORAGE_H

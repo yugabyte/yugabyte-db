@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_INBOUND_CALL_H_
-#define YB_RPC_INBOUND_CALL_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -292,4 +291,3 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_INBOUND_CALL_H_

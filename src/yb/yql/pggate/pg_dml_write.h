@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DML_WRITE_H_
-#define YB_YQL_PGGATE_PG_DML_WRITE_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_dml.h"
 
@@ -102,4 +101,3 @@ class PgDmlWrite : public PgDml {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DML_WRITE_H_

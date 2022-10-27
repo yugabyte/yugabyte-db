@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_TASK_METRICS_H
-#define YB_ROCKSDB_UTIL_TASK_METRICS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -144,4 +143,3 @@ struct RocksDBPriorityThreadPoolMetrics {
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_UTIL_TASK_METRICS_H

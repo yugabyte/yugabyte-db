@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TRANSACTION_CLEANUP_H
-#define YB_CLIENT_TRANSACTION_CLEANUP_H
+#pragma once
 
 #include <stdint.h>
 
@@ -54,4 +53,3 @@ void CleanupTransaction(
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TRANSACTION_CLEANUP_H

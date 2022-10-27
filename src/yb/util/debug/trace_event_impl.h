@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
-#define YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -749,4 +748,3 @@ void EnableTraceEvents();
 }  // namespace debug
 }  // namespace yb
 
-#endif // YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_

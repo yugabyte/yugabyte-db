@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
-#define YB_CONSENSUS_RETRYABLE_REQUESTS_H
+#pragma once
 
 #include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -79,4 +78,3 @@ class RetryableRequests {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_RETRYABLE_REQUESTS_H

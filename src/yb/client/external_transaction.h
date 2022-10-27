@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_CLIENT_EXTERNAL_TRANSACTION_H
-#define YB_CLIENT_EXTERNAL_TRANSACTION_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -67,4 +66,3 @@ class ExternalTransaction {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_EXTERNAL_TRANSACTION_H

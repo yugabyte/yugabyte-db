@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_
-#define YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_
+#pragma once
 
 #include <memory>
 #include <string>
@@ -56,4 +55,3 @@ class PgSysTablePrefetcher {
 } // namespace pggate
 } // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_

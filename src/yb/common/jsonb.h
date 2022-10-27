@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_JSONB_H
-#define YB_COMMON_JSONB_H
+#pragma once
 
 #include <string>
 
@@ -229,4 +228,3 @@ class Jsonb {
 } // namespace common
 } // namespace yb
 
-#endif // YB_COMMON_JSONB_H

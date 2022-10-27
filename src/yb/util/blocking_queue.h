@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_BLOCKING_QUEUE_H
-#define YB_UTIL_BLOCKING_QUEUE_H
+#pragma once
 
 #include <unistd.h>
 
@@ -256,4 +255,3 @@ class BlockingQueue {
 
 } // namespace yb
 
-#endif  // YB_UTIL_BLOCKING_QUEUE_H

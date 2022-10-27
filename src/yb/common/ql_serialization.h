@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_SERIALIZATION_H
-#define YB_COMMON_QL_SERIALIZATION_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -27,4 +26,3 @@ void SerializeValue(
 
 }  // namespace yb
 
-#endif  // YB_COMMON_QL_SERIALIZATION_H

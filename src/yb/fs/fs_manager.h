@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_FS_FS_MANAGER_H
-#define YB_FS_FS_MANAGER_H
+#pragma once
 
 #include <iosfwd>
 #include <memory>
@@ -326,4 +325,3 @@ class FsManager {
 
 } // namespace yb
 
-#endif  // YB_FS_FS_MANAGER_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_H_
-#define YB_DOCDB_DOCDB_H_
+#pragma once
 
 #include <cstdint>
 #include <ostream>
@@ -318,4 +317,3 @@ void CombineExternalIntents(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_H_

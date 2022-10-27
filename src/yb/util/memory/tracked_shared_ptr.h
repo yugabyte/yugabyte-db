@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
-#define YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -120,4 +119,3 @@ class TrackedSharedPtr : public std::shared_ptr<T> {
 
 }  // namespace yb
 
-#endif // YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_

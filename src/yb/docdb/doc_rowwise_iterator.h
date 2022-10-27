@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
-#define YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
+#pragma once
 
 #include <string>
 #include <atomic>
@@ -235,4 +234,3 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_ROWWISE_ITERATOR_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_KEY_BOUNDS_H
-#define YB_DOCDB_KEY_BOUNDS_H
+#pragma once
 
 #include "yb/docdb/key_bytes.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -68,4 +67,3 @@ bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key);
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_KEY_BOUNDS_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H
-#define YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H
+#pragma once
 
 #include <memory>
 
@@ -45,4 +44,3 @@ class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvid
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_METRICS_HEARTBEAT_DATA_PROVIDER_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
-#define YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H
+#pragma once
 
 #include <condition_variable>
 #include <shared_mutex>
@@ -59,4 +58,3 @@ class UniverseKeyManager {
 } // namespace encryption
 } // namespace yb
 
-#endif // YB_ENCRYPTION_UNIVERSE_KEY_MANAGER_H

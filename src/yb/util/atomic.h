@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ATOMIC_H
-#define YB_UTIL_ATOMIC_H
+#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -479,4 +478,3 @@ bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
 }
 
 } // namespace yb
-#endif /* YB_UTIL_ATOMIC_H */

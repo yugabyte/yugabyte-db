@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_UTIL_H
+#pragma once
 
 #include <stdlib.h>
 #include <string>
@@ -114,4 +113,3 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_CDC_CDC_UTIL_H

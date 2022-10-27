@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_COMPARE_UTIL_H
-#define YB_UTIL_COMPARE_UTIL_H
+#pragma once
 
 #include <unordered_map>
 #include <vector>
@@ -111,4 +110,3 @@ bool MapsEqual(const UM& map1, const UM& map2, EqualityFn equality_fn) {
 }  // namespace util
 }  // namespace yb
 
-#endif  // YB_UTIL_COMPARE_UTIL_H

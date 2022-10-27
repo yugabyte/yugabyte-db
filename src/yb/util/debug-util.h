@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_DEBUG_UTIL_H
-#define YB_UTIL_DEBUG_UTIL_H
+#pragma once
 
 #include <sys/types.h>
 
@@ -147,4 +146,3 @@ std::string DemangleName(const char* name);
 
 } // namespace yb
 
-#endif  // YB_UTIL_DEBUG_UTIL_H

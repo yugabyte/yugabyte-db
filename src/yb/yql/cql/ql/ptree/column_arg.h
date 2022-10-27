@@ -15,8 +15,7 @@
 // Structure definitions for column descriptor of a table.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_
-#define YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_
+#pragma once
 
 #include "yb/common/types.h"
 #include "yb/util/memory/mc_types.h"
@@ -321,4 +320,3 @@ const char* QLOperatorAsString(QLOperator ql_op);
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_

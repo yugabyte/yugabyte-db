@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_ROUND_H
-#define YB_CONSENSUS_CONSENSUS_ROUND_H
+#pragma once
 
 #include <stdint.h>
 
@@ -128,4 +127,3 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 }  // namespace consensus
 }  // namespace yb
 
-#endif  // YB_CONSENSUS_CONSENSUS_ROUND_H

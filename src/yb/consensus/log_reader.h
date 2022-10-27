@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_READER_H
-#define YB_CONSENSUS_LOG_READER_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -253,4 +252,3 @@ class LogReader {
 }  // namespace log
 }  // namespace yb
 
-#endif // YB_CONSENSUS_LOG_READER_H

@@ -19,8 +19,7 @@
 //--------------------------------------------------------------------------------------------------
 
 
-#ifndef YB_UTIL_DATE_TIME_H_
-#define YB_UTIL_DATE_TIME_H_
+#pragma once
 
 #include <regex>
 
@@ -96,4 +95,3 @@ class DateTime {
 
 } // namespace yb
 
-#endif // YB_UTIL_DATE_TIME_H_
