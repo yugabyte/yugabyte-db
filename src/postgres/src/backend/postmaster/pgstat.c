@@ -3114,39 +3114,9 @@ pgstat_report_query_termination(const char *termination_reason, int32 backend_pi
 	msg.activity_start_timestamp = MyBEEntry->st_activity_start_timestamp;
 	msg.m_st_userid = MyBEEntry->st_userid;
 	msg.activity_end_timestamp = GetCurrentTimestamp();
-	StrNCpy(msg.query_string, MyBEEntry->st_activity_raw, sizeof(msg.query_string));
-	StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
+	strlcpy(msg.query_string, MyBEEntry->st_activity_raw, sizeof(msg.query_string));
+	strlcpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
 	pgstat_send(&msg, sizeof(msg));
-}
-
-/*
- * When backends die due to abnormal termination, cleanup is required.
- *
- * This function performs all the operations done by pgstat_beshutdown_hook,
- * which is executed during safe backend terminations. However, it does not
- * report the remaining stats to the pgstat collector as the backend has
- * already died.
- */
-void
-yb_pgstat_clear_entry_pid(int pid)
-{
-	PgBackendStatus *beentry;
-	int			i;
-
-	beentry = BackendStatusArray;
-	for (i = 1; i <= MaxBackends; i++)
-	{
-		volatile PgBackendStatus *vbeentry = beentry;
-
-		if (pid == vbeentry->st_procpid)
-		{
-			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-			beentry->st_procpid = 0;	/* mark invalid */
-			PGSTAT_END_WRITE_ACTIVITY(beentry);
-			return;
-		}
-		beentry++;
-	}
 }
 
 /* ------------------------------------------------------------
@@ -6173,9 +6143,9 @@ pgstat_recv_querytermination(PgStat_MsgQueryTermination *msg, int len)
 	queryentry->activity_start_timestamp = msg->activity_start_timestamp;
 	queryentry->activity_end_timestamp = msg->activity_end_timestamp;
 	queryentry->query_string_size = strlen(msg->query_string);
-	StrNCpy(queryentry->query_string, msg->query_string, sizeof(queryentry->query_string));
+	strlcpy(queryentry->query_string, msg->query_string, sizeof(queryentry->query_string));
 	queryentry->termination_reason_size = strlen(msg->termination_reason);
-	StrNCpy(queryentry->termination_reason, msg->termination_reason, sizeof(queryentry->termination_reason));
+	strlcpy(queryentry->termination_reason, msg->termination_reason, sizeof(queryentry->termination_reason));
 }
 
 /* ----------

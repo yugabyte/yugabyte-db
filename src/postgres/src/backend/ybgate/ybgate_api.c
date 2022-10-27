@@ -939,7 +939,7 @@ DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts)
 	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
 	Oid				tupType = HeapTupleHeaderGetTypeId(rec);
 	int32			tupTypmod = HeapTupleHeaderGetTypMod(rec);
-	TupleDesc		tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc		tupdesc = CreateTupleDesc(natts, attrs);
 	finfo->fn_extra = MemoryContextAlloc(GetCurrentMemoryContext(),
 										 offsetof(RecordIOData, columns) +
 											 natts * sizeof(ColumnIOData));
@@ -963,6 +963,12 @@ char *
 GetOutFuncName(const int pg_data_type)
 {
 	char *func_name;
+
+	/* YB_TODO(jasonk@yugabyte)
+	 * - Need to visit all datatypes and update this function accordingly.
+	 * - Should this code have been a table that map OID to "typiofunc" instead of a "switch"?
+	 *   Look at yb_type to see if you can add a new entry and fill that entry.
+	 */
 	switch (pg_data_type)
 	{
 		case BOOLOID:
@@ -992,9 +998,6 @@ GetOutFuncName(const int pg_data_type)
 		case TEXTOID:
 			func_name = "textout";
 			break;
-		case OIDOID:
-			func_name = "oidout";
-			break;
 		case TIDOID:
 			func_name = "tidout";
 			break;
@@ -1009,21 +1012,6 @@ GetOutFuncName(const int pg_data_type)
 			break;
 		case XMLOID:
 			func_name = "xml_out";
-			break;
-		case PGNODETREEOID:
-			func_name = "pg_node_tree_out";
-			break;
-		case PGNDISTINCTOID:
-			func_name = "pg_ndistinct_out";
-			break;
-		case PGDEPENDENCIESOID:
-			func_name = "pg_dependencies_out";
-			break;
-		case PGDDLCOMMANDOID:
-			func_name = "pg_ddl_command_out";
-			break;
-		case SMGROID:
-			func_name = "smgrout";
 			break;
 		case POINTOID:
 			func_name = "point_out";
@@ -1157,17 +1145,11 @@ GetOutFuncName(const int pg_data_type)
 		case TRIGGEROID:
 			func_name = "trigger_out";
 			break;
-		case EVTTRIGGEROID:
-			func_name = "event_trigger_out";
-			break;
 		case LANGUAGE_HANDLEROID:
 			func_name = "language_handler_out";
 			break;
 		case INTERNALOID:
 			func_name = "internal_out";
-			break;
-		case OPAQUEOID:
-			func_name = "opaque_out";
 			break;
 		case ANYELEMENTOID:
 			func_name = "anyelement_out";
@@ -1307,15 +1289,6 @@ GetOutFuncName(const int pg_data_type)
 		case FLOAT8ARRAYOID:
 			func_name = "float8out";
 			break;
-		case ABSTIMEARRAYOID:
-			func_name = "abstimeout";
-			break;
-		case RELTIMEARRAYOID:
-			func_name = "reltimeout";
-			break;
-		case TINTERVALARRAYOID:
-			func_name = "tintervalout";
-			break;
 		case ACLITEMARRAYOID:
 			func_name = "aclitemout";
 			break;
@@ -1436,6 +1409,8 @@ GetOutFuncName(const int pg_data_type)
 		case INT8RANGEARRAYOID:
 			func_name = "int8out";
 			break;
+		default:
+			func_name = NULL;
 	}
 	return func_name;
 }
@@ -1450,7 +1425,7 @@ GetRecordTypeId(uintptr_t datum)
 uintptr_t
 HeapFormTuple(void *attrs, size_t natts, uintptr_t *values, bool *nulls)
 {
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	PG_RETURN_HEAPTUPLEHEADER(heap_form_tuple(tupdesc, values, nulls)->t_data);
 }
 
@@ -1464,7 +1439,7 @@ HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
 	tuple.t_data = rec;
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 }

@@ -82,6 +82,6 @@ OBJS = \
 	ybcModifyTable.o \
 	ybcExpr.o \
     nodeYbBatchedNestloop.o \
-    nodeYbSeqscan
+    nodeYbSeqscan.o
 
 include $(top_srcdir)/src/backend/common.mk

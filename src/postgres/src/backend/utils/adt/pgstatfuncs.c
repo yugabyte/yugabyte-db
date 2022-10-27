@@ -1306,7 +1306,7 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 	for (size_t i = 0; i < num_queries; i++)
 	{
 		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
-			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS) ||
+			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) ||
 			IsYbDbAdminUser(GetUserId()))
 		{
 			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
