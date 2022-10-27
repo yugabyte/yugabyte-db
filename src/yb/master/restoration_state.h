@@ -41,6 +41,7 @@ struct TabletRestoreOperation {
   bool sys_catalog_restore_needed;
   bool is_tablet_part_of_snapshot;
   std::optional<int64_t> db_oid;
+  SnapshotScheduleId schedule_id;
 };
 
 using TabletRestoreOperations = std::vector<TabletRestoreOperation>;
