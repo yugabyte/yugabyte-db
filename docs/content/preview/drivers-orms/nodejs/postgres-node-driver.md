@@ -103,7 +103,7 @@ The following table describes the connection parameters required to connect usin
 
 The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
 
-```javascript
+```js
 const connectionString = "postgresql://user:password@localhost:port/database?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
 const client = new Client(connectionString);
 client.connect()
