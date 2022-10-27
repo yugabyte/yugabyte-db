@@ -881,6 +881,13 @@ public class UniverseCRUDHandler {
               + " for "
               + universe.universeUUID);
 
+    if (universe.isYbcEnabled()) {
+      taskParams.installYbc = true;
+      taskParams.enableYbc = true;
+      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      taskParams.ybcInstalled = true;
+    }
+
     List<Cluster> newReadOnlyClusters = taskParams.clusters;
     List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
     LOG.info(
