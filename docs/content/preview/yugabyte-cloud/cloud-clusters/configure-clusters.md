@@ -65,7 +65,9 @@ Depending on the number of nodes, the scaling operation can take several minutes
 
 ### Replicate across regions clusters
 
-You can scale multi-region replicated clusters horizontally and vertically. <!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
+You can scale multi-region replicated clusters horizontally and vertically.
+
+<!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
 
 To scale nodes in a multi-region replicated cluster:
 
