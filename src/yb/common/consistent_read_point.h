@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_CONSISTENT_READ_POINT_H
-#define YB_COMMON_CONSISTENT_READ_POINT_H
+#pragma once
 
 #include <mutex>
 #include <set>
@@ -110,4 +109,3 @@ class ConsistentReadPoint {
 
 } // namespace yb
 
-#endif // YB_COMMON_CONSISTENT_READ_POINT_H

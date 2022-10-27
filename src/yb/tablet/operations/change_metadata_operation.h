@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
-#define YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -142,4 +141,3 @@ Status SyncReplicateChangeMetadataOperation(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LOG_FWD_H
-#define YB_CONSENSUS_LOG_FWD_H
+#pragma once
 
 #include <vector>
 
@@ -50,4 +49,3 @@ using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
 }  // namespace log
 }  // namespace yb
 
-#endif  // YB_CONSENSUS_LOG_FWD_H

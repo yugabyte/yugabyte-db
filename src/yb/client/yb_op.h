@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_YB_OP_H_
-#define YB_CLIENT_YB_OP_H_
+#pragma once
 
 #include <memory>
 #include <string>
@@ -603,4 +602,3 @@ Status GetRangePartitionBounds(
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_YB_OP_H_

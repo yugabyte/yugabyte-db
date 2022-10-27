@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FAILURE_DETECTOR_H_
-#define YB_UTIL_FAILURE_DETECTOR_H_
+#pragma once
 
 #include <stddef.h>
 
@@ -201,4 +200,3 @@ class RandomizedFailureMonitor {
 
 }  // namespace yb
 
-#endif /* YB_UTIL_FAILURE_DETECTOR_H_ */

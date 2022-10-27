@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
-#define YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H
+#pragma once
 
 #include <memory>
 
@@ -85,4 +84,3 @@ class YQLRowwiseIteratorIf {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_QL_ROWWISE_ITERATOR_INTERFACE_H

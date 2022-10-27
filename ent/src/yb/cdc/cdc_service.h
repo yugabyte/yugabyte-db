@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_CDC_CDC_SERVICE_H
-#define ENT_SRC_YB_CDC_CDC_SERVICE_H
+#pragma once
 
 #include <memory>
 
@@ -452,4 +451,3 @@ class CDCServiceImpl : public CDCServiceIf {
 }  // namespace cdc
 }  // namespace yb
 
-#endif  // ENT_SRC_YB_CDC_CDC_SERVICE_H

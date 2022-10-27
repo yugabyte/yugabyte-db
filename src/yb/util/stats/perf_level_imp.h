@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATS_PERF_LEVEL_IMP_H
-#define YB_UTIL_STATS_PERF_LEVEL_IMP_H
+#pragma once
 
 #include "yb/util/stats/perf_level.h"
 
@@ -33,4 +32,3 @@ extern __thread PerfLevel perf_level;
 
 }  // namespace yb
 
-#endif // YB_UTIL_STATS_PERF_LEVEL_IMP_H

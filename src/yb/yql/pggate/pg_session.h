@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SESSION_H_
-#define YB_YQL_PGGATE_PG_SESSION_H_
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -393,4 +392,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_SESSION_H_

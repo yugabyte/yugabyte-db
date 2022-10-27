@@ -21,8 +21,7 @@
 // See the header of file "/util/bfql/directory.h" for more general overall information.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BASE_OPERATOR_H_
-#define YB_BFQL_BASE_OPERATOR_H_
+#pragma once
 
 #include <memory>
 
@@ -88,4 +87,3 @@ class BFOperator {
 } // namespace bfql
 } // namespace yb
 
-#endif  // YB_BFQL_BASE_OPERATOR_H_

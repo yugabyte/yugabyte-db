@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
-#define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
+#pragma once
 
 #include <condition_variable>
 
@@ -69,4 +68,3 @@ class SplitOperation
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_SPLIT_OPERATION_H

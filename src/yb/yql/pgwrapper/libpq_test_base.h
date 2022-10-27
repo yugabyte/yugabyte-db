@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
+#pragma once
 
 #include "yb/util/monotime.h"
 #include "yb/util/tostring.h"
@@ -42,4 +41,3 @@ class LibPqTestBase : public PgWrapperTestBase {
 } // namespace pgwrapper
 } // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H

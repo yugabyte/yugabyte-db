@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
-#define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
+#pragma once
 
 #include <dirent.h>
 #include <signal.h>
@@ -414,4 +413,3 @@ class RedisSingleThreadedReader : public SingleThreadedReader {
 }  // namespace load_generator
 }  // namespace yb
 
-#endif  // YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_

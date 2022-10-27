@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
-#define YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
+#pragma once
 
 #include <future>
 
@@ -94,4 +93,3 @@ PublicPrivateIPFutures GetPublicPrivateIPFutures(
 }  // namespace master
 }  // namespace yb
 
-#endif // YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H

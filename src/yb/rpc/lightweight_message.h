@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_LIGHTWEIGHT_MESSAGE_H
-#define YB_RPC_LIGHTWEIGHT_MESSAGE_H
+#pragma once
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite.h>
@@ -285,4 +284,3 @@ void SetupLimit(google::protobuf::io::CodedInputStream* in);
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_LIGHTWEIGHT_MESSAGE_H

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TSERVER_TSERVER_ERROR_H
-#define YB_TSERVER_TSERVER_ERROR_H
+#pragma once
 
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -69,4 +68,3 @@ typedef StatusErrorCodeImpl<TabletServerDelayTag> TabletServerDelay;
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_ERROR_H

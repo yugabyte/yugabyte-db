@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_VALUE_CHANGER_H
-#define YB_UTIL_VALUE_CHANGER_H
+#pragma once
 
 namespace yb {
 
@@ -52,4 +51,3 @@ class ValueChanger {
 
 } // namespace yb
 
-#endif // YB_UTIL_VALUE_CHANGER_H

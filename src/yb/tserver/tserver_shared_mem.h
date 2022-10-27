@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_SHARED_MEM_H
-#define YB_TSERVER_TSERVER_SHARED_MEM_H
+#pragma once
 
 #include <atomic>
 
@@ -102,4 +101,3 @@ class TServerSharedData {
 }  // namespace tserver
 }  // namespace yb
 
-#endif // YB_TSERVER_TSERVER_SHARED_MEM_H

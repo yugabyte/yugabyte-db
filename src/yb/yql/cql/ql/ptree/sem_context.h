@@ -15,8 +15,7 @@
 // Entry point for the semantic analytical process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
-#define YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -300,4 +299,3 @@ class SemContext : public ProcessContext {
 
 }  // namespace ql
 }  // namespace yb
-#endif  // YB_YQL_CQL_QL_PTREE_SEM_CONTEXT_H_

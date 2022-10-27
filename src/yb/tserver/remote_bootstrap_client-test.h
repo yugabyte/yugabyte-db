@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
-#define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
+#pragma once
 
 #include "yb/common/wire_protocol.h"
 
@@ -134,4 +133,3 @@ Status RemoteBootstrapClientTest::CompareFileContents(const std::string& path1, 
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_CONSENSUS_H_
-#define YB_CONSENSUS_CONSENSUS_H_
+#pragma once
 
 #include <iosfwd>
 #include <memory>
@@ -421,4 +420,3 @@ Status MoveStatus(LeaderState&& state);
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_H_

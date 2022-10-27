@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PATH_H_
-#define YB_DOCDB_DOC_PATH_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -106,4 +105,3 @@ inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_PATH_H_

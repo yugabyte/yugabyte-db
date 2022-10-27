@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTION_LOADER_H
-#define YB_TABLET_TRANSACTION_LOADER_H
+#pragma once
 
 #include <condition_variable>
 #include <thread>
@@ -95,4 +94,3 @@ class TransactionLoader {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_LOADER_H

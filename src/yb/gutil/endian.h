@@ -41,8 +41,7 @@
 //
 // Buffer routines will copy to and from buffers without causing
 // a bus error when the architecture requires differnt byte alignments
-#ifndef YB_GUTIL_ENDIAN_H
-#define YB_GUTIL_ENDIAN_H
+#pragma once
 
 #include <assert.h>
 
@@ -434,4 +433,3 @@ void Store(void *p, T v) {
 
 } // namespace yb
 
-#endif  // YB_GUTIL_ENDIAN_H

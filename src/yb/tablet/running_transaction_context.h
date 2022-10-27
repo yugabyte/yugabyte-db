@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
-#define YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -106,4 +105,3 @@ class RunningTransactionContext {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H

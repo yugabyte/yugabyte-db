@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_TEST_UTIL_H
-#define YB_TABLET_TABLET_TEST_UTIL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -114,4 +113,3 @@ Status DumpTablet(
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TABLET_TEST_UTIL_H

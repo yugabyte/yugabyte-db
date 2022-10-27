@@ -18,8 +18,7 @@
 // - The context consists of attributes that are used for the entire compilation.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
-#define YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
@@ -280,4 +279,3 @@ class SemState {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_SEM_STATE_H_

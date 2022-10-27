@@ -13,8 +13,7 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
-#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -411,4 +410,3 @@ typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
 
 #undef YB_DEFINE_HANDLE_TYPE
 
-#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

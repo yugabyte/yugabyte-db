@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_CDC_CDC_PRODUCER_H
-#define ENT_SRC_YB_CDC_CDC_PRODUCER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -103,4 +102,3 @@ Status GetChangesForXCluster(const std::string& stream_id,
 }  // namespace cdc
 }  // namespace yb
 
-#endif /* ENT_SRC_YB_CDC_CDC_PRODUCER_H */

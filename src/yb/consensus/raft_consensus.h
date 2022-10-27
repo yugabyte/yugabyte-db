@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_RAFT_CONSENSUS_H_
-#define YB_CONSENSUS_RAFT_CONSENSUS_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -756,4 +755,3 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_RAFT_CONSENSUS_H_ */

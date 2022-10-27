@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DELAYER_H
-#define YB_UTIL_DELAYER_H
+#pragma once
 
 #include <condition_variable>
 #include <deque>
@@ -43,4 +42,3 @@ class Delayer {
 
 } // namespace yb
 
-#endif // YB_UTIL_DELAYER_H

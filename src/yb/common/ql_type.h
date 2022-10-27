@@ -15,8 +15,7 @@
 // This module is to define a few supporting functions for QLTYPE.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_TYPE_H_
-#define YB_COMMON_QL_TYPE_H_
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -448,4 +447,3 @@ class QLType {
 
 }; // namespace yb
 
-#endif  // YB_COMMON_QL_TYPE_H_

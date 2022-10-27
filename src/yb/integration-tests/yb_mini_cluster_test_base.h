@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_
-#define YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_
+#pragma once
 
 #include <memory>
 
@@ -65,4 +64,3 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
 
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_

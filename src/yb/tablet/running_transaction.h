@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RUNNING_TRANSACTION_H
-#define YB_TABLET_RUNNING_TRANSACTION_H
+#pragma once
 
 #include <memory>
 
@@ -192,4 +191,3 @@ Status MakeAbortedStatus(const TransactionId& id);
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_RUNNING_TRANSACTION_H

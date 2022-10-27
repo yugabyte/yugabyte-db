@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
-#define YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -126,4 +125,3 @@ class SnapshotScheduleState {
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_SNAPSHOT_SCHEDULE_STATE_H

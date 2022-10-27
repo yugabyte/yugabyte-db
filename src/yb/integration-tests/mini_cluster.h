@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
-#define YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
+#pragma once
 
 #include <chrono>
 #include <memory>
@@ -375,4 +374,3 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
 }  // namespace yb
 
-#endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

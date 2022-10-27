@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_PG_TYPES_H
-#define YB_COMMON_PG_TYPES_H
+#pragma once
 
 #include <boost/functional/hash/hash.hpp>
 
@@ -95,4 +94,3 @@ inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
 
 }  // namespace yb
 
-#endif  // YB_COMMON_PG_TYPES_H

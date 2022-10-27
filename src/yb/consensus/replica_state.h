@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_REPLICA_STATE_H
-#define YB_CONSENSUS_REPLICA_STATE_H
+#pragma once
 
 #include <atomic>
 #include <deque>
@@ -575,4 +574,3 @@ class ReplicaState {
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_REPLICA_STATE_H_
