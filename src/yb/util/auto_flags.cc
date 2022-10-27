@@ -15,6 +15,7 @@
 
 #include "yb/gutil/singleton.h"
 #include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
@@ -79,13 +80,21 @@ std::vector<const AutoFlagDescription*> GetAllAutoFlagsDescription() {
 }
 
 namespace {
-void PromoteAutoFlag(const AutoFlagDescription& flag_desc) {
-  // This is not expected to fail as we COMPILE_ASSERT for the target value.
-  CHECK(gflags::SetCommandLineOptionWithMode(
-            flag_desc.name.c_str(),
-            flag_desc.target_val.c_str(),
-            gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
-            .size());
+Status PromoteAutoFlag(const AutoFlagDescription& flag_desc) {
+  auto res = flags_internal::SetFlagInternal(
+      flag_desc.flag_ptr,
+      flag_desc.name.c_str(),
+      flag_desc.target_val.c_str(),
+      gflags::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  // This can fail only on flag validation errors. DumpAutoFlagsJSONAndExit promotes all AutoFlags
+  // to run the validations, and it is always called at build time, so this will never fail during
+  // actual process runtime.
+  SCHECK(
+      !res.empty(),
+      InvalidArgument,
+      Format("Failed to set AutoFlag $0 to target value $1", flag_desc.name, flag_desc.target_val));
+  return Status::OK();
 }
 }  // namespace
 
@@ -93,16 +102,16 @@ Status PromoteAutoFlag(const string& flag_name) {
   auto flag_desc = GetAutoFlagDescription(flag_name);
   SCHECK(flag_desc, NotFound, "AutoFlag '$0' not found", flag_name);
 
-  PromoteAutoFlag(*flag_desc);
-
-  return Status::OK();
+  return PromoteAutoFlag(*flag_desc);
 }
 
-void PromoteAllAutoFlags() {
+Status PromoteAllAutoFlags() {
   auto auto_flags = GetAllAutoFlagsDescription();
   for (const auto& flag_desc : auto_flags) {
-    PromoteAutoFlag(*flag_desc);
+    RETURN_NOT_OK(PromoteAutoFlag(*flag_desc));
   }
+
+  return Status::OK();
 }
 
 bool IsFlagPromoted(

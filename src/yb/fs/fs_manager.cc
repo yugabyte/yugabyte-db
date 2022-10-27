@@ -141,7 +141,7 @@ FsManagerOpts::FsManagerOpts()
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
-    CHECK_OK(SetFlagDefaultAndCurrent("fs_wal_dirs", FLAGS_fs_data_dirs));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(fs_wal_dirs, FLAGS_fs_data_dirs));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());

@@ -413,7 +413,7 @@ TabletSplitITest::TabletSplitITest() = default;
 TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
-  EnableVerboseLoggingForModule("tablet_split_manager", 2);
+  ASSERT_OK(EnableVerboseLoggingForModule("tablet_split_manager", 2));
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
   FLAGS_TEST_validate_all_tablet_candidates = true;
