@@ -43,8 +43,7 @@
 // single allocator per a single user request, thus setting bounds on memory
 // usage on a per-request basis.
 
-#ifndef YB_UTIL_MEMORY_MEMORY_H_
-#define YB_UTIL_MEMORY_MEMORY_H_
+#pragma once
 
 #include <stddef.h>
 
@@ -1025,4 +1024,3 @@ std::string TcMallocStats();
 
 }  // namespace yb
 
-#endif // YB_UTIL_MEMORY_MEMORY_H_

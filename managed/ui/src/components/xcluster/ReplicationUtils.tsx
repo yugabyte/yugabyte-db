@@ -179,7 +179,6 @@ export const CurrentTableReplicationLag = ({
       (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
     )
   );
-
   const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
   const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
   const trace = metric.data.find((trace) => trace.name === traceAlias);

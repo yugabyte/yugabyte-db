@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_MEMORY_ARENA_LIST_H
-#define YB_UTIL_MEMORY_ARENA_LIST_H
+#pragma once
 
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
@@ -209,4 +208,3 @@ class ArenaList {
 
 } // namespace yb
 
-#endif // YB_UTIL_MEMORY_ARENA_LIST_H

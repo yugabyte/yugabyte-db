@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_H
-#define YB_MASTER_CLUSTER_BALANCE_H
+#pragma once
 
 #include <atomic>
 #include <map>
@@ -441,4 +440,3 @@ class ClusterLoadBalancer {
 
 }  // namespace master
 }  // namespace yb
-#endif /* YB_MASTER_CLUSTER_BALANCE_H */

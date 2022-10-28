@@ -30,6 +30,7 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/stol_utils.h"
@@ -936,6 +937,24 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
+  auto process_token_fn = [this, sem_context, &op2](
+      Status *s, const PTBcall *bcall, AnalyzeStepState *state) -> bool {
+        if (strcmp(DCHECK_NOTNULL(bcall)->name()->c_str(), "token") == 0 ||
+            strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
+          const PTToken *token = static_cast<const PTToken *>(bcall);
+          DCHECK_ONLY_NOTNULL(s);
+          if (token->is_partition_key_ref()) {
+            *s = DCHECK_NOTNULL(state)->AnalyzePartitionKeyOp(sem_context, this, op2);
+          } else {
+            *s = sem_context->Error(this,
+                                    "token/partition_hash calls need to reference partition key",
+                                    ErrorCode::FEATURE_NOT_SUPPORTED);
+          }
+          return true;
+        }
+        return false;
+      };
+
   // Collecting scan information if its state is set.
   SelectScanInfo *scan_state = sem_context->scan_state();
   if (scan_state != nullptr) {
@@ -957,6 +976,12 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
           static_cast<const PTJsonColumnWithOperators*>(op1.get());
         RETURN_NOT_OK(scan_state->AddWhereExpr(sem_context, this, ref->desc(), op2,
                                                   ref->operators()));
+      } else if (op1->expr_op() == ExprOperator::kBcall) {
+        const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
+        Status s_token;
+        if (process_token_fn(&s_token, bcall, scan_state)) {
+          return s_token;
+        }
       }
     }
 
@@ -994,16 +1019,9 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2, ref->operators());
     } else if (op1->expr_op() == ExprOperator::kBcall) {
       const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
-      if (strcmp(bcall->name()->c_str(), "token") == 0 ||
-          strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
-        const PTToken *token = static_cast<const PTToken *>(bcall);
-        if (token->is_partition_key_ref()) {
-          return where_state->AnalyzePartitionKeyOp(sem_context, this, op2);
-        } else {
-          return sem_context->Error(this,
-                                    "token/partition_hash calls need to reference partition key",
-                                    ErrorCode::FEATURE_NOT_SUPPORTED);
-        }
+      Status s_token;
+      if (process_token_fn(&s_token, bcall, where_state)) {
+        return s_token;
       } else if (strcmp(bcall->name()->c_str(), "ttl") == 0 ||
                  strcmp(bcall->name()->c_str(), "writetime") == 0 ||
                  strcmp(bcall->name()->c_str(), "cql_cast") == 0) {

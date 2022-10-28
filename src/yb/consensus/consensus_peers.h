@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_PEERS_H_
-#define YB_CONSENSUS_CONSENSUS_PEERS_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -420,4 +419,3 @@ Status SetPermanentUuidForRemotePeer(
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_CONSENSUS_PEERS_H_ */

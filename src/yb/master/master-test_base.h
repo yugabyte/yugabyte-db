@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TEST_BASE_H
-#define YB_MASTER_MASTER_TEST_BASE_H
+#pragma once
 
 #include <algorithm>
 #include <map>
@@ -247,4 +246,3 @@ class MasterTestBase : public YBTest {
 } // namespace master
 } // namespace yb
 
-#endif /* YB_MASTER_MASTER_TEST_BASE_H */

@@ -16,8 +16,7 @@
 // Notably, this does NOT apply to Reschedule implementation methods, which are called from
 // different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_YQL_CQL_QL_QL_PROCESSOR_H_
-#define YB_YQL_CQL_QL_QL_PROCESSOR_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -182,4 +181,3 @@ class QLProcessor : public Rescheduler {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_QL_PROCESSOR_H_

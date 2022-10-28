@@ -20,8 +20,7 @@
 // the parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
-#define YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
+#pragma once
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
@@ -146,4 +145,3 @@ class ProcessContext : public ProcessContextBase {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_

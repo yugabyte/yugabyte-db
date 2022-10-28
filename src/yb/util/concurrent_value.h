@@ -2,8 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //
 
-#ifndef YB_UTIL_CONCURRENT_VALUE_H
-#define YB_UTIL_CONCURRENT_VALUE_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -309,4 +308,3 @@ using internal::ConcurrentValue;
 
 } // namespace yb
 
-#endif // YB_UTIL_CONCURRENT_VALUE_H

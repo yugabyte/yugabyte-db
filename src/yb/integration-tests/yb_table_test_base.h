@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
-#define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
+#pragma once
 
 #include <atomic>
 #include <cmath>
@@ -168,4 +167,3 @@ class YBTableTestBase : public YBTest {
 
 }  // namespace integration_tests
 }  // namespace yb
-#endif  // YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_

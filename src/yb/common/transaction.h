@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_COMMON_TRANSACTION_H
-#define YB_COMMON_TRANSACTION_H
+#pragma once
 
 #include <stdint.h>
 
@@ -363,4 +362,3 @@ YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 
 } // namespace yb
 
-#endif // YB_COMMON_TRANSACTION_H

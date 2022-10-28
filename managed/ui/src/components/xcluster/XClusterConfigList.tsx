@@ -7,7 +7,7 @@ import { useInterval } from 'react-use';
 
 import { fetchXClusterConfig } from '../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
-import { TRANSITORY_STATES, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS } from './constants';
+import { TRANSITORY_STATES, XCLUSTER_METRIC_REFETCH_INTERVAL_MS } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
 import { api } from '../../redesign/helpers/api';
 
@@ -59,7 +59,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
         queryClient.invalidateQueries(['Xcluster', xClusterConfig.data.uuid]);
       }
     });
-  }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
+  }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
   if (universeQuery.isLoading) {
     return <YBLoading />;

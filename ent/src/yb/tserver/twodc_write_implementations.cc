@@ -16,17 +16,23 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/packed_row.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/tserver/twodc_write_interface.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_util.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 
@@ -53,18 +59,58 @@ using namespace yb::size_literals;
 namespace tserver {
 namespace enterprise {
 
+// Updates the packed row encoded in the value with the local schema version
+// without decoding the value. In case of a non-packed row, return as is.
+Status UpdatePackedRowWithConsumerSchemaVersion(const Slice& key,
+                                                const Slice& value,
+                                                SchemaVersion schema_version,
+                                                ValueBuffer *out) {
+  CHECK(out != nullptr);
+  VLOG(3) << "Original value with producer schema version=" << value.ToDebugHexString();
+
+  Slice value_slice = value;
+  auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
+  bool has_coprefix = VERIFY_RESULT(docdb::DocKey::EncodedSize(key,
+                                                               docdb::DocKeyPart::kUpToId)) != 0;
+
+  // Don't perform any changes to the value for the following cases:
+  // 1. Non-packed rows
+  // 2. Unknown or uninitialized schema version
+  // 3. Colocated tables - These are not supported yet.
+  if (!value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow) ||
+      schema_version == cdc::kInvalidSchemaVersion ||
+      has_coprefix) {
+    // Return the whole value without changes
+    out->Truncate(0);
+    out->Reserve(value.size());
+    out->Append(value);
+    return Status::OK();
+  }
+
+  auto status = ReplaceSchemaVersionInPackedValue(value_slice, control_fields, schema_version, out);
+
+  if (status.ok()) {
+    VLOG(3) << "Updated value with consumer schema version=" << out->AsSlice().ToDebugHexString();
+  }
+
+  return status;
+}
+
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
-    google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out) {
+    google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB> *out,
+    SchemaVersion last_compatible_consumer_schema_version ) {
 
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
         const Uuid& involved_tablet,
         const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>* pairs,
+        SchemaVersion consumer_schema_version,
         docdb::KeyValuePairPB* out)
-        : involved_tablet_(involved_tablet), pairs_(*pairs), out_(out) {
+        : involved_tablet_(involved_tablet), pairs_(*pairs),
+          consumer_schema_version(consumer_schema_version), out_(out) {
     }
 
     void SetKey(const Slice& slice) override {
@@ -79,6 +125,10 @@ Status CombineExternalIntents(
       return involved_tablet_;
     }
 
+    const Status& GetOutcome() {
+      return status;
+    }
+
     boost::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= pairs_.size()) {
         return boost::none;
@@ -87,23 +137,35 @@ Status CombineExternalIntents(
       const auto& input = pairs_[next_idx_];
       ++next_idx_;
 
-      return std::pair<Slice, Slice>(input.key(), input.value().binary_value());
+      Slice key(input.key());
+      Slice value(input.value().binary_value());
+      status = UpdatePackedRowWithConsumerSchemaVersion(key, value, consumer_schema_version,
+                                                        &updated_value);
+      if (!status.ok()) {
+        LOG(WARNING) << "Could not update packed row with consumer schema version";
+        return boost::none;
+      }
+
+      return std::pair(key, updated_value.AsSlice());
     }
 
    private:
     Uuid involved_tablet_;
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
+    SchemaVersion consumer_schema_version;
     docdb::KeyValuePairPB* out_;
     int next_idx_ = 0;
+    ValueBuffer updated_value;
+    Status status = Status::OK();
   };
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
   auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
-  Provider provider(status_tablet, &pairs, out->Add());
+  Provider provider(status_tablet, &pairs, last_compatible_consumer_schema_version, out->Add());
   docdb::CombineExternalIntents(txn_id, &provider);
-  return Status::OK();
+  return provider.GetOutcome();
 }
 
 Status AddRecord(const ProcessRecordInfo& process_record_info,
@@ -125,13 +187,26 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
   if (!process_record_info.enable_replicate_transaction_status_table &&
       record.has_transaction_state()) {
     return CombineExternalIntents(
-        record.transaction_state(), record.changes(), write_batch->mutable_write_pairs());
+        record.transaction_state(),
+        record.changes(),
+        write_batch->mutable_write_pairs(),
+        process_record_info.last_compatible_consumer_schema_version);
   }
 
   for (const auto& kv_pair : record.changes()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
     write_pair->set_key(kv_pair.key());
-    write_pair->set_value(kv_pair.value().binary_value());
+
+    // Update value with local schema version before writing it out.
+    Slice key(kv_pair.key());
+    Slice value(kv_pair.value().binary_value());
+    ValueBuffer updated_value;
+    RETURN_NOT_OK(UpdatePackedRowWithConsumerSchemaVersion(
+        key, value, process_record_info.last_compatible_consumer_schema_version, &updated_value));
+
+    const Slice& updated_value_slice = updated_value.AsSlice();
+    write_pair->set_value(updated_value_slice.cdata(), updated_value_slice.size());
+
     if (PREDICT_FALSE(FLAGS_TEST_twodc_write_hybrid_time)) {
       // Used only for testing external hybrid time.
       write_pair->set_external_hybrid_time(yb::kInitialHybridTimeValue);

@@ -197,7 +197,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     EXPECT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value");
+    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value. Check stderr for more information.");
     EXPECT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 

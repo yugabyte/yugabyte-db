@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
+#pragma once
 
 #include <string>
 
@@ -246,4 +245,3 @@ class TwoDCTestBase : public YBTest {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H

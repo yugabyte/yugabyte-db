@@ -64,9 +64,7 @@ func (pg Postgres) Install() {
 	runInitDB()
 	pg.Start()
 	// Enough time to create the Yugaware Database.
-	if !hasSudoAccess() {
-		time.Sleep(5 * time.Second)
-	}
+	time.Sleep(5 * time.Second)
 	createYugawareDatabase()
 	if !hasSudoAccess() {
 		pg.CreateCronJob()
@@ -227,9 +225,9 @@ func runInitDB() {
 
 func createYugawareDatabase() {
 
-	mountPath := INSTALL_ROOT + "/postgres/run/postgresql/"
+	mountPath := INSTALL_ROOT + "/postgres/run/postgresql"
 
-	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h" + mountPath + " yugaware"
+	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h " + mountPath + " yugaware"
 	createdbString := INSTALL_ROOT + "/postgres/bin/createdb -h " + mountPath + " yugaware"
 
 	command1 := "sudo"

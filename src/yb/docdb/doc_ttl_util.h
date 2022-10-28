@@ -13,8 +13,7 @@
 
 // TTL helper methods are used in the DocDB code.
 
-#ifndef YB_DOCDB_DOC_TTL_UTIL_H_
-#define YB_DOCDB_DOC_TTL_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -67,4 +66,3 @@ static const HybridTime kNoExpiration(HybridTime::kMax);
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_TTL_UTIL_H_

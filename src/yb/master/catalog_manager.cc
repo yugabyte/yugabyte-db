@@ -536,6 +536,15 @@ DEFINE_bool(
     "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
 TAG_FLAG(enable_delete_truncate_cdcsdk_table, runtime);
 
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
+
+DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+            "When set, it enables automatic tablet splitting for tables that are part of an "
+            "xCluster replication setup and are currently being bootstrapped for xCluster.");
+TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
+
 namespace yb {
 namespace master {
 
@@ -751,8 +760,7 @@ void InitMasterFlags() {
       kAutoDetectNumShardsPerTServer) {
     const auto value = GetTransactionTableNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent(
-        "transaction_table_num_tablets_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(transaction_table_num_tablets_per_tserver, value));
   }
 }
 
@@ -2811,92 +2819,96 @@ Status CatalogManager::ShouldSplitValidCandidate(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
     std::string split_partition_key, const ManualSplit is_manual_split) {
-  auto source_table_lock = source_tablet_info->table()->LockForWrite();
-  auto source_tablet_lock = source_tablet_info->LockForWrite();
-
-  // We must re-validate the split candidate here *after* grabbing locks on the table and tablet to
-  // ensure a backfill does not happen before we modify catalog metadata to include new subtablets.
-  // This process adds new subtablets in the CREATING state, which if encountered by backfill code
-  // will block the backfill process.
-  //
-  // If this is a manual split, then we should select all potential tablets for the split
-  // (i.e. ignore the disabled tablets list and ignore TTL validation).
-  auto s = ValidateSplitCandidate(source_tablet_info, is_manual_split);
-  if (!s.ok()) {
-    VLOG_WITH_FUNC(2) << Format(
-        "ValidateSplitCandidate for tablet $0 returned: $1.",
-        source_tablet_info->tablet_id(), s);
-    return s;
-  }
-
-  auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-  if (!is_manual_split) {
-    // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
-    // time, a valid split candidate, but by the time the candidate was actually processed here, the
-    // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
-    // a valid candidate. This is not an unexpected error, but we should bail out of splitting this
-    // tablet regardless.
-    Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-    if (!status.ok()) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Tablet split candidate $0 is no longer a valid split candidate: $1",
-          source_tablet_info->tablet_id(),
-          status);
-    }
-  }
-
-  // Check if at least one child tablet already registered
-  if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
-    const auto child_tablet_id = source_tablet_lock->pb.split_tablet_ids(0);
-    const auto child_tablet = VERIFY_RESULT(GetTabletInfo(child_tablet_id));
-    const auto parent_partition = source_tablet_lock->pb.partition();
-    const auto child_partition = child_tablet->LockForRead()->pb.partition();
-
-    if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
-      split_partition_key = child_partition.partition_key_end();
-    } else {
-      SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
-        IllegalState, "Parent partion key end does not equal child partition key end");
-      split_partition_key = child_partition.partition_key_start();
-    }
-
-    // Re-compute the encoded key
-    // to ensure we use the same partition boundary for both child tablets
-    split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
-        split_partition_key, source_table_lock->pb.partition_schema()));
-  }
-
-  LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
-            << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
-
-  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
-      CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
-
   std::array<TabletId, kNumSplitParts> new_tablet_ids_sorted;
-  for (int i = 0; i < kNumSplitParts; ++i) {
-    TabletId child_tablet_id;
-    for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
-      const auto child_tablet = VERIFY_RESULT(GetTabletInfo(split_tablet_id));
-      const auto child_partition = child_tablet->LockForRead()->pb.partition();
-      if (child_partition.partition_key_start() == new_tablets_partition[i].partition_key_start()) {
-        child_tablet_id = split_tablet_id;
-        break;
+  {
+    LockGuard lock(mutex_);
+    auto source_table_lock = source_tablet_info->table()->LockForWrite();
+    auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+    // We must re-validate the split candidate here *after* grabbing locks on the table and tablet
+    // to ensure a backfill does not happen before we modify catalog metadata to include new
+    // subtablets. This process adds new subtablets in the CREATING state, which if encountered by
+    // backfill code will block the backfill process.
+
+    // If this is a manual split, then we should select all potential tablets for the split
+    // (i.e. ignore the disabled tablets list and ignore TTL validation).
+    auto s = ValidateSplitCandidateUnlocked(source_tablet_info, is_manual_split);
+    if (!s.ok()) {
+      VLOG_WITH_FUNC(4) << Format(
+          "ValidateSplitCandidate for tablet $0 returned: $1.",
+          source_tablet_info->tablet_id(), s);
+      return s;
+    }
+
+    auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
+    if (!is_manual_split) {
+      // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
+      // time, a valid split candidate, but by the time the candidate was actually processed here,
+      // the cluster may have changed, putting us in a new split threshold phase, and it may no
+      // longer be a valid candidate. This is not an unexpected error, but we should bail out of
+      // splitting this tablet regardless.
+      Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+      if (!status.ok()) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Tablet split candidate $0 is no longer a valid split candidate: $1",
+            source_tablet_info->tablet_id(),
+            status);
       }
     }
 
-    if (child_tablet_id.empty()) {
-      auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablets_partition[i],
-          &source_table_lock, &source_tablet_lock));
+    // Check if at least one child tablet already registered
+    if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+      const auto child_tablet_id = source_tablet_lock->pb.split_tablet_ids(0);
+      const auto child_tablet = VERIFY_RESULT(GetTabletInfoUnlocked(child_tablet_id));
+      const auto parent_partition = source_tablet_lock->pb.partition();
+      const auto child_partition = child_tablet->LockForRead()->pb.partition();
 
-      child_tablet_id = new_tablet_info->id();
+      if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
+        split_partition_key = child_partition.partition_key_end();
+      } else {
+        SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
+          IllegalState, "Parent partion key end does not equal child partition key end");
+        split_partition_key = child_partition.partition_key_start();
+      }
+
+      // Re-compute the encoded key
+      // to ensure we use the same partition boundary for both child tablets
+      split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
+        split_partition_key, source_table_lock->pb.partition_schema()));
     }
 
-    new_tablet_ids_sorted[i] = child_tablet_id;
+    LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
+              << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+
+    std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
+        CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
+
+    for (int i = 0; i < kNumSplitParts; ++i) {
+      TabletId child_tablet_id;
+      for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
+        const auto child_tablet = VERIFY_RESULT(GetTabletInfoUnlocked(split_tablet_id));
+        const auto child_partition = child_tablet->LockForRead()->pb.partition();
+        if (child_partition.partition_key_start() ==
+            new_tablets_partition[i].partition_key_start()) {
+          child_tablet_id = split_tablet_id;
+          break;
+        }
+      }
+
+      if (child_tablet_id.empty()) {
+        auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
+            source_tablet_info.get(), new_tablets_partition[i],
+            &source_table_lock, &source_tablet_lock));
+
+        child_tablet_id = new_tablet_info->id();
+      }
+
+      new_tablet_ids_sorted[i] = child_tablet_id;
+    }
+    source_tablet_lock.Commit();
+    source_table_lock.Commit();
   }
-  source_tablet_lock.Commit();
-  source_table_lock.Commit();
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
   // Handle xCluster metadata updates for local splits. Handle after registration but before
@@ -2930,10 +2942,14 @@ Status CatalogManager::DoSplitTablet(
       is_manual_split);
 }
 
-Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id)
+    EXCLUDES(mutex_) {
+  SharedLock lock(mutex_);
+  return GetTabletInfoUnlocked(tablet_id);
+}
 
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfoUnlocked(const TabletId& tablet_id)
+    REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   SCHECK(tablet_info != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
 
@@ -2996,16 +3012,48 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split);
 }
 
+Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) const {
+  SharedLock lock(mutex_);
+  return ValidateSplitCandidateTableCdcUnlocked(table);
+}
+
+Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
+  // Check if this table is part of a cdc stream.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
+      IsCdcEnabledUnlocked(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDC stream, table_id: $0", table.id());
+  }
+  // Check if the table is in the bootstrapping phase of xCluster.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
+      IsTablePartOfBootstrappingCdcStreamUnlocked(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, table_id: $0", table.id());
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::ValidateSplitCandidate(
+    const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
+  SharedLock lock(mutex_);
+  return ValidateSplitCandidateUnlocked(tablet, is_manual_split);
+}
+
+Status CatalogManager::ValidateSplitCandidateUnlocked(
     const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
       *tablet->table(), ignore_disabled_list));
+  RETURN_NOT_OK(ValidateSplitCandidateTableCdcUnlocked(*tablet->table()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
 
   const TabletId parent_id = tablet->LockForRead()->pb.split_parent_tablet_id();
-  auto parent_result = GetTabletInfo(parent_id);
+  auto parent_result = GetTabletInfoUnlocked(parent_id);
   TabletInfoPtr parent = parent_result.ok() ? parent_result.get() : nullptr;
   return tablet_split_manager_.ValidateSplitCandidateTablet(
       *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
@@ -6370,10 +6418,7 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
 
   auto table = source_tablet_info->table();
   TabletInfoPtr new_tablet;
-  {
-    LockGuard lock(mutex_);
-    new_tablet = CreateTabletInfo(table.get(), partition);
-  }
+  new_tablet = CreateTabletInfo(table.get(), partition);
   const auto& source_tablet_meta = tablet_lock->pb;
 
   auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
@@ -6388,30 +6433,26 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
   int new_partition_list_version;
-  {
-    LockGuard lock(mutex_);
+  auto& table_pb = table_write_lock->mutable_data()->pb;
+  new_partition_list_version = table_pb.partition_list_version() + 1;
+  table_pb.set_partition_list_version(new_partition_list_version);
 
-    auto& table_pb = table_write_lock->mutable_data()->pb;
-    new_partition_list_version = table_pb.partition_list_version() + 1;
-    table_pb.set_partition_list_version(new_partition_list_version);
+  tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
-    tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
-
-    TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
-    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
-    if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
-      return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
-    }
-
-    table->AddTablet(new_tablet);
-    // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
-    // committed TabletInfo from the `table` ?
-    new_tablet->mutable_metadata()->CommitMutation();
-
-    auto tablet_map_checkout = tablet_map_.CheckOut();
-    (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
+  TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
+  MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+  if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+    return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
   }
+  table->AddTablet(new_tablet);
+  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+  // committed TabletInfo from the `table` ?
+  new_tablet->mutable_metadata()->CommitMutation();
+
+  auto tablet_map_checkout = tablet_map_.CheckOut();
+  (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
+
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
             << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
             << ", partition_key_end: "
@@ -8518,7 +8559,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
   for (auto &table_id : sys_table_ids) {
-    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id));
+    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id, leader_ready_term()));
   }
   // Remove the system tables from the system catalog TabletInfo.
   RETURN_NOT_OK(RemoveTableIdsFromTabletInfo(sys_tablet_info, sys_table_ids));
@@ -10195,7 +10236,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table));
+    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);

@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
-#define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+#pragma once
 
 #include <stdint.h>
 
@@ -98,4 +97,3 @@ inline const char* ToBlockBasedTablePropertyValue(bool value) {
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H

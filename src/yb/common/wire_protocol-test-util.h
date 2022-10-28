@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
-#define YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -134,4 +133,3 @@ void AddKVToPB(int32_t key_val,
 
 } // namespace yb
 
-#endif // YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_

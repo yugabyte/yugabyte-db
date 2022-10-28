@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_SUBSTITUTIONS_H
-#define YB_GEN_YRPC_SUBSTITUTIONS_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -62,4 +61,3 @@ Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* ser
 } // namespace gen_yrpc
 } // namespace yb
 
-#endif // YB_GEN_YRPC_SUBSTITUTIONS_H

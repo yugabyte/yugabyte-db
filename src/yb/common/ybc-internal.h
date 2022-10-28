@@ -13,8 +13,7 @@
 // Utilities for implementations of C wrappers around YugaByte C++ code. This file is not intended
 // to be included
 
-#ifndef YB_COMMON_YBC_INTERNAL_H
-#define YB_COMMON_YBC_INTERNAL_H
+#pragma once
 
 #ifndef __cplusplus
 #error "This header can only be included in C++ code"
@@ -44,4 +43,3 @@ const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
 
-#endif // YB_COMMON_YBC_INTERNAL_H

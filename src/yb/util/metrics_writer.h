@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_METRICS_WRITER_H
-#define YB_UTIL_METRICS_WRITER_H
+#pragma once
 
 #include <map>
 
@@ -102,4 +101,3 @@ class NMSWriter : public PrometheusWriter {
 
 } // namespace yb
 
-#endif // YB_UTIL_METRICS_WRITER_H

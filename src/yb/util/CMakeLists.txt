@@ -174,6 +174,7 @@ set(UTIL_SRCS
   file_system_posix.cc
   flag_tags.cc
   flags.cc
+  flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
   init.cc
@@ -350,6 +351,7 @@ ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
 ADD_YB_TEST(flag_tags-test)
 ADD_YB_TEST(flags-test)
+ADD_YB_TEST(flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)

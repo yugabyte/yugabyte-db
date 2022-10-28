@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_ROCKSDB_ROCKSDB_FWD_H
-#define YB_ROCKSDB_ROCKSDB_FWD_H
+#pragma once
 
 #include <memory>
 
@@ -40,4 +39,3 @@ using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 } // namespace rocksdb
 
-#endif // YB_ROCKSDB_ROCKSDB_FWD_H

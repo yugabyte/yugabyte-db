@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_CLIENT_H_
-#define YB_CLIENT_CLIENT_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -434,7 +433,8 @@ class YBClient {
   // Result value is set only on success.
   Result<bool> TablegroupExists(const std::string& namespace_name,
                                 const std::string& tablegroup_id);
-  Result<std::vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
+  Result<std::vector<master::TablegroupIdentifierPB>> ListTablegroups(
+      const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
@@ -548,9 +548,10 @@ class YBClient {
                                                const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
-  Result<bool> UpdateConsumerOnProducerMetadata(const std::string& producer_id,
-                                                const TableId& table_id,
-                                                const tablet::ChangeMetadataRequestPB& meta_info);
+  Status UpdateConsumerOnProducerMetadata(const std::string& producer_id,
+                                          const TableId& table_id,
+                                          const tablet::ChangeMetadataRequestPB& meta_info,
+                                          master::UpdateConsumerOnProducerMetadataResponsePB *resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -849,4 +850,3 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
-#endif  // YB_CLIENT_CLIENT_H_

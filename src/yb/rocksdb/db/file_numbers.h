@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_FILE_NUMBERS_H
-#define YB_ROCKSDB_DB_FILE_NUMBERS_H
+#pragma once
 
 #include <unordered_set>
 
@@ -149,4 +148,3 @@ class FileNumbersProvider : public FileNumberAdderRemover {
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_DB_FILE_NUMBERS_H

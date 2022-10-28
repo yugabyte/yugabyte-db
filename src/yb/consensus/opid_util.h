@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_OPID_UTIL_H_
-#define YB_CONSENSUS_OPID_UTIL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -134,4 +133,3 @@ using consensus::operator<<;
 
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_OPID_UTIL_H_ */

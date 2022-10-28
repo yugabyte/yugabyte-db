@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_SUBDOCUMENT_H_
-#define YB_DOCDB_SUBDOCUMENT_H_
+#pragma once
 
 #include <assert.h>
 #include <inttypes.h>
@@ -214,4 +213,3 @@ static_assert(sizeof(SubDocument) == sizeof(PrimitiveValue),
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_SUBDOCUMENT_H_

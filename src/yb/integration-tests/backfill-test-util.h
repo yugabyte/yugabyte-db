@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <string>
@@ -153,4 +152,3 @@ Status WaitForBackfillSafeTimeOn(
 
 }  // namespace yb
 
-#endif  // YB_INTEGRATION_TESTS_BACKFILL_TEST_UTIL_H

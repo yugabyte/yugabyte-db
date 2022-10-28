@@ -26,8 +26,7 @@
 //   add_dependencies(<ql_bfunc.h included library> yb_bfql)
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_BFUNC_H_
-#define YB_COMMON_QL_BFUNC_H_
+#pragma once
 
 #include <vector>
 #include <unordered_set>
@@ -63,4 +62,3 @@ Status ExecBfunc(
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_BFUNC_H_

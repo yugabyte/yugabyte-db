@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_PROXY_H_
-#define YB_RPC_PROXY_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -245,4 +244,3 @@ class ProxyCache {
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_PROXY_H_

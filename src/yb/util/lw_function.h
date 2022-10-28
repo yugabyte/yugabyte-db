@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_LW_FUNCTION_H
-#define YB_UTIL_LW_FUNCTION_H
+#pragma once
 
 namespace yb {
 
@@ -104,4 +103,3 @@ auto make_lw_function(const Func& functor) {
 
 } // namespace yb
 
-#endif // YB_UTIL_LW_FUNCTION_H

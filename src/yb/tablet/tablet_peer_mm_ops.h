@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_MM_OPS_H_
-#define YB_TABLET_TABLET_PEER_MM_OPS_H_
+#pragma once
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
@@ -74,4 +73,3 @@ class LogGCOp : public MaintenanceOp {
 } // namespace tablet
 } // namespace yb
 
-#endif /* YB_TABLET_TABLET_PEER_MM_OPS_H_ */

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BYTES_FORMATTER_H
-#define YB_UTIL_BYTES_FORMATTER_H
+#pragma once
 
 #include <limits>
 #include <string>
@@ -63,4 +62,3 @@ std::string FormatSliceAsStr(
 
 }  // namespace yb
 
-#endif  // YB_UTIL_BYTES_FORMATTER_H

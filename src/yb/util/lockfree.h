@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_LOCKFREE_H
-#define YB_UTIL_LOCKFREE_H
+#pragma once
 
 #include <atomic>
 
@@ -146,4 +145,3 @@ class LockFreeStack {
 
 } // namespace yb
 
-#endif // YB_UTIL_LOCKFREE_H

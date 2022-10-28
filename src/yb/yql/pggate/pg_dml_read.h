@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DML_READ_H_
-#define YB_YQL_PGGATE_PG_DML_READ_H_
+#pragma once
 
 #include <optional>
 #include <utility>
@@ -169,4 +168,3 @@ class PgDmlRead : public PgDml {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DML_READ_H_

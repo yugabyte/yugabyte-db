@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_INITIALIZATION_H
-#define YB_MASTER_SYS_CATALOG_INITIALIZATION_H
+#pragma once
 
 #include <vector>
 #include <string>
@@ -72,4 +71,3 @@ Status MakeYsqlSysCatalogTablesTransactional(
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_SYS_CATALOG_INITIALIZATION_H

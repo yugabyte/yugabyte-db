@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_QL_DML_TEST_BASE_H
-#define YB_CLIENT_QL_DML_TEST_BASE_H
+#pragma once
 
 #include <algorithm>
 #include <functional>
@@ -183,4 +182,3 @@ Status CheckOp(YBqlOp* op);
 }  // namespace client
 }  // namespace yb
 
-#endif // YB_CLIENT_QL_DML_TEST_BASE_H

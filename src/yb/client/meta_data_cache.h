@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_META_DATA_CACHE_H
-#define YB_CLIENT_META_DATA_CACHE_H
+#pragma once
 
 #include <mutex>
 #include <unordered_map>
@@ -125,4 +124,3 @@ class YBMetaDataCache {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_META_DATA_CACHE_H

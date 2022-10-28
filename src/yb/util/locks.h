@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_LOCKS_H
-#define YB_UTIL_LOCKS_H
+#pragma once
 
 #include <algorithm>
 #include <mutex>
@@ -301,4 +300,3 @@ class ReverseLock {
 
 } // namespace yb
 
-#endif // YB_UTIL_LOCKS_H

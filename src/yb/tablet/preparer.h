@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_PREPARER_H
-#define YB_TABLET_PREPARER_H
+#pragma once
 
 #include <gflags/gflags.h>
 
@@ -55,4 +54,3 @@ class Preparer {
 
 };  // namespace tablet
 }  // namespace yb
-#endif  // YB_TABLET_PREPARER_H

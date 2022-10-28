@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_TCP_STREAM_H
-#define YB_RPC_TCP_STREAM_H
+#pragma once
 
 #include <ev++.h>
 
@@ -158,4 +157,3 @@ class TcpStream : public Stream {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_TCP_STREAM_H

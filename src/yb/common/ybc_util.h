@@ -13,8 +13,7 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#ifndef YB_COMMON_YBC_UTIL_H
-#define YB_COMMON_YBC_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -183,4 +182,3 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 } // extern "C"
 #endif
 
-#endif  // YB_COMMON_YBC_UTIL_H

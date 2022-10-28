@@ -185,8 +185,8 @@ export default class UserProfileForm extends Component {
                         name="name"
                         type="text"
                         component={YBFormInput}
-                        placeholder="Full Name"
-                        label="Full Name"
+                        placeholder="Customer Name"
+                        label="Customer Name"
                       />
                       <Field
                         name="email"

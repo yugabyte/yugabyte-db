@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_KV_DEBUG_H_
-#define YB_DOCDB_KV_DEBUG_H_
+#pragma once
 
 #include <string>
 
@@ -32,4 +31,3 @@ Result<std::string> DocDBValueToDebugStr(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_KV_DEBUG_H_

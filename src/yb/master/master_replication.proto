@@ -356,6 +356,9 @@ message UpdateConsumerOnProducerMetadataRequestPB {
 message UpdateConsumerOnProducerMetadataResponsePB {
   optional MasterErrorPB error = 1;
   optional bool should_wait = 2 [default = true];
+
+  // The last Consumer schema version that was EquivalentForDataCopy with the Producer
+  optional uint32 last_compatible_consumer_schema_version = 3;
 }
 
 message GetXClusterEstimatedDataLossRequestPB {}

@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DELETE_H_
-#define YB_YQL_PGGATE_PG_DELETE_H_
+#pragma once
 
 #include <memory>
 #include <utility>
@@ -50,4 +49,3 @@ class PgDelete : public PgDmlWrite {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DELETE_H_

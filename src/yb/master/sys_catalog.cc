@@ -78,6 +78,7 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -1673,9 +1674,11 @@ Status SysCatalogTable::CopyPgsqlTables(
   return Status::OK();
 }
 
-Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
-  tablet_peer()->tablet_metadata()->RemoveTable(table_id);
-  return Status::OK();
+Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id, int64_t term) {
+  tablet::ChangeMetadataRequestPB change_req;
+  change_req.set_tablet_id(kSysCatalogTabletId);
+  change_req.set_remove_table_id(table_id);
+  return tablet::SyncReplicateChangeMetadataOperation(&change_req, tablet_peer().get(), term);
 }
 
 const Schema& SysCatalogTable::schema() {

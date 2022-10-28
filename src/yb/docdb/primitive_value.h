@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_H_
-#define YB_DOCDB_PRIMITIVE_VALUE_H_
+#pragma once
 
 #include <ostream>
 #include <string>
@@ -309,4 +308,3 @@ size_t EncodedValueSize(const QLValuePB& value);
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_PRIMITIVE_VALUE_H_

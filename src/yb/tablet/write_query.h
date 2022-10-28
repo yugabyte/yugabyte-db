@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_WRITE_QUERY_H
-#define YB_TABLET_WRITE_QUERY_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -174,7 +173,7 @@ class WriteQuery {
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
 
-  Tablet& tablet() const;
+  Result<TabletPtr> tablet() const;
 
   std::unique_ptr<WriteOperation> operation_;
 
@@ -230,4 +229,3 @@ class WriteQuery {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_WRITE_QUERY_H

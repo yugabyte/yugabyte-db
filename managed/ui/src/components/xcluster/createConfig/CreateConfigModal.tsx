@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
-
 import { FormikActions, FormikProps } from 'formik';
 
 import {
@@ -25,8 +24,8 @@ import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/Universe
 import { assertUnreachableCase } from '../../../utils/ErrorUtils';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 
-import { TableType, Universe } from '../../../redesign/helpers/dtos';
-import { XClusterTableType, YBTable } from '../XClusterTypes';
+import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterTableType } from '../XClusterTypes';
 
 import styles from './CreateConfigModal.module.scss';
 
@@ -167,7 +166,7 @@ export const CreateConfigModal = ({
   );
 
   const tablesQuery = useQuery<YBTable[]>(['universe', currentUniverseUUID, 'tables'], () =>
-    fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
+    fetchTablesInUniverse(currentUniverseUUID).then((response) => response.data)
   );
 
   const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>

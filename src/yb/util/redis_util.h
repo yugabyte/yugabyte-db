@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_REDIS_UTIL_H
-#define YB_UTIL_REDIS_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -23,4 +22,3 @@ bool RedisPatternMatch(
 
 } // namespace yb
 
-#endif // YB_UTIL_REDIS_UTIL_H

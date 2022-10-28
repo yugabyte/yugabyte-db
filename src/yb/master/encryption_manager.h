@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_ENCRYPTION_MANAGER_H
-#define YB_MASTER_ENCRYPTION_MANAGER_H
+#pragma once
 
 #include <unordered_set>
 
@@ -91,4 +90,3 @@ class EncryptionManager {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_ENCRYPTION_MANAGER_H

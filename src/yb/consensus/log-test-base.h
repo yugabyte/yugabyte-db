@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_TEST_BASE_H
-#define YB_CONSENSUS_LOG_TEST_BASE_H
+#pragma once
 
 #include <utility>
 #include <vector>
@@ -397,4 +396,3 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
 } // namespace log
 } // namespace yb
 
-#endif // YB_CONSENSUS_LOG_TEST_BASE_H
