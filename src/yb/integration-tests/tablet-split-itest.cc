@@ -71,6 +71,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -116,7 +117,7 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint64(tablet_split_limit_per_table);
-DECLARE_bool(TEST_pause_before_post_split_compaction);
+DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_int32(TEST_slowdown_backfill_alter_table_rpcs_ms);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -152,6 +153,8 @@ DECLARE_int32(index_block_restart_interval);
 DECLARE_bool(TEST_error_after_creating_single_split_tablet);
 DECLARE_bool(TEST_pause_before_send_hinted_election);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -201,7 +204,7 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
 TEST_F(TabletSplitITest, SplitTabletIsAsync) {
   constexpr auto kNumRows = kDefaultNumRows;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
 
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
 
@@ -212,7 +215,7 @@ TEST_F(TabletSplitITest, SplitTabletIsAsync) {
   for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
     EXPECT_FALSE(peer->tablet()->metadata()->has_been_fully_compacted());
   }
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
 }
 
@@ -306,7 +309,7 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   const MonoDelta kCleanupTimeout = 15s * kTimeMultiplier;
 
   // Keep tablets without compaction after split.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
 
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
   auto tablet_peers =
@@ -330,7 +333,7 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
       cluster_.get(),
       first_child_tablet->GetCurrentVersionSstFilesSize() / (kCleanupTimeout.ToSeconds() * 1.5));
   // Resume post-split compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   // Turn on split tablets cleanup.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
 
@@ -371,7 +374,7 @@ TEST_F(TabletSplitITest, TestLoadBalancerAndSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_removals) = 5;
 
   // Keep tablets without compaction after split.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
 
   CreateSingleTablet();
 
@@ -465,7 +468,7 @@ TEST_F(TabletSplitITest, TestLoadBalancerAndSplit) {
         << " that moved out of blacklist before post-split compaction completed";
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
 
   ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
 
@@ -1562,7 +1565,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
     }
 
     // Keep tablets without compaction after split.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
     // Enable splitting.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
@@ -1579,7 +1582,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplits) {
     // Pause any more tablet splits.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // Reenable post split compaction, wait for this to complete so next tablets can be split.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
 
     ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
 
@@ -2260,6 +2263,66 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   split_manager->DisableSplittingForTtlTable(table_->id());
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info,
       master::IgnoreDisabledList::kTrue));
+}
+
+TEST_F(TabletSplitSingleServerITest, ScheduledFullCompactionsDoNotBlockSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  const HybridTime now = clock_->Now();
+  constexpr auto kNumRows = kDefaultNumRows;
+  auto tserver = cluster_->mini_tablet_server(0)->server();
+  auto compact_manager = tserver->tablet_manager()->full_compaction_manager();
+  // Set compaction frequency to > 0.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 24;
+  // Hold up full compaction before split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+
+  // Schedule full compaction on a single tablet.
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 1);
+
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kNumRows));
+
+  // Split and post-split compactions have finished.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
+
+  // Check that the metadata for all tablets got updated.
+  for (auto peer : ASSERT_RESULT(ListPostSplitChildrenTabletPeers())) {
+    EXPECT_GE(
+        HybridTime(peer->shared_tablet()->metadata()->last_full_compaction_time()), now);
+  }
+}
+
+TEST_F(TabletSplitSingleServerITest, PostSplitCompactionsBlockScheduledFullCompactions) {
+  constexpr auto kNumRows = kDefaultNumRows;
+  auto tserver = cluster_->mini_tablet_server(0)->server();
+  auto compact_manager = tserver->tablet_manager()->full_compaction_manager();
+  // Set compaction frequency to > 0.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 24;
+
+  // Hold up post-split compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+  ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
+
+  // Attempt to schedule full compactions, but don't expect any to be scheduled.
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  ASSERT_OK(WaitForTestTablePostSplitTabletsFullyCompacted(15s * kTimeMultiplier));
+
+  // Try to schedule full compactions again, but shouldn't actually schedule any because
+  // the post-split compactions finished too recently.
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
+
+  // Change the compaction frequency to seconds, and try to schedule compactions again.
+  const auto short_frequency = MonoDelta::FromSeconds(1);
+  SleepFor(short_frequency);
+  compact_manager->TEST_DoScheduleFullCompactionsWithManualValues(short_frequency, 0);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 2);
 }
 
 TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {
