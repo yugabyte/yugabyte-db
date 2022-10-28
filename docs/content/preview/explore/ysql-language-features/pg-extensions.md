@@ -12,6 +12,7 @@ menu:
     weight: 4400
 aliases:
   - /preview/explore/ysql-language-features/advanced-features/extensions/
+  - /preview/api/ysql/extensions/
 type: docs
 ---
 
@@ -23,27 +24,35 @@ This page describes the PostgreSQL extensions supported by YugabyteDB.
 Extensions are either pre-bundled with YugabyteDB, or require installation:
 
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
-* **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Installing an extension](#installing-extensions).
+* **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](#install-extensions).
 
-For information about using a specific extension in YugabyteDB, follow the Examples links in the following table.
+For information about using a specific extension in YugabyteDB, use the Example links in the following tables.
 
-| Extension | Status | Description | Examples |
-| :-------- | :----- | :---------- | :------ |
-| [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html) |
+### PostgreSQL modules
+
+YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html), all of which are pre-bundled.
+
+| Module | Status | Description | Examples |
+| :----- | :----- | :---------- | :------ |
+| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
 | [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Pre-bundled | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
+| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. | |
+| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html)| Pre-bundled | Checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE. | [Example](#passwordcheck-example) |
 | [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html)| Pre-bundled | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
-| [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html)| Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
-| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
-| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Pre-bundled | Implements the hstore data type for storing sets of key/value pairs in a single PostgreSQL value. | |
+| [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) | Pre-bundled| Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
 | [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Pre-bundled | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
 | [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Pre-bundled | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | [Example](#postgres-fdw-example) |
-| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Pre-bundled | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
+| [spi](https://www.postgresql.org/docs/11/contrib-spi.html)|Pre-bundled | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
 | [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Pre-bundled | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
 | [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Pre-bundled | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
 | [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Pre-bundled | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Example](#uuid-ossp-example) |
-| **Other** ||||
+
+### Other extensions
+
+| Extension | Status | Description | Examples |
+| :-------- | :----- | :---------- | :------ |
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
-| [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | |
+| [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | [Install and example](../../../secure/audit-logging/audit-logging-ysql/) |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce)| Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
@@ -54,7 +63,7 @@ For information about using a specific extension in YugabyteDB, follow the Examp
 | [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
 | [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
 
-## Installing extensions
+## Install extensions
 
 If an extension is not pre-bundled, you need to install it manually before you can enable it using the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement. You can install only extensions that are supported by YugabyteDB.
 
@@ -90,29 +99,29 @@ To find the directories where you install the extension files on your local inst
 First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation as follows:
 
 ```sh
-$ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
+alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
 
 List existing shared libraries with:
 
 ```sh
-$ ls "$(yb_pg_config --pkglibdir)"
+ls "$(yb_pg_config --pkglibdir)"
 ```
 
 List SQL and control files for already-installed extensions with:
 
 ```sh
-$ ls "$(yb_pg_config --sharedir)"/extension/
+ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
-### Copying extensions from PostgreSQL
+### Copy extensions from PostgreSQL
 
 The easiest way to install an extension is to copy the files from an existing PostgreSQL installation.
 
 Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following `ysqlsh` command:
 
 ```sh
-$ ./bin/ysqlsh --version
+./bin/ysqlsh --version
 ```
 
 ```output
@@ -122,17 +131,17 @@ psql (PostgreSQL) 11.2-YB-2.11.2.0-b0
 If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
 
 ```sh
-$ ls "$(pg_config --pkglibdir)" | grep <name>
+ls "$(pg_config --pkglibdir)" | grep <name>
 ```
 
 ```sh
-$ ls "$(pg_config --sharedir)"/extension/ | grep <name>
+ls "$(pg_config --sharedir)"/extension/ | grep <name>
 ```
 
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment with multiple PostgreSQL versions installed:
 
 ```sh
-$ pg_config --version
+pg_config --version
 ```
 
 ```output
@@ -140,7 +149,7 @@ PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
 ```
 
 ```sh
-$ /usr/lib/postgresql/11/bin/pg_config --version
+/usr/lib/postgresql/11/bin/pg_config --version
 ```
 
 ```output
@@ -151,7 +160,7 @@ In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`.
 
 On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
-## Using PostgreSQL extensions
+## Use PostgreSQL extensions
 
 ### file_fdw example
 
@@ -170,10 +179,10 @@ CREATE SERVER my_server FOREIGN DATA WRAPPER file_fdw;
 Now, you can create foreign tables that access data from files. For example:
 
 ```sql
-CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER myserver OPTIONS (filename 'employees.csv', format 'csv');
+CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER my_server OPTIONS (filename 'employees.csv', format 'csv');
 ```
 
-You can execute SELECT statements on the foreign tables to access the data in the corresponding files.
+You can execute `SELECT` statements on the foreign tables to access the data in the corresponding files.
 
 ### fuzzystrmatch example
 
@@ -188,6 +197,40 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 -------------+-----------
            2 | YKBT
 (1 row)
+```
+
+### passwordcheck example
+
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
+```
+
+When enabled, if a password is considered too weak, it's rejected with an error. For example:
+
+```sql
+yugabyte=# create role test_role password 'tooshrt';
+```
+
+```output
+ERROR:  password is too short
+```
+
+```sql
+yugabyte=# create role test_role password 'nonumbers';
+```
+
+```output
+ERROR:  password must contain both letters and nonletters
+```
+
+```sql
+yugabyte=# create role test_role password '12test_role12';
+```
+
+```output
+ERROR:  password must not contain user name
 ```
 
 ### pgcrypto example
@@ -370,17 +413,17 @@ CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'host_ip
 Specify the username and password using `CREATE USER MAPPING`:
 
 ```sql
-CREATE USER MAPPING FOR mylocaluser SERVER myserver OPTIONS (user 'remote_user', password 'password');
+CREATE USER MAPPING FOR mylocaluser SERVER my_server OPTIONS (user 'remote_user', password 'password');
 ```
 
-You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`.
+You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`:
 
 ```sql
-CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER myserver OPTIONS (schema_name 'schema', table_name 'table');
+CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER my_server OPTIONS (schema_name 'schema', table_name 'table');
 IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
 ```
 
-You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
+You can execute `SELECT` statements on the foreign tables to access the data in the corresponding remote tables.
 
 ### uuid-ossp example
 
@@ -410,9 +453,9 @@ First, install `postgres-hll` [from source](https://github.com/citusdata/postgre
 After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
+cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
   ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
 ```
 
@@ -456,7 +499,7 @@ There are two ways to install PostGIS on macOS:
 * Or, install with Homebrew:
 
     ```sh
-    $ brew install postgres postgis
+    brew install postgres postgis
     ```
 
 ##### Ubuntu
@@ -480,9 +523,9 @@ sudo yum install postgresql11-server postgis31_11 postgis31_11-client
 Copy the extension files to your YugabyteDB installation as follows:
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
+cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
+cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
 ```
 
 On Linux systems, PostGIS libraries have dependencies that must also be installed. Use the extensions option of the post-install tool, available in YugabyteDB 2.3.2 and later, as follows:
@@ -504,13 +547,13 @@ This may take a couple of minutes.
 1. Get a sample [PostGIS dataset](https://data.edmonton.ca/Geospatial-Boundaries/City-of-Edmonton-Neighbourhood-Boundaries/jfvj-x253):
 
     ```sh
-    $ wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
+    wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
     ```
 
 1. Extract the dataset using the `shp2pgsql` tool. This should come with your PostgreSQL installation — it is not yet packaged with YSQL.
 
     ```sh
-    $ shp2pgsql geo_export_*.shp > edmonton.sql
+    shp2pgsql geo_export_*.shp > edmonton.sql
     ```
 
 1. Edit the generated `edmonton.sql` for YSQL compatibility.
@@ -536,7 +579,7 @@ This may take a couple of minutes.
 1. Load the sample data.
 
     ```sh
-    $ ./bin/ysqlsh -a -f edmonton.sql
+    ./bin/ysqlsh -a -f edmonton.sql
     ```
 
 1. Run some sample queries. Connect using `ysqlsh` and run the following:
@@ -596,8 +639,8 @@ Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) loca
 Copy the needed files into your YugabyteDB installation:
 
 ```sh
-$ cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
-  cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
+cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
+cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
 ```
 
 On Linux systems, run the post-install tool:

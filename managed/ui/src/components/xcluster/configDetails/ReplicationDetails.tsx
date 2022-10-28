@@ -1,42 +1,55 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-bootstrap';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
-import { useInterval, useMount } from 'react-use';
+import { useInterval } from 'react-use';
 import _ from 'lodash';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
-import { fetchUniverseList } from '../../../actions/universe';
 import {
-  getXclusterConfig,
-  changeXClusterStatus,
-  deleteXclusterConfig,
-  fetchTaskUntilItCompletes
+  fetchXClusterConfig,
+  fetchTaskUntilItCompletes,
+  editXClusterState,
+  queryLagMetricsForTable
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
-import { YBLoading } from '../../common/indicators';
-import { YBConfirmModal } from '../../modals';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
-import { Replication } from '../XClusterReplicationTypes';
-import { ReplicationStatus, TRANSITORY_STATES } from '../constants';
+import { Metrics, XClusterConfig } from '../XClusterTypes';
 import {
-  findUniverseName,
-  GetConfiguredThreshold,
-  GetCurrentLag,
-  getReplicationStatus,
-  isChangeDisabled
+  MetricName,
+  MetricTraceName,
+  ReplicationAction,
+  REPLICATION_LAG_ALERT_NAME,
+  TRANSITORY_STATES,
+  XClusterConfigState,
+  XClusterModalName,
+  XClusterTableStatus,
+  XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
+} from '../constants';
+import {
+  MaxAcceptableLag,
+  CurrentReplicationLag,
+  getEnabledConfigActions,
+  parseFloatIfDefined
 } from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
 import { ReplicationOverview } from './ReplicationOverview';
+import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
+import { DeleteConfigModal } from './DeleteConfigModal';
+import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
+import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
+import { api } from '../../../redesign/helpers/api';
+import { getAlertConfigurations } from '../../../actions/universe';
 
 import './ReplicationDetails.scss';
-
 
 interface Props {
   params: {
@@ -45,39 +58,59 @@ interface Props {
   };
 }
 
-export function ReplicationDetails({ params }: Props) {
+const COMMITTED_LAG_METRIC_TRACE_NAME =
+  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
+
+export function ReplicationDetails({
+  params: { uuid: currentUniverseUUID, replicationUUID }
+}: Props) {
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
-  const [universesList, setUniversesList] = useState([]);
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
-  const hideModal = () => dispatch(closeDialog());
 
-  const {
-    data: replication,
-    isLoading
-  }: { data: Replication | undefined; isLoading: boolean } = useQuery(
-    ['Xcluster', params.replicationUUID],
-    () => getXclusterConfig(params.replicationUUID)
+  const xClusterConfigQuery = useQuery(['Xcluster', replicationUUID], () =>
+    fetchXClusterConfig(replicationUUID)
+  );
+  const sourceUniverseQuery = useQuery(
+    ['universe', xClusterConfigQuery.data?.sourceUniverseUUID],
+    () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
+    { enabled: !!xClusterConfigQuery.data }
   );
 
-  useMount(async () => {
-    const resp = await dispatch(fetchUniverseList());
-    setUniversesList((await resp.payload).data);
-  });
+  const targetUniverseQuery = useQuery(
+    ['universe', xClusterConfigQuery.data?.sourceUniverseUUID],
+    () => api.fetchUniverse(xClusterConfigQuery.data?.targetUniverseUUID),
+    { enabled: !!xClusterConfigQuery.data }
+  );
 
-  //refresh metrics for every 20 seconds
-  useInterval(() => {
-    queryClient.invalidateQueries('xcluster-metric');
-    if (_.includes(TRANSITORY_STATES, replication?.status)) {
-      queryClient.invalidateQueries('Xcluster');
-    }
-  }, 20_000);
+  const xClusterConfigTableUUIDs = xClusterConfigQuery.data?.tables ?? [];
+  const tableLagQueries = useQueries(
+    xClusterConfigTableUUIDs.map((tableUUID) => ({
+      queryKey: [
+        'xcluster-metric',
+        sourceUniverseQuery.data?.universeDetails.nodePrefix,
+        tableUUID,
+        'metric'
+      ],
+      queryFn: () =>
+        queryLagMetricsForTable(tableUUID, sourceUniverseQuery.data?.universeDetails.nodePrefix),
+      enabled: !!sourceUniverseQuery.data
+    }))
+  ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
 
-  const switchReplicationStatus = useMutation(
-    (replication: Replication) => {
-      return changeXClusterStatus(
+  const alertConfigFilter = {
+    name: REPLICATION_LAG_ALERT_NAME,
+    targetUuid: currentUniverseUUID
+  };
+  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+    getAlertConfigurations(alertConfigFilter)
+  );
+
+  const toggleConfigPausedState = useMutation(
+    (replication: XClusterConfig) => {
+      return editXClusterState(
         replication,
-        replication.paused ? ReplicationStatus.RUNNING : ReplicationStatus.PAUSED
+        replication.paused ? XClusterConfigState.RUNNING : XClusterConfigState.PAUSED
       );
     },
     {
@@ -101,52 +134,106 @@ export function ReplicationDetails({ params }: Props) {
     }
   );
 
-  const deleteReplication = useMutation((uuid: string) => {
-    return deleteXclusterConfig(uuid).then(() => {
-      window.location.href = `/universes/${params.uuid}/replication`;
-    });
-  });
+  useInterval(() => {
+    queryClient.invalidateQueries('xcluster-metric');
+    if (_.includes(TRANSITORY_STATES, xClusterConfigQuery.data?.status)) {
+      queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
+    }
+  }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
-  if (isLoading || universesList.length === 0 || !replication) {
+  useInterval(() => {
+    queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
+  }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
+
+  if (
+    xClusterConfigQuery.isLoading ||
+    (xClusterConfigQuery.isIdle && !xClusterConfigQuery.data) ||
+    sourceUniverseQuery.isLoading ||
+    (sourceUniverseQuery.isIdle && !sourceUniverseQuery.data) ||
+    targetUniverseQuery.isLoading ||
+    (targetUniverseQuery.isIdle && !targetUniverseQuery.data)
+  ) {
     return <YBLoading />;
   }
 
-  const getUniverseByUUID = (uuid: string) => {
-    return universesList.filter((universes: any) => universes.universeUUID === uuid)[0];
-  };
+  if (xClusterConfigQuery.isError || sourceUniverseQuery.isError || targetUniverseQuery.isError) {
+    return <YBErrorIndicator />;
+  }
 
-  const destinationUniverse = getUniverseByUUID(replication.targetUniverseUUID);
+  let numTablesAboveLagThreshold = 0;
+  if (maxAcceptableLagQuery.isSuccess) {
+    // TODO: Add type for alert configurations.
+    const maxAcceptableLag = Math.min(
+      ...maxAcceptableLagQuery.data.map(
+        (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+      )
+    );
+    for (const tableLagQuery of tableLagQueries) {
+      if (tableLagQuery.isSuccess) {
+        const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
+        const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
+        const trace = metric.data.find((trace) => (trace.name = traceAlias));
+        const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
 
+        if (latestLag === undefined || latestLag > maxAcceptableLag) {
+          numTablesAboveLagThreshold += 1;
+        }
+      }
+    }
+  }
+
+  const hideModal = () => dispatch(closeDialog());
+  const xClusterConfig = xClusterConfigQuery.data;
+  const sourceUniverse = sourceUniverseQuery.data;
+  const targetUniverse = targetUniverseQuery.data;
+  const numTablesRequiringBootstrap = xClusterConfig.tableDetails.reduce(
+    (errorCount: number, xClusterTableDetails) => {
+      return xClusterTableDetails.status === XClusterTableStatus.ERROR
+        ? errorCount + 1
+        : errorCount;
+    },
+    0
+  );
+  const enabledConfigActions = getEnabledConfigActions(xClusterConfig);
+
+  const shouldShowConfigError = numTablesRequiringBootstrap > 0;
+  const shouldShowTableLagWarning =
+    maxAcceptableLagQuery.isSuccess &&
+    numTablesAboveLagThreshold > 0 &&
+    xClusterConfigTableUUIDs.length > 0;
   return (
     <>
       <div className="replication-details">
         <h2 className="content-title">
-          <Link to={`/universes/${replication.sourceUniverseUUID}`}>
-            {findUniverseName(universesList, replication.sourceUniverseUUID)}
-          </Link>
+          <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}`}>{sourceUniverse.name}</Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
-            <Link to={`/universes/${replication.sourceUniverseUUID}/replication/`}>
+            <Link to={`/universes/${xClusterConfig.sourceUniverseUUID}/replication/`}>
               Replication
             </Link>
             <i className="fa fa-chevron-right submenu-icon" />
-            {replication.name}
+            {xClusterConfig.name}
           </span>
         </h2>
         <div className="details-canvas">
           <Row className="replication-actions">
             <Col lg={7}>
-              <h3>{replication.name}</h3>
+              <h3>{xClusterConfig.name}</h3>
             </Col>
             <Col lg={5} className="noPadding">
               <Row className="details-actions-button">
                 <YBButton
-                  btnText={`${replication.paused ? 'Enable' : 'Pause'} Replication`}
+                  btnText={`${xClusterConfig.paused ? 'Enable' : 'Pause'} Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
-                  disabled={isChangeDisabled(replication?.status)}
+                  disabled={
+                    !_.includes(
+                      enabledConfigActions,
+                      xClusterConfig.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE
+                    )
+                  }
                   onClick={() => {
                     toast.success('Please wait...');
-                    switchReplicationStatus.mutateAsync(replication);
+                    toggleConfigPausedState.mutateAsync(xClusterConfig);
                   }}
                 />
                 <ButtonGroup className="more-actions-button">
@@ -154,38 +241,96 @@ export function ReplicationDetails({ params }: Props) {
                     <MenuItem
                       eventKey="1"
                       onClick={(e) => {
-                        if (!isChangeDisabled(replication?.status)) {
-                          dispatch(openDialog('editReplicationConfiguration'));
+                        if (_.includes(enabledConfigActions, ReplicationAction.EDIT)) {
+                          dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
                         }
                       }}
-                      disabled={isChangeDisabled(replication?.status)}
+                      disabled={!_.includes(enabledConfigActions, ReplicationAction.EDIT)}
                     >
-                      Edit replication configurations
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-pencil">
+                        Edit Replication Name
+                      </YBLabelWithIcon>
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
                       onClick={() => {
-                        dispatch(openDialog('deleteReplicationModal'));
+                        if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
+                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                        }
                       }}
+                      disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
                     >
-                      Delete replication
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-refresh">
+                        Restart Replication
+                      </YBLabelWithIcon>
+                    </MenuItem>
+                    <MenuItem divider />
+                    <MenuItem
+                      eventKey="3"
+                      onClick={() => {
+                        if (_.includes(enabledConfigActions, ReplicationAction.DELETE)) {
+                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
+                        }
+                      }}
+                      disabled={!_.includes(enabledConfigActions, ReplicationAction.DELETE)}
+                    >
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-times">
+                        Delete Replication
+                      </YBLabelWithIcon>
                     </MenuItem>
                   </DropdownButton>
                 </ButtonGroup>
               </Row>
             </Col>
           </Row>
+          <div className="replication-info-banners-container">
+            {shouldShowConfigError && (
+              <YBBanner variant={YBBannerVariant.DANGER}>
+                <div className="replication-info-banner-content">
+                  <b>Error!</b>
+                  {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
+                    numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
+                  } and replication restart is
+                required.`}
+                  <YBButton
+                    className="restart-replication-button"
+                    btnIcon="fa fa-refresh"
+                    btnText="Restart Replication"
+                    onClick={() => {
+                      if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
+                        dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                      }
+                    }}
+                    disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
+                  />
+                </div>
+              </YBBanner>
+            )}
+            {shouldShowTableLagWarning && (
+              <YBBanner variant={YBBannerVariant.WARNING}>
+                <b>Warning!</b>
+                {` Replication lag for ${numTablesAboveLagThreshold} out of ${
+                  xClusterConfigTableUUIDs.length
+                } ${xClusterConfigTableUUIDs.length > 1 ? 'tables' : 'table'} ${
+                  numTablesAboveLagThreshold > 1 ? 'have' : 'has'
+                }
+                exceeded the maximum acceptable lag time.`}
+              </YBBanner>
+            )}
+          </div>
           <Row className="replication-status">
-            <Col lg={4}>Replication Status {getReplicationStatus(replication)}</Col>
+            <Col lg={4}>
+              Replication Status <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
+            </Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
                 <Row>
                   <Col lg={6}>Current Lag</Col>
                   <Col lg={6}>
                     <span className="lag-text">
-                      <GetCurrentLag
-                        replicationUUID={replication.uuid}
-                        sourceUniverseUUID={replication.sourceUniverseUUID}
+                      <CurrentReplicationLag
+                        replicationUUID={xClusterConfig.uuid}
+                        sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                       />
                     </span>
                   </Col>
@@ -195,17 +340,15 @@ export function ReplicationDetails({ params }: Props) {
                   <Col lg={6}>Max acceptable lag</Col>
                   <Col lg={6}>
                     <span className="lag-value">
-                      <GetConfiguredThreshold
-                        currentUniverseUUID={replication.sourceUniverseUUID}
-                      />
+                      <MaxAcceptableLag currentUniverseUUID={xClusterConfig.sourceUniverseUUID} />
                     </span>
                   </Col>
                 </Row>
               </div>
               <div>
                 <LagGraph
-                  replicationUUID={replication.uuid}
-                  sourceUniverseUUID={replication.sourceUniverseUUID}
+                  replicationUUID={xClusterConfig.uuid}
+                  sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                 />
               </div>
             </Col>
@@ -214,21 +357,21 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
                 <Tab eventKey={'overview'} title={'Overview'}>
-                  {destinationUniverse !== undefined && (
+                  {targetUniverse !== undefined && (
                     <ReplicationOverview
-                      replication={replication}
-                      destinationUniverse={destinationUniverse}
+                      replication={xClusterConfig}
+                      destinationUniverse={targetUniverse}
                     />
                   )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationTables replication={replication} />
+                  <ReplicationTables xClusterConfig={xClusterConfig} />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer
-                    sourceUniverseUUID={replication.sourceUniverseUUID}
+                    sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                     hideHeader={true}
-                    replicationUUID={params.replicationUUID}
+                    replicationUUID={replicationUUID}
                   />
                 </Tab>
               </YBTabsPanel>
@@ -237,24 +380,26 @@ export function ReplicationDetails({ params }: Props) {
         </div>
         <AddTablesToClusterModal
           onHide={hideModal}
-          visible={showModal && visibleModal === 'addTablesToClusterModal'}
-          replication={replication}
+          visible={showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG}
+          replication={xClusterConfig}
         />
         <EditReplicationDetails
-          replication={replication}
-          visible={showModal && visibleModal === 'editReplicationConfiguration'}
+          replication={xClusterConfig}
+          visible={showModal && visibleModal === XClusterModalName.EDIT_CONFIG}
           onHide={hideModal}
         />
-        <YBConfirmModal
-          name="delete-replication"
-          title="Confirm Delete"
-          onConfirm={() => deleteReplication.mutateAsync(replication.uuid)}
-          currentModal={'deleteReplicationModal'}
-          visibleModal={visibleModal}
-          hideConfirmModal={hideModal}
-        >
-          Are you sure you want to delete "{replication.name}"?
-        </YBConfirmModal>
+        <DeleteConfigModal
+          currentUniverseUUID={currentUniverseUUID}
+          xClusterConfig={xClusterConfig}
+          onHide={hideModal}
+          visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
+        />
+        <RestartConfigModal
+          onHide={hideModal}
+          isVisible={showModal && visibleModal === XClusterModalName.RESTART_CONFIG}
+          currentUniverseUUID={currentUniverseUUID}
+          xClusterConfigUUID={replicationUUID}
+        />
       </div>
     </>
   );

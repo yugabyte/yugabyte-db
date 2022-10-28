@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
-#define YB_CONSENSUS_RETRYABLE_REQUESTS_H
+#pragma once
 
 #include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -37,6 +36,8 @@ class RetryableRequests {
  public:
   explicit RetryableRequests(std::string log_prefix = std::string());
   ~RetryableRequests();
+
+  RetryableRequests(const RetryableRequests& rhs);
 
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
@@ -67,6 +68,8 @@ class RetryableRequests {
 
   void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity);
 
+  void set_log_prefix(const std::string& log_prefix);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -75,4 +78,3 @@ class RetryableRequests {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_RETRYABLE_REQUESTS_H

@@ -20,6 +20,8 @@ API keys are not stored in YugabyteDB Managed. Safeguard them by doing the follo
 - Revoke keys that are lost or compromised.
 - Don't embed keys in code. Applications that contain keys can be decompiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
 
+API keys are [role-specific](../manage-access/#user-roles); keys assigned a Developer role can only be used to perform developer-level tasks using the API.
+
 You must be signed in as an Admin user to create and revoke API keys.
 
 The **API Keys** tab of the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
@@ -35,6 +37,8 @@ To create an API key:
 1. On the **API Keys** tab of the **Admin** page, click **Create API Key**.
 
 1. Enter a name and description for the key.
+
+1. Choose a role for the API Key. Keys assigned a [Developer](../manage-access/#user-roles) role can only be used to perform developer-level tasks using the API.
 
 1. Set the key expiration or select **Never expire** to create a key without an expiration.
 
@@ -52,12 +56,4 @@ The key is only displayed one time; it is not available in YugabyteDB Managed af
 
 ## Revoke an API key
 
-To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking  **Revoke API Key** in the **API Key Details** sheet.
-
-## Keys and user permissions
-
-API keys are linked to the user that created them:
-
-- Keys created by users who are deleted are automatically revoked.
-
-- If the role of a user who created a key is changed to a Developer, the key will only have Developer access to API functions (that is, no APIs that require Admin-level access).
+To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking **Revoke API Key** in the **API Key Details** sheet.

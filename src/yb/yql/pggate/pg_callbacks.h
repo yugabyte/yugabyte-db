@@ -12,8 +12,7 @@
 
 // Various utilities for calling callbacks exposed by PostgreSQL code from C++ code.
 
-#ifndef YB_YQL_PGGATE_PG_CALLBACKS_H
-#define YB_YQL_PGGATE_PG_CALLBACKS_H
+#pragma once
 
 #include <string>
 
@@ -28,4 +27,3 @@ std::string GetDebugQueryString(const PgCallbacks& callbacks);
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_CALLBACKS_H

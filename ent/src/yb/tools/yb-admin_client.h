@@ -10,12 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
-#define ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
+#pragma once
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/snapshot.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
 #include "yb/util/env_util.h"
@@ -43,12 +43,12 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  Status ListSnapshots(const ListSnapshotsFlags& flags);
+  Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
-  Result<rapidjson::Document> ListSnapshotRestorations(
+  Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
                                                      MonoDelta interval, MonoDelta retention);
@@ -72,7 +72,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                         const std::vector<client::YBTableName>& tables);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
-  Status SetPreferredZones(const std::vector<string>& preferred_zones);
+  Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
 
   Status RotateUniverseKey(const std::string& key_path);
 
@@ -126,7 +126,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                            const std::string& new_universe_name);
 
-  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
+
+  Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
@@ -134,11 +136,17 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const string& target_time);
+                                 const std::string& target_time);
 
   Status SetupNSUniverseReplication(const std::string& producer_uuid,
                                     const std::vector<std::string>& producer_addresses,
                                     const TypedNamespaceName& producer_namespace);
+
+  Status GetReplicationInfo(const std::string& universe_uuid);
+
+  Result<rapidjson::Document> GetXClusterEstimatedDataLoss();
+
+  Result<rapidjson::Document> GetXClusterSafeTime();
 
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
@@ -153,6 +161,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
 
+  Result<rapidjson::Document> RestoreSnapshotScheduleDeprecated(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+
   std::string GetDBTypeName(const master::SysNamespaceEntryPB& pb);
   // Map: Old name -> New name.
   typedef std::unordered_map<NamespaceName, NamespaceName> NSNameToNameMap;
@@ -166,4 +177,3 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 }  // namespace tools
 }  // namespace yb
 
-#endif // ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H

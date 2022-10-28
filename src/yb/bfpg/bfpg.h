@@ -70,8 +70,7 @@
 // The file "/yb/yql/cql/ql/ptree/pt_bfunc.cc" can be used as example at the moment.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFPG_H
-#define YB_BFPG_BFPG_H
+#pragma once
 
 #include <vector>
 #include <list>
@@ -120,7 +119,7 @@ class BFCompileApi {
 
   // Interface for any collections of shared_ptrs.
   template<template<typename, typename> class CType, typename AType>
-  static Status FindPgsqlOpcodeImpl(const string& ql_name,
+  static Status FindPgsqlOpcodeImpl(const std::string& ql_name,
                                     const CType<std::shared_ptr<PType>, AType>& param_types,
                                     BFOpcode *opcode,
                                     const BFDecl **bfdecl,
@@ -133,7 +132,7 @@ class BFCompileApi {
 
   // Interface for any collections of raw pointers.
   template<template<typename, typename> class CType, typename AType>
-  static Status FindPgsqlOpcodeImpl(const string& ql_name,
+  static Status FindPgsqlOpcodeImpl(const std::string& ql_name,
                                     const CType<PType*, AType>& param_types,
                                     BFOpcode *opcode,
                                     const BFDecl **bfdecl,
@@ -146,7 +145,7 @@ class BFCompileApi {
 
   //------------------------------------------------------------------------------------------------
   // Seeks builtin opcode using the given the std::vector of shared pointers.
-  static Status FindPgsqlOpcode(const string& ql_name,
+  static Status FindPgsqlOpcode(const std::string& ql_name,
                                 const std::vector<std::shared_ptr<PType>>& param_types,
                                 BFOpcode *opcode,
                                 const BFDecl **bfdecl,
@@ -155,7 +154,7 @@ class BFCompileApi {
   }
 
   // Seeks builtin opcode using the given the std::vector of raw pointers.
-  static Status FindPgsqlOpcode(const string& ql_name,
+  static Status FindPgsqlOpcode(const std::string& ql_name,
                                 const std::vector<PType*>& param_types,
                                 BFOpcode *opcode,
                                 const BFDecl **bfdecl,
@@ -164,7 +163,7 @@ class BFCompileApi {
   }
 
   // Seeks builtin opcode using the given the std::vector of Datatypes.
-  static Status FindPgsqlOpcode(const string& ql_name,
+  static Status FindPgsqlOpcode(const std::string& ql_name,
                                 const std::vector<DataType>& actual_types,
                                 BFOpcode *opcode,
                                 const BFDecl **bfdecl,
@@ -341,7 +340,7 @@ template<typename PType,
 class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
  public:
   // Interface for shared_ptr.
-  static Status ExecPgsqlFunc(const string& ql_name,
+  static Status ExecPgsqlFunc(const std::string& ql_name,
                               const std::vector<std::shared_ptr<PType>>& params,
                               const std::shared_ptr<RType>& result) {
     BFOpcode opcode;
@@ -352,7 +351,7 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
   }
 
   // Interface for raw pointer.
-  static Status ExecPgsqlFunc(const string& ql_name,
+  static Status ExecPgsqlFunc(const std::string& ql_name,
                               const std::vector<PType*>& params,
                               RType *result) {
     BFOpcode opcode;
@@ -372,4 +371,3 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
 // include header file "gen_bfunc_table.h" at the end of this file.
 #include "yb/bfpg/gen_bfunc_table.h"
 
-#endif  // YB_BFPG_BFPG_H

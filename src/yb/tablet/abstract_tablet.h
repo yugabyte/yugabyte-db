@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_ABSTRACT_TABLET_H
-#define YB_TABLET_ABSTRACT_TABLET_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -132,4 +131,3 @@ class AbstractTablet {
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_ABSTRACT_TABLET_H

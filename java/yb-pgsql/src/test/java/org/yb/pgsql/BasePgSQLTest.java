@@ -73,13 +73,14 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.*;
 import org.yb.util.MiscUtil.ThrowingCallable;
+import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -94,7 +95,7 @@ import com.yugabyte.util.PSQLException;
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
-  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  /** Corresponds to the first OID used for YB system catalog objects. */
   protected final long FIRST_YB_OID = 8000;
 
   /** Matches Postgres' FirstBootstrapObjectId */
@@ -202,7 +203,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                          int macRuntime) {
     if (TestUtils.isReleaseBuild()) {
       return releaseRuntime;
-    } else if (TestUtils.IS_LINUX) {
+    } else if (SystemUtil.IS_LINUX) {
       if (BuildTypeUtil.isASAN()) {
         return asanRuntime;
       } else if (BuildTypeUtil.isTSAN()) {
@@ -2068,24 +2069,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected String [] getDocdbRequests(Statement stmt, String query) throws Exception {
+  protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
-
-    final ByteArrayOutputStream docDbReq = new ByteArrayOutputStream();
-    final PrintStream origOut = System.out; // saving original print console to restore it
-    origOut.flush();
-    System.setOut(new PrintStream(docDbReq, true/*autoFlush*/));
-    stmt.execute("SET yb_debug_log_docdb_requests = true");
+    Long rpc_count_before =
+      getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
     stmt.execute(query);
-    stmt.execute("SET yb_debug_log_docdb_requests = false");
-    System.setOut(origOut);
-    String[] docDbReqStrArray = docDbReq.toString().split(System.getProperty("line.separator"));
-    return docDbReqStrArray;
-  }
-
-  protected int getNumDocdbRequests(Statement stmt, String query) throws Exception{
-    return getDocdbRequests(stmt, query).length;
+    Long rpc_count_after =
+      getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
+    return rpc_count_after - rpc_count_before;
   }
 
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
@@ -2108,6 +2100,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Run a process, returning output lines. */
   protected List<String> runProcess(String... args) throws Exception {
+    return runProcess(new ProcessBuilder(args));
+  }
+
+  /** Run a process, returning output lines. */
+  protected List<String> runProcess(List<String> args) throws Exception {
     return runProcess(new ProcessBuilder(args));
   }
 
@@ -2345,5 +2342,50 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     public void setLoadBalance(boolean lb) {
       loadBalance = lb;
     }
+  }
+
+  protected static void withRoles(Statement statement, RoleSet roles,
+                                  ThrowingRunnable runnable) throws Exception {
+    for (String role : roles.roleSet) {
+      withRole(statement, role, runnable);
+    }
+  }
+
+  protected static void withRole(Statement statement, String role,
+                                 ThrowingRunnable runnable) throws Exception {
+    String sessionUser = getSessionUser(statement);
+    try {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", role));
+      runnable.run();
+    } finally {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", sessionUser));
+    }
+  }
+
+  protected static class RoleSet {
+    private HashSet<String> roleSet;
+
+    RoleSet(String... roles) {
+      this.roleSet = new HashSet<String>();
+      this.roleSet.addAll(Lists.newArrayList(roles));
+    }
+
+    RoleSet excluding(String... roles) {
+      RoleSet newSet = new RoleSet(roles);
+      newSet.roleSet.removeAll(Lists.newArrayList(roles));
+      return newSet;
+    }
+  }
+
+  protected static String getSessionUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT SESSION_USER");
+    resultSet.next();
+    return resultSet.getString(1);
+  }
+
+  protected static String getCurrentUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
+    resultSet.next();
+    return resultSet.getString(1);
   }
 }

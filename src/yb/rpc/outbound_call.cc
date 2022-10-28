@@ -64,6 +64,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");
@@ -181,8 +183,11 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us. Trace:";
-    trace_->Dump(&LOG(INFO), true);
+              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
+              << (trace_ ? " Trace:" : "");
+    if (trace_) {
+      trace_->Dump(&LOG(INFO), true);
+    }
   }
 
   DecrementGauge(rpc_metrics_->outbound_calls_alive);

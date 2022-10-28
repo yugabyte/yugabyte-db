@@ -13,8 +13,7 @@
 
 // Utilities used in main functions of server processes.
 
-#ifndef YB_TSERVER_SERVER_MAIN_UTIL_H
-#define YB_TSERVER_SERVER_MAIN_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -26,4 +25,3 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
 }  // namespace yb
 
-#endif  // YB_TSERVER_SERVER_MAIN_UTIL_H

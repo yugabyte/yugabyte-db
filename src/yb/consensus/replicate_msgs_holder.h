@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H
-#define YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H
+#pragma once
 
 #include <google/protobuf/repeated_field.h>
 
@@ -61,4 +60,3 @@ class ReplicateMsgsHolder {
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_REPLICATE_MSGS_HOLDER_H

@@ -22,10 +22,12 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/compare_util.h"
 #include "yb/util/result.h"
 
 using std::vector;
 using std::unordered_map;
+using std::string;
 using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::uint32;
@@ -133,6 +135,9 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_index_permissions(index_permissions_);
   pb->set_backfill_error_message(backfill_error_message_);
   pb->set_use_mangled_column_name(use_mangled_column_name_);
+  if (where_predicate_spec_) {
+    pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
+  }
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
@@ -250,6 +255,10 @@ const IndexColumn& IndexInfo::column(const size_t idx) const {
   return columns_[idx];
 }
 
+bool IndexInfo::TEST_Equals(const IndexInfo& lhs, const IndexInfo& rhs) {
+  return lhs.ToString() == rhs.ToString();
+}
+
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   FromPB(indexes);
 }
@@ -274,6 +283,14 @@ Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
     return STATUS(NotFound, Format("Index id $0 not found", index_id));
   }
   return &itr->second;
+}
+
+bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
+  // We can't use std::unordered_map's == because IndexInfo does not define ==.
+  using MapType = std::unordered_map<TableId, IndexInfo>;
+  return util::MapsEqual(static_cast<const MapType&>(lhs),
+                         static_cast<const MapType&>(rhs),
+                         &IndexInfo::TEST_Equals);
 }
 
 }  // namespace yb

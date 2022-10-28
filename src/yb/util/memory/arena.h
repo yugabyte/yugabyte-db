@@ -34,8 +34,7 @@
 //
 // Memory arena for variable-length datatypes and STL collections.
 
-#ifndef YB_UTIL_MEMORY_ARENA_H_
-#define YB_UTIL_MEMORY_ARENA_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -51,11 +50,15 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/debug/lock_debug.h"
+#include "yb/util/enums.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/slice.h"
 
 namespace yb {
+
+YB_DEFINE_ENUM(ResetMode, (kKeepFirst)(kKeepLast));
+
 namespace internal {
 
 struct ThreadSafeArenaTraits {
@@ -203,11 +206,11 @@ class ArenaBase {
   // Removes all data from the arena. (Invalidates all pointers returned by
   // AddSlice and AllocateBytes). Does not cause memory allocation.
   // May reduce memory footprint, as it discards all allocated buffers but
-  // the last one.
+  // the one specified by mode.
   // Unless allocations exceed max_buffer_size, repetitive filling up and
   // resetting normally lead to quickly settling memory footprint and ceasing
   // buffer allocations, as the arena keeps reusing a single, large buffer.
-  void Reset();
+  void Reset(ResetMode mode);
 
   // Returns the memory footprint of this arena, in bytes, defined as a sum of
   // all buffer sizes. Always greater or equal to the total number of
@@ -253,6 +256,7 @@ class ArenaBase {
   typename Traits::template MakeAtomic<Component*>::type current_{nullptr};
   const size_t max_buffer_size_;
   size_t arena_footprint_ = 0;
+  Component* second_ = nullptr;
 
   // True if this Arena has already emitted a warning about surpassing
   // the global warning size threshold.
@@ -391,6 +395,12 @@ class ArenaComponent {
     }
   }
 
+  ArenaComponent* SetNext(ArenaComponent* next) {
+    auto* result = next_;
+    next_ = next;
+    return result;
+  }
+
  private:
   uint8_t* begin_of_this() {
     return pointer_cast<uint8_t*>(this);
@@ -454,6 +464,75 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
+struct AllocatedBuffer {
+  char* address = nullptr;
+  size_t size = std::numeric_limits<size_t>::max();
+
+  char* Allocate(size_t bytes, size_t alignment);
+};
+
+template <class T>
+class SharedArenaAllocator {
+ public:
+  using value_type = T;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
+
+  using pointer = T*;
+  using const_pointer = const T*;
+  using reference = T&;
+  using const_reference = const T&;
+
+  template <class U>
+  struct rebind {
+    using other = SharedArenaAllocator<U>;
+  };
+
+  explicit SharedArenaAllocator(AllocatedBuffer* buffer) : buffer_(buffer) {}
+
+  template<class U>
+  SharedArenaAllocator(const SharedArenaAllocator<U>& other) : buffer_(other.buffer()) {
+  }
+
+  pointer allocate(size_type n) {
+    return pointer_cast<pointer>(buffer_->Allocate(n * sizeof(T), alignof(T)));
+  }
+
+  void deallocate(pointer p, size_type n) {
+    free(p);
+  }
+
+  template<class... Args>
+  void construct(pointer p, Args&&... args) {
+    new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
+  }
+
+  void destroy(pointer p) { p->~T(); }
+
+  AllocatedBuffer* buffer() const {
+    return buffer_;
+  }
+
+ private:
+  AllocatedBuffer* buffer_;
+};
+
+class PreallocatedArena {
+ public:
+  explicit PreallocatedArena(const AllocatedBuffer& buffer)
+      : allocator_(HeapBufferAllocator::Get(), buffer.address, buffer.size),
+        arena_(&allocator_, buffer.size) {
+  }
+
+  Arena& arena() {
+    return arena_;
+  }
+
+ private:
+  PreallocatedBufferAllocator allocator_;
+  Arena arena_;
+};
+
 } // namespace yb
 
 template<class Traits>
@@ -461,4 +540,3 @@ void* operator new(size_t bytes, yb::internal::ArenaBase<Traits>* arena) noexcep
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
 
-#endif  // YB_UTIL_MEMORY_ARENA_H_

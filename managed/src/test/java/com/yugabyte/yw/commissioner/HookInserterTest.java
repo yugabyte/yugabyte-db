@@ -4,15 +4,15 @@ package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeTaskTest;
 import com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
@@ -80,7 +80,7 @@ public class HookInserterTest extends UpgradeTaskTest {
 
   @Test
   public void testHookInserterTrigger() {
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams, TaskType.RestartUniverse, commissioner);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -143,7 +143,7 @@ public class HookInserterTest extends UpgradeTaskTest {
             defaultCustomer.uuid, HookScope.TriggerType.PreRestartUniverse, gcpProvider);
     gcpProviderScope.addHook(gcpProviderHook);
 
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams, TaskType.RestartUniverse, commissioner, 3);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -176,8 +176,8 @@ public class HookInserterTest extends UpgradeTaskTest {
 
   @Test
   public void testHookInserterTriggerWithSudoDisabled() {
-    when(mockConfig.getBoolean(ENABLE_SUDO_PATH)).thenReturn(false);
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "false");
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams, TaskType.RestartUniverse, commissioner);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -195,7 +195,7 @@ public class HookInserterTest extends UpgradeTaskTest {
 
   @Test
   public void testHookInserterTriggerWithCustomHooksDisabled() {
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams, TaskType.RestartUniverse, commissioner);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

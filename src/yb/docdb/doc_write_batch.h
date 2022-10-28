@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_H
-#define YB_DOCDB_DOC_WRITE_BATCH_H
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -183,9 +182,9 @@ class DocWriteBatch {
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp) {
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp) {
     return SetPrimitive(
-        doc_path, ValueControlFields { .user_timestamp = user_timestamp }, value, read_ht,
+        doc_path, ValueControlFields { .timestamp = user_timestamp }, value, read_ht,
         deadline, query_id);
   }
 
@@ -200,7 +199,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   Status InsertSubDocument(
       const DocPath& doc_path,
@@ -209,7 +208,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp,
       bool init_marker_ttl = true);
 
   Status ExtendList(
@@ -219,7 +218,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   Status ReplaceRedisInList(
@@ -231,7 +230,7 @@ class DocWriteBatch {
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
-      std::vector<string>* results = nullptr,
+      std::vector<std::string>* results = nullptr,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
@@ -250,7 +249,7 @@ class DocWriteBatch {
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -365,4 +364,3 @@ Result<std::string> WriteBatchToString(
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOC_WRITE_BATCH_H

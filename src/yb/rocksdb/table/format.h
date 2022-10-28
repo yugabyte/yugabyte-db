@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_TABLE_FORMAT_H
-#define YB_ROCKSDB_TABLE_FORMAT_H
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -279,4 +278,3 @@ inline BlockHandle::BlockHandle(uint64_t _offset, uint64_t _size)
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_TABLE_FORMAT_H

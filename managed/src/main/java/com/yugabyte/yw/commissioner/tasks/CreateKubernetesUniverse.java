@@ -79,7 +79,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               taskParams().communicationPorts.masterRpcPort,
-              newNamingStyle);
+              newNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 

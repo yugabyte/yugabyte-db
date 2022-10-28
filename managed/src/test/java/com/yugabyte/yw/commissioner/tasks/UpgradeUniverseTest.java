@@ -16,6 +16,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -94,6 +95,7 @@ import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Deprecated
 public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
@@ -247,7 +249,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     ShellResponse successResponse = new ShellResponse();
     successResponse.message = "YSQL successfully upgraded to the latest version";
-    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyLong()))
+    when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
         .thenReturn(successResponse);
   }
 
@@ -956,7 +958,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     String updateQuery =
         "INSERT INTO instance_type ("
             + "provider_uuid, instance_type_code, active, num_cores, mem_size_gb,"
-            + "instance_type_details_json )"
+            + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);

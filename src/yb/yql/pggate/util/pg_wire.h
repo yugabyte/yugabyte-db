@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_WIRE_H_
-#define YB_YQL_PGGATE_UTIL_PG_WIRE_H_
+#pragma once
 
 #include <bitset>
 #include "yb/util/slice.h"
@@ -118,4 +117,3 @@ class PgWireDataHeader {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_UTIL_PG_WIRE_H_

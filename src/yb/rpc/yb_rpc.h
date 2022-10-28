@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_YB_RPC_H
-#define YB_RPC_YB_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -38,6 +37,8 @@
 
 namespace yb {
 namespace rpc {
+
+const char* const kUnknownRemoteMethod = "UNKNOWN_METHOD";
 
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
@@ -221,6 +222,9 @@ class YBInboundCall : public InboundCall {
   RefCntBuffer response_buf_;
 
   ScopedTrackedConsumption consumption_;
+
+  // Cache of result of YBInboundCall::ToString().
+  mutable std::string cached_to_string_;
 };
 
 class YBOutboundConnectionContext : public YBConnectionContext {
@@ -257,4 +261,3 @@ class YBOutboundConnectionContext : public YBConnectionContext {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_YB_RPC_H

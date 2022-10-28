@@ -174,7 +174,9 @@ Build options:
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --skip-test-log-rewrite
     Skip rewriting the test log.
-
+  --skip-final-lto-link
+    For LTO builds, skip the final linking step for server executables, which could take many
+    minutes.
 Linting options:
 
   --shellcheck
@@ -345,7 +347,7 @@ report_time() {
 }
 
 print_report() {
-  if "$show_report"; then
+  if [[ ${show_report} == "true" ]]; then
     (
       echo
       thick_horizontal_line
@@ -370,7 +372,7 @@ print_report() {
       fi
       report_time "CMake" "cmake"
       report_time "C++ compilation" "make"
-      if "$run_java_tests"; then
+      if [[ ${run_java_tests} == "true" ]]; then
         report_time "Java compilation and tests" "java_build"
       else
         report_time "Java compilation" "java_build"
@@ -441,8 +443,12 @@ run_cxx_build() {
   expect_vars_to_be_set make_file
 
   # shellcheck disable=SC2154
-  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
-     ! "$force_no_run_cmake"; then
+  if [[ (
+          ${force_run_cmake} == "true" ||
+          ${cmake_only} == "true" ||
+          ! -f ${make_file}
+        ) && ${force_no_run_cmake} == "false" ]]
+  then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
     fi
@@ -466,14 +472,19 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
     )
     capture_sec_timestamp "cmake_end"
   fi
 
-  if "$cmake_only"; then
+  if [[ ${cmake_only} == "true" ]]; then
     log "CMake has been invoked, stopping here (--cmake-only specified)."
     exit
+  fi
+
+  if [[ ${build_cxx} == "false" ]]; then
+    log "Skipping C++ build after invoking CMake."
+    return
   fi
 
   if [[ ${#object_files_to_delete[@]} -gt 0 ]]; then
@@ -501,7 +512,7 @@ run_cxx_build() {
     "${make_targets[@]}"
   )
   set -u
-  if "$reduce_log_output"; then
+  if [[ ${reduce_log_output} == "true" ]]; then
     time (
       set -x
       "$make_program" "${make_program_args[@]}" | filter_boring_cpp_build_output
@@ -556,7 +567,7 @@ run_repeat_unit_test() {
   if [[ -n ${YB_TEST_PARALLELISM:-} ]]; then
     repeat_unit_test_args+=( --parallelism "$YB_TEST_PARALLELISM" )
   fi
-  if "$verbose"; then
+  if [[ ${verbose} == "true" ]]; then
     repeat_unit_test_args+=( --verbose )
   fi
   (
@@ -772,10 +783,13 @@ while [[ $# -gt 0 ]]; do
     shift
     continue
   fi
-  if "$forward_args_to_repeat_unit_test"; then
+  if [[ ${forward_args_to_repeat_unit_test} == "true" ]]; then
     repeat_unit_test_inherited_args+=( "$1" )
     shift
     continue
+  fi
+  if [[ $1 =~ ^(--[a-z_-]+)=(.*)$ ]]; then
+    set -- "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${@:2}"
   fi
 
   case ${1//_/-} in
@@ -1223,6 +1237,9 @@ while [[ $# -gt 0 ]]; do
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
     ;;
+    --skip-final-lto-link)
+      export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -1259,7 +1276,7 @@ set +u  # because yb_build_args might be empty
 rerun_script_with_arch_if_necessary "$0" "${yb_build_args[@]}"
 set -u
 
-if "$run_cmake_unit_tests"; then
+if [[ ${run_cmake_unit_tests} == "true" ]]; then
   # We don't even need the build root for these kinds of tests.
   log "--cmake-unit-tests specified, only running CMake tests"
   run_cmake_unit_tests
@@ -1284,7 +1301,7 @@ set_cmake_build_type_and_compiler_type
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
-if "$verbose"; then
+if [[ ${verbose} == "true" ]]; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
 export BUILD_TYPE=$build_type
@@ -1297,7 +1314,7 @@ if "$cmake_only" && [[ $force_no_run_cmake == "true" || $java_only == "true" ]];
   fatal "--cmake-only is incompatible with --force-no-run-cmake or --java-only"
 fi
 
-if "$should_run_ctest"; then
+if [[ ${should_run_ctest} == "true" ]]; then
   if [[ -n $cxx_test_name ]]; then
     fatal "--cxx-test (running  one C++ test) is mutually exclusive with" \
           "--ctest (running a number of C++ tests)"
@@ -1320,8 +1337,8 @@ if "$java_only" && ! "$build_java"; then
         "--cxx-test or --skip-java-build."
 fi
 
-if "$run_python_tests"; then
-  if "$java_only"; then
+if [[ ${run_python_tests} == "true" ]]; then
+  if [[ ${java_only} == "true" ]]; then
     fatal "The options --java-only and --python-tests are incompatible"
   fi
   log "--python-tests specified, only running Python tests"
@@ -1349,7 +1366,7 @@ fi
 
 configure_remote_compilation
 
-if "$java_lint"; then
+if [[ ${java_lint} == "true" ]]; then
   log "--java-lint specified, only linting java code and then exiting."
   lint_java_code
   exit
@@ -1358,7 +1375,7 @@ fi
 if ! is_jenkins && is_src_root_on_nfs && \
   [[ -z ${YB_CCACHE_DIR:-} && $HOME =~ $YB_NFS_PATH_RE ]]; then
   export YB_CCACHE_DIR=$HOME/.ccache
-  if "$build_cxx"; then
+  if [[ ${build_cxx} == "true" ]]; then
     log "Setting YB_CCACHE_DIR=$YB_CCACHE_DIR by default for NFS-based builds"
   fi
 fi
@@ -1371,7 +1388,7 @@ if [[ -z $reduce_log_output ]]; then
   fi
 fi
 
-if ! "$build_java" && "$resolve_java_dependencies"; then
+if [[ ${build_java} != "true" && ${resolve_java_dependencies} == "true" ]]; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 
@@ -1385,7 +1402,7 @@ fi
 # Recursively invoke this script in order to save the log to a file.
 # -------------------------------------------------------------------------------------------------
 
-if "$save_log"; then
+if [[ ${save_log} == "true" ]]; then
   log_dir="$HOME/logs"
   mkdir_safe "$log_dir"
   log_name_prefix="$log_dir/${script_name}_${build_type}"
@@ -1421,7 +1438,7 @@ fi
 # third-party directory.
 check_arc_wrapper
 
-if "$verbose"; then
+if [[ ${verbose} == "true" ]]; then
   log "$script_name command line: ${original_args[*]}"
 fi
 
@@ -1469,13 +1486,13 @@ fi
 if [[ ${remove_entire_build_dir_before_build} == "true" ]]; then
   log "Removing the entire ${YB_SRC_ROOT}/build directory (--clean-all specified)"
   ( set -x; rm -rf "${YB_SRC_ROOT}/build" )
-  save_paths_to_build_dir
+  save_paths_and_archive_urls_to_build_dir
 elif [[ ${remove_build_root_before_build} == "true" ]]; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "${BUILD_ROOT}" )
-  save_paths_to_build_dir
+  save_paths_and_archive_urls_to_build_dir
 else
-  if "$clean_postgres"; then
+  if [[ ${clean_postgres} == "true" ]]; then
     log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
     ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
   fi
@@ -1513,7 +1530,7 @@ validate_cmake_build_type "$cmake_build_type"
 
 export YB_COMPILER_TYPE
 
-if "$verbose"; then
+if [[ ${verbose} == "true" ]]; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
   cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
   if ! using_ninja; then
@@ -1521,10 +1538,6 @@ if "$verbose"; then
   fi
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
-
-# -------------------------------------------------------------------------------------------------
-# End of cleaning
-# -------------------------------------------------------------------------------------------------
 
 mkdir_safe "$BUILD_ROOT"
 cd "$BUILD_ROOT"
@@ -1541,11 +1554,11 @@ check_python_script_syntax
 
 set_java_home
 
-if "$no_ccache"; then
+if [[ ${no_ccache} == "true" ]]; then
   export YB_NO_CCACHE=1
 fi
 
-if "$no_tcmalloc"; then
+if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 
@@ -1554,7 +1567,7 @@ if [[ $pgo_data_path != "" ]]; then
 fi
 
 detect_num_cpus_and_set_make_parallelism
-if "$build_cxx"; then
+if [[ ${build_cxx} == "true" ]]; then
   log "Using make parallelism of $YB_MAKE_PARALLELISM" \
       "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 fi
@@ -1595,8 +1608,7 @@ if [[ ${build_cxx} == "true" ||
   run_cxx_build
 fi
 
-if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]] ||
-   is_jenkins; then
+if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then
   run_yugabyted-ui_build
 fi
 
@@ -1615,7 +1627,7 @@ if [[ ${build_java} == "true" ]]; then
     java_build_opts+=( -DskipTests )
   fi
 
-  if "$resolve_java_dependencies"; then
+  if [[ ${resolve_java_dependencies} == "true" ]]; then
     java_build_opts+=( "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}" )
   fi
 
@@ -1667,7 +1679,7 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
     )
   fi
 
-  if "$should_run_ctest"; then
+  if [[ ${should_run_ctest} == "true" ]]; then
     capture_sec_timestamp ctest_start
     run_ctest
     capture_sec_timestamp ctest_end
@@ -1675,6 +1687,8 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
 fi
 
 if [[ ${should_build_clangd_index} == "true" ]]; then
+  "${YB_BUILD_SUPPORT_DIR}/create_latest_symlink.sh" \
+    "${BUILD_ROOT}" "${YB_BUILD_PARENT_DIR}/latest-for-clangd"
   build_clangd_index "${clangd_index_format}"
 fi
 

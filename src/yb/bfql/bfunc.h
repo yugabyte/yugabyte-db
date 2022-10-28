@@ -17,8 +17,7 @@
 // See the header of file "/util/bfql/bfql.h" for more general overall information.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFUNC_H_
-#define YB_BFQL_BFUNC_H_
+#pragma once
 
 #include <fcntl.h>
 
@@ -34,4 +33,3 @@
 
 // Include all builtin function templates.
 
-#endif  // YB_BFQL_BFUNC_H_

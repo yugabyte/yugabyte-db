@@ -36,6 +36,9 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
 namespace yb {
@@ -115,7 +118,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
-      if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::YQL_TABLE_TYPE) {
         return peer->tablet_metadata()->rocksdb_dir();
       }
     }

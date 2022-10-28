@@ -13,8 +13,7 @@
 
 // No include guards here because this file is expected to be included multiple times.
 
-#ifndef YB_YQL_PGGATE_PG_TXN_MANAGER_H_
-#define YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+#pragma once
 
 #include <mutex>
 
@@ -62,6 +61,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  void SetActiveSubTransactionId(SubTransactionId id);
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetPgIsolationLevel(int isolation);
@@ -106,6 +106,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
+  SubTransactionId active_sub_transaction_id_ = 0;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
@@ -127,8 +128,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   HybridTime in_txn_limit_;
 
-  std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
-
   PgCallbacks pg_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
@@ -136,4 +135,3 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
 }  // namespace pggate
 }  // namespace yb
-#endif // YB_YQL_PGGATE_PG_TXN_MANAGER_H_

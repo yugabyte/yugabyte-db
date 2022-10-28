@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_CREATOR_H
-#define YB_CLIENT_TABLE_CREATOR_H
+#pragma once
 
 #include <boost/optional/optional.hpp>
 
@@ -232,4 +231,3 @@ class YBTableCreator {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLE_CREATOR_H

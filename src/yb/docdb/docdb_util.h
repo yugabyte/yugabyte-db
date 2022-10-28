@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_DOCDB_UTIL_H
-#define YB_DOCDB_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -24,6 +23,9 @@
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
+
+#include "yb/master/master_replication.pb.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {
@@ -32,7 +34,8 @@ namespace docdb {
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
     const int pg_data_type,
-    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
     DatumMessagePB* cdc_datum_message = NULL);
 
 struct ExternalIntent {
@@ -169,7 +172,7 @@ class DocDBRocksDBUtil {
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   Status DeleteSubDoc(
       const DocPath& doc_path,
@@ -250,4 +253,3 @@ class DocDBRocksDBUtil {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOCDB_UTIL_H

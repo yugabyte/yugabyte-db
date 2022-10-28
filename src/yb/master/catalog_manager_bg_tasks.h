@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_CATALOG_MANAGER_BG_TASKS_H
-#define YB_MASTER_CATALOG_MANAGER_BG_TASKS_H
+#pragma once
 
 #include <atomic>
 #include <unordered_set>
@@ -77,9 +76,9 @@ class CatalogManagerBgTasks final {
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
   enterprise::CatalogManager *catalog_manager_;
+  bool was_leader_ = false;
 };
 
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_CATALOG_MANAGER_BG_TASKS_H

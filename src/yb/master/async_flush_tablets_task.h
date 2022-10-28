@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
-#define YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H
+#pragma once
 
 #include "yb/master/async_rpc_tasks.h"
 
@@ -30,7 +29,9 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
                     const FlushRequestId& flush_id,
                     bool is_compaction);
 
-  Type type() const override { return ASYNC_FLUSH_TABLETS; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kFlushTablets;
+  }
 
   std::string type_name() const override { return "Flush Tablets"; }
 
@@ -52,4 +53,3 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_ASYNC_FLUSH_TABLETS_TASK_H

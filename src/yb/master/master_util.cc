@@ -13,7 +13,7 @@
 
 #include "yb/master/master_util.h"
 
-#include <boost/container/stable_vector.hpp>
+#include <deque>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -78,8 +78,7 @@ Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
                               ServerEntryPB* e) {
   CHECK(!hostports.empty());
 
-  boost::container::stable_vector<GetMasterRegistrationData> datas;
-  datas.reserve(hostports.size());
+  std::deque<GetMasterRegistrationData> datas;
   std::atomic<GetMasterRegistrationData*> last_data{nullptr};
   CountDownLatch latch(hostports.size());
   for (size_t i = 0; i != hostports.size(); ++i) {

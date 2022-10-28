@@ -50,8 +50,7 @@
 // If used within a signal handler, all lock holders
 // should block the signal even outside the signal handler.
 
-#ifndef YB_GUTIL_SPINLOCK_H
-#define YB_GUTIL_SPINLOCK_H
+#pragma once
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -170,4 +169,3 @@ class SCOPED_CAPABILITY SpinLockHolder {
 
 } // namespace base
 
-#endif  // YB_GUTIL_SPINLOCK_H

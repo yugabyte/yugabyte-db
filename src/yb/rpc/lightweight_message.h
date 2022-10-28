@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_LIGHTWEIGHT_MESSAGE_H
-#define YB_RPC_LIGHTWEIGHT_MESSAGE_H
+#pragma once
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite.h>
@@ -235,18 +234,23 @@ const T& empty_message() {
   return result;
 }
 
+template <class T, class... Args>
+std::shared_ptr<T> SharedMessage(Args&&... args) {
+  AllocatedBuffer buffer;
+  SharedArenaAllocator<Arena> allocator(&buffer);
+  auto arena = std::allocate_shared<PreallocatedArena>(allocator, buffer);
+  auto t = arena->arena().NewObject<T>(&arena->arena(), std::forward<Args>(args)...);
+  return std::shared_ptr<T>(std::move(arena), t);
+}
+
 template <class T>
 std::shared_ptr<T> MakeSharedMessage() {
-  auto arena = std::make_shared<Arena>();
-  auto t = arena->NewObject<T>(arena.get());
-  return std::shared_ptr<T>(std::move(arena), t);
+  return SharedMessage<T>();
 }
 
 template <class T, class PB>
 std::shared_ptr<T> CopySharedMessage(const PB& rhs) {
-  auto arena = std::make_shared<Arena>();
-  auto t = arena->NewObject<T>(arena.get(), rhs);
-  return std::shared_ptr<T>(std::move(arena), t);
+  return SharedMessage<T>(rhs);
 }
 
 template <class T>
@@ -280,4 +284,3 @@ void SetupLimit(google::protobuf::io::CodedInputStream* in);
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_LIGHTWEIGHT_MESSAGE_H

@@ -651,7 +651,7 @@ public class TestPgTransactions extends BasePgSQLTest {
       statement.execute(guard_start_stmt);
     }
     for (String stmt : stmts) {
-      verifyStatementTxnMetric(statement, stmt, 1);
+      verifyStatementTxnMetric(statement, stmt, 0);
     }
 
     // After ending guard, statements should go back to using non-txn path.
@@ -659,7 +659,7 @@ public class TestPgTransactions extends BasePgSQLTest {
       statement.execute(guard_end_stmt);
     }
     for (String stmt : stmts) {
-      verifyStatementTxnMetric(statement, stmt, 0);
+      verifyStatementTxnMetric(statement, stmt, 1);
     }
   }
 
@@ -674,7 +674,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     // Verify standalone statements use non-txn path.
     Statement statement = connection.createStatement();
     for (String stmt : stmts) {
-      verifyStatementTxnMetric(statement, stmt, 0);
+      verifyStatementTxnMetric(statement, stmt, 1);
     }
 
     // Test in txn block.
@@ -738,7 +738,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     // Verify statements with WITH clause use txn path.
     verifyStatementTxnMetric(statement,
                              "WITH test2 AS (UPDATE test SET v = 2 WHERE k = 1) " +
-                             "UPDATE test SET v = 3 WHERE k = 1", 1);
+                             "UPDATE test SET v = 3 WHERE k = 1", 0);
 
     // Verify JDBC single-row prepared statements use non-txn path.
     long oldTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
@@ -761,7 +761,8 @@ public class TestPgTransactions extends BasePgSQLTest {
     updateStatement.executeUpdate();
 
     long newTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
-    assertEquals(oldTxnValue, newTxnValue);
+    // The delete and update would result in 3 single-row transactions
+    assertEquals(oldTxnValue+3, newTxnValue);
   }
 
   /*

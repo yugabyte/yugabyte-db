@@ -22,6 +22,9 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::vector;
+
 DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
              "The minimum number of milliseconds a metric will be kept for after it is "
              "no longer active. (Advanced option)");
@@ -319,6 +322,11 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
   } else if (strcmp(prototype_->name(), "cdc") == 0) {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["namespace_name"] = attrs["namespace_name"];
+    prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];

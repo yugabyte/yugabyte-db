@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_H_
-#define YB_DOCDB_DOCDB_H_
+#pragma once
 
 #include <cstdint>
 #include <ostream>
@@ -228,9 +227,11 @@ void PrepareTransactionWriteBatch(
 struct IntentKeyValueForCDC {
   Slice key;
   Slice value;
-  std::string key_buf, value_buf;
+  Slice ht;
+  std::string key_buf, value_buf, ht_buf;
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
+  DocHybridTime intent_ht;
 
   std::string ToString() const;
 
@@ -316,4 +317,3 @@ void CombineExternalIntents(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_H_

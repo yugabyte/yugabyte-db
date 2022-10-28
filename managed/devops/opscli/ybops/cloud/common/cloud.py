@@ -23,6 +23,7 @@ from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, remote_exec_command)
 from ybops.utils.remote_shell import RemoteShell
+from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port
 
 
@@ -46,7 +47,7 @@ class AbstractCloud(AbstractCommandParser):
     CLIENT_KEY_NAME = "yugabytedb.key"
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
-    SSH_RETRY_COUNT = 180
+    SSH_RETRY_COUNT = 90
     SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 4
     MOUNT_PATH_PREFIX = "/mnt/d"
@@ -168,9 +169,9 @@ class AbstractCloud(AbstractCommandParser):
             updated_vars.update({"systemd_services": args.systemd_services})
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
-        remote_shell = RemoteShell(updated_vars)
+
         if args.num_volumes:
-            volume_cnt = remote_shell.run_command(
+            volume_cnt = RemoteShell(updated_vars).run_command(
                 "df | awk '{{print $6}}' | egrep '^{}[0-9]+' | wc -l".format(
                     AbstractCloud.MOUNT_PATH_PREFIX
                 )
@@ -188,7 +189,7 @@ class AbstractCloud(AbstractCommandParser):
 
         if os.environ.get("YB_USE_FABRIC", False):
             file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
-            remote_shell.run_command(
+            RemoteShell(updated_vars).run_command(
                 "{} {} {}".format(file_path, process, command)
             )
         else:
@@ -221,7 +222,7 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "[app] Could not run bootscript {} {}".format(stdout, stderr))
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
@@ -240,21 +241,22 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port
         # Reboot instance
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot', ssh2_enabled=args.ssh2_enabled)
-        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
+        self.wait_for_ssh_ports(
+            extra_vars["ssh_host"], args.search_pattern, [extra_vars["ssh_port"]])
         # Make sure we can ssh into the node after the reboot as well.
         if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
                         extra_vars["ssh_user"], args.private_key_file, num_retries=120,
                         ssh2_enabled=args.ssh2_enabled):
             pass
         else:
-            raise YBOpsRuntimeError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
+            raise YBOpsRecoverableError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
 
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
@@ -262,7 +264,7 @@ class AbstractCloud(AbstractCommandParser):
                                                  'ls /tmp/dhclient-script-*',
                                                  ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "Second nic not configured at start up")
 
     # Compare certificate content and return
@@ -649,43 +651,17 @@ class AbstractCloud(AbstractCommandParser):
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
 
-    def wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
-        try:
-            sock = None
-            retry_count = 0
-
-            ssh_port = int(ssh_port)
-
-            while retry_count < self.SSH_RETRY_COUNT:
-                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
-                time.sleep(self.SSH_WAIT_SECONDS)
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                result = sock.connect_ex((private_ip, ssh_port))
-
-                if result == 0:
-                    break
-
-                retry_count += 1
-            else:
-                logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
-                raise YBOpsRuntimeError(
-                    "Cannot reach the instance {} after its start at port {}".format(
-                        instance_name, ssh_port)
-                )
-        finally:
-            if sock:
-                sock.close()
-
     def wait_for_ssh_ports(self, private_ip, instance_name, ssh_ports):
         sock = None
         retry_count = 0
 
-        while True:
-            logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_ports)))
+        while retry_count < self.SSH_RETRY_COUNT:
+            logging.info("[app] Waiting for ssh ports: {}:{}".format(private_ip, str(ssh_ports)))
             # Try connecting with the given ssh ports in succession.
             for ssh_port in ssh_ports:
                 ssh_port = int(ssh_port)
-                logging.info("[app] Attempting ssh: {}:{}".format(private_ip, str(ssh_port)))
+                logging.info("[app] Attempting socket connection to ssh port: {}:{}".format(
+                             private_ip, str(ssh_port)))
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(self.SSH_TIMEOUT_SECONDS)
@@ -701,12 +677,12 @@ class AbstractCloud(AbstractCommandParser):
             retry_count += 1
             if retry_count < self.SSH_RETRY_COUNT:
                 time.sleep(self.SSH_WAIT_SECONDS)
-            else:
-                logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
-                raise YBOpsRuntimeError(
-                    "Cannot reach the instance {} after its start at ports {}".format(
-                        instance_name, str(ssh_ports))
-                )
+
+        logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
+        raise YBOpsRecoverableError(
+            "Cannot reach the instance {} after its start at ports {}".format(
+                instance_name, str(ssh_ports))
+        )
 
     def wait_for_startup_script(self, args, host_info):
         if self._wait_for_startup_script_command:
@@ -734,7 +710,7 @@ class AbstractCloud(AbstractCommandParser):
             ssh2_enabled=args.ssh2_enabled
         )
         if rc != 0:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
                     args.search_pattern, stdout, stderr))
         if len(stdout) > 0:
@@ -745,3 +721,9 @@ class AbstractCloud(AbstractCommandParser):
 
     def get_console_output(self, args):
         return ''
+
+    def reboot_instance(self, args, ssh_ports):
+        pass
+
+    def hard_reboot_instance(self, args, ssh_ports):
+        pass

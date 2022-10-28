@@ -1,0 +1,8 @@
+# src/test/regress/yb_feature_database_serial_schedule
+#
+####################################################################################################
+# YB Feature Database Testsuite: Used for reporting supported and unsupported features.
+#   This testsuite does some basic check for database features.
+####################################################################################################
+test: yb_feature_alter_rename
+test: yb_feature_db

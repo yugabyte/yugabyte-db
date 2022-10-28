@@ -33,7 +33,7 @@ public class CheckBootstrapRequired extends XClusterConfigTaskBase {
         "%s(sourceUniverse=%s,xClusterUuid=%s,tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig,
+        taskParams().getXClusterConfig(),
         taskParams().tableIds);
   }
 
@@ -41,7 +41,7 @@ public class CheckBootstrapRequired extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    checkBootstrapRequired(taskParams().tableIds);
+    checkBootstrapRequiredForReplicationSetup(taskParams().tableIds);
 
     log.info("Completed {}", getName());
   }

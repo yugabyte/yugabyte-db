@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_FWD_H
-#define YB_MASTER_MASTER_FWD_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -27,6 +26,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_backup.fwd.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/enums.h"
@@ -52,6 +52,7 @@ class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CDCConsumerSplitDriverIf;
 class CDCRpcTasks;
+class CDCSplitDriverIf;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
@@ -78,7 +79,6 @@ class SysRowEntries;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
-class XClusterSplitDriverIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlTablegroupManager;
@@ -107,6 +107,7 @@ using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestorati
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 
 YB_DEFINE_ENUM(
     CollectFlag,
@@ -129,7 +130,8 @@ using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 // Use ordered map to make computing fingerprint of the map easier.
 using DbOidToCatalogVersionMap = std::map<uint32_t, std::pair<uint64_t, uint64_t>>;
-
+using RelIdToAttributesMap = std::unordered_map<uint32_t, std::vector<PgAttributePB>>;
+using RelTypeOIDMap = std::unordered_map<uint32_t, uint32_t>;
 namespace enterprise {
 
 class CatalogManager;
@@ -139,4 +141,3 @@ class CatalogManager;
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_FWD_H

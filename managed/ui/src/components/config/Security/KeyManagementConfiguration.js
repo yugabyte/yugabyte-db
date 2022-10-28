@@ -1013,8 +1013,8 @@ class KeyManagementConfiguration extends Component {
           is: (provider) => provider?.value === 'GCP',
           then: Yup.string().test(
             'is-url-valid',
-            'GCS Custom Endpoint must be a valid URL',
-            (value) => this.isValidUrl(value)
+            'GCP KMS Custom Endpoint must be a valid URL',
+            (value) => !value || this.isValidUrl(value) //not a required field
           )
         }),
 

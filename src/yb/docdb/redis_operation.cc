@@ -31,6 +31,10 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 
+using std::string;
+using std::numeric_limits;
+using std::vector;
+
 DEFINE_bool(emulate_redis_responses,
     true,
     "If emulate_redis_responses is false, we hope to get slightly better performance by just "
@@ -639,7 +643,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
               doc_path, value_ref, data.read_time,
-              data.deadline, redis_query_id(), ttl, ValueControlFields::kInvalidUserTimestamp,
+              data.deadline, redis_query_id(), ttl, ValueControlFields::kInvalidTimestamp,
               false /* init_marker_ttl */));
         } else {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(

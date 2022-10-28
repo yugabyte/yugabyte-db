@@ -139,18 +139,22 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
                 </TableHeaderColumn>
                 <TableHeaderColumn
                   dataField="createTime"
-                  dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+                  dataFormat={(_, row: IBackup) => (
+                    <FormatUnixTimeStampTimeToTimezone
+                      timestamp={row.commonBackupInfo.createTime}
+                    />
+                  )}
                 >
                   Created At
                 </TableHeaderColumn>
 
                 <TableHeaderColumn
-                  dataField="state"
-                  dataFormat={(state) => {
-                    return <StatusBadge statusType={state} />;
+                  dataField="lastBackupState"
+                  dataFormat={(lastBackupState) => {
+                    return <StatusBadge statusType={lastBackupState} />;
                   }}
                 >
-                  Status
+                  Last Status
                 </TableHeaderColumn>
               </BootstrapTable>
             )}
@@ -159,7 +163,7 @@ export const AssociatedBackups: FC<AssociatedBackupsProps> = ({
       </YBModal>
       <Row className="associated-backups-details">
         <BackupDetails
-          backup_details={showDetails}
+          backupDetails={showDetails}
           onHide={() => setShowDetails(null)}
           storageConfigName={storageConfigData.configName}
           onDelete={() => {

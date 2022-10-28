@@ -330,7 +330,7 @@ public class AlertTest extends FakeDBApplication {
   private Alert createAlert() {
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

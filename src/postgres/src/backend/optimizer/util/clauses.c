@@ -1591,6 +1591,12 @@ contain_leaked_vars_walker(Node *node, void *context)
 			 */
 			break;
 
+		case T_YbBatchedExpr:
+			{
+				contain_leaked_vars_walker(
+					(Node *) ((YbBatchedExpr*) node)->orig_expr, context);
+				break;
+			}
 		case T_FuncExpr:
 		case T_OpExpr:
 		case T_DistinctExpr:
@@ -5408,4 +5414,38 @@ tlist_matches_coltypelist(List *tlist, List *coltypelist)
 		return false;			/* too few tlist items */
 
 	return true;
+}
+
+typedef struct replace_varnos_context
+{
+	Index oldvarno;
+	Index newvarno;
+} replace_varnos_context;
+
+static Node *yb_copy_replace_varnos_mutator(Node *node,
+							   replace_varnos_context *context)
+{
+	if (IsA(node, Var))
+	{
+		Var *var = (Var *) node;
+		if (var->varno == context->oldvarno)
+		{
+			Var *newvar = copyObject(var);
+			newvar->varno = context->newvarno;
+			return (Node *) newvar;
+		}
+	}
+
+	return expression_tree_mutator(node,
+								   yb_copy_replace_varnos_mutator,
+								   (void *) context);
+}
+
+Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
+{
+	replace_varnos_context ctx;
+	ctx.oldvarno = oldvarno;
+	ctx.newvarno = newvarno;
+	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,
+								   			  	   (void *) &ctx);
 }

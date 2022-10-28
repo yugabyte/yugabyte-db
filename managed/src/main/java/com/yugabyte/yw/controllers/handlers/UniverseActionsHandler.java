@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -32,12 +35,14 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.libs.Json;
 import play.mvc.Http;
 
 public class UniverseActionsHandler {
@@ -365,7 +370,7 @@ public class UniverseActionsHandler {
     return taskUUID;
   }
 
-  public UUID resume(Customer customer, Universe universe) {
+  public UUID resume(Customer customer, Universe universe) throws IOException {
     LOG.info(
         "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.uuid,
@@ -373,12 +378,17 @@ public class UniverseActionsHandler {
         universe.universeUUID);
 
     // Create the Commissioner task to resume the universe.
-    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
-    taskParams.universeUUID = universe.universeUUID;
+    // TODO: this is better done using copy constructors
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    ResumeUniverse.Params taskParams =
+        mapper.readValue(
+            mapper.writeValueAsString(universe.getUniverseDetails()), ResumeUniverse.Params.class);
     // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
-    taskParams.customerUUID = customer.uuid;
-    taskParams.clusters = universe.getUniverseDetails().clusters;
 
     // Submit the task to resume the universe.
     TaskType taskType = TaskType.ResumeUniverse;

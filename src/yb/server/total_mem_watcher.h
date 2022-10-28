@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_TOTAL_MEM_WATCHER_H
-#define YB_SERVER_TOTAL_MEM_WATCHER_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -65,4 +64,3 @@ class TotalMemWatcher {
 }  // namespace server
 }  // namespace yb
 
-#endif  // YB_SERVER_TOTAL_MEM_WATCHER_H

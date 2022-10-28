@@ -2269,10 +2269,15 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 		case OBJECT_FOREIGN_TABLE:
 		case OBJECT_COLUMN:
 		case OBJECT_RULE:
-		case OBJECT_TRIGGER:
 		case OBJECT_POLICY:
 		case OBJECT_TABCONSTRAINT:
 			if (!pg_class_ownercheck(RelationGetRelid(relation), roleid))
+				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
+							   RelationGetRelationName(relation));
+			break;
+		case OBJECT_TRIGGER:
+			if (!pg_class_ownercheck(RelationGetRelid(relation), roleid) &&
+				!IsYbDbAdminUser(roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   RelationGetRelationName(relation));
 			break;

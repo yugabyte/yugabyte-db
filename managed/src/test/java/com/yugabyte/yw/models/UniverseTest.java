@@ -21,6 +21,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -59,6 +61,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
@@ -350,6 +353,14 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.deviceInfo.volumeSize = 100;
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    u =
+        Universe.saveDetails(
+            u.universeUUID,
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.getPrimaryCluster().regions = ImmutableList.of(r1, r2, r3);
+              universe.setUniverseDetails(universeDetails);
+            });
 
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
@@ -737,7 +748,12 @@ public class UniverseTest extends FakeDBApplication {
           }
         } else if (nodeState == NodeDetails.NodeState.Live) {
           assertEquals(
-              ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
+              ImmutableSet.of(
+                  NodeActionType.STOP,
+                  NodeActionType.REMOVE,
+                  NodeActionType.QUERY,
+                  NodeActionType.REBOOT,
+                  NodeActionType.HARD_REBOOT),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           if (nd.isMaster) {
@@ -790,8 +806,17 @@ public class UniverseTest extends FakeDBApplication {
         } else if (nodeState == NodeDetails.NodeState.Terminating) {
           assertEquals(
               ImmutableSet.of(NodeActionType.RELEASE, NodeActionType.DELETE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Terminated) {
+        } else if (nodeState == NodeState.Terminated) {
           assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeState.Rebooting) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(ImmutableSet.of(), allowedActions);
+          } else {
+            assertEquals(ImmutableSet.of(NodeActionType.REBOOT), allowedActions);
+          }
+        } else if (nodeState == NodeState.HardRebooting) {
+          assertEquals(ImmutableSet.of(NodeActionType.HARD_REBOOT), allowedActions);
         } else {
           assertTrue(allowedActions.isEmpty());
         }
@@ -801,6 +826,11 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   private Universe createUniverseWithNodes(int rf, int numNodes, boolean setMasters) {
+    return createUniverseWithNodes(rf, numNodes, setMasters, false);
+  }
+
+  private Universe createUniverseWithNodes(
+      int rf, int numNodes, boolean setMasters, boolean dedicatedNodes) {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
@@ -808,6 +838,7 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.provider =
         Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0).uuid.toString();
     userIntent.numNodes = numNodes;
+    userIntent.dedicatedNodes = dedicatedNodes;
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, setMasters));
     return u;
   }
@@ -848,5 +879,22 @@ public class UniverseTest extends FakeDBApplication {
       Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
       assertEquals(nodeState != NodeState.Decommissioned, actions.contains(NodeActionType.DELETE));
     }
+  }
+
+  @Test
+  public void testGetNodeActions_NoStartMasterForDedicated() {
+    Universe u = createUniverseWithNodes(1 /* rf */, 1 /* numNodes */, true /* setMasters */, true);
+    assertEquals(2, u.getNodes().size());
+    Map<UniverseDefinitionTaskBase.ServerType, NodeDetails> nodes =
+        u.getNodes().stream().collect(Collectors.toMap(n -> n.dedicatedTo, n -> n));
+    NodeDetails masterNode = nodes.get(UniverseDefinitionTaskBase.ServerType.MASTER);
+    NodeDetails tserverNode = nodes.get(UniverseDefinitionTaskBase.ServerType.TSERVER);
+    // temporary disable master and tserver nodes.
+    masterNode.isMaster = false;
+    tserverNode.isTserver = false;
+    Set<NodeActionType> actions = new AllowedActionsHelper(u, tserverNode).listAllowedActions();
+    assertFalse(actions.contains(NodeActionType.START_MASTER));
+    actions = new AllowedActionsHelper(u, masterNode).listAllowedActions();
+    assertFalse(actions.contains(NodeActionType.START_MASTER));
   }
 }

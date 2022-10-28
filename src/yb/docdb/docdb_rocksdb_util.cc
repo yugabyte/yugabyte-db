@@ -54,6 +54,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/logging.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
@@ -131,8 +132,8 @@ DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.
 
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
-DEFINE_AUTO_string(regular_tablets_data_block_key_value_encoding,
-    kExternal, "shared_prefix", "three_shared_parts",
+DEFINE_RUNTIME_AUTO_string(regular_tablets_data_block_key_value_encoding, kExternal,
+    "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
@@ -244,13 +245,6 @@ namespace docdb {
 
 std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInstance();
 
-void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
-  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
-    return;
-  }
-  ROCKSDB_SEEK(iter, slice);
-}
-
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
   SeekForward(key_bytes.AsSlice(), iter);
 }
@@ -263,7 +257,8 @@ KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
 }
 
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
-  SeekForward(AppendDocHt(key, DocHybridTime::kMin), iter);
+  char ch = KeyEntryTypeAsChar::kHybridTime + 1;
+  SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
@@ -272,22 +267,28 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
-void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
-                           int* next_count, int* seek_count) {
+struct SeekStats {
+  int next = 0;
+  int seek = 0;
+};
+
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+  SeekStats result;
   for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
     if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
-      VTRACE(3, "Did $0 Next(s) instead of a Seek", nexts);
-      return;
+      VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
+      return result;
     }
     VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
 
     iter->Next();
-    ++*next_count;
+    ++result.next;
   }
 
   VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
   iter->Seek(seek_key);
-  ++*seek_count;
+  ++result.seek;
+  return result;
 }
 
 void PerformRocksDBSeek(
@@ -295,16 +296,15 @@ void PerformRocksDBSeek(
     const rocksdb::Slice &seek_key,
     const char* file_name,
     int line) {
-  int next_count = 0;
-  int seek_count = 0;
+  SeekStats stats;
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
-    ++seek_count;
+    ++stats.seek;
   } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
     iter->Seek(seek_key);
-    ++seek_count;
+    ++stats.seek;
   } else {
-    SeekPossiblyUsingNext(iter, seek_key, &next_count, &seek_count);
+    stats = SeekPossiblyUsingNext(iter, seek_key);
   }
   VLOG(4) << Substitute(
       "PerformRocksDBSeek at $0:$1:\n"
@@ -321,8 +321,8 @@ void PerformRocksDBSeek(
       iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
       iter->Valid() ? FormatSliceAsStr(iter->key()) : "N/A",
       iter->Valid() ? FormatSliceAsStr(iter->value()) : "N/A",
-      next_count,
-      seek_count);
+      stats.next,
+      stats.seek);
 }
 
 namespace {
@@ -390,7 +390,9 @@ int32_t GetMaxBackgroundFlushes() {
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
     auto flushes = 1 + kNumCpus / kCpusPerFlushThread;
     auto max_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
-    LOG(INFO) << "Overriding FLAGS_rocksdb_max_background_flushes to " << max_flushes;
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_max_background_flushes was not set, automatically configuring "
+        << max_flushes << " max background flushes";
     return max_flushes;
   } else {
     return FLAGS_rocksdb_max_background_flushes;
@@ -423,7 +425,8 @@ int32_t GetMaxBackgroundCompactions() {
   } else {
     rocksdb_max_background_compactions = 4;
   }
-  LOG(INFO) << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
       << rocksdb_max_background_compactions << " background compactions.";
   return rocksdb_max_background_compactions;
 }
@@ -435,7 +438,8 @@ int32_t GetBaseBackgroundCompactions() {
 
   if (FLAGS_rocksdb_base_background_compactions == -1) {
     const auto base_background_compactions = GetMaxBackgroundCompactions();
-    LOG(INFO) << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
         << base_background_compactions << " base background compactions.";
     return base_background_compactions;
   }
@@ -538,9 +542,9 @@ void AddSupportedFilterPolicy(
 }
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
-    static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
       GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
-    return &priority_thread_pool_for_compactions_and_flushes;
+  return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 } // namespace
@@ -594,7 +598,8 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     }
   }
 
-  LOG(INFO) << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
       << priority_thread_pool_size << ".";
 
   return priority_thread_pool_size;
@@ -609,7 +614,8 @@ void InitRocksDBOptions(
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
-  options->disableDataSync = true;
+  // We should always sync data to ensure we can recover rocksdb from crash.
+  options->disableDataSync = false;
   options->statistics = statistics;
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
@@ -711,6 +717,8 @@ void InitRocksDBOptions(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
+
+  options->priority_thread_pool_metrics = tablet_options.priority_thread_pool_metrics;
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
@@ -991,6 +999,15 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
       rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
   return nullptr;
+}
+
+void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
+  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
+    return;
+  }
+
+  iter->Next();
+  SeekPossiblyUsingNext(iter, slice);
 }
 
 } // namespace docdb

@@ -352,7 +352,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createStartTserverProcessTasks(newTservers);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(newTservers);
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
     }
     if (!nodesToProvision.isEmpty()) {
@@ -382,8 +383,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      // If only tservers are added, wait for load to balance across all tservers.
-      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+        // If only tservers are added, wait for load to balance across all tservers.
+        createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
     }
 
     if (cluster.clusterType == ClusterType.PRIMARY
@@ -470,6 +473,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

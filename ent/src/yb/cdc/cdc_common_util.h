@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_CDC_CDC_COMMON_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_COMMON_UTIL_H
+#pragma once
 
 #include <string>
 #include <boost/functional/hash.hpp>
@@ -101,4 +100,3 @@ Result<TxnStatusMap> BuildTxnStatusMap(
 }  // namespace cdc
 }  // namespace yb
 
-#endif  // ENT_SRC_YB_CDC_CDC_COMMON_UTIL_H

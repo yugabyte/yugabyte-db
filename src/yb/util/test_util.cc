@@ -36,11 +36,13 @@
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/spinlock_profiling.h"
@@ -58,6 +60,8 @@ DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
+DECLARE_string(vmodule);
+DECLARE_bool(TEST_allow_duplicate_flag_callbacks);
 
 using std::string;
 using strings::Substitute;
@@ -111,6 +115,14 @@ void YBTest::SetUp() {
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
   FLAGS_TEST_running_test = true;
   FLAGS_never_fsync = true;
+  // Certain dynamically registered callbacks like ReloadPgConfig in pg_supervisor use constant
+  // string name as they are expected to be singleton per process. But in MiniClusterTests multiple
+  // YB masters and tservers will register for callbacks with same name in one test process.
+  // Ideally we would prefix the names with the yb process names, but we currently lack the ability
+  // to do so. We still have coverage for this in ExternalMiniClusterTests.
+  // TODO(Hari): #14682
+  FLAGS_TEST_allow_duplicate_flag_callbacks = true;
+
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
       "LSAN_OPTIONS",
@@ -162,6 +174,13 @@ void OverrideFlagForSlowTests(const std::string& flag_name,
   }
   google::SetCommandLineOptionWithMode(flag_name.c_str(), new_value.c_str(),
                                        google::SET_FLAG_IF_DEFAULT);
+}
+
+Status EnableVerboseLoggingForModule(const std::string& module, int level) {
+  string old_value = FLAGS_vmodule;
+  string new_value = Format("$0$1$2=$3", old_value, (old_value.empty() ? "" : ","), module, level);
+
+  return SET_FLAG(vmodule, new_value);
 }
 
 int SeedRandom() {
@@ -260,87 +279,6 @@ void AssertEventually(const std::function<void(void)>& f,
   if (testing::Test::HasFatalFailure()) {
     ADD_FAILURE() << "Timed out waiting for assertion to pass.";
   }
-}
-
-Status Wait(const std::function<Result<bool>()>& condition,
-            CoarseTimePoint deadline,
-            const std::string& description,
-            MonoDelta initial_delay,
-            double delay_multiplier,
-            MonoDelta max_delay) {
-  auto start = CoarseMonoClock::Now();
-  MonoDelta delay = initial_delay;
-  for (;;) {
-    const auto current = condition();
-    if (!current.ok()) {
-      return current.status();
-    }
-    if (current.get()) {
-      break;
-    }
-    const auto now = CoarseMonoClock::Now();
-    const MonoDelta left(deadline - now);
-    if (left <= MonoDelta::kZero) {
-      return STATUS_FORMAT(TimedOut,
-                           "Operation '$0' didn't complete within $1ms",
-                           description,
-                           MonoDelta(now - start).ToMilliseconds());
-    }
-    delay = std::min(std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left),
-                     max_delay);
-    SleepFor(delay);
-  }
-  return Status::OK();
-}
-
-Status Wait(const std::function<Result<bool>()>& condition,
-            MonoTime deadline,
-            const std::string& description,
-            MonoDelta initial_delay,
-            double delay_multiplier,
-            MonoDelta max_delay) {
-  auto left = deadline - MonoTime::Now();
-  return Wait(condition, CoarseMonoClock::Now() + left, description, initial_delay,
-              delay_multiplier, max_delay);
-}
-
-Status LoggedWait(
-    const std::function<Result<bool>()>& condition,
-    CoarseTimePoint deadline,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description << " - started";
-  auto status =
-      Wait(condition, deadline, description, initial_delay, delay_multiplier, max_delay);
-  LOG(INFO) << description << " - completed: " << status;
-  return status;
-}
-
-// Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(const std::function<Result<bool>()>& condition,
-               MonoDelta timeout,
-               const string& description,
-               MonoDelta initial_delay,
-               double delay_multiplier,
-               MonoDelta max_delay) {
-  return Wait(condition, MonoTime::Now() + timeout, description, initial_delay, delay_multiplier,
-              max_delay);
-}
-
-Status LoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description << " - started";
-  auto status =
-      WaitFor(condition, timeout, description, initial_delay, delay_multiplier, max_delay);
-  LOG(INFO) << description << " - completed: " << status;
-  return status;
 }
 
 string GetToolPath(const string& rel_path, const string& tool_name) {

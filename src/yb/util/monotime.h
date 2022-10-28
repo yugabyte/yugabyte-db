@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MONOTIME_H
-#define YB_UTIL_MONOTIME_H
+#pragma once
 
 #include <chrono>
 #include <cstdint>
@@ -266,6 +265,8 @@ void SleepFor(const MonoDelta& delta);
 
 void SleepUntil(const MonoTime& deadline);
 
+// A monotonically increasing clock which lacks the precision of a hybrid clock but is suitable for
+// any use cases that just need a locally monotonic clock.
 class CoarseMonoClock {
  public:
   typedef std::chrono::nanoseconds duration;
@@ -327,4 +328,3 @@ bool IsInitialized(CoarseTimePoint time_point);
 
 } // namespace yb
 
-#endif // YB_UTIL_MONOTIME_H

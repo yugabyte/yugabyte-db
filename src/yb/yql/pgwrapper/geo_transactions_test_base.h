@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -46,6 +45,12 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void CreateTransactionTable(int region);
 
+  Result<TableId> GetTransactionTableId(int region);
+
+  void StartDeleteTransactionTable(int region);
+
+  void WaitForDeleteTransactionTableToFinish(int region);
+
   void CreateMultiRegionTransactionTable();
 
   void SetupTables(size_t tables_per_region);
@@ -76,4 +81,3 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 } // namespace client
 } // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_GEO_TRANSACTIONS_TEST_BASE_H

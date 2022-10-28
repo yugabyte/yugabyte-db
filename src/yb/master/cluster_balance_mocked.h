@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_MOCKED_H
-#define YB_MASTER_CLUSTER_BALANCE_MOCKED_H
+#pragma once
 
 #include "yb/master/cluster_balance.h"
 #include "yb/master/cluster_balance_util.h"
@@ -36,7 +35,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info,
-      vector<AffinitizedZonesSet>* affinitized_zones) const override {
+      std::vector<AffinitizedZonesSet>* affinitized_zones) const override {
     *affinitized_zones = affinitized_zones_;
   }
 
@@ -48,22 +47,20 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const ReplicationInfoPB& GetClusterReplicationInfo() const override {
-    return replication_info_;
-  }
-
   Result<ReplicationInfoPB> GetTableReplicationInfo(
       const scoped_refptr<const TableInfo>& table) const override {
     return replication_info_;
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const override {
-    return state_->options_->type == LIVE ?
-        replication_info_.live_replicas() : replication_info_.read_replicas(0);
+  void SetBlacklistAndPendingDeleteTS() override {
+    for (const auto& ts_desc : global_state_->ts_descs_) {
+      AddTSIfBlacklisted(ts_desc, blacklist_, false);
+      AddTSIfBlacklisted(ts_desc, leader_blacklist_, true);
+      if (ts_desc->HasTabletDeletePending()) {
+        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
+      }
+    }
   }
-
-  const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
-  const BlacklistPB& GetLeaderBlacklist() const override { return leader_blacklist_; }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,
@@ -103,7 +100,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(nullptr, nullptr);
   }
 
-  void SetOptions(ReplicaType type, const string& placement_uuid) {
+  void SetOptions(ReplicaType type, const std::string& placement_uuid) {
     state_->options_->type = type;
     state_->options_->placement_uuid = placement_uuid;
   }
@@ -111,15 +108,15 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   void ResetOptions() { SetOptions(LIVE, ""); }
 
   TSDescriptorVector ts_descs_;
-  vector<AffinitizedZonesSet> affinitized_zones_;
+  std::vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
   ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   BlacklistPB leader_blacklist_;
-  vector<TabletId> pending_add_replica_tasks_;
-  vector<TabletId> pending_remove_replica_tasks_;
-  vector<TabletId> pending_stepdown_leader_tasks_;
+  std::vector<TabletId> pending_add_replica_tasks_;
+  std::vector<TabletId> pending_remove_replica_tasks_;
+  std::vector<TabletId> pending_stepdown_leader_tasks_;
 
   friend class TestLoadBalancerEnterprise;
 };
@@ -127,4 +124,3 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_CLUSTER_BALANCE_MOCKED_H

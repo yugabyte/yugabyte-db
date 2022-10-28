@@ -1,10 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models.helpers;
 
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.core.AllOf.allOf;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -25,20 +21,6 @@ public class NodeDetailsTest {
   }
 
   @Test
-  public void testToString() {
-    assertThat(
-        nd.toString(),
-        allOf(
-            notNullValue(),
-            equalTo(
-                "{name: host-n1, cloudInfo: az-1.test-region.aws, type: "
-                    + ApiUtils.UTIL_INST_TYPE
-                    + ", ip: 10.0.0.1, "
-                    + "isMaster: false, isTserver: true, state: Live, "
-                    + "azUuid: null, placementUuid: null}")));
-  }
-
-  @Test
   public void testIsActive() {
     Set<NodeDetails.NodeState> activeStates = new HashSet<>();
     activeStates.add(NodeDetails.NodeState.ToBeAdded);
@@ -55,7 +37,6 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.Stopping);
     activeStates.add(NodeDetails.NodeState.Resizing);
     activeStates.add(NodeDetails.NodeState.Reprovisioning);
-    activeStates.add(NodeDetails.NodeState.Rebooting);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {

@@ -24,6 +24,8 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/result.h"
 
+using std::ostream;
+
 using namespace std::placeholders;
 
 namespace yb {

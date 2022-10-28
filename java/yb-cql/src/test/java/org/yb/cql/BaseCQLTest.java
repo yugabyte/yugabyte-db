@@ -269,6 +269,14 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     afterBaseCQLTestTearDown();
   }
 
+  protected void restartClusterWithFlag(String flag, String value) throws Exception {
+    destroyMiniCluster();
+    createMiniCluster(
+        Collections.emptyMap(),
+        Collections.singletonMap(flag, value));
+    setUpCqlClient();
+  }
+
   protected void afterBaseCQLTestTearDown() throws Exception {
   }
 
@@ -822,11 +830,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   protected void waitForReadPermsOnAllIndexes(String tableName) throws Exception {
+    waitForReadPermsOnAllIndexes(DEFAULT_TEST_KEYSPACE, tableName);
+  }
+
+  protected void waitForReadPermsOnAllIndexes(String keyspace, String tableName) throws Exception {
     TestUtils.waitFor(
       () -> {
         boolean all_indexes_have_read_perms = true;
         GetTableSchemaResponse response = miniCluster.getClient().getTableSchema(
-          DEFAULT_TEST_KEYSPACE, tableName);
+          keyspace, tableName);
         List<IndexInfo> indexes = response.getIndexes();
 
         for (IndexInfo index : indexes) {

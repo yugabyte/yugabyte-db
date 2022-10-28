@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_TEST_BASE_H_
-#define YB_MASTER_SYS_CATALOG_TEST_BASE_H_
+#pragma once
 
 #include <gtest/gtest.h>
 
@@ -112,7 +111,7 @@ std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b)
 #define ASSERT_METADATA_EQ(a, b) do { \
     auto string_reps = AssertMetadataEqualsHelper((a), (b)); \
     GTEST_ASSERT_( \
-      ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(a)>::Compare \
+      ::testing::internal::EqHelper::Compare \
           (#a, #b, string_reps.first, string_reps.second), \
           GTEST_FATAL_FAILURE_); \
   } while (false)
@@ -122,4 +121,3 @@ std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b)
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_SYS_CATALOG_TEST_BASE_H_

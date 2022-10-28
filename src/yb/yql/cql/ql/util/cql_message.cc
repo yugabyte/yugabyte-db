@@ -30,6 +30,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DEFINE_bool(cql_always_return_metadata_in_execute_response, false,
+            "Force returning the table metadata in the EXECUTE request response");
+
 namespace yb {
 namespace ql {
 
@@ -734,6 +737,12 @@ ExecuteRequest::~ExecuteRequest() {
 Status ExecuteRequest::ParseBody() {
   RETURN_NOT_OK(ParseShortBytes(&query_id_));
   RETURN_NOT_OK(ParseQueryParameters(&params_));
+
+  if (FLAGS_cql_always_return_metadata_in_execute_response) {
+    // Set 'Skip_metadata' flag into 0 for the execution of the prepared statement to force
+    // adding the table metadata to the response.
+    params_.flags &= ~CQLMessage::QueryParameters::kSkipMetadataFlag;
+  }
   return Status::OK();
 }
 

@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H
-#define ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 
@@ -34,7 +33,9 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
       const std::string& snapshot_id,
       tserver::TabletSnapshotOpRequestPB::Operation op);
 
-  Type type() const override { return ASYNC_SNAPSHOT_OP; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kSnapshotOp;
+  }
 
   std::string type_name() const override { return "Tablet Snapshot Operation"; }
 
@@ -98,4 +99,3 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
 } // namespace master
 } // namespace yb
 
-#endif // ENT_SRC_YB_MASTER_ASYNC_SNAPSHOT_TASKS_H

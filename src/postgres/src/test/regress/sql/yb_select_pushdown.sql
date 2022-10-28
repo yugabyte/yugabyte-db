@@ -180,6 +180,48 @@ SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
 SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
 
+-- Plan for the lateral join leverages PARAM_EXEC params
+CREATE TABLE tlateral1 (a int, b int, c varchar);
+INSERT INTO tlateral1 SELECT i, i % 25, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 2) i;
+CREATE TABLE tlateral2 (a int, b int, c varchar);
+INSERT INTO tlateral2 SELECT i % 25, i, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 3) i;
+ANALYZE tlateral1, tlateral2;
+EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+
+-- Test PARAM_EXEC pushdown when parameters are coming from a subplan
+CREATE TABLE tmaster(k int primary key, v1 int, v2 int);
+INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+CREATE TABLE tsub(k int primary key, v1 int, v2 int);
+INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
+EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+
+-- Test rescan of a subquery with pushdown of PARAM_EXEC parameters
+CREATE TABLE tidxrescan1(k1 int, k2 int, v1 int, v2 int, primary key (k1 hash, k2 asc));
+CREATE TABLE tidxrescan2(k1 int primary key, v1 int);
+CREATE TABLE tidxrescan3(k1 int, v1 int);
+CREATE INDEX ON tidxrescan3(k1) INCLUDE (v1);
+
+INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
+INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
+INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
+
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+
+DROP TABLE tidxrescan1;
+DROP TABLE tidxrescan2;
+DROP TABLE tidxrescan3;
+DROP TABLE tmaster;
+DROP TABLE tsub;
+DROP TABLE tlateral1;
+DROP TABLE tlateral2;
 DROP TABLE pushdown_range;
 DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;

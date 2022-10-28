@@ -26,21 +26,18 @@ type: docs
       Google KMS
     </a>
   </li>  
-
-<li >
+  <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp;Azure KMS
     </a>
   </li>
-
   <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
   </li>
-
 </ul>
 
 Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft Azure KMS. 
@@ -50,7 +47,7 @@ Conceptually, Azure KMS consists of a key vault containing one or more keys, wit
 Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 
 - Set the vault permission model as Vault access policy.
-- Add the application to the key vault access policies with the minimum key management operations permissions of Get, Create, and cryptographic operations permissions of Unwrap Key, Wrap Key. 
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key. 
 
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
@@ -66,7 +63,7 @@ You can create a KMS configuration that uses Azure KMS, as follows:
 
 1. Click **Create New Config**.
 
-3. Enter the following configuration details in the form:
+1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **Azure KMS**.
@@ -80,13 +77,11 @@ You can create a KMS configuration that uses Azure KMS, as follows:
     
     ![img](/images/yp/security/azurekms-config.png)
         
-    
-4. Click **Save**.<br>
+1. Click **Save**.<br>
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-5. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
-
+1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
 
 Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure KMS.

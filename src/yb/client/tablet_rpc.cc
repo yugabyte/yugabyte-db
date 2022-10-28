@@ -34,6 +34,8 @@
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
 
+using std::vector;
+
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
 DEFINE_bool(update_all_tablets_upon_network_failure, true, "If this is enabled, then "
@@ -68,7 +70,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              const std::shared_ptr<const YBTable>& table,
                              rpc::RpcRetrier* retrier,
                              Trace* trace,
-                             master::IncludeInactive include_inactive)
+                             master::IncludeInactive include_inactive,
+                             master::IncludeDeleted include_deleted)
       : client_(client),
         command_(command),
         rpc_(rpc),
@@ -78,6 +81,7 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
         retrier_(retrier),
         trace_(trace),
         include_inactive_(include_inactive),
+        include_deleted_(include_deleted),
         local_tserver_only_(local_tserver_only),
         consistent_prefix_(consistent_prefix) {}
 
@@ -171,7 +175,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   if (!tablet_) {
-    client_->LookupTabletById(tablet_id_, table_, include_inactive_, retrier_->deadline(),
+    client_->LookupTabletById(tablet_id_, table_, include_inactive_, include_deleted_,
+                              retrier_->deadline(),
                               std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
                               UseCache::kTrue);
     return;
@@ -207,6 +212,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
       client_->LookupTabletById(tablet_id_,
                                 table_,
                                 include_inactive_,
+                                include_deleted_,
                                 retrier_->deadline(),
                                 std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                                 UseCache::kFalse);
@@ -236,6 +242,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     client_->LookupTabletById(tablet_id_,
                               table_,
                               include_inactive_,
+                              include_deleted_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kTrue);

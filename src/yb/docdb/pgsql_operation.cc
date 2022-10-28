@@ -48,6 +48,9 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -76,6 +79,9 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+
+DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+            "Whether to enable packed row for colocated tables.");
 
 DEFINE_uint64(
     ysql_packed_row_size_limit, 0,
@@ -178,6 +184,11 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
+}
+
+bool DisablePackedRowIfColocatedTable(const Schema& schema) {
+  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
+         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -568,7 +579,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row) {
+  if (FLAGS_ysql_enable_packed_row &&
+      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -674,6 +686,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_packed_row &&
+        !DisablePackedRowIfColocatedTable(schema) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
@@ -840,7 +853,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
     pggate::PgWire::WriteInt64(0, &result_buffer_);
   }
   ++result_rows_;
-  int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       QLExprResult value;
@@ -859,7 +871,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       }
       RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
     }
-    rscol_index++;
   }
   return Status::OK();
 }
@@ -957,9 +968,6 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   // Fetching data.
   bool has_paging_state = false;
   if (request_.batch_arguments_size() > 0) {
-    SCHECK(request_.has_ybctid_column_value(),
-           InternalError,
-           "ybctid arguments can be batched only");
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
         ql_storage, deadline, read_time, doc_read_context, result_buffer, restart_read_ht));
   } else if (request_.has_sampling_state()) {
@@ -1315,6 +1323,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
   }
 
   for (const PgsqlBatchArgumentPB& batch_argument : request_.batch_arguments()) {
+    SCHECK(batch_argument.has_ybctid(),
+           InternalError,
+           "ybctid arguments can be batched only");
     // Get the row.
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_.stmt_id(), projection, doc_read_context, txn_op_context_,
@@ -1431,7 +1442,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
-  if (request_.batch_arguments_size() > 0 && request_.has_ybctid_column_value()) {
+  if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
       RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), request_.wait_policy(), out));

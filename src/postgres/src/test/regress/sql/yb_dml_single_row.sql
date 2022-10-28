@@ -880,6 +880,11 @@ INSERT INTO multi_row VALUES (1, 1, 1);
 INSERT INTO multi_row VALUES (2, 2, 2);
 INSERT INTO multi_row VALUES (3, 3, 3);
 SELECT * FROM multi_row;
+-- Test if delete on top of YBSeqScan works properly (GHI #14103)
+EXPLAIN (COSTS FALSE) /*+ SeqScan(multi_row) */ DELETE FROM multi_row WHERE k < 2;
+/*+ SeqScan(multi_row) */ DELETE FROM multi_row WHERE k < 2;
+SELECT * FROM multi_row;
+
 EXPLAIN (COSTS FALSE) DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
 DELETE FROM multi_row WHERE 2::MONEY <= 2::MONEY;
 SELECT * FROM multi_row;

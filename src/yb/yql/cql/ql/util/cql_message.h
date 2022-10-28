@@ -17,8 +17,7 @@
 //   - native_protocol_v4.spec
 //   - native_protocol_v5.spec
 
-#ifndef YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
-#define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -319,6 +318,9 @@ class CQLRequest : public CQLMessage {
 
   virtual ~CQLRequest();
 
+  bool trace_requested() const {
+    return (flags() & CQLMessage::kTracingFlag) != 0;
+  }
  protected:
   CQLRequest(const Header& header, const Slice& body);
 
@@ -1025,4 +1027,3 @@ class CQLServerEventList : public rpc::ServerEventList {
 }  // namespace ql
 }  // namespace yb
 
-#endif // YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_

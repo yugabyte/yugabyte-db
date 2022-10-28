@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
-#define YB_MASTER_CATALOG_ENTITY_INFO_H
+#pragma once
 
 #include <shared_mutex>
 #include <mutex>
@@ -41,6 +40,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
+#include "yb/common/partition.h"
 
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -242,6 +242,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaDriveInfo(const std::string& ts_uuid,
                               const TabletReplicaDriveInfo& drive_info);
 
+  // Returns the per-stream replication status bitmasks.
+  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
@@ -249,6 +252,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
   uint32_t reported_schema_version(const TableId& table_id);
+
+  // Accessors for the initial leader election protege.
+  void SetInitiaLeaderElectionProtege(const std::string& protege_uuid) EXCLUDES(lock_);
+  std::string InitiaLeaderElectionProtege() EXCLUDES(lock_);
 
   bool colocated() const;
 
@@ -302,9 +309,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
 
+  // The protege UUID to use for the initial leader election (in-memory only).
+  std::string initial_leader_election_protege_ GUARDED_BY(lock_);
+
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
+
+  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -378,6 +390,13 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
 
+// A tablet, and two partitions that together cover the tablet's partition.
+struct TabletWithSplitPartitions {
+  TabletInfoPtr tablet;
+  Partition left;
+  Partition right;
+};
+
 // The information about a table, including its state and tablets.
 //
 // This object uses copy-on-write techniques similarly to TabletInfo.
@@ -401,11 +420,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
   const NamespaceName namespace_name() const;
 
+  ColocationId GetColocationId() const;
+
   const Status GetSchema(Schema* schema) const;
 
   bool has_pgschema_name() const;
 
-  const std::string& pgschema_name() const;
+  const std::string pgschema_name() const;
 
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
@@ -444,6 +465,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);
+
+  // Finds a tablet whose partition can be shrunk.
+  // This is only used for transaction status tables.
+  Result<TabletWithSplitPartitions> FindSplittableHashPartitionForStatusTable() const;
+
+  // Add a tablet to this table, by shrinking old_tablet's partition to the passed in partition.
+  // new_tablet's partition should be the remainder of old_tablet's original partition.
+  // This should only be used for transaction status tables, where the partition ranges
+  // are not actually used.
+  void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
+                                        const Partition& partition,
+                                        const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
   void ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
@@ -540,7 +573,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
-  bool HasTasks(server::MonitoredTask::Type type) const;
+  bool HasTasks(server::MonitoredTaskType type) const;
   void AddTask(std::shared_ptr<server::MonitoredTask> task);
 
   // Returns true if no running tasks left.
@@ -689,7 +722,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   virtual const NamespaceId& id() const override { return namespace_id_; }
 
-  const NamespaceName& name() const;
+  const NamespaceName name() const;
 
   YQLDatabase database_type() const;
 
@@ -727,7 +760,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryTyp
     return pb.field_names_size();
   }
 
-  const string& field_names(int index) const {
+  const std::string& field_names(int index) const {
     return pb.field_names(index);
   }
 
@@ -748,17 +781,17 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return udtype_id_; }
 
-  const UDTypeName& name() const;
+  const UDTypeName name() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   int field_names_size() const;
 
-  const string& field_names(int index) const;
+  const std::string field_names(int index) const;
 
   int field_types_size() const;
 
-  const QLTypePB& field_types(int index) const;
+  const QLTypePB field_types(int index) const;
 
   std::string ToString() const override;
 
@@ -939,7 +972,23 @@ struct SplitTabletIds {
   }
 };
 
+struct PersistentXClusterSafeTimeInfo
+    : public Persistent<XClusterSafeTimePB, SysRowEntryType::XCLUSTER_SAFE_TIME> {};
+
+class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTimeInfo> {
+ public:
+  XClusterSafeTimeInfo() {}
+  ~XClusterSafeTimeInfo() = default;
+
+  virtual const std::string& id() const override { return fake_id_; }
+
+  void Clear();
+
+ private:
+  // This is a singleton, so We do not use the ID field.
+  const std::string fake_id_;
+};
+
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_CATALOG_ENTITY_INFO_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_CLIENT_UTILS_H
-#define YB_CLIENT_CLIENT_UTILS_H
+#pragma once
 
 #include <future>
 
@@ -46,4 +45,3 @@ Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRa
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_CLIENT_UTILS_H

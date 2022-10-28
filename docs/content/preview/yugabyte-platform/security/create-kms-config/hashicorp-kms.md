@@ -26,21 +26,18 @@ type: docs
       Google KMS
     </a>
   </li> 
-
-<li >
+  <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp;Azure KMS
     </a>
   </li>  
-
-<li >
+  <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
   </li>
-
 </ul>
 
 Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.

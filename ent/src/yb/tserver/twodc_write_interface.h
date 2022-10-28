@@ -10,11 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H
-#define ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H
+#pragma once
 
 #include <memory>
 #include <string>
+
+#include "yb/client/external_transaction.h"
 
 namespace yb {
 namespace cdc {
@@ -28,12 +29,28 @@ class WriteRequestPB;
 
 namespace enterprise {
 
+struct ProcessRecordInfo {
+  TabletId tablet_id;
+
+  // Only used for intent records.
+  bool enable_replicate_transaction_status_table;
+  TabletId status_tablet_id;
+
+  // last compatible consumer schema version
+  SchemaVersion last_compatible_consumer_schema_version;
+};
+
 class TwoDCWriteInterface {
  public:
   virtual ~TwoDCWriteInterface() {}
   virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
   virtual Status ProcessRecord(
-      const std::string& tablet_id, const cdc::CDCRecordPB& record) = 0;
+      const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
+  virtual Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record) = 0;
+  virtual std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() = 0;
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
@@ -43,4 +60,3 @@ void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H

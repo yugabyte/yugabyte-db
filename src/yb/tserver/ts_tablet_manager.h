@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TS_TABLET_MANAGER_H
-#define YB_TSERVER_TS_TABLET_MANAGER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -49,6 +48,8 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
+
+#include "yb/docdb/local_waiting_txn_registry.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -169,7 +170,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // and returns a bad Status.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
-      const string& tablet_id,
+      const std::string& tablet_id,
       const Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
@@ -188,12 +189,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
+  // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
       bool hide_only,
+      bool keep_data,
       boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
@@ -208,6 +211,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Result<tablet::TabletPeerPtr> GetTablet(const char* tablet_id) const {
     return GetTablet(Slice(tablet_id));
   }
+
+  Result<consensus::RetryableRequests> GetTabletRetryableRequests(
+      const TabletId& tablet_id) const;
 
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.
@@ -512,6 +518,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class Key>
   tablet::TabletPeerPtr LookupTabletUnlocked(const Key& tablet_id) const REQUIRES_SHARED(mutex_);
 
+  void PollWaitingTxnRegistry();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -604,6 +612,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
+  std::unique_ptr<tablet::LocalWaitingTxnRegistry> waiting_txn_registry_;
+
+  std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
+
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
 
@@ -621,7 +633,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
 
   // Gauge to monitor post-split compactions that have been started.
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
@@ -692,4 +704,3 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
 
 } // namespace tserver
 } // namespace yb
-#endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

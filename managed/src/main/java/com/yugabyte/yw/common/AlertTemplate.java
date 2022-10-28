@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ import lombok.Getter;
 import lombok.Value;
 
 @Getter
+@ApiModel
 public enum AlertTemplate {
 
   // @formatter:off
@@ -723,6 +725,18 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last SSH Key Rotation task for universe '{{ $labels.source_name }}' failed"
           + " - check SSH Key Rotation task result for more details and retry",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  PITR_CONFIG_FAILURE(
+      "PITR Config Failure",
+      "Last Snapshot task failed for universe",
+      "min(ybp_pitr_config_status{universe_uuid = \"__universeUuid__\"})"
+          + " {{ query_condition }} 1",
+      "Last Snapshot task for universe '{{ $labels.source_name }}' failed"
+          + " - check PITR Config task result for more details and retry",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,

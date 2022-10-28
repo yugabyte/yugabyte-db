@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READ_CONTEXT_H
-#define YB_DOCDB_DOC_READ_CONTEXT_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -58,6 +57,12 @@ struct DocReadContext {
     schema_packing_storage.ToPB(schema_version, out->mutable_old_schema_packings());
   }
 
+  // Should account for every field in DocReadContext.
+  static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
+    return Schema::TEST_Equals(lhs.schema, rhs.schema) &&
+        lhs.schema_packing_storage == rhs.schema_packing_storage;
+  }
+
   Schema schema;
   SchemaPackingStorage schema_packing_storage;
 };
@@ -65,4 +70,3 @@ struct DocReadContext {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_DOC_READ_CONTEXT_H

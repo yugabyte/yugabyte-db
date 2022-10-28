@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_MEMORY_MONITOR_H
-#define YB_ROCKSDB_MEMORY_MONITOR_H
+#pragma once
 
 #include <atomic>
 #include <functional>
@@ -68,4 +67,3 @@ class MemoryMonitor {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_MEMORY_MONITOR_H

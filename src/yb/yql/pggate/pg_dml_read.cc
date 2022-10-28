@@ -45,6 +45,9 @@
 
 #include "yb/util/status_format.h"
 
+using std::make_shared;
+using std::vector;
+
 namespace yb {
 namespace pggate {
 
@@ -96,8 +99,6 @@ inline void ApplyBound(
 }
 
 } // namespace
-
-using std::make_shared;
 
 //--------------------------------------------------------------------------------------------------
 // PgDmlRead
@@ -627,9 +628,9 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   auto i = ybctids.begin();
-  return doc_op_->PopulateDmlByYbctidOps(make_lw_function([&i, end = ybctids.end()] {
+  return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
     return i != end ? Slice(*i++) : Slice();
-  }));
+  }), ybctids.size()});
 }
 
 // Function builds vector of ybctids from primary key binds.

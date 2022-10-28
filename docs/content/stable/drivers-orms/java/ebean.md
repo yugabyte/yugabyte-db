@@ -103,7 +103,7 @@ To begin using Ebean in the application, do the following:
     }
     ```
 
-1. Add the following dependency for the Yugabyte JDBC driver to the `build.sbt` file.
+1. Add the following dependency for the YugabyteDB JDBC driver to the `build.sbt` file.
 
     ```sbt
     libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.3"

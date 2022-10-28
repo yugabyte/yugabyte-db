@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
-#define YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
+#pragma once
 
 #include <unordered_map>
 #include <string>
@@ -37,7 +36,7 @@ class DocWriteBatchCache {
   struct Entry {
     DocHybridTime doc_hybrid_time;
     ValueEntryType value_type = ValueEntryType::kInvalid;
-    UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp;
+    UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp;
     // We found a key which matched the exact key_prefix_ we were searching for (excluding the
     // hybrid time). Since we search for a key prefix, we could search for a.b.c, but end up
     // finding a key like a.b.c.d.e. This field indicates that we searched for something like a.b.c
@@ -57,7 +56,7 @@ class DocWriteBatchCache {
   void Put(const KeyBytes& key_bytes,
            DocHybridTime gen_ht,
            ValueEntryType key_entry_type,
-           UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
+           UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp,
            bool found_exact_key_prefix = true) {
     Put(key_bytes, {gen_ht, key_entry_type, user_timestamp, found_exact_key_prefix});
   }
@@ -81,4 +80,3 @@ class DocWriteBatchCache {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_

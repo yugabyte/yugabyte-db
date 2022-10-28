@@ -30,13 +30,6 @@ type: docs
       YSQL - Prisma
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
 </ul>
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}

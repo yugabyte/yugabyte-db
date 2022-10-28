@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
-#define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -139,6 +138,7 @@ class PGConn {
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
+  Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
 
   Status CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();
@@ -191,6 +191,7 @@ class PGConnBuilder {
  private:
   const std::string conn_str_;
   const std::string conn_str_for_log_;
+  const size_t connect_timeout_;
 };
 
 bool HasTryAgain(const Status& status);
@@ -198,4 +199,3 @@ bool HasTryAgain(const Status& status);
 } // namespace pgwrapper
 } // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_LIBPQ_UTILS_H

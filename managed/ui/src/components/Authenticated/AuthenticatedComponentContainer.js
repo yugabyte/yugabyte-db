@@ -129,7 +129,7 @@ const mapDispatchToProps = (dispatch) => {
             return dispatch(listAccessKeys(provider.uuid)).then((response) => {
               dispatch(listAccessKeysResponse(response.payload));
             });
-          })).then(()=>{
+          })).then(() => {
             dispatch(listAccessKeysReqCompleted())
           })
         }

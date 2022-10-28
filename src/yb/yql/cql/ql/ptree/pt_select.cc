@@ -61,6 +61,7 @@ using std::make_shared;
 using std::string;
 using std::unordered_map;
 using std::vector;
+using std::max;
 using yb::bfql::TSOpcode;
 
 //--------------------------------------------------------------------------------------------------
@@ -110,6 +111,7 @@ class Selectivity {
     for (size_t i = 0; i < schema.num_key_columns(); i++) {
       id_to_idx.emplace(schema.ColumnId(i), i);
     }
+    VLOG(4) << "index_id_:" << index_id_ << ", id_to_idx=" << yb::ToString(id_to_idx);
     Analyze(memctx, stmt, id_to_idx, schema.num_key_columns(), schema.num_hash_key_columns());
   }
 
@@ -137,6 +139,7 @@ class Selectivity {
         id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
       }
     }
+    VLOG(4) << "index_id_:" << index_id_ << ", id_to_idx=" << yb::ToString(id_to_idx);
     Analyze(memctx, stmt, id_to_idx, index_info.key_column_count(), index_info.hash_column_count());
   }
 
@@ -285,7 +288,7 @@ class Selectivity {
     // "id_to_idx" mapping is more efficient, so don't remove this map.
 
     // The operator on each column, in the order of the columns in the table or index we analyze.
-    MCVector<OpSelectivity> ops(id_to_idx.size(), OpSelectivity::kNone, memctx);
+    MCVector<OpSelectivity> ops(num_key_columns, OpSelectivity::kNone, memctx);
     for (const ColumnOp& col_op : scan_info->col_ops()) {
       if (!FLAGS_ycql_allow_in_op_with_order_by &&
           is_primary_index() &&
@@ -471,6 +474,7 @@ Status PTSelectStmt::Analyze(SemContext *sem_context) {
     // select_scan_info_ is used to collect information on references for columns, operators, etc.
     SelectScanInfo select_scan_info(sem_context->PTempMem(),
                                     num_columns(),
+                                    &partition_key_ops_,
                                     &filtering_exprs_,
                                     &column_map_);
     select_scan_info_ = &select_scan_info;
@@ -510,6 +514,9 @@ Status PTSelectStmt::Analyze(SemContext *sem_context) {
       sem_context->set_void_primary_key_condition(true);
     }
   }
+
+  // Prevent double filling. It's filled in AnalyzeReferences() and in AnalyzeWhereClause().
+  partition_key_ops_.clear();
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
@@ -1217,9 +1224,11 @@ Status PTTableRef::Analyze(SemContext *sem_context) {
 
 SelectScanInfo::SelectScanInfo(MemoryContext *memctx,
                                size_t num_columns,
+                               MCList<PartitionKeyOp> *partition_key_ops,
                                MCVector<const PTExpr*> *scan_filtering_exprs,
                                MCMap<MCString, ColumnDesc> *scan_column_map)
-    : col_ops_(memctx),
+    : AnalyzeStepState(partition_key_ops),
+      col_ops_(memctx),
       col_op_counters_(memctx),
       col_json_ops_(memctx),
       col_subscript_ops_(memctx),

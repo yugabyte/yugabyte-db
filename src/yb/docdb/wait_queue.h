@@ -11,18 +11,39 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_WAIT_QUEUE_H
-#define YB_DOCDB_WAIT_QUEUE_H
+#pragma once
+
+#include <future>
+
+#include "yb/client/client.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/lock_batch.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/util/threadpool.h"
 
 namespace yb {
 namespace docdb {
+
+class ScopedWaitingTxnRegistration {
+ public:
+  virtual Status Register(
+    const TransactionId& waiting,
+    std::vector<BlockingTransactionData>&& blocking,
+    const TabletId& status_tablet) = 0;
+  virtual int64 GetDataUseCount() const = 0;
+  virtual ~ScopedWaitingTxnRegistration() = default;
+};
+
+class WaitingTxnRegistry {
+ public:
+  virtual std::unique_ptr<ScopedWaitingTxnRegistration> Create() = 0;
+  virtual ~WaitingTxnRegistry() = default;
+};
 
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
@@ -35,7 +56,11 @@ class WaitQueue {
  public:
   WaitQueue(
       TransactionStatusManager* txn_status_manager,
-      const std::string& permanent_uuid);
+      const std::string& permanent_uuid,
+      WaitingTxnRegistry* waiting_txn_registry,
+      const std::shared_future<client::YBClient*>& client_future,
+      const server::ClockPtr& clock,
+      const MetricEntityPtr& metrics);
 
   ~WaitQueue();
 
@@ -47,10 +72,11 @@ class WaitQueue {
   // callback, re-lock the provided locks. If re-locking fails, signal failure to the provided
   // callback.
   Status WaitOn(
-      const TransactionId& waiter, LockBatch* locks, const std::vector<TransactionId>& blockers,
+      const TransactionId& waiter, LockBatch* locks,
+      std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
       WaitDoneCallback callback);
 
-  void PollBlockerStatus(HybridTime now);
+  void Poll(HybridTime now);
 
   void StartShutdown();
 
@@ -64,4 +90,3 @@ class WaitQueue {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_WAIT_QUEUE_H

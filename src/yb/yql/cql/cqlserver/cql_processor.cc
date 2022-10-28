@@ -38,6 +38,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -102,6 +103,11 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_bool(ycql_enable_tracing_flag, true, "If enabled, setting TRACING ON in cqlsh will cause "
+  "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
+  "to disable tracing if an errant application has TRACING enabled by mistake.");
+TAG_FLAG(ycql_enable_tracing_flag, runtime);
+
 // LDAP specific flags
 DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
 DEFINE_string(ycql_ldap_users_to_skip_csv, "", "Users that are authenticated via the local password"
@@ -144,6 +150,8 @@ using namespace yb::ql; // NOLINT
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::ostream;
+using std::string;
 
 using client::YBClient;
 using client::YBSession;
@@ -246,7 +254,12 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
+  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+    call_->EnsureTraceCreated();
+    call_->trace()->set_end_to_end_traces_requested(true);
+  }
   call_->SetRequest(request_, service_impl_);
+  ADOPT_TRACE(call_->trace());
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);
@@ -390,7 +403,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
-      query_id, ql_env_.CurrentKeyspace(), req.query());
+      query_id, req.query(), &ql_env_);
   PreparedResult::UniPtr result;
   Status s = stmt->Prepare(this, service_impl_->prepared_stmts_mem_tracker(),
                            false /* internal */, &result);
@@ -420,12 +433,14 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
-  const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(req.query_id());
-  if (stmt == nullptr) {
-    return ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), req.query_id());
+  auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
+  if (!stmt_res.ok()) {
+    return ProcessError(stmt_res.status(), req.query_id());
   }
-  const Status s = stmt->ExecuteAsync(this, req.params(), statement_executed_cb_);
-  return s.ok() ? nullptr : ProcessError(s, stmt->query_id());
+
+  LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
+  const Status s = (*stmt_res)->ExecuteAsync(this, req.params(), statement_executed_cb_);
+  return s.ok() ? nullptr : ProcessError(s, (*stmt_res)->query_id());
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
@@ -463,12 +478,14 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
-      const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(query.query_id);
-      if (stmt == nullptr) {
-        result = ProcessError(ErrorStatus(ErrorCode::UNPREPARED_STATEMENT), query.query_id);
+      auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
+      if (!stmt_res.ok()) {
+        result = ProcessError(stmt_res.status(), query.query_id);
         break;
       }
-      const Result<const ParseTree&> parse_tree = stmt->GetParseTree();
+
+      LOG_IF(DFATAL, *stmt_res == nullptr) << "Null statement";
+      const Result<const ParseTree&> parse_tree = (*stmt_res)->GetParseTree();
       if (!parse_tree) {
         result = ProcessError(parse_tree.status(), query.query_id);
         break;
@@ -544,12 +561,13 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const RegisterRequest& req)
   return make_unique<ReadyResponse>(req);
 }
 
-shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessage::QueryId& id) {
-  shared_ptr<const CQLStatement> stmt = service_impl_->GetPreparedStatement(id);
-  if (stmt != nullptr) {
-    stmt->clear_reparsed();
-    stmts_.insert(stmt);
-  }
+Result<shared_ptr<const CQLStatement>> CQLProcessor::GetPreparedStatement(
+    const CQLMessage::QueryId& id, SchemaVersion version) {
+  const shared_ptr<const CQLStatement> stmt =
+      VERIFY_RESULT(service_impl_->GetPreparedStatement(id, version));
+  LOG_IF(DFATAL, stmt == nullptr) << "Null statement";
+  stmt->clear_reparsed();
+  stmts_.insert(stmt);
   return stmt;
 }
 

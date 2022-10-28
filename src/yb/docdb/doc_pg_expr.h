@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PG_EXPR_H_
-#define YB_DOCDB_DOC_PG_EXPR_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -103,4 +102,3 @@ class DocPgExprExecutor {
 } // namespace yb
 
 
-#endif // YB_DOCDB_DOC_PG_EXPR_H_

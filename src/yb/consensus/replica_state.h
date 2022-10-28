@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_REPLICA_STATE_H
-#define YB_CONSENSUS_REPLICA_STATE_H
+#pragma once
 
 #include <atomic>
 #include <deque>
@@ -427,6 +426,11 @@ class ReplicaState {
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
       OpIds* applied_op_ids);
 
+  const RetryableRequests& retryable_requests() const {
+    DCHECK(IsLocked());
+    return retryable_requests_;
+  }
+
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
 
@@ -570,4 +574,3 @@ class ReplicaState {
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_REPLICA_STATE_H_

@@ -79,8 +79,8 @@ target_link_libraries(integration-tests
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
-  yb-tserver
-  yb-master
+  "${YB_MASTER_DYNAMIC_EXE_NAME}"
+  "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
   gen_auto_flags_json
   yb-ts-cli)

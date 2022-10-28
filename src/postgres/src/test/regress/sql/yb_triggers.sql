@@ -295,3 +295,41 @@ SELECT * FROM incremental_value;
 
 DROP TABLE incremental_value;
 DROP FUNCTION increment_value;
+
+-- Verify yb_db_admin can alter triggers on tables it does not own
+CREATE TABLE foo(a INT);
+CREATE TABLE bar(b INT);
+CREATE OR REPLACE FUNCTION some_func() RETURNS TRIGGER
+LANGUAGE PLPGSQL AS $$
+BEGIN
+  INSERT INTO bar(b) VALUES (1);
+  RETURN NEW;
+END;
+$$;
+SET SESSION AUTHORIZATION yb_db_admin;
+-- Alter trigger
+CREATE TRIGGER example_trigger AFTER INSERT ON foo FOR EACH ROW EXECUTE PROCEDURE some_func();
+ALTER TRIGGER example_trigger ON foo RENAME TO example_trigger_new;
+DROP TRIGGER example_trigger_new ON foo;
+-- Recreate trigger
+CREATE TRIGGER example_trigger AFTER INSERT ON foo FOR EACH ROW EXECUTE PROCEDURE some_func();
+RESET SESSION AUTHORIZATION;
+-- Verify trigger was run
+INSERT INTO foo VALUES (0);
+SELECT * from bar;
+-- cleanup
+DROP TABLE foo;
+DROP TABLE bar;
+
+-- Verify yb_db_admin can alter system triggers
+CREATE TABLE foo(a INT UNIQUE);
+CREATE TABLE bar(b INT);
+ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
+SET SESSION AUTHORIZATION yb_db_admin;
+ALTER TABLE bar ENABLE TRIGGER ALL;
+ALTER TABLE bar DISABLE TRIGGER ALL;
+ALTER TABLE pg_shdepend ENABLE TRIGGER ALL;
+-- cleanup
+DROP TABLE bar;
+DROP TABLE foo;
+RESET SESSION AUTHORIZATION

@@ -24,15 +24,15 @@ To install an extension in Visual Studio Code, click the Extensions icon in the 
 
 * **GitHub Pull Requests and Issues**, by GitHub: Pretty good pull request support. Not perfect, and can get confused with large PRs, but handy on a regular basis.
 
-* **GitLens — Git supercharged**, by Eric Amodio: Useful git tooling, including per-line blame/history.
+* **GitLens — Git supercharged**, by Eric Amodio: Useful Git tooling, including per-line blame/history.
 
-* **Markdown Preview Enhanced**, by Yiyi Wang: Even nicer markdown previews.
+* **Markdown Preview Enhanced**, by Yiyi Wang: Even nicer Markdown previews.
 
 * **markdownlint**, by David Anson: Lints your markdown formatting to catch errors and inconsistencies.
 
 * **Vale**, by errata-ai: Prose linter. Very powerful, very extensible. (Also available [for Atom](https://atom.io/packages/atomic-vale)). Be sure to turn on "Vale > Core: Use CLI" in your Visual Studio Code settings.
 
-* **Sort Lines**, by Daniel Improvements: Adds better sorting options. In particular, natural sort order for strings makes [10] come after [9].
+* **Sort Lines**, by Daniel Imms: Adds better sorting options. In particular, natural sort order for strings makes [10] come after [9].
 
 ## Extensions for better language support
 

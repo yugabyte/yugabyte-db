@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_OUTBOUND_CALL_H_
-#define YB_RPC_OUTBOUND_CALL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -310,7 +309,6 @@ class OutboundCall : public RpcCall {
   const ConnectionId& conn_id() const { return conn_id_; }
   const std::string& hostname() const { return *hostname_; }
   const RemoteMethod& remote_method() const { return *remote_method_; }
-  const ResponseCallback& callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
   AnyMessagePtr response() const { return response_; }
@@ -434,4 +432,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_OUTBOUND_CALL_H_

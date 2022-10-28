@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_REJECTION_SCORE_SOURCE_H
-#define YB_CLIENT_REJECTION_SCORE_SOURCE_H
+#pragma once
 
 #include <cstdint>
 #include <cstdlib>
@@ -46,4 +45,3 @@ class RejectionScoreSource {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_REJECTION_SCORE_SOURCE_H

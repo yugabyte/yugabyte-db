@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_RPC_H
-#define YB_CLIENT_TRANSACTION_RPC_H
+#pragma once
 
 #include <functional>
 
@@ -38,7 +37,9 @@ class HybridTime;
     ((GetTransactionStatus, WITHOUT_REQUEST)) \
     ((GetTransactionStatusAtParticipant, WITHOUT_REQUEST)) \
     ((AbortTransaction, WITHOUT_REQUEST)) \
-    ((UpdateTransactionStatusLocation, WITHOUT_REQUEST))
+    ((UpdateTransactionStatusLocation, WITHOUT_REQUEST)) \
+    ((UpdateTransactionWaitingForStatus, WITHOUT_REQUEST)) \
+    ((ProbeTransactionDeadlock, WITH_REQUEST))
 
 #define TRANSACTION_RPC_NAME(entry) BOOST_PP_TUPLE_ELEM(2, 0, entry)
 
@@ -88,4 +89,3 @@ void UpdateClock(const Response& resp, T* t) {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TRANSACTION_RPC_H

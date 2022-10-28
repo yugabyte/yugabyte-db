@@ -24,10 +24,9 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -99,33 +98,61 @@ TAG_FLAG(ysql_hba_conf, sensitive_info);
 // computed at runtime so that they show up as an undefined value instead of an incorrect value. If
 // 0 is a valid value for the parameter, then use an empty string. These are enforced by the
 // PgWrapperFlagsTest.VerifyGFlagDefaults test.
-#define DEFINE_pg_flag(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_, type)(ysql_##name, default_value, description); \
-  TAG_FLAG(ysql_##name, pg)
+#define DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
+  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg);
 
-DEFINE_pg_flag(string, timezone, "",
-               "Overrides the default ysql timezone for displaying and interpreting timestamps. If "
-               "no value is provided, Postgres will determine one based on the environment");
-DEFINE_pg_flag(string, datestyle, "ISO, MDY",
-               "The ysql display format for date and time values");
-DEFINE_pg_flag(int32, max_connections, 0,
-               "Overrides the maximum number of concurrent ysql connections. If set to 0, "
-               "Postgres will dynamically determine a platform-specific value");
-DEFINE_pg_flag(string, default_transaction_isolation, "read committed",
-               "The ysql transaction isolation level");
-DEFINE_pg_flag(string, log_statement, "none",
-               "Sets which types of ysql statements should be logged");
-DEFINE_pg_flag(string, log_min_messages, "warning",
-               "Sets the lowest ysql message level to log");
-DEFINE_pg_flag(int32, log_min_duration_statement, -1,
-               "Sets the duration of each completed ysql statement to be logged if the statement"
-               " ran for at least the specified number of milliseconds. Zero prints all queries. "
-               "-1 turns this feature off.");
-DEFINE_pg_flag(bool, yb_enable_expression_pushdown, false,
-               "Push supported expressions from ysql down to DocDB for evaluation.");
-DEFINE_pg_flag(int32, yb_index_state_flags_update_delay, 1000,
-               "Delay in milliseconds between stages of online index build. "
-               "Set high to give online transactions more time to complete.");
+#define DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
+  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
+
+DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
+    "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
+    "is provided, Postgres will determine one based on the environment");
+
+DEFINE_RUNTIME_PG_FLAG(string, datestyle,
+    "ISO, MDY", "The ysql display format for date and time values");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, max_connections, 0,
+    "Overrides the maximum number of concurrent ysql connections. If set to 0, Postgres will "
+    "dynamically determine a platform-specific value");
+
+DEFINE_RUNTIME_PG_FLAG(string, default_transaction_isolation,
+    "read committed", "The ysql transaction isolation level");
+
+DEFINE_RUNTIME_PG_FLAG(string, log_statement,
+    "none", "Sets which types of ysql statements should be logged");
+
+DEFINE_RUNTIME_PG_FLAG(string, log_min_messages,
+    "warning", "Sets the lowest ysql message level to log");
+
+DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
+    "Sets the duration of each completed ysql statement to be logged if the statement ran for at "
+    "least the specified number of milliseconds. Zero prints all queries. -1 turns this feature "
+    "off.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_expression_pushdown, false,
+    "Push supported expressions from ysql down to DocDB for evaluation.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
+    "Delay in milliseconds between stages of online index build. Set high to give online "
+    "transactions more time to complete.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
+    "Controls the consistency level of xCluster replicated databases. Valid values are "
+    "\"database\" and \"tablet\".");
+
+static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
+  if (value != "database" && value != "tablet") {
+    fprintf(
+        stderr, "Invalid value for --%s: %s, must be 'database' or 'tablet'\n", flagname,
+        value.c_str());
+    return false;
+  }
+  return true;
+}
+
+DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -444,7 +471,8 @@ Status PgWrapper::Start() {
   // Configure UNIX domain socket for index backfill tserver-postgres communication and for
   // Yugabyte Platform backups.
   argv.push_back("-k");
-  const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
+  const std::string& socket_dir = PgDeriveSocketDir(
+      HostPort(conf_.listen_addresses, conf_.pg_port));
   RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
   argv.push_back(socket_dir);
 
@@ -503,6 +531,11 @@ Status PgWrapper::Start() {
 
 Status PgWrapper::ReloadConfig() {
   return pg_proc_->Kill(SIGHUP);
+}
+
+Status PgWrapper::UpdateAndReloadConfig() {
+  VERIFY_RESULT(WritePostgresConfig(conf_));
+  return ReloadConfig();
 }
 
 void PgWrapper::Kill() {
@@ -680,12 +713,15 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
 }
 
 PgSupervisor::~PgSupervisor() {
+  std::lock_guard<std::mutex> lock(mtx_);
+  DeregisterPgFlagChangeNotifications();
 }
 
 Status PgSupervisor::Start() {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
   RETURN_NOT_OK(CleanupOldServerUnlocked());
+  RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
   LOG(INFO) << "Starting PostgreSQL server";
   RETURN_NOT_OK(StartServerUnlocked());
 
@@ -812,6 +848,8 @@ void PgSupervisor::Stop() {
   {
     std::lock_guard<std::mutex> lock(mtx_);
     state_ = PgProcessState::kStopping;
+    DeregisterPgFlagChangeNotifications();
+
     if (pg_wrapper_) {
       pg_wrapper_->Kill();
     }
@@ -827,5 +865,46 @@ Status PgSupervisor::ReloadConfig() {
   return Status::OK();
 }
 
+Status PgSupervisor::UpdateAndReloadConfig() {
+  std::lock_guard<std::mutex> lock(mtx_);
+  if (pg_wrapper_) {
+    return pg_wrapper_->UpdateAndReloadConfig();
+  }
+  return Status::OK();
+}
+
+Status PgSupervisor::RegisterReloadPgConfigCallback(const void* flag_ptr) {
+  // DeRegisterForPgFlagChangeNotifications is called before flag_callbacks_ is destroyed, so its
+  // safe to bind to this.
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      flag_ptr, "ReloadPgConfig", std::bind(&PgSupervisor::UpdateAndReloadConfig, this))));
+
+  return Status::OK();
+}
+
+Status PgSupervisor::RegisterPgFlagChangeNotifications() {
+  DeregisterPgFlagChangeNotifications();
+
+  vector<CommandLineFlagInfo> flags;
+  GetAllFlags(&flags);
+  for (const CommandLineFlagInfo& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (tags.contains(FlagTag::kPg)) {
+      RETURN_NOT_OK(RegisterReloadPgConfigCallback(flag.flag_ptr));
+    }
+  }
+
+  RETURN_NOT_OK(RegisterReloadPgConfigCallback(&FLAGS_ysql_pg_conf_csv));
+
+  return Status::OK();
+}
+
+void PgSupervisor::DeregisterPgFlagChangeNotifications() {
+  for (auto& callback : flag_callbacks_) {
+    callback.Deregister();
+  }
+  flag_callbacks_.clear();
+}
 }  // namespace pgwrapper
 }  // namespace yb

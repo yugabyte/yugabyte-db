@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_SESSION_H
-#define YB_CLIENT_SESSION_H
+#pragma once
 
 #include <future>
 #include <unordered_set>
@@ -178,6 +177,11 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   Status TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
   Status TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
 
+  // These block the thread until the operations complete or timeout/deadline has passed
+  Status ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops);
+  Status ApplyAndFlushSync(YBOperationPtr ops);
+  Status ReadSync(std::shared_ptr<YBOperation> yb_op);
+
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
 
@@ -283,4 +287,3 @@ bool ShouldSessionRetryError(const Status& status);
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_SESSION_H

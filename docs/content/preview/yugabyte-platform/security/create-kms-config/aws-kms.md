@@ -35,6 +35,13 @@ type: docs
   </li>  
 
   <li >
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
+      &nbsp;&nbsp;Azure KMS
+    </a>
+  </li>  
+
+  <li >
     <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault

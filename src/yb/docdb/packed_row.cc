@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/schema_packing.h"
@@ -40,6 +41,12 @@ bool IsNull(const Slice& slice) {
   return slice.empty();
 }
 
+using ValuePair = std::pair<Slice, Slice>;
+
+bool IsNull(const ValuePair& value) {
+  return value.first.empty() && value.second.empty();
+}
+
 void PackValue(const QLValuePB& value, ValueBuffer* result) {
   AppendEncodedValue(value, result);
 }
@@ -54,6 +61,16 @@ void PackValue(const Slice& value, ValueBuffer* result) {
 
 size_t PackedValueSize(const Slice& value) {
   return value.size();
+}
+
+size_t PackedValueSize(const ValuePair& value) {
+  return value.first.size() + value.second.size();
+}
+
+void PackValue(const ValuePair& value, ValueBuffer* result) {
+  result->Reserve(result->size() + PackedValueSize(value));
+  result->Append(value.first);
+  result->Append(value.second);
 }
 
 size_t PackedSizeLimit(size_t value) {
@@ -108,6 +125,31 @@ Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
 
 Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
   return DoAddValue(column_id, value, tail_size);
+}
+
+Result<bool> RowPacker::AddValue(
+    ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size) {
+  return DoAddValue(column_id, ValuePair(value_prefix, value_suffix), tail_size);
+}
+
+// Replaces the schema version in packed value with the provided schema version.
+// Note: Value starts with the schema version (does not contain control fields, value type).
+Status ReplaceSchemaVersionInPackedValue(const Slice& value,
+                                         const ValueControlFields& control_fields,
+                                         SchemaVersion schema_version,
+                                         ValueBuffer *out) {
+  CHECK(out != nullptr);
+  out->Truncate(0);
+  control_fields.AppendEncoded(out);
+  out->Reserve(out->size() + 1 + kMaxVarint32Length + value.size());
+  out->PushBack(ValueEntryTypeAsChar::kPackedRow);
+  util::FastAppendUnsignedVarInt(schema_version, out);
+
+  // Consume the bytes for existing schema version and append the rest of the value
+  Slice value_slice = value;
+  RETURN_NOT_OK(util::FastDecodeUnsignedVarInt(&value_slice));
+  out->Append(value_slice);
+  return Status::OK();
 }
 
 template <class Value>

@@ -60,6 +60,28 @@ SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
 
+-- Repeat the test with expression pushdown enabled
+set yb_enable_expression_pushdown to true;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
+
+SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
+SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
+SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
+SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
+
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
+EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
+SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+set yb_enable_expression_pushdown to false;
 
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu"; -- fails

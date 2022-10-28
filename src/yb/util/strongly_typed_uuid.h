@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRONGLY_TYPED_UUID_H
-#define YB_UTIL_STRONGLY_TYPED_UUID_H
+#pragma once
 
 #include <random>
 
@@ -28,7 +27,7 @@
 // function parameter, and to make callsites more readable by enforcing that MyUuidType is
 // specified instead of just UUID. Conversion from strongly-typed UUIDs
 // to regular UUIDs is automatic, but the reverse conversion is always explicit.
-#define YB_STRONGLY_TYPED_UUID(TypeName) \
+#define YB_STRONGLY_TYPED_UUID_DECL(TypeName) \
   struct BOOST_PP_CAT(TypeName, _Tag); \
   typedef ::yb::StronglyTypedUuid<BOOST_PP_CAT(TypeName, _Tag)> TypeName; \
   typedef boost::hash<TypeName> BOOST_PP_CAT(TypeName, Hash); \
@@ -39,22 +38,26 @@
   Result<TypeName> FromStringHelper(TypeName*, const std::string& strval);
 
 #define YB_STRONGLY_TYPED_UUID_IMPL(TypeName) \
-  Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
+  [[maybe_unused]] Result<TypeName> BOOST_PP_CAT(FullyDecode, TypeName)(const Slice& slice) { \
     return TypeName(VERIFY_RESULT(yb::Uuid::FullyDecode(slice, BOOST_PP_STRINGIZE(TypeName)))); \
   } \
-  TypeName BOOST_PP_CAT(TryFullyDecode, TypeName)(const Slice& slice) { \
+  [[maybe_unused]] TypeName BOOST_PP_CAT(TryFullyDecode, TypeName)(const Slice& slice) { \
     return TypeName(yb::Uuid::TryFullyDecode(slice)); \
   } \
-  Result<TypeName> BOOST_PP_CAT(Decode, TypeName)(Slice* slice) { \
+  [[maybe_unused]] Result<TypeName> BOOST_PP_CAT(Decode, TypeName)(Slice* slice) { \
     return TypeName(VERIFY_RESULT(yb::Uuid::Decode(slice))); \
   } \
-  Result<TypeName> BOOST_PP_CAT(TypeName, FromString)(const std::string& strval) { \
+  [[maybe_unused]] Result<TypeName> BOOST_PP_CAT(TypeName, FromString)(const std::string& strval) \
+  { \
     return TypeName(VERIFY_RESULT(::yb::Uuid::FromString(strval))); \
   } \
-  Result<TypeName> FromStringHelper(TypeName*, const std::string& strval) { \
+  [[maybe_unused]] Result<TypeName> FromStringHelper(TypeName*, const std::string& strval) { \
     return BOOST_PP_CAT(TypeName, FromString)(strval); \
   }
 
+#define YB_STRONGLY_TYPED_UUID(TypeName) \
+  YB_STRONGLY_TYPED_UUID_DECL(TypeName) \
+  YB_STRONGLY_TYPED_UUID_IMPL(TypeName)
 namespace yb {
 
 template <class Tag>
@@ -198,4 +201,3 @@ std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
 
 } // namespace yb
 
-#endif // YB_UTIL_STRONGLY_TYPED_UUID_H

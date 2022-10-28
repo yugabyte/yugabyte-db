@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_UINT_SET_H
-#define YB_UTIL_UINT_SET_H
+#pragma once
 
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
@@ -100,7 +99,7 @@ class UnsignedIntSet {
   }
 
   bool operator==(const UnsignedIntSet<T>& other) const {
-    return interval_set_ == other.interval_set_;
+    return boost::icl::is_element_equal(interval_set_, other.interval_set_);
   }
 
  private:
@@ -112,4 +111,3 @@ class UnsignedIntSet {
 
 } // namespace yb
 
-#endif // YB_UTIL_UINT_SET_H

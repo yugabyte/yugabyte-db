@@ -18,6 +18,7 @@ import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../util
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
+import { specialChars } from '../../constants';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -399,6 +400,12 @@ const validate = (values) => {
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is Required';
   }
+  else {
+    if(!specialChars.test(values.accountName)){
+      errors.accountName = 'Account Name cannot have special characters except - and _';
+    }
+  }
+  
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';
   }

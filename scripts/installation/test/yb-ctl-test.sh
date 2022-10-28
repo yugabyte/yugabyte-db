@@ -151,7 +151,7 @@ cleanup() {
     echo "Scroll up past the various logs to where it says 'SEE THE ERROR MESSAGE'."
   fi
 
-  if "$keep"; then
+  if [[ ${keep} == "true" ]]; then
     log "Not killing yb-master/yb-tserver processes or removing data directories at " \
         "$yb_data_dir_parent"
   else
@@ -234,7 +234,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if "$verbose"; then
+if [[ ${verbose} == "true" ]]; then
   yb_ctl_args+=( --verbose )
 fi
 

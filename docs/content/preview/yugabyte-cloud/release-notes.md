@@ -1,18 +1,50 @@
 ---
-title: What's new
+title: What's new in YugabyteDB Managed
 linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent: New features, cloud provider regions, and known issues
 image: /images/section_icons/index/quick_start.png
-menu:
-  preview_yugabyte-cloud:
-    identifier: cloud-release
-    parent: yugabytedb-managed
-    weight: 950
+layout: single
 type: docs
 ---
 
 ## Releases
+
+### October 24, 2022
+
+**New Features**
+
+- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or number of YSQL connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
+### September 28, 2022
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.2. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### September 19, 2022
+
+**Database**
+
+- Stable release updated to version 2.14.2 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### August 17, 2022
+
+**Database**
+
+- Stable release updated to version 2.14.1 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### July 8, 2022
+
+**Database**
+
+- Preview release updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 27, 2022
 
@@ -174,18 +206,30 @@ This release includes the following features:
 
 ## Cloud provider regions
 
+### GCP
+
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
+- Honk Kong (asia-east2)
 - Tokyo (asia-northeast1)
+- Osaka (asia-northeast2)
+- Seoul (asia-northeast3)
 - Mumbai (asia-south1)
+- Delhi (asia-south2)
 - Singapore (asia-southeast1)
+- Jakarta (asia-southeast2)
 - Sydney (australia-southeast1)
+- Melbourne (australia-southeast2)
+- Warsaw (europe-central2)
+- Finland (europe-north1)
 - Belgium (europe-west1)
 - London (europe-west2)
 - Frankfurt (europe-west3)
 - Netherlands (europe-west4)
+- Zurich (europe-west6)
 - Montreal (northamerica-northeast1)
+- Toronto (northamerica-northeast2)
 - Sao Paulo (southamerica-east1)
 - Iowa (us-central1)
 - South Carolina (us-east1)
@@ -195,17 +239,26 @@ The following **GCP regions** are available:
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
 
+### AWS
+
 The following **AWS regions** are available:
 
+- Cape Town (af-south-1)
+- Hong Kong (ap-east-1)
 - Tokyo (ap-northeast-1)
+- Seoul (ap-northeast-2)
+- Osaka (ap-northeast-3)
 - Mumbai (ap-south-1)
 - Singapore (ap-southeast-1)
 - Sydney (ap-southeast-2)
 - Central (ca-central-1)
 - Frankfurt (eu-central-1)
+- Stockholm (eu-north-1)
+- Milan (eu-south-1)
 - Ireland (eu-west-1)
 - London (eu-west-2)
 - Paris (eu-west-3)
+- Bahrain (me-south-1)
 - Sao Paulo (sa-east-1)
 - N. Virginia (us-east-1)
 - Ohio (us-east-2)
@@ -220,8 +273,9 @@ The following **AWS regions** are available:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 
-### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
+### Known issues in Cloud Shell
 
-- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

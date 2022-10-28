@@ -38,7 +38,6 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -118,6 +117,8 @@ public class HealthChecker {
       "yb.health.max_num_parallel_node_checks";
 
   private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
+
+  public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
 
   private final Environment environment;
 
@@ -246,7 +247,7 @@ public class HealthChecker {
    * @param report Health report.
    * @return true if success
    */
-  private boolean processMetrics(Customer c, Universe u, Details report) {
+  private void processMetrics(Customer c, Universe u, Details report) {
 
     boolean hasErrors = false;
     // This is hacky, but health check data items only make sense if you know order.
@@ -342,7 +343,6 @@ public class HealthChecker {
       metricService.setFailureStatusMetric(
           buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
     }
-    return true;
   }
 
   private boolean sendEmailReport(
@@ -436,7 +436,7 @@ public class HealthChecker {
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+    if (!runtimeConfigFactory.forUniverse(u).getBoolean("yb.health.trigger_api.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
@@ -646,7 +646,7 @@ public class HealthChecker {
     boolean testReadWrite =
         runtimeConfigFactory
             .forUniverse(params.universe)
-            .getBoolean("yb.metrics.db_read_write_test");
+            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
@@ -661,18 +661,24 @@ public class HealthChecker {
         return;
       }
       providerCode = provider.code;
-      for (NodeDetails nd : details.nodeDetailsSet) {
+      List<NodeDetails> activeNodes =
+          details
+              .getNodesInCluster(cluster.uuid)
+              .stream()
+              .filter(NodeDetails::isActive)
+              .collect(Collectors.toList());
+      for (NodeDetails nd : activeNodes) {
         if (nd.cloudInfo.private_ip == null) {
           log.warn(
               String.format(
-                  "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
+                  "Universe %s has active unprovisioned node %s.",
+                  params.universe.name, nd.nodeName));
           setHealthCheckFailedMetric(params.customer, params.universe);
           return;
         }
       }
       List<NodeDetails> sortedDetails =
-          details
-              .getNodesInCluster(cluster.uuid)
+          activeNodes
               .stream()
               .sorted(Comparator.comparing(NodeDetails::getNodeName))
               .collect(Collectors.toList());
@@ -763,13 +769,28 @@ public class HealthChecker {
     long durationMs = System.currentTimeMillis() - startTime.getTime();
     boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
 
-    boolean succeeded = processMetrics(params.customer, params.universe, fullReport);
+    processMetrics(params.customer, params.universe, fullReport);
 
     log.info(
         "Health check for universe {} reported {}. [ {} ms ]",
         params.universe.name,
         (healthCheckReport.getHasError() ? "errors" : "success"),
         durationMs);
+    if (healthCheckReport.getHasError()) {
+      List<NodeData> failedChecks =
+          healthCheckReport
+              .getData()
+              .stream()
+              .filter(NodeData::getHasError)
+              .collect(Collectors.toList());
+      log.warn(
+          "Following checks failed for universe {}:\n{}",
+          params.universe.name,
+          failedChecks
+              .stream()
+              .map(NodeData::toHumanReadableString)
+              .collect(Collectors.joining("\n")));
+    }
 
     if (!params.onlyMetrics) {
       if (sendEmailReport(
@@ -787,10 +808,8 @@ public class HealthChecker {
           params.universe.universeUUID, params.universe.customerId, healthCheckReport);
     }
 
-    if (succeeded) {
-      metricService.setOkStatusMetric(
-          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
-    }
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
   }
 
   private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {

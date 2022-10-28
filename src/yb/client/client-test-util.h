@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_CLIENT_TEST_UTIL_H_
-#define YB_CLIENT_CLIENT_TEST_UTIL_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -61,6 +60,7 @@ void ScanTableToStrings(const TableHandle& table, std::vector<std::string>* row_
 
 // Scans in LEADER_ONLY mode, returning stringified rows.
 std::vector<std::string> ScanTableToStrings(const TableHandle& table);
+std::vector<std::string> ScanTableToStrings(const YBTableName& table_name, YBClient* client);
 
 // Count the number of rows in the table in LEADER_ONLY mode.
 int64_t CountTableRows(const TableHandle& table);
@@ -77,4 +77,3 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
 }  // namespace client
 }  // namespace yb
 
-#endif // YB_CLIENT_CLIENT_TEST_UTIL_H_

@@ -77,6 +77,9 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
+using std::vector;
+using std::string;
+
 DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
              "Timeout used by the master when attempting to backfill a YSQL tablet during index "
              "creation.");
@@ -154,8 +157,8 @@ Result<bool> GetPgIndexStatus(
   const auto pg_index_id =
       GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id)), kPgIndexTableOid);
 
-  const tablet::Tablet* catalog_tablet =
-      catalog_manager->tablet_peer()->tablet();
+  const auto catalog_tablet =
+      VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet_safe());
   const Schema& pg_index_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
@@ -1334,6 +1337,11 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
 }
 
 void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kAborted) {
+    VLOG(1) << " was aborted";
+    return;
+  }
+
   Status status;
   HybridTime safe_time;
   if (resp_.has_error()) {
@@ -1363,7 +1371,8 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
     : RetryingTSRpcTask(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
-                        backfill_tablet->tablet()->table().get()),
+                        backfill_tablet->tablet()->table().get(),
+                        /* async_task_throttler */ nullptr),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
       backfill_tablet_(backfill_tablet),
       start_key_(start_key),

@@ -27,6 +27,9 @@
 
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 
 template <class MiniClusterType>

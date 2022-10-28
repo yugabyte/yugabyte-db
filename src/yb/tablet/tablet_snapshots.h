@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_SNAPSHOTS_H
-#define YB_TABLET_TABLET_SNAPSHOTS_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -40,6 +39,8 @@ class RWOperationCounter;
 class rw_semaphore;
 
 namespace tablet {
+
+class TabletRestorePatch;
 
 YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
 
@@ -111,6 +112,9 @@ class TabletSnapshots : public TabletComponent {
 
   Status RestorePartialRows(SnapshotOperation* operation);
 
+  Result<TabletRestorePatch> GenerateRestoreWriteBatch(
+      const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch);
+
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };
 
@@ -131,4 +135,3 @@ class TabletRestorePatch : public RestorePatch {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TABLET_SNAPSHOTS_H

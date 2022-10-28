@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
-#define YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
+#pragma once
 
 #include <map>
 #include <memory>
@@ -57,11 +56,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/server/clock.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals;
@@ -640,7 +639,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     return new_proxy;
   }
 
-  virtual const vector<LocalTestPeerProxy*>& GetProxies() {
+  virtual const std::vector<LocalTestPeerProxy*>& GetProxies() {
     return proxies_;
   }
 
@@ -653,7 +652,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
-  vector<LocalTestPeerProxy*> proxies_;
+  std::vector<LocalTestPeerProxy*> proxies_;
 };
 
 // A simple implementation of the transaction driver.
@@ -954,4 +953,3 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_ */

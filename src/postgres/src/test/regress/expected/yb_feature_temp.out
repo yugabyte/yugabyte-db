@@ -322,17 +322,30 @@ SELECT pg_sleep(10);
 CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON temptest (v1);
 CREATE INDEX ON temptest USING hash (v2);
+-- \d temptest has unstable output due to temporary schemaname
+-- such as pg_temp_1, pg_temp_2, etc. Use regexp_replace to change
+-- it to pg_temp_xxx so that the result is stable.
+select current_setting('data_directory') || 'describe.out' as desc_output_file
+\gset
+\o :desc_output_file
 \d temptest
-            Table "pg_temp_2.temptest"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- k      | integer |           | not null |
- v1     | integer |           |          |
- v2     | integer |           |          |
-Indexes:
-    "temptest_pkey" PRIMARY KEY, btree (k ASC)
-    "temptest_v1_idx" UNIQUE, btree (v1 ASC)
-    "temptest_v2_idx" hash (v2)
+\o
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_\d+', 'pg_temp_xxx', 'g');
+                   regexp_replace
+-----------------------------------------------------
+             Table "pg_temp_xxx.temptest"           +
+  Column |  Type   | Collation | Nullable | Default +
+ --------+---------+-----------+----------+---------+
+  k      | integer |           | not null |         +
+  v1     | integer |           |          |         +
+  v2     | integer |           |          |         +
+ Indexes:                                           +
+     "temptest_pkey" PRIMARY KEY, btree (k ASC)     +
+     "temptest_v1_idx" UNIQUE, btree (v1 ASC)       +
+     "temptest_v2_idx" hash (v2)                    +
+                                                    +
+
+(1 row)
 
 INSERT INTO temptest VALUES (1, 2, 3), (4, 5, 6);
 INSERT INTO temptest VALUES (2, 2, 3);
@@ -426,3 +439,19 @@ SELECT * FROM tempt ORDER BY k;
  1 |  2 |  3
  4 |  5 |  6
 (2 rows)
+
+-- types in temp schema
+set search_path = pg_temp, public;
+create domain pg_temp.nonempty as text check (value <> '');
+-- function-syntax invocation of types matches rules for functions
+select nonempty('');
+ERROR:  function nonempty(unknown) does not exist
+LINE 1: select nonempty('');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select pg_temp.nonempty('');
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+-- other syntax matches rules for tables
+select ''::nonempty;
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+reset search_path;

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_METRICS_H
-#define YB_UTIL_METRICS_H
+#pragma once
 
 /////////////////////////////////////////////////////
 // YB Metrics
@@ -540,6 +539,8 @@ class MetricRegistry {
     SharedLock<std::shared_timed_mutex> l(tablets_shutdown_lock_);
     return tablets_shutdown_.find(id) != tablets_shutdown_.end();
   }
+
+  void get_all_prototypes(std::set<std::string>&) const;
 
  private:
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
@@ -1214,4 +1215,3 @@ void EscapeMetricNameForPrometheus(std::string *id);
 
 } // namespace yb
 
-#endif // YB_UTIL_METRICS_H

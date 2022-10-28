@@ -43,7 +43,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   public String getName() {
     return String.format(
         "%s(xClusterConfig=%s,forceDelete=%s)",
-        super.getName(), taskParams().xClusterConfig, taskParams().forceDelete);
+        super.getName(), taskParams().getXClusterConfig(), taskParams().forceDelete);
   }
 
   @Override
@@ -66,13 +66,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
         xClusterConfig
             .tables
             .stream()
-            .filter(
-                tableConfig ->
-                    (tableConfig.needBootstrap
-                            && !tableConfig.replicationSetupDone
-                            && tableConfig.bootstrapCreateTime != null
-                            && tableConfig.streamId != null)
-                        || xClusterConfig.targetUniverseUUID == null)
+            .filter(tableConfig -> tableConfig.streamId != null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId

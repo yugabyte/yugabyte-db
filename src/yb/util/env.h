@@ -24,8 +24,7 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef YB_UTIL_ENV_H
-#define YB_UTIL_ENV_H
+#pragma once
 
 #include <stdint.h>
 
@@ -759,4 +758,3 @@ Status DeleteIfExists(const std::string& path, Env* env);
 
 }  // namespace yb
 
-#endif // YB_UTIL_ENV_H

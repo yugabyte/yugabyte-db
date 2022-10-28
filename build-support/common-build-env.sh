@@ -175,23 +175,13 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc5
-  gcc6
-  gcc7
-  gcc8
-  gcc9
-  gcc10
   gcc11
   gcc12
   clang
-  clang7
-  clang8
-  clang9
-  clang10
-  clang11
   clang12
   clang13
   clang14
+  clang15
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -283,27 +273,27 @@ is_clean_build=false
 yb_thirdparty_dir_origin=""
 
 if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
-  yb_thirdparty_dir_origin=" (from environment)"
+  yb_thirdparty_dir_origin="from environment"
 fi
 
 yb_thirdparty_url_origin=""
 if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-  yb_thirdparty_url_origin=" (from environment)"
+  yb_thirdparty_url_origin="from environment"
 fi
 
 yb_linuxbrew_dir_origin=""
 if [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
-  yb_linuxbrew_dir_origin=" (from environment)"
+  yb_linuxbrew_dir_origin="from environment"
 fi
 
 yb_llvm_toolchain_url_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
-  yb_llvm_toolchain_url_origin=" (from environment)"
+  yb_llvm_toolchain_url_origin="from environment"
 fi
 
 yb_llvm_toolchain_dir_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
-  yb_llvm_toolchain_dir_origin=" (from environment)"
+  yb_llvm_toolchain_dir_origin="from environment"
 fi
 
 # To deduplicate Maven arguments
@@ -347,7 +337,8 @@ decide_whether_to_use_linuxbrew() {
     elif [[ -n ${YB_LINUXBREW_DIR:-} ||
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" ) ]]; then
+              "$( uname -m )" == "x86_64" &&
+              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -395,7 +386,7 @@ set_build_root() {
 
   normalize_build_root
 
-  if "$make_build_root_readonly"; then
+  if [[ ${make_build_root_readonly} == "true" ]]; then
     readonly BUILD_ROOT
   fi
 
@@ -498,23 +489,16 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(debug|fastdebug|release|prof_(gen|use))$ &&
-            ${YB_TARGET_ARCH} == "x86_64" ]]; then
+      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
         YB_COMPILER_TYPE=clang13
       else
-        YB_COMPILER_TYPE=clang12
+        YB_COMPILER_TYPE=clang15
       fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
-  else
-    if is_mac; then
-      if [[ $YB_COMPILER_TYPE != "clang" ]]; then
-        fatal "YB_COMPILER_TYPE is $YB_COMPILER_TYPE on macOS, but only 'clang' is supported"
-      fi
-    fi
   fi
 }
 
@@ -714,7 +698,7 @@ create_mvn_repo_path_file() {
 }
 
 set_mvn_parameters() {
-  if "$yb_mvn_parameters_already_set"; then
+  if [[ ${yb_mvn_parameters_already_set} == "true" ]]; then
     return
   fi
   if is_jenkins; then
@@ -1217,7 +1201,7 @@ download_thirdparty() {
           "'$extracted_dir'"
   fi
   export YB_THIRDPARTY_DIR=$extracted_dir
-  yb_thirdparty_dir_origin=" (downloaded from $YB_THIRDPARTY_URL)"
+  yb_thirdparty_dir_origin="downloaded from $YB_THIRDPARTY_URL"
   save_thirdparty_info_to_build_dir
   download_toolchain
 }
@@ -1233,24 +1217,18 @@ download_toolchain() {
           -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
     # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
     # thirdparty archives that are built for Linuxbrew.
-    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
     linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
-  else
-    for file_name_part in linuxbrew toolchain; do
-      local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
-      if [[ -f $url_file_path ]]; then
-        toolchain_urls+=( "$(<"$url_file_path")" )
-        break
-      fi
-    done
   fi
 
   if [[ -n ${linuxbrew_url:-} ]]; then
     toolchain_urls+=( "$linuxbrew_url" )
   fi
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
-        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
+        -z ${YB_LLVM_TOOLCHAIN_DIR:-} &&
+        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
     YB_LLVM_TOOLCHAIN_URL=$(
+      activate_virtualenv &>/dev/null
       python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
     )
     if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
@@ -1292,22 +1270,37 @@ download_toolchain() {
               "'$extracted_dir'"
       fi
       export YB_LINUXBREW_DIR=$extracted_dir
-      yb_linuxbrew_dir_origin=" (downloaded from $toolchain_url)"
+      yb_linuxbrew_dir_origin="downloaded from $toolchain_url"
       save_brew_path_to_build_dir
     fi
 
     if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
-            $YB_LLVM_TOOLCHAIN_DIR != "$extracted_dir" ]]; then
-        log_thirdparty_and_toolchain_details
-        fatal "YB_LLVM_TOOLCHAIN_DIR is already set to '$YB_LLVM_TOOLCHAIN_DIR', cannot set it " \
-              "to '$extracted_dir'"
+            ${YB_LLVM_TOOLCHAIN_DIR} != "${extracted_dir}" ]]; then
+        if [[ ${YB_LLVM_TOOLCHAIN_MISMATCH_WARNING_LOGGED:-0} == "0" &&
+              ${YB_SUPPRESS_LLVM_TOOLCHAIN_MISMATCH_WARNING:-0} != "1" ]]; then
+          log_thirdparty_and_toolchain_details
+          log "Warning: YB_LLVM_TOOLCHAIN_DIR is already set to '${YB_LLVM_TOOLCHAIN_DIR}'," \
+              "cannot set it to '${extracted_dir}'. This may happen in case the LLVM toolchain" \
+              "version used to build third-party dependencies is different from the one we are" \
+              "using now to build YugabyteDB, normally determined by the llvm-installer Python" \
+              "module. To fix this permanently, third-party dependencies should be rebuilt using" \
+              "our most recent build of the LLVM toolchain for this major version, but in most" \
+              "cases this is not a problem. To suppress this warning, set the" \
+              "YB_SUPPRESS_LLVM_TOOLCHAIN_MISMATCH_WARNING env var to 1."
+          export YB_LLVM_TOOLCHAIN_MISMATCH_WARNING_LOGGED=1
+        fi
+      else
+        export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
+        yb_llvm_toolchain_dir_origin="downloaded from $toolchain_url"
+        save_llvm_toolchain_info_to_build_dir
       fi
-      export YB_LLVM_TOOLCHAIN_DIR=$extracted_dir
-      yb_llvm_toolchain_dir_origin=" (downloaded from $toolchain_url)"
-      save_llvm_toolchain_path_to_build_dir
     fi
   done
+
+  if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} && ! -e ${BUILD_ROOT}/toolchain ]]; then
+    ln -s "${YB_LLVM_TOOLCHAIN_DIR}" "${BUILD_ROOT}/toolchain"
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -1375,9 +1368,10 @@ save_brew_path_to_build_dir() {
   fi
 }
 
-save_llvm_toolchain_path_to_build_dir() {
+save_llvm_toolchain_info_to_build_dir() {
   if is_linux; then
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
+    save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_URL:-}" "llvm_url.txt"
   fi
 }
 
@@ -1386,10 +1380,10 @@ save_thirdparty_info_to_build_dir() {
   save_var_to_file_in_build_dir "${YB_THIRDPARTY_URL:-}" "thirdparty_url.txt"
 }
 
-save_paths_to_build_dir() {
+save_paths_and_archive_urls_to_build_dir() {
   save_brew_path_to_build_dir
   save_thirdparty_info_to_build_dir
-  save_llvm_toolchain_path_to_build_dir
+  save_llvm_toolchain_info_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1411,7 +1405,7 @@ detect_linuxbrew() {
   then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
-    yb_linuxbrew_dir_origin=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
+    yb_linuxbrew_dir_origin="from file '$BUILD_ROOT/linuxbrew_path.txt')"
     return
   fi
 }
@@ -1425,7 +1419,7 @@ detect_llvm_toolchain() {
   if [[ $is_clean_build != "true" && -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/llvm_path.txt ]]; then
     YB_LLVM_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/llvm_path.txt")
     export YB_LLVM_TOOLCHAIN_DIR
-    yb_llvm_toolchain_dir_origin=" (from file '$BUILD_ROOT/llvm_path.txt')"
+    yb_llvm_toolchain_dir_origin="from file '$BUILD_ROOT/llvm_path.txt')"
   fi
 }
 
@@ -1583,7 +1577,7 @@ get_build_worker_list() {
           break
         fi
       done
-      if "$all_worker_names_valid"; then
+      if [[ ${all_worker_names_valid} == "true" ]]; then
         return
       fi
     fi
@@ -1715,7 +1709,6 @@ debugging_remote_compilation() {
 }
 
 cmd_line_to_env_vars_for_remote_cmd() {
-  declare -i i=1
   YB_ENCODED_REMOTE_CMD_LINE=""
   # This must match the separator in remote_cmd.sh.
   declare -r ARG_SEPARATOR=$'=:\t:='
@@ -1851,7 +1844,7 @@ find_or_download_thirdparty() {
               "'$BUILD_ROOT/thirdparty_path.txt' contains '$thirdparty_dir_from_file'"
       fi
       export YB_THIRDPARTY_DIR=$thirdparty_dir_from_file
-      yb_thirdparty_dir_origin=" (from file '$BUILD_ROOT/thirdparty_path.txt')"
+      yb_thirdparty_dir_origin="from file '$BUILD_ROOT/thirdparty_path.txt')"
 
       # Check if we've succeeded in setting YB_THIRDPARTY_DIR now.
       if [[ -n ${YB_THIRDPARTY_DIR:-} ]]; then
@@ -1871,7 +1864,7 @@ find_or_download_thirdparty() {
               "'$BUILD_ROOT/thirdparty_url.txt' contains '$thirdparty_url_from_file'"
       fi
       export YB_THIRDPARTY_URL=$thirdparty_url_from_file
-      yb_thirdparty_url_origin=" (from file '$BUILD_ROOT/thirdparty_url.txt')"
+      yb_thirdparty_url_origin="from file '$BUILD_ROOT/thirdparty_url.txt')"
       if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "0" ]]; then
         fatal "YB_DOWNLOAD_THIRDPARTY is explicitly set to 0 but file" \
               "$BUILD_ROOT/thirdparty_url.txt exists"
@@ -1895,7 +1888,7 @@ find_or_download_thirdparty() {
 
   if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
     export YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
-    yb_thirdparty_dir_origin=" (default)"
+    yb_thirdparty_dir_origin="default"
   fi
   save_thirdparty_info_to_build_dir
 }
@@ -1920,28 +1913,33 @@ find_or_download_ysql_snapshots() {
   done
 }
 
+log_env_var() {
+  expect_num_args 2 "$@"
+  local env_var_name=$1
+  local env_var_value=${!env_var_name:-}
+  if [[ -z ${env_var_value} ]]; then
+    return
+  fi
+  local description=$2
+  if [[ -n ${description} ]]; then
+    description=" (${description})"
+  fi
+  echo "    ${env_var_name}: ${env_var_value}${description}"
+}
+
 log_thirdparty_and_toolchain_details() {
   (
     echo "Details of third-party dependencies:"
-    echo "    YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR:-undefined}$yb_thirdparty_dir_origin"
-    if is_linux && [[ -n ${YB_LINUXBREW_DIR:-} ]]; then
-      echo "    YB_LINUXBREW_DIR: $YB_LINUXBREW_DIR$yb_linuxbrew_dir_origin"
+    log_env_var YB_THIRDPARTY_DIR "${yb_thirdparty_dir_origin}"
+    log_env_var YB_THIRDPARTY_URL "${yb_thirdparty_url_origin}"
+
+    if is_linux; then
+      log_env_var YB_LINUXBREW_DIR "${yb_linuxbrew_dir_origin}"
     fi
-    if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
-      echo "    YB_LLVM_TOOLCHAIN_URL: $YB_LLVM_TOOLCHAIN_URL$yb_llvm_toolchain_url_origin"
-    fi
-    if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
-      echo "    YB_LLVM_TOOLCHAIN_DIR: $YB_LLVM_TOOLCHAIN_DIR$yb_llvm_toolchain_dir_origin"
-    fi
-    if [[ -n ${YB_THIRDPARTY_URL:-} ]]; then
-      echo "    YB_THIRDPARTY_URL: $YB_THIRDPARTY_URL$yb_thirdparty_url_origin"
-    fi
-    if [[ -n ${YB_DOWNLOAD_THIRDPARTY:-} ]]; then
-      echo "    YB_DOWNLOAD_THIRDPARTY: $YB_DOWNLOAD_THIRDPARTY"
-    fi
-    if [[ -n ${NO_REBUILD_THIRDPARTY:-} ]]; then
-      echo "    NO_REBUILD_THIRDPARTY: ${NO_REBUILD_THIRDPARTY}"
-    fi
+    log_env_var YB_LLVM_TOOLCHAIN_URL "${yb_llvm_toolchain_url_origin}"
+    log_env_var YB_LLVM_TOOLCHAIN_DIR "${yb_llvm_toolchain_dir_origin}"
+    log_env_var YB_DOWNLOAD_THIRDPARTY ""
+    log_env_var NO_REBUILD_THIRDPARTY ""
   ) >&2
 }
 
@@ -2185,13 +2183,15 @@ check_python_script_syntax() {
 
 run_shellcheck() {
   local scripts_to_check=(
-    yb_build.sh
-    build-support/find_linuxbrew.sh
     build-support/common-build-env.sh
-    build-support/common-test-env.sh
     build-support/common-cli-env.sh
-    build-support/run-test.sh
+    build-support/common-test-env.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
+    build-support/find_linuxbrew.sh
+    build-support/jenkins/build-and-test.sh
+    build-support/jenkins/yb-jenkins-build.sh
+    build-support/run-test.sh
+    yb_build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path
@@ -2229,7 +2229,7 @@ activate_virtualenv() {
   fi
 
   if [[ ! -d $virtualenv_dir ]]; then
-    if "$yb_readonly_virtualenv"; then
+    if [[ ${yb_readonly_virtualenv} == "true" ]]; then
       fatal "virtualenv does not exist at '$virtualenv_dir', and we are not allowed to create it"
     fi
     if [[ -n ${VIRTUAL_ENV:-} && -f $VIRTUAL_ENV/bin/activate ]]; then
@@ -2386,11 +2386,14 @@ lint_java_code() {
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
+             "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac " \
+            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
+            "YBTestRunnerNonSanOrAArch64Mac, " \
             "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
@@ -2438,7 +2441,7 @@ run_with_retries() {
 debug_log_boolean_function_result() {
   expect_num_args 1 "$@"
   local fn_name=$1
-  if "$fn_name"; then
+  if [[ ${fn_name} == "true" ]]; then
     log "$fn_name is true"
   else
     log "$fn_name is false"
@@ -2489,7 +2492,7 @@ set_prebuilt_thirdparty_url() {
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
-      yb_thirdparty_url_origin=" (determined automatically based on the OS and compiler type)"
+      yb_thirdparty_url_origin="determined automatically based on the OS and compiler type"
       if [[ -z $YB_THIRDPARTY_URL ]]; then
         fatal "Could not automatically determine the third-party archive URL to download."
       fi
@@ -2499,7 +2502,7 @@ set_prebuilt_thirdparty_url() {
       if [[ -f $llvm_url_file_path ]]; then
         YB_LLVM_TOOLCHAIN_URL=$(<"$llvm_url_file_path")
         export YB_LLVM_TOOLCHAIN_URL
-        yb_llvm_toolchain_url_origin=" (determined automatically based on the OS and compiler type)"
+        yb_llvm_toolchain_url_origin="determined automatically based on the OS and compiler type"
         log "Setting LLVM toolchain URL to $YB_LLVM_TOOLCHAIN_URL"
         save_var_to_file_in_build_dir "$YB_LLVM_TOOLCHAIN_URL" llvm_url.txt
       fi

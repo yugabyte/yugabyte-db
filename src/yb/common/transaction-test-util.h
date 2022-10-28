@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_COMMON_TRANSACTION_TEST_UTIL_H
-#define YB_COMMON_TRANSACTION_TEST_UTIL_H
+#pragma once
 
 #include <functional>
 #include <type_traits>
@@ -60,7 +59,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Cleanup(TransactionIdSet&& set) override {
   }
 
-  int64_t RegisterRequest() override {
+  Result<int64_t> RegisterRequest() override {
     return 0;
   }
 
@@ -69,6 +68,12 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
+
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override { }
+
+  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+    return boost::none;
+  }
 
   HybridTime MinRunningHybridTime() const override {
     return HybridTime::kMin;
@@ -89,4 +94,3 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
 } // namespace yb
 
-#endif // YB_COMMON_TRANSACTION_TEST_UTIL_H

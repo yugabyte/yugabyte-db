@@ -15,8 +15,7 @@
 // Entry point for the execution process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
-#define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
+#pragma once
 
 #include <mutex>
 #include <vector>
@@ -141,7 +140,7 @@ class Executor : public QLExprExecutor {
   Status GetOffsetOrLimit(
       const PTSelectStmt* tnode,
       const std::function<PTExprPtr(const PTSelectStmt* tnode)>& get_val,
-      const string& clause_type,
+      const std::string& clause_type,
       int32_t* value);
 
   // Create a table (including index table for CREATE INDEX).
@@ -232,8 +231,6 @@ class Executor : public QLExprExecutor {
   Status ProcessOpStatus(const PTDmlStmt* stmt,
                                  const client::YBqlOpPtr& op,
                                  ExecContext* exec_context);
-
-  std::shared_ptr<client::YBTable> GetTableFromStatement(const TreeNode *tnode) const;
 
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
@@ -543,4 +540,3 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_EXEC_EXECUTOR_H_

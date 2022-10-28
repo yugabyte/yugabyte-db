@@ -28,6 +28,7 @@ using std::string;
 using std::unique_ptr;
 using std::shared_ptr;
 using std::numeric_limits;
+using std::vector;
 
 using strings::Substitute;
 using yb::util::Decimal;
@@ -2543,6 +2544,45 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithEmbeddedNull) {
   CheckSelectedRow(processor, "SELECT * FROM test_tbl WHERE v2 = 3",
       "{ string:\"a\\x00b\", string:\"a\\x00b\", string:\"a\\x00b\", int32:3 }");
   LOG(INFO) << "Done.";
+}
+
+TEST_F(QLTestSelectedExpr, MapMultiFieldQueryTest) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  // Create the table 1.
+  const char* create_stmt = "CREATE TABLE users(username TEXT PRIMARY KEY, phones MAP<TEXT,TEXT>);";
+  CHECK_VALID_STMT(create_stmt);
+
+  CHECK_VALID_STMT(
+      "INSERT INTO users(username, phones) VALUES ('foo', {'home' : '999-9999', 'mobile' : "
+      "'000-0000', 'work':'222-222'});");
+
+  // Checking Row
+  CHECK_VALID_STMT("SELECT username, phones['work'], phones['home'] from users;");
+
+  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  {
+    const QLRow& row = row_block->row(0);
+    CHECK_EQ(row.column(0).string_value(), "foo");
+    CHECK_EQ(row.column(1).string_value(), "222-222");
+    CHECK_EQ(row.column(2).string_value(), "999-9999");
+  }
+
+  // With alias
+  CHECK_VALID_STMT("SELECT username, phones['work'] as work, phones['home'] as home from users;");
+
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  {
+    const QLRow& row = row_block->row(0);
+    CHECK_EQ(row.column(0).string_value(), "foo");
+    CHECK_EQ(row.column(1).string_value(), "222-222");
+    CHECK_EQ(row.column(2).string_value(), "999-9999");
+  }
 }
 
 } // namespace ql

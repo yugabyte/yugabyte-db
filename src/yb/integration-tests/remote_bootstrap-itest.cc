@@ -63,11 +63,11 @@
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -1556,12 +1556,12 @@ TEST_F(RemoteBootstrapITest, TestLongRemoteBootstrapsAcrossServers) {
   vector<string> ts_flags, master_flags;
 
   // Make everything happen ~50 faster:
-  //  - follower_unavailable_considered_failed_sec from 300 to 10 secs
-  //    (setting it to 6 secs causes faulty removal of alive followers)
+  //  - follower_unavailable_considered_failed_sec from 300 to 20 secs
+  //    (setting it to 10 secs causes faulty removal of alive followers)
   //  - raft_heartbeat_interval_ms from 500 to 10 ms
   //  - consensus_rpc_timeout_ms from 3000 to 60 ms
 
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=20");
   ts_flags.push_back("--raft_heartbeat_interval_ms=10");
   ts_flags.push_back("--consensus_rpc_timeout_ms=60");
 

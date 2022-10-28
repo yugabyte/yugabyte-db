@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HDR_HISTOGRAM_H
-#define YB_UTIL_HDR_HISTOGRAM_H
+#pragma once
 
 // C++ (TR1) port of HdrHistogram.
 // Original java implementation: http://giltene.github.io/HdrHistogram/
@@ -74,9 +73,9 @@ class RecordedValuesIterator;
 // digits) to support in an instance of a histogram. The class takes care of
 // the rest. At this time, only uint64_t values are supported.
 //
-// An HdrHistogram consists of a set of buckets, which bucket the magnitude of
-// a value stored, and a set of sub-buckets, which implement the tunable
-// precision of the storage. So if you specify 3 significant digits of
+// An HdrHistogram consists of a set of buckets (which bucket the magnitude of
+// a value stored), and a set of sub-buckets (which implement the tunable
+// precision of the storage). So if you specify 3 significant digits of
 // precision, then you will get about 10^3 sub-buckets (as a power of 2) for
 // each level of magnitude. Magnitude buckets are tracked in powers of 2.
 //
@@ -382,4 +381,3 @@ class PercentileIterator : public AbstractHistogramIterator {
 
 } // namespace yb
 
-#endif // YB_UTIL_HDR_HISTOGRAM_H

@@ -25,7 +25,6 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -40,6 +39,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
@@ -223,9 +223,9 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
     const auto txn_priority_requirement =
-      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
-      RowMarkNeedsHigherPriority(row_mark_type)
-          ? kHigherPriorityRange : kLowerPriorityRange;
+      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
+        ? kHighestPriority :
+          (RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
     return pg_session_.pg_txn_manager_->CalculateIsolation(
@@ -480,6 +480,11 @@ void PgSession::DropBufferedOperations() {
   buffer_.Clear();
 }
 
+void PgSession::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  buffer_.GetAndResetRpcStats(count, wait_time);
+}
+
 PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
@@ -524,11 +529,7 @@ Result<PerformFuture> PgSession::Perform(
   tserver::PgPerformOptionsPB options;
   if (use_catalog_session) {
     if (catalog_read_time_) {
-      if (*catalog_read_time_) {
-        catalog_read_time_->ToPB(options.mutable_read_time());
-      } else {
-        options.mutable_read_time();
-      }
+      catalog_read_time_.ToPB(options.mutable_read_time());
     }
     options.set_use_catalog_session(true);
   } else {
@@ -542,7 +543,39 @@ Result<PerformFuture> PgSession::Perform(
   }
   options.set_force_global_transaction(global_transaction);
 
+  // For DDLs we always read latest data.
+  options.set_use_xcluster_database_consistency(
+      !pg_txn_manager_->IsDdlMode() &&
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
+
   auto promise = std::make_shared<std::promise<PerformResult>>();
+
+  // If all operations belong to the same database then set the namespace.
+  // System database template1 is ignored as we may read global system catalog like tablespaces
+  // in the same batch.
+  if (!ops.relations.empty()) {
+    PgOid database_oid = kPgInvalidOid;
+    for (const auto& relation : ops.relations) {
+      if (relation.database_oid == kTemplate1Oid) {
+        continue;
+      }
+
+      if (PREDICT_FALSE(database_oid != kPgInvalidOid && database_oid != relation.database_oid)) {
+        // We do not expect this to be true. Adding a log to catch violation just in case.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+            "Operations from multiple databases ('$0', '$1') found in a single Perform step",
+            database_oid, relation.database_oid);
+        database_oid = kPgInvalidOid;
+        break;
+      }
+
+      database_oid = relation.database_oid;
+    }
+
+    if (database_oid != kPgInvalidOid) {
+      options.set_namespace_id(GetPgsqlNamespaceId(database_oid));
+    }
+  }
 
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
@@ -572,6 +605,19 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }
+}
+
+Result<uint64_t> PgSession::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_db_catalog_version(db_oid_shm_index);
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgSession::GetTserverCatalogVersionInfo() {
+  return VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
 }
 
 Result<uint64_t> PgSession::GetSharedAuthKey() {
@@ -644,17 +690,6 @@ void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
 }
 
-Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {
-  if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
-    auto op_index = OpIndex::ValueFromStatus(status);
-    if (op_index && *op_index < relations.size()) {
-      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
-    }
-  }
-  return status;
-}
-
 Result<int> PgSession::TabletServerCount(bool primary_only) {
   return pg_client_.TabletServerCount(primary_only);
 }
@@ -675,6 +710,10 @@ void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
 }
 
+bool PgSession::HasCatalogReadPoint() const {
+  return static_cast<bool>(catalog_read_time_);
+}
+
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   if (read_ht) {
     catalog_read_time_ = read_ht;
@@ -688,20 +727,11 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
+  VLOG(4) << "SetActiveSubTransactionId " << id;
   RETURN_NOT_OK(FlushBufferedOperations());
-  tserver::PgPerformOptionsPB* options_ptr = nullptr;
-  tserver::PgPerformOptionsPB options;
-  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
-    auto txn_priority_requirement = kLowerPriorityRange;
-    if (pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    }
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        false /* read_only_op */, txn_priority_requirement));
-    options_ptr = &options;
-    pg_txn_manager_->SetupPerformOptions(&options);
-  }
-  return pg_client_.SetActiveSubTransaction(id, options_ptr);
+  pg_txn_manager_->SetActiveSubTransactionId(id);
+
+  return Status::OK();
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
@@ -712,7 +742,9 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_client_.RollbackToSubTransaction(id);
+  tserver::PgPerformOptionsPB options;
+  pg_txn_manager_->SetupPerformOptions(&options);
+  return pg_client_.RollbackToSubTransaction(id, &options);
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {

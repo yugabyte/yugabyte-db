@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_H
-#define YB_RPC_RPC_H
+#pragma once
 
 #include <atomic>
 #include <future>
@@ -244,7 +243,20 @@ class Rpcs {
   Handle Register(RpcCommandPtr call);
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
+  Status RegisterAndStartStatus(RpcCommandPtr call, Handle* handle);
   RpcCommandPtr Unregister(Handle* handle);
+
+  template <class Factory>
+  Handle RegisterConstructed(const Factory& factory) {
+    std::lock_guard<std::mutex> lock(*mutex_);
+    if (shutdown_) {
+      return InvalidHandle();
+    }
+    calls_.emplace_back();
+    auto result = --calls_.end();
+    *result = factory(result);
+    return result;
+  }
 
   template<class Iter>
   void Abort(Iter start, Iter end);
@@ -265,6 +277,8 @@ class Rpcs {
   Handle InvalidHandle() { return calls_.end(); }
 
  private:
+  Rpcs::Handle RegisterUnlocked(RpcCommandPtr call) REQUIRES(*mutex_);
+
   // Requests all active calls to abort. Returns deadline for waiting on abort completion.
   // If shutdown is true - switches Rpcs to shutting down state.
   CoarseTimePoint DoRequestAbortAll(RequestShutdown shutdown);
@@ -360,4 +374,3 @@ WrappedRpcFuture<Value, Functor> WrapRpcFuture(const Functor& functor, Rpcs* rpc
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_H

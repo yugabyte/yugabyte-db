@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_OID_GENERATOR_H
-#define YB_UTIL_OID_GENERATOR_H
+#pragma once
 
 #include <string>
 
@@ -41,4 +40,3 @@ std::string GenerateObjectId(bool binary_id = false);
 
 } // namespace yb
 
-#endif // YB_UTIL_OID_GENERATOR_H

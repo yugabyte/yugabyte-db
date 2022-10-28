@@ -186,6 +186,19 @@
         scope: user
         enabled: yes
         state: started
+
+    # Necessary for yb-master/tserver to be accessible. 'After' in service file.
+    - name: Link network-online.target
+      shell:
+        cmd: "systemctl --user link /lib/systemd/system/network-online.target"
+
+    - name: Start network-online.target
+      systemd:
+        name: network-online.target
+        state: started
+        enabled: yes
+        scope: user
+        daemon_reload: yes
     when: not systemd_system.stat.exists
 
   - name: Systemd system units

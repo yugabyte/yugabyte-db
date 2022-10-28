@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_PARTIAL_ROW_H
-#define YB_COMMON_PARTIAL_ROW_H
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -275,4 +274,3 @@ class YBPartialRow {
 };
 
 } // namespace yb
-#endif /* YB_COMMON_PARTIAL_ROW_H */

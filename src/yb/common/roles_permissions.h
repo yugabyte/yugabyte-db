@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_ROLES_PERMISSIONS_H
-#define YB_COMMON_ROLES_PERMISSIONS_H
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -39,4 +38,3 @@ std::string get_canonical_table(const std::string &keyspace, const std::string &
 std::string get_canonical_role(const std::string &role);
 } // namespace yb
 
-#endif // YB_COMMON_ROLES_PERMISSIONS_H

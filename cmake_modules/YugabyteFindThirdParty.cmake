@@ -104,12 +104,15 @@ ADD_THIRDPARTY_LIB(gflags
   SHARED_LIB "${GFLAGS_SHARED_LIB}")
 list(APPEND YB_BASE_LIBS gflags)
 
-## GMock
-find_package(GMock REQUIRED)
-include_directories(SYSTEM ${GMOCK_INCLUDE_DIR} ${GTEST_INCLUDE_DIR})
+## GTest
+find_package(GTest REQUIRED)
+include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(gmock
   STATIC_LIB ${GMOCK_STATIC_LIBRARY}
   SHARED_LIB ${GMOCK_SHARED_LIBRARY})
+ADD_THIRDPARTY_LIB(gtest
+  STATIC_LIB ${GTEST_STATIC_LIBRARY}
+  SHARED_LIB ${GTEST_SHARED_LIBRARY})
 
 ## Protobuf
 add_custom_target(gen_proto)
@@ -178,10 +181,7 @@ ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 # Do not use tcmalloc for ASAN/TSAN but also temporarily for gcc8 and gcc9, because initdb crashes
 # with bad deallocation with those compilers. That needs to be properly investigated.
 if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
-  if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
-    message("Not using tcmalloc macOS arm64 (https://github.com/yugabyte/yugabyte-db/issues/10725)")
-    set(YB_TCMALLOC_ENABLED "0")
-  elseif ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
     set(YB_TCMALLOC_ENABLED "0")
     message("Not using tcmalloc due to build type ${YB_BUILD_TYPE}")
   else()
@@ -205,17 +205,17 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   ##
   find_package(GPerf REQUIRED)
 
+  # We link tcmalloc statically into every executable, so we are not interested in the shared
+  # tcmalloc library here.
   ADD_THIRDPARTY_LIB(tcmalloc
-    STATIC_LIB "${TCMALLOC_STATIC_LIB}"
-    SHARED_LIB "${TCMALLOC_SHARED_LIB}")
+    STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+
+  # libprofiler can be linked dynamically into non-LTO executables.
   ADD_THIRDPARTY_LIB(profiler
     STATIC_LIB "${PROFILER_STATIC_LIB}"
     SHARED_LIB "${PROFILER_SHARED_LIB}")
-  list(APPEND YB_BASE_LIBS tcmalloc profiler)
+
   ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
-  # Each executable should link with tcmalloc directly so that it does not allocate memory using
-  # system malloc before loading a library that depends on tcmalloc.
-  ADD_EXE_LINKER_FLAGS("-ltcmalloc")
 else()
   message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")
 endif()
@@ -244,11 +244,11 @@ ADD_THIRDPARTY_LIB(crypt_blowfish
 ## librt
 if (NOT APPLE)
   find_library(RT_LIB_PATH rt)
-  if(NOT RT_LIB_PATH)
-    message(FATAL_ERROR "Could not find librt on the system path")
+  if(RT_LIB_PATH)
+    ADD_THIRDPARTY_LIB(rt SHARED_LIB "${RT_LIB_PATH}")
+  else()
+    message(WARNING "Could not find librt on the system path, proceeding without it.")
   endif()
-  ADD_THIRDPARTY_LIB(rt
-    SHARED_LIB "${RT_LIB_PATH}")
 endif()
 
 ## Boost

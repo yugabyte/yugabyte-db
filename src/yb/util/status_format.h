@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_STATUS_FORMAT_H
-#define YB_UTIL_STATUS_FORMAT_H
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -116,4 +115,3 @@
     } \
   } while (0)
 
-#endif // YB_UTIL_STATUS_FORMAT_H

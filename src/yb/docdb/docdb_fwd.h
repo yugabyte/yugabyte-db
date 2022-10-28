@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_FWD_H
-#define YB_DOCDB_DOCDB_FWD_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -91,4 +90,3 @@ YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOCDB_FWD_H

@@ -3,10 +3,12 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.yugabyte.yw.models.TaskInfo.State;
 import io.ebean.Finder;
 import io.ebean.Model;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -78,6 +80,19 @@ public class ScheduleTask extends Model {
       return null;
     }
     return tasks.get(0);
+  }
+
+  public static Optional<ScheduleTask> getLastSuccessfulTask(UUID scheduleUUID) {
+    return find.query()
+        .where()
+        .eq("schedule_uuid", scheduleUUID)
+        .orderBy("scheduled_time desc")
+        .findList()
+        .stream()
+        .filter(
+            (task) ->
+                TaskInfo.getOrBadRequest(task.getTaskUUID()).getTaskState().equals(State.Success))
+        .findFirst();
   }
 
   public static List<ScheduleTask> getAllTasks(UUID scheduleUUID) {

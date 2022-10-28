@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_OPERATION_COUNTER_H
-#define YB_UTIL_OPERATION_COUNTER_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -223,4 +222,3 @@ inline Status&& MoveStatus(ScopedRWOperationPause&& p) {
 
 } // namespace yb
 
-#endif // YB_UTIL_OPERATION_COUNTER_H

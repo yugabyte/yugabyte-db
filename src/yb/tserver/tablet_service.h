@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVICE_H_
-#define YB_TSERVER_TABLET_SERVICE_H_
+#pragma once
 
 #include <functional>
 #include <future>
@@ -132,6 +131,16 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                        UpdateTransactionStatusLocationResponsePB* resp,
                                        rpc::RpcContext context) override;
 
+  void UpdateTransactionWaitingForStatus(
+      const UpdateTransactionWaitingForStatusRequestPB* req,
+      UpdateTransactionWaitingForStatusResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ProbeTransactionDeadlock(
+      const ProbeTransactionDeadlockRequestPB* req,
+      ProbeTransactionDeadlockResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Truncate(const TruncateRequestPB* req,
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
@@ -156,6 +165,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void GetSharedData(const GetSharedDataRequestPB* req,
                      GetSharedDataResponsePB* resp,
                      rpc::RpcContext context) override;
+
+  void GetTserverCatalogVersionInfo(const GetTserverCatalogVersionInfoRequestPB* req,
+                                    GetTserverCatalogVersionInfoResponsePB* resp,
+                                    rpc::RpcContext context) override;
 
   void Shutdown() override;
 
@@ -188,6 +201,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void CreateTablet(const CreateTabletRequestPB* req,
                     CreateTabletResponsePB* resp,
                     rpc::RpcContext context) override;
+
+  void PrepareDeleteTransactionTablet(const PrepareDeleteTransactionTabletRequestPB* req,
+                                      PrepareDeleteTransactionTabletResponsePB* resp,
+                                      rpc::RpcContext context) override;
 
   void DeleteTablet(const DeleteTabletRequestPB* req,
                     DeleteTabletResponsePB* resp,
@@ -243,6 +260,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void UpgradeYsql(
       const UpgradeYsqlRequestPB* req,
       UpgradeYsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void UpdateTransactionTablesVersion(
+      const UpdateTransactionTablesVersionRequestPB* req,
+      UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
 
   void TestRetry(
@@ -327,4 +349,3 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_TABLET_SERVICE_H_

@@ -88,4 +88,6 @@ extern Query *inline_set_returning_function(PlannerInfo *root,
 extern List *expand_function_arguments(List *args, Oid result_type,
 						  HeapTuple func_tuple);
 
+extern Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno);
+
 #endif							/* CLAUSES_H */

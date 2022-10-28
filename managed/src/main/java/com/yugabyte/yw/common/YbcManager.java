@@ -4,23 +4,36 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.stream.Collectors;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
-import java.util.regex.Matcher;
-import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -29,6 +42,11 @@ import org.yb.ybc.BackupServiceTaskDeleteRequest;
 import org.yb.ybc.BackupServiceTaskDeleteResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
+import org.yb.ybc.ControllerObjectTaskThrottleParameters;
 import org.yb.ybc.ControllerStatus;
 
 @Singleton
@@ -45,6 +63,7 @@ public class YbcManager {
   private final NodeManager nodeManager;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
+  private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
   private static final int MAX_RETRIES = 10;
 
   private static final String YBC_STABLE_RELEASE_PATH = "ybc.releases.stable_version";
@@ -78,7 +97,7 @@ public class YbcManager {
                   .getDataObject();
       String nfsDir = configData.backupLocation;
       for (String location : backupUtil.getBackupLocations(backup)) {
-        String cloudDir = BackupUtil.getBackupIdentifier(configData.backupLocation, location, true);
+        String cloudDir = BackupUtil.getBackupIdentifier(location, true);
         BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
             BackupServiceNfsDirDeleteRequest.newBuilder()
                 .setNfsDir(nfsDir)
@@ -180,6 +199,7 @@ public class YbcManager {
     }
   }
 
+  /** Returns the success marker for a particular backup, returns null if not found. */
   public String downloadSuccessMarker(
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
       UUID universeUUID,
@@ -203,16 +223,19 @@ public class YbcManager {
       while (numRetries < MAX_RETRIES) {
         downloadSuccessMarkerResultResponse =
             ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
-        if (!downloadSuccessMarkerResultResponse
-            .getTaskStatus()
-            .equals(ControllerStatus.IN_PROGRESS)) {
+        if (!(downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.IN_PROGRESS)
+            || downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.NOT_STARTED))) {
           break;
         }
-        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
         numRetries++;
       }
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
-        throw new Exception(
+        throw new RuntimeException(
             String.format(
                 "Failed to download success marker, failure status: {}",
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
@@ -245,7 +268,10 @@ public class YbcManager {
     Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
     String ybServerPackage =
-        nodeManager.getYbServerPackageName(ybSoftwareVersion, nodeCluster.getRegions().get(0));
+        nodeManager.getYbServerPackageName(
+            ybSoftwareVersion,
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -275,7 +301,8 @@ public class YbcManager {
             ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
     String ybcServerPackage =
         releaseMetadata.getFilePath(
-            Universe.getCluster(universe, node.nodeName).getRegions().get(0));
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
@@ -288,5 +315,149 @@ public class YbcManager {
               ybcServerPackage, NodeManager.YBC_PACKAGE_REGEX));
     }
     return ybcServerPackage;
+  }
+
+  public void setThrottleParams(UUID universeUUID, YbcThrottleParameters throttleParams) {
+    try {
+      BackupServiceTaskThrottleParametersSetRequest.Builder throttleParamsSetterBuilder =
+          BackupServiceTaskThrottleParametersSetRequest.newBuilder();
+      ControllerObjectTaskThrottleParameters.Builder controllerObjectThrottleParams =
+          ControllerObjectTaskThrottleParameters.newBuilder();
+      List<String> toRemove = new ArrayList<>();
+      Map<String, String> toAddModify = new HashMap<>();
+      Map<String, Integer> paramsToSet = throttleParams.getThrottleFlagsMap();
+      if (throttleParams.resetDefaults) {
+        // Nothing required to do for controllerObjectThrottleParams,
+        // empty object sets default values on YB-Controller.
+        toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
+      } else {
+        Map<FieldDescriptor, Object> currentThrottleParamsMap =
+            getThrottleParamsAsFieldDescriptor(universeUUID);
+        if (MapUtils.isEmpty(currentThrottleParamsMap)) {
+          throw new RuntimeException(
+              "Got empty map for current throttle params from YB-Controller");
+        }
+        currentThrottleParamsMap.forEach(
+            (k, v) -> {
+              if (paramsToSet.get(k.getName()) > 0) {
+                controllerObjectThrottleParams.setField(k, paramsToSet.get(k.getName()));
+                toAddModify.put(k.getName(), paramsToSet.get(k.getName()).toString());
+              } else {
+                controllerObjectThrottleParams.setField(k, v);
+              }
+            });
+      }
+      throttleParamsSetterBuilder.setParams(controllerObjectThrottleParams.build());
+      throttleParamsSetterBuilder.setPersistAcrossReboots(true);
+      BackupServiceTaskThrottleParametersSetRequest throttleParametersSetRequest =
+          throttleParamsSetterBuilder.build();
+
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+      String certFile = universe.getCertificateNodetoNode();
+      universe
+          .getNodes()
+          .stream()
+          .forEach(
+              (n) -> {
+                YbcClient client = null;
+                try {
+                  String nodeIp = n.cloudInfo.private_ip;
+                  if (nodeIp == null) {
+                    return;
+                  }
+                  client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+                  BackupServiceTaskThrottleParametersSetResponse throttleParamsSetResponse =
+                      client.backupServiceTaskThrottleParametersSet(throttleParametersSetRequest);
+                  if (throttleParamsSetResponse != null
+                      && !throttleParamsSetResponse
+                          .getStatus()
+                          .getCode()
+                          .equals(ControllerStatus.OK)) {
+                    throw new RuntimeException(
+                        String.format(
+                            "Failed to set throttle params on node {} universe {} with error: {}",
+                            nodeIp,
+                            universeUUID.toString(),
+                            throttleParamsSetResponse.getStatus()));
+                  }
+                } finally {
+                  ybcClientService.closeClient(client);
+                }
+              });
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+              params.clusters.forEach(
+                  c -> {
+                    Map<String, String> ybcFlags = new HashMap<>(c.userIntent.ybcFlags);
+                    ybcFlags.putAll(toAddModify);
+                    ybcFlags.keySet().removeAll(toRemove);
+                    c.userIntent.ybcFlags = ybcFlags;
+                  });
+              universe.setUniverseDetails(params);
+            }
+          };
+      Universe.saveDetails(universeUUID, updater, false);
+    } catch (Exception e) {
+      LOG.info(
+          "Setting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<String, String> getThrottleParams(UUID universeUUID) {
+    try {
+      Map<String, String> throttleParamMap =
+          getThrottleParamsAsFieldDescriptor(universeUUID)
+              .entrySet()
+              .stream()
+              .collect(Collectors.toMap(k -> k.getKey().getName(), v -> v.getValue().toString()));
+      return throttleParamMap;
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<FieldDescriptor, Object> getThrottleParamsAsFieldDescriptor(UUID universeUUID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
+      BackupServiceTaskThrottleParametersGetRequest throttleParametersGetRequest =
+          BackupServiceTaskThrottleParametersGetRequest.getDefaultInstance();
+      BackupServiceTaskThrottleParametersGetResponse throttleParametersGetResponse =
+          ybcClient.backupServiceTaskThrottleParametersGet(throttleParametersGetRequest);
+      if (throttleParametersGetResponse == null) {
+        throw new RuntimeException("Get throttle parameters: No response from YB-Controller");
+      }
+      if (!throttleParametersGetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        throw new RuntimeException(
+            String.format(
+                "Getting throttle params failed with exception: {}",
+                throttleParametersGetResponse.getStatus()));
+      }
+      ControllerObjectTaskThrottleParameters throttleParams =
+          throttleParametersGetResponse.getParams();
+      return throttleParams.getAllFields();
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    } finally {
+      if (ybcClient != null) {
+        ybcClientService.closeClient(ybcClient);
+      }
+    }
+  }
+
+  private Region getFirstRegion(Universe universe, Cluster cluster) {
+    Customer customer = Customer.get(universe.customerId);
+    UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
+    UUID regionUuid = cluster.userIntent.regionList.get(0);
+    return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
   }
 }

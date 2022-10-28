@@ -506,7 +506,7 @@ Follow the instructions provided in [Explore YSQL](../../../../../quick-start/ex
 
 ## Connect using external clients
 
-To connect an external program, obtain the load balancer `EXTERNAL-IP` address of one of the `yb-tserver-service` services and connect to the 5433 or 9042 port for YSQL or YCQL service respectively, as follows:
+To connect an external program, get the load balancer `EXTERNAL-IP` address of the `yb-tserver-service` service and connect using port 5433 for YSQL or port 9042 for YCQL, as follows:
 
 ```sh
 kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1

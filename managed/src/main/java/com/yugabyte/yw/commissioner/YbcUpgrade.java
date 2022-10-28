@@ -48,6 +48,8 @@ public class YbcUpgrade {
   public static final String YBC_UPGRADE_INTERVAL = "ybc.upgrade.scheduler_interval";
   public static final String YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH =
       "ybc.upgrade.universe_batch_size";
+  public static final String YBC_ALLOW_SCHEDULED_UPGRADE_PATH =
+      "ybc.upgrade.allow_scheduled_upgrade";
   public static final String YBC_NODE_UPGRADE_BATCH_SIZE_PATH = "ybc.upgrade.node_batch_size";
 
   private final int YBC_UNIVERSE_UPGRADE_BATCH_SIZE;
@@ -142,7 +144,7 @@ public class YbcUpgrade {
       targetUniverseList.forEach(
           (universeUUID) -> {
             try {
-              this.upgradeYBC(universeUUID, ybcVersion);
+              this.upgradeYBC(universeUUID, ybcVersion, false);
             } catch (Exception e) {
               log.error(
                   "YBC Upgrade request failed for universe {} with error: {}", universeUUID, e);
@@ -189,14 +191,24 @@ public class YbcUpgrade {
         && !failedYBCUpgradeUniverseSet.contains(universe.universeUUID);
   }
 
-  public synchronized void upgradeYBC(UUID universeUUID, String ybcVersion) throws Exception {
+  public synchronized void upgradeYBC(UUID universeUUID, String ybcVersion, boolean force)
+      throws Exception {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (!force
+        && !runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean(YBC_ALLOW_SCHEDULED_UPGRADE_PATH)) {
+      log.debug(
+          "Skipping scheduled ybc upgrade on universe {} as it was disabled.",
+          universe.universeUUID);
+      return;
+    }
     if (checkYBCUpgradeProcessExists(universeUUID)) {
       log.warn("YBC upgrade process already exists for universe {}", universeUUID);
       return;
     } else {
       setYBCUpgradeProcess(universeUUID);
     }
-    Universe universe = Universe.getOrBadRequest(universeUUID);
     universe
         .getNodes()
         .forEach(

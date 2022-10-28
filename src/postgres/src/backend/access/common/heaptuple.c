@@ -1530,6 +1530,12 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	 */
 	if (attnum <= 0)
 	{
+		/* heap tuple is not required to obtain the ybctid */
+		if (attnum == YBTupleIdAttributeNumber && slot->tts_ybctid)
+		{
+			*isnull = false;
+			return slot->tts_ybctid;
+		}
 		if (tuple == NULL)		/* internal error */
 			elog(ERROR, "cannot extract system attribute from virtual tuple");
 		if (tuple == &(slot->tts_minhdr))	/* internal error */

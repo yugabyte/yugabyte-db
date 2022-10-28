@@ -10,12 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/tserver/tablet_server.h"
+
+#include "yb/util/backoff_waiter.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
@@ -111,6 +116,28 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
 
   WaitForStatusTabletsVersion(current_version + 1);
+}
+
+Result<TableId> GeoTransactionsTestBase::GetTransactionTableId(int region) {
+  std::string name = strings::Substitute("transactions_region$0", region);
+  auto table_name = YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, name);
+  return client::GetTableId(client_.get(), table_name);
+}
+
+void GeoTransactionsTestBase::StartDeleteTransactionTable(int region) {
+  auto current_version = GetCurrentVersion();
+  auto table_id = ASSERT_RESULT(GetTransactionTableId(region));
+  ASSERT_OK(client_->DeleteTable(table_id, false /* wait */));
+  WaitForStatusTabletsVersion(current_version + 1);
+}
+
+void GeoTransactionsTestBase::WaitForDeleteTransactionTableToFinish(int region) {
+  auto table_id = GetTransactionTableId(region);
+  if (!table_id.ok() && table_id.status().IsNotFound()) {
+    return;
+  }
+  ASSERT_OK(table_id);
+  ASSERT_OK(client_->WaitForDeleteTableToFinish(*table_id));
 }
 
 void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {

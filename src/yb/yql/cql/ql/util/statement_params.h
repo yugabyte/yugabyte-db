@@ -15,8 +15,7 @@
 // Parameters for executing a SQL statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
-#define YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -32,6 +31,8 @@ namespace ql {
 // This class represents the parameters for executing a SQL statement.
 class StatementParameters {
  public:
+  static const SchemaVersion kUseLatest = 0xFFFFFFFF; // Use the latest prepared schema version.
+
   // Public types.
   typedef std::unique_ptr<StatementParameters> UniPtr;
   typedef std::unique_ptr<const StatementParameters> UniPtrConst;
@@ -63,6 +64,11 @@ class StatementParameters {
   int64_t total_rows_skipped() const { return paging_state().total_rows_skipped(); }
 
   int64_t next_partition_index() const { return paging_state().next_partition_index(); }
+
+  SchemaVersion schema_version() const {
+    return (paging_state_ == nullptr || !paging_state_->has_schema_version()) ?
+        kUseLatest : paging_state_->schema_version();
+  }
 
   ReadHybridTime read_time() const;
 
@@ -116,4 +122,3 @@ class StatementParameters {
 } // namespace ql
 } // namespace yb
 
-#endif  // YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_

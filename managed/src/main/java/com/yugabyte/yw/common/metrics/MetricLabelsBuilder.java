@@ -9,16 +9,19 @@
  */
 package com.yugabyte.yw.common.metrics;
 
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.yb.client.SnapshotInfo;
 
 public class MetricLabelsBuilder {
   public static String[] UNIVERSE_LABELS = {
@@ -48,6 +51,12 @@ public class MetricLabelsBuilder {
     labels.put(KnownAlertLabels.SOURCE_UUID.labelName(), universe.universeUUID.toString());
     labels.put(KnownAlertLabels.SOURCE_NAME.labelName(), universe.name);
     labels.put(KnownAlertLabels.SOURCE_TYPE.labelName(), "universe");
+    return this;
+  }
+
+  public MetricLabelsBuilder appendCustomer(Customer customer) {
+    labels.put(KnownAlertLabels.CUSTOMER_CODE.labelName(), customer.code);
+    labels.put(KnownAlertLabels.CUSTOMER_NAME.labelName(), customer.name);
     return this;
   }
 

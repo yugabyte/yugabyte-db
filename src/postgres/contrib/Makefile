@@ -52,7 +52,8 @@ SUBDIRS = \
 		tsm_system_time \
 		unaccent	\
 		vacuumlo    \
-		yb_pg_metrics
+		yb_pg_metrics \
+		yb_test_extension
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo

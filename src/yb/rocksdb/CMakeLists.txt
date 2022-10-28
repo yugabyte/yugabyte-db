@@ -138,11 +138,7 @@ set(ROCKSDB_SRCS
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc
     utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
-    utilities/document/document_db.cc
-    utilities/document/json_document_builder.cc
-    utilities/document/json_document.cc
     utilities/env_mirror.cc
-    utilities/geodb/geodb_impl.cc
     utilities/leveldb_options/leveldb_options.cc
     utilities/memory/memory_util.cc
     utilities/merge_operators/put.cc
@@ -226,7 +222,7 @@ if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 endif()
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
-target_link_libraries(rocksdb_test_util gmock rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil)
 
 add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
 target_link_libraries(db_bench rocksdb)
@@ -294,9 +290,6 @@ if (BUILD_TESTS AND
   target_compile_options(slice_transform_test PRIVATE "-Wno-array-bounds")
 endif()
 
-ADD_YB_TEST(utilities/document/document_db_test)
-ADD_YB_TEST(utilities/document/json_document_test)
-ADD_YB_TEST(utilities/geodb/geodb_test)
 ADD_YB_TEST(utilities/merge_operators/string_append/stringappend_test)
 ADD_YB_TEST(utilities/options/options_util_test)
 ADD_YB_TEST(utilities/redis/redis_lists_test)

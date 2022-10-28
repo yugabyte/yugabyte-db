@@ -11,11 +11,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -39,6 +39,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.validation.constraints.Size;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
@@ -183,7 +184,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** Types of Clusters that can make up a universe. */
   public enum ClusterType {
     PRIMARY,
-    ASYNC
+    ASYNC,
+    ADDON
   }
 
   /** Allowed states for an exposing service of a universe */
@@ -234,6 +236,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // This is set internally by the placement util in the server, client should not set it.
     @ApiModelProperty public int index = 0;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public List<Region> regions;
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());
@@ -247,15 +252,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       assert clusterType != null && userIntent != null;
       this.clusterType = clusterType;
       this.userIntent = userIntent;
-    }
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    public List<Region> getRegions() {
-      List<Region> regions = ImmutableList.of();
-      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        regions = Region.find.query().where().idIn(userIntent.regionList).findList();
-      }
-      return regions.isEmpty() ? null : regions;
     }
 
     public boolean equals(Cluster other) {
@@ -348,22 +344,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   public static boolean hasEphemeralStorage(UserIntent userIntent) {
-    if (userIntent.providerType == CloudType.aws) {
+    boolean result =
+        hasEphemeralStorage(
+            userIntent.providerType, userIntent.instanceType, userIntent.deviceInfo);
+    if (userIntent.dedicatedNodes) {
+      result =
+          result
+              || hasEphemeralStorage(
+                  userIntent.providerType,
+                  userIntent.masterInstanceType,
+                  userIntent.masterDeviceInfo);
+    }
+    return result;
+  }
+
+  public static boolean hasEphemeralStorage(
+      CloudType providerType, String instanceType, DeviceInfo deviceInfo) {
+    if (providerType == CloudType.aws && instanceType != null) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
-        if (userIntent.instanceType.startsWith(prefix)) {
+        if (instanceType.startsWith(prefix)) {
           return true;
         }
       }
       return false;
-    } else if (userIntent.providerType == CloudType.gcp) {
-      return userIntent.deviceInfo != null
-          && userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch;
+    } else if (providerType == CloudType.gcp) {
+      if (deviceInfo != null
+          && deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+        return true;
+      }
     }
     return false;
   }
 
   /** The user defined intent for the universe. */
   public static class UserIntent {
+
     // Nice name for the universe.
     @Constraints.Required() @ApiModelProperty public String universeName;
 
@@ -387,7 +402,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // for a multi-region setup.
     @ApiModelProperty public UUID preferredRegion;
 
-    // Cloud Instance Type that the user wants
+    // Cloud Instance Type that the user wants for tserver nodes.
     @Constraints.Required() @ApiModelProperty public String instanceType;
 
     // The number of nodes to provision. These include ones for both masters and tservers.
@@ -399,7 +414,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public String universeOverrides;
 
     // AZ level overrides for kubernetes universes.
-    @ApiModelProperty public String azOverrides;
+    @ApiModelProperty public Map<String, String> azOverrides;
 
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
@@ -464,8 +479,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
     @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
 
+    // Flags for YB-Controller.
+    @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
+
     // Instance tags (used for AWS only).
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
+
+    // True if user wants to have dedicated nodes for master and tserver processes.
+    @ApiModelProperty public boolean dedicatedNodes = false;
+
+    // Instance type used for dedicated master nodes.
+    @Nullable @ApiModelProperty public String masterInstanceType;
+
+    // Device info for dedicated master nodes.
+    @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
     @Override
     public String toString() {
@@ -499,7 +526,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", staticPublicIP="
           + assignStaticPublicIP
           + ", tags="
-          + instanceTags;
+          + instanceTags
+          + ", masterInstanceType="
+          + masterInstanceType;
     }
 
     @Override
@@ -531,7 +560,39 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      if (deviceInfo != null) {
+        newUserIntent.deviceInfo = deviceInfo.clone();
+      }
+      newUserIntent.masterInstanceType = masterInstanceType;
+      if (masterDeviceInfo != null) {
+        newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
+      }
+      newUserIntent.dedicatedNodes = dedicatedNodes;
       return newUserIntent;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public String getInstanceTypeForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterInstanceType != null) {
+        return masterInstanceType;
+      }
+      return instanceType;
+    }
+
+    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
+      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public DeviceInfo getDeviceInfoForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+        return masterDeviceInfo;
+      }
+      return deviceInfo;
     }
 
     // NOTE: If new fields are checked, please add them to the toString() as well.
@@ -549,7 +610,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
-          && useSystemd == other.useSystemd) {
+          && useSystemd == other.useSystemd
+          && dedicatedNodes == other.dedicatedNodes
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;
@@ -568,7 +631,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
-          && useTimeSync == other.useTimeSync) {
+          && useTimeSync == other.useTimeSync
+          && dedicatedNodes == other.dedicatedNodes
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;
@@ -659,6 +724,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   public Cluster upsertCluster(
       UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
+    return upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.ASYNC);
+  }
+
+  /**
+   * Add a cluster with the specified UserIntent, PlacementInfo, and uuid to the list of clusters if
+   * one does not already exist. Otherwise, update the existing cluster with the specified
+   * UserIntent and PlacementInfo.
+   *
+   * @param userIntent UserIntent describing the cluster.
+   * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param clusterUuid uuid of the cluster we want to change.
+   * @param clusterType type of the cluster we want to change.
+   * @return the updated/inserted cluster.
+   */
+  public Cluster upsertCluster(
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      UUID clusterUuid,
+      ClusterType clusterType) {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster != null) {
       if (userIntent != null) {
@@ -668,7 +752,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         cluster.placementInfo = placementInfo;
       }
     } else {
-      cluster = new Cluster(ClusterType.ASYNC, userIntent == null ? new UserIntent() : userIntent);
+      cluster = new Cluster(clusterType, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
       clusters.add(cluster);
     }
@@ -728,9 +812,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public List<Cluster> getReadOnlyClusters() {
+    return getClusterByType(ClusterType.ASYNC);
+  }
+
+  /**
+   * Helper API to retrieve a Cluster in the Universe represented by these Params by its UUID.
+   *
+   * @return a list of all AddOns in the Universe represented by these Params.
+   */
+  @JsonIgnore
+  public List<Cluster> getAddOnClusters() {
+    return getClusterByType(ClusterType.ADDON);
+  }
+
+  @JsonIgnore
+  public List<Cluster> getClusterByType(ClusterType clusterType) {
     return clusters
         .stream()
-        .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
+        .filter(c -> c.clusterType.equals(clusterType))
+        .collect(Collectors.toList());
+  }
+
+  @JsonIgnore
+  public List<Cluster> getNonPrimaryClusters() {
+    return clusters
+        .stream()
+        .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
 
@@ -768,12 +875,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public Set<NodeDetails> getNodesInCluster(UUID uuid) {
-    if (nodeDetailsSet == null) return null;
+    if (nodeDetailsSet == null) {
+      return null;
+    }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
   public static class BaseConverter<T extends UniverseDefinitionTaskParams>
       extends StdConverter<T, T> {
+
     @Override
     public T convert(T taskParams) {
       // If there is universe level communication port set then push it down to node level
@@ -807,6 +917,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       allowGetters = true)
   @ToString
   public static class XClusterInfo {
+
     @ApiModelProperty("The value of certs_for_cdc_dir gflag")
     public String sourceRootCertDirPath;
 

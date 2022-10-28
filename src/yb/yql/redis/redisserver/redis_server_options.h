@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H
+#pragma once
 
 #include <vector>
 
@@ -32,4 +31,3 @@ class RedisServerOptions : public yb::server::ServerBaseOptions {
 
 } // namespace redisserver
 } // namespace yb
-#endif /* YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H */

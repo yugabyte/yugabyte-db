@@ -45,6 +45,10 @@ public enum TaskType {
 
   CreateBackup("CreateBackup"),
 
+  CreatePitrConfig("CreatePitrConfig"),
+
+  RestoreSnapshotSchedule("RestoreSnapshotSchedule"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
@@ -58,14 +62,21 @@ public enum TaskType {
 
   RunApiTriggeredHooks("RunApiTriggeredHooks"),
 
+  AddOnClusterCreate("AddOnClusterCreate"),
+  AddOnClusterDelete("AddOnClusterDelete"),
+
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
 
   RestartUniverse("upgrade.RestartUniverse"),
 
+  RestartUniverseKubernetesUpgrade("upgrade.RestartUniverseKubernetesUpgrade"),
+
   SoftwareUpgrade("upgrade.SoftwareUpgrade"),
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  KubernetesOverridesUpgrade("upgrade.KubernetesOverridesUpgrade"),
 
   GFlagsUpgrade("upgrade.GFlagsUpgrade"),
 
@@ -107,6 +118,8 @@ public enum TaskType {
 
   RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
 
+  RebootNodeInUniverse("RebootNodeInUniverse"),
+
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
   RotateAccessKey("RotateAccessKey"),
@@ -126,17 +139,22 @@ public enum TaskType {
 
   UpdateDiskSize("UpdateDiskSize"),
 
+  UpdateKubernetesDiskSize("UpdateKubernetesDiskSize"),
+
+  KubernetesCheckStorageClass("subtasks.KubernetesCheckStorageClass"),
+
   StartMasterOnNode("StartMasterOnNode"),
-
-  CreateXClusterConfig("CreateXClusterConfig"),
-
-  EditXClusterConfig("EditXClusterConfig"),
-
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
   SyncXClusterConfig("SyncXClusterConfig"),
 
   CreateSupportBundle("CreateSupportBundle"),
+
+  CreateXClusterConfig("CreateXClusterConfig"),
+
+  EditXClusterConfig("EditXClusterConfig"),
+
+  RestartXClusterConfig("RestartXClusterConfig"),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey("subtasks.AddAuthorizedKey"),
@@ -203,6 +221,8 @@ public enum TaskType {
 
   UpdateAndPersistGFlags("subtasks.UpdateAndPersistGFlags"),
 
+  UpdateAndPersistKubernetesOverrides("subtasks.UpdateAndPersistKubernetesOverrides"),
+
   UpdatePlacementInfo("subtasks.UpdatePlacementInfo"),
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
@@ -250,6 +270,8 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
 
+  ResetXClusterConfigEntry("subtasks.xcluster.ResetXClusterConfigEntry"),
+
   SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
@@ -257,6 +279,8 @@ public enum TaskType {
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
+
+  XClusterConfigSetStatusForTables("subtasks.xcluster.XClusterConfigSetStatusForTables"),
 
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
@@ -370,6 +394,8 @@ public enum TaskType {
 
   RebootServer("subtasks.RebootServer"),
 
+  HardRebootServer("subtasks.HardRebootServer"),
+
   RunHooks("subtasks.RunHooks"),
 
   UpdateUniverseTags("subtasks.UpdateUniverseTags"),
@@ -382,7 +408,9 @@ public enum TaskType {
 
   DisableYbc("DisableYbc"),
 
-  InstanceExistCheck("subtasks.InstanceExistCheck");
+  InstanceExistCheck("subtasks.InstanceExistCheck"),
+
+  AddGFlagMetadata("AddGFlagMetadata");
 
   private String relativeClassPath;
 

@@ -29,8 +29,7 @@
 // Example code is also available
 //   https://github.com/facebook/rocksdb/wiki/A-Tutorial-of-RocksDB-SST-formats#wiki-examples
 
-#ifndef YB_ROCKSDB_TABLE_H
-#define YB_ROCKSDB_TABLE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -54,7 +53,6 @@ class WritableFileWriter;
 struct EnvOptions;
 struct Options;
 
-using std::unique_ptr;
 using namespace yb::size_literals;
 
 enum ChecksumType : char {
@@ -358,8 +356,8 @@ class TableFactory {
   // table_reader is the output table reader.
   virtual Status NewTableReader(
       const TableReaderOptions& table_reader_options,
-      unique_ptr<RandomAccessFileReader>&& base_file, uint64_t base_file_size,
-      unique_ptr<TableReader>* table_reader) const = 0;
+      std::unique_ptr<RandomAccessFileReader>&& base_file, uint64_t base_file_size,
+      std::unique_ptr<TableReader>* table_reader) const = 0;
 
   // Whether SST split into metadata and data file(s) is supported for writing.
   // There is a AdaptiveTableFactory inheriting common TableFactory interface. AdaptiveTableFactory
@@ -447,4 +445,3 @@ extern TableFactory* NewAdaptiveTableFactory(
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_TABLE_H

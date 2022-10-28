@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H
-#define YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H
+#pragma once
 
 #include <cstring>
 
@@ -25,7 +24,7 @@ namespace common {
 
 static const MonoDelta kMaxTtl = MonoDelta::FromNanoseconds(std::numeric_limits<int64_t>::max());
 
-static constexpr int64_t kInvalidUserTimestamp = std::numeric_limits<int64_t>::min();
+static constexpr int64_t kInvalidTimestamp = std::numeric_limits<int64_t>::min();
 
 // We use an upper bound of int32_t max (in seconds) for Cassandra. Note that this is higher than
 // what vanilla Cassandra itself uses, since they store the expiry timestamp in seconds as
@@ -69,4 +68,3 @@ inline static bool IsValidCachingRowsPerPartitionInt(const int64_t val) {
 }  // namespace common
 }  // namespace yb
 
-#endif // YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H

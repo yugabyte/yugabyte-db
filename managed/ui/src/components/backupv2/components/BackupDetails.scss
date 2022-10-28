@@ -60,9 +60,11 @@
       & > div {
         max-width: 200px;
       }
+
       .flex-divider {
         width: 100%;
       }
+
       .details-storage-config {
         max-width: fit-content !important;
       }
@@ -105,6 +107,19 @@
 
   .universeLink {
     text-decoration: underline;
+    margin-top: 10px;
+  }
+
+  .add-increment-backup-btn {
+    float: right;
+    padding: 5px 10px;
+    height: 30px;
+    border: 1px solid $YB_BG_WHITE_4;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 15px;
+    color: $YB_TEXT_COLOR;
     margin-top: 10px;
   }
 }

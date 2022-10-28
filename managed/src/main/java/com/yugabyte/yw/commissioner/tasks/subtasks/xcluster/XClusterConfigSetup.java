@@ -8,16 +8,12 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -57,7 +53,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         "%s (targetUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig.uuid,
+        taskParams().getXClusterConfig().uuid,
         taskParams().tableIds);
   }
 
@@ -137,6 +133,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
       // that taskParams().tableIds exist in the xCluster config, so it will not throw an exception.
       xClusterConfig.setReplicationSetupDone(taskParams().tableIds);
+      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Running);
 
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
@@ -155,7 +152,8 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         getUniverse(true).incrementVersion();
       }
     } catch (Exception e) {
-      log.error("{} hit erro  r : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, targetUniverseMasterAddresses);

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
-#define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
+#pragma once
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
@@ -90,7 +89,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       Status* complete_status) override;
 
   Status ListSnapshots(
-      const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
+      const TxnSnapshotId& snapshot_id, bool list_deleted,
+      ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp);
 
   Result<TxnSnapshotRestorationId> Restore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term);
@@ -113,6 +113,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<SnapshotScheduleInfoPB> EditSnapshotSchedule(
       const SnapshotScheduleId& id, const EditSnapshotScheduleRequestPB& req, int64_t leader_term,
       CoarseTimePoint deadline);
+
+  Status RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at,
+      RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline);
 
   // Load snapshots data from system catalog.
   Status Load(tablet::Tablet* tablet) override;
@@ -153,4 +157,3 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H

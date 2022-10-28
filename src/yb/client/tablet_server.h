@@ -12,8 +12,7 @@
 //
 
 #include <string>
-#ifndef YB_CLIENT_TABLET_SERVER_H
-#define YB_CLIENT_TABLET_SERVER_H
+#pragma once
 
 namespace yb {
 namespace client {
@@ -87,4 +86,3 @@ struct YBTabletServerPlacementInfo {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLET_SERVER_H

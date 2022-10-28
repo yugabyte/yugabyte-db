@@ -35,6 +35,8 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;
 using namespace std::literals;
@@ -365,8 +367,14 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
 }
 
 string YBInboundCall::ToString() const {
-  return Format("Call $0 $1 => $2 (request call id $3)",
-                header_.RemoteMethodAsString(), remote_address(), local_address(), header_.call_id);
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  if (!cached_to_string_.empty()) {
+    return cached_to_string_;
+  }
+  cached_to_string_ = Format("Call $0 $1 => $2 (request call id $3)",
+                           cleared_ ? kUnknownRemoteMethod : header_.RemoteMethodAsString(),
+                           remote_address(), local_address(), header_.call_id);
+  return cached_to_string_;
 }
 
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,

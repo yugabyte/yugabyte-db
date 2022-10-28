@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_STATE_H
-#define YB_MASTER_SNAPSHOT_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -92,8 +92,13 @@ class SnapshotState : public StateWithTablets {
       const tablet::SnapshotOperation& operation) const;
 
   std::string ToString() const;
-  Status ToPB(SnapshotInfoPB* out);
-  Status ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
+  // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
+  // Pass `nullopt` to serialize all entry types.
+  Status ToPB(
+      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options);
+  Status ToEntryPB(
+      SysSnapshotEntryPB* out, ForClient for_client,
+      ListSnapshotsDetailOptionsPB options);
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
@@ -125,4 +130,3 @@ Result<docdb::KeyBytes> EncodedSnapshotKey(
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_SNAPSHOT_STATE_H

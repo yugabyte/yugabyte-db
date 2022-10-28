@@ -58,6 +58,7 @@ using std::cout;
 using std::endl;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using strings::Substitute;
 
 DEFINE_string(master_address, "",

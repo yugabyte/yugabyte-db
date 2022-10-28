@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_MASTER_CDC_RPC_TASKS_H
-#define ENT_SRC_YB_MASTER_CDC_RPC_TASKS_H
+#pragma once
 
 #include <stdlib.h>
 
@@ -69,4 +68,3 @@ class CDCRpcTasks {
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_MASTER_CDC_RPC_TASKS_H

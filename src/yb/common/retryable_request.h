@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_RETRYABLE_REQUEST_H
-#define YB_COMMON_RETRYABLE_REQUEST_H
+#pragma once
 
 #include <float.h>
 #include <stdint.h>
@@ -34,7 +33,7 @@
 
 namespace yb {
 
-YB_STRONGLY_TYPED_UUID(ClientId);
+YB_STRONGLY_TYPED_UUID_DECL(ClientId);
 typedef int64_t RetryableRequestId;
 
 // Special value which is used to initialize starting RetryableRequestId for the client and tablet
@@ -54,4 +53,3 @@ using MinRunningRequestIdStatusData = StatusErrorCodeImpl<MinRunningRequestIdTag
 
 }  // namespace yb
 
-#endif  // YB_COMMON_RETRYABLE_REQUEST_H

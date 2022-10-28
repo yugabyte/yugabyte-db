@@ -41,8 +41,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_UTIL_LOGGING_H
-#define YB_UTIL_LOGGING_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -89,6 +88,9 @@
     __FILE__, __LINE__, \
     LOG_THROTTLER.TooMany() ? BOOST_PP_CAT(google::GLOG_, severity2) \
                             : BOOST_PP_CAT(google::GLOG_, severity1)).stream()
+
+#define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
+    YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
 
 namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
@@ -229,9 +231,6 @@ void GetFullLogFilename(google::LogSeverity severity, std::string* filename);
 // flushed.
 void ShutdownLoggingSafe();
 
-// Writes all command-line flags to the log at level INFO.
-void LogCommandLineFlags();
-
 // Internal function. Used by tooling for integrating with PostgreSQL C codebase.
 void InitializeGoogleLogging(const char *arg);
 
@@ -338,7 +337,7 @@ void DisableCoreDumps();
 // trace). This is based on the --fatal_details_path_prefix flag and the
 // YB_FATAL_DETAILS_PATH_PREFIX environment variable. If neither of those are set, the result is
 // based on the FATAL log path.
-string GetFatalDetailsPathPrefix();
+std::string GetFatalDetailsPathPrefix();
 
 // Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
 // printing the failure stack trace into a separate file.
@@ -355,4 +354,3 @@ class LogFatalHandlerSink : public google::LogSink {
 
 } // namespace yb
 
-#endif // YB_UTIL_LOGGING_H

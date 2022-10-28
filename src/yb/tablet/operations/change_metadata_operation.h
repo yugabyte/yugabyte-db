@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
-#define YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -63,7 +62,7 @@ class ChangeMetadataOperation
     : public ExclusiveSchemaOperation<OperationType::kChangeMetadata,
                                       ChangeMetadataRequestPB> {
  public:
-  ChangeMetadataOperation(Tablet* tablet, log::Log* log,
+  ChangeMetadataOperation(TabletPtr tablet, log::Log* log,
                           const ChangeMetadataRequestPB* request = nullptr);
 
   explicit ChangeMetadataOperation(const ChangeMetadataRequestPB* request);
@@ -142,4 +141,3 @@ Status SyncReplicateChangeMetadataOperation(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H

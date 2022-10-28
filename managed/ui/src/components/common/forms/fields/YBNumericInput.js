@@ -24,6 +24,7 @@ export class YBControlledNumericInput extends Component {
       onInputFocus,
       valueFormat,
       minVal,
+      maxVal,
       readOnly
     } = this.props;
     return (
@@ -37,6 +38,7 @@ export class YBControlledNumericInput extends Component {
         onBlur={onInputBlur}
         format={valueFormat}
         min={minVal}
+        max={maxVal}
         readOnly={readOnly}
         disabled={disabled}
       />

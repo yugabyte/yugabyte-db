@@ -7,6 +7,7 @@ import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -38,9 +39,9 @@ public class HookInserter {
       AbstractTaskBase task,
       UniverseTaskParams universeParams,
       Collection<NodeDetails> nodes) {
-    if (!task.config.getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
+    if (!task.runtimeConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
-        getExecutionPlan(trigger, universeParams, task.config, nodes);
+        getExecutionPlan(trigger, universeParams, task.runtimeConfigFactory, nodes);
 
     for (Pair<Hook, Collection<NodeDetails>> singleHookPlan : executionPlan) {
       Hook hook = singleHookPlan.getFirst();
@@ -74,9 +75,9 @@ public class HookInserter {
   private static List<Pair<Hook, Collection<NodeDetails>>> getExecutionPlan(
       TriggerType trigger,
       UniverseTaskParams universeParams,
-      Config config,
+      RuntimeConfigFactory rConfig,
       Collection<NodeDetails> nodes) {
-    boolean isSudoEnabled = config.getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = rConfig.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
         new ArrayList<Pair<Hook, Collection<NodeDetails>>>();
     UUID universeUUID = universeParams.universeUUID;

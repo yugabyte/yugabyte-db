@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DML_READ_H_
-#define YB_YQL_PGGATE_PG_DML_READ_H_
+#pragma once
 
 #include <optional>
 #include <utility>
@@ -102,6 +101,12 @@ class PgDmlRead : public PgDml {
     DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);
   }
 
+  void SetDBCatalogCacheVersion(const uint32_t db_oid,
+                                const uint64_t catalog_cache_version) override {
+    DCHECK_NOTNULL(read_req_)->set_ysql_db_oid(db_oid);
+    DCHECK_NOTNULL(read_req_)->set_ysql_db_catalog_version(catalog_cache_version);
+  }
+
   void UpgradeDocOp(PgDocOp::SharedPtr doc_op);
 
   const LWPgsqlReadRequestPB* read_req() const { return read_req_.get(); }
@@ -163,4 +168,3 @@ class PgDmlRead : public PgDml {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DML_READ_H_

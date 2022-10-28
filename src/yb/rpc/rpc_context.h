@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_CONTEXT_H
-#define YB_RPC_RPC_CONTEXT_H
+#pragma once
 
 #include <string>
 
@@ -339,4 +338,3 @@ void PanicRpc(RpcContext* context, const char* file, int line_number, const std:
 
 } // namespace rpc
 } // namespace yb
-#endif // YB_RPC_RPC_CONTEXT_H

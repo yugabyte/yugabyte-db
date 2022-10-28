@@ -42,6 +42,7 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 STARTUP_SCRIPT_META_KEY = "startup-script"
 SERVER_TYPE_META_KEY = "server_type"
 SSH_KEYS_META_KEY = "ssh-keys"
+BLOCK_PROJECT_SSH_KEY = "block-project-ssh-keys"
 
 META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
@@ -142,6 +143,22 @@ class Waiter():
     def __init__(self, project, compute):
         self.project = project
         self.compute = compute
+
+    def get_in_progress_operation(self, zone, instance, operation_type):
+        target_link = \
+            RESOURCE_BASE_URL + "{}/zones/{}/instances/{}".format(self.project, zone, instance)
+        cmd = self.compute.zoneOperations().list(
+            project=self.project,
+            zone=zone,
+            filter='targetLink = "{}" AND status != "DONE" AND '
+                   'operationType = "{}"'.format(target_link, operation_type),
+            maxResults=1)
+        result = cmd.execute()
+        if 'error' in result:
+            raise RuntimeError(result['error'])
+        if 'items' not in result or len(result['items']) == 0:
+            return None
+        return result['items'][0]['id']
 
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
@@ -677,11 +694,24 @@ class GoogleCloudAdmin():
                                                   instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
 
+    def wait_for_operation(self, zone, instance, operation_type):
+        operation = self.waiter.get_in_progress_operation(zone=zone,
+                                                          instance=instance,
+                                                          operation_type=operation_type)
+        if operation:
+            self.waiter.wait(operation=operation, zone=zone)
+
     def start_instance(self, zone, instance_name):
         operation = self.compute.instances().start(project=self.project,
                                                    zone=zone,
                                                    instance=instance_name).execute()
         return self.waiter.wait(operation, zone=zone)
+
+    def reboot_instance(self, zone, instance_name):
+        operation = self.compute.instances().reset(project=self.project,
+                                                   zone=zone,
+                                                   instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
 
     def query_vpc(self, region):
         """
@@ -834,6 +864,8 @@ class GoogleCloudAdmin():
         if boot_disk_size_gb is not None:
             # Default: 10GB
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+        # Create boot disk backed by a zonal persistent SSD
+        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}
@@ -872,6 +904,10 @@ class GoogleCloudAdmin():
                     {
                         "key": SSH_KEYS_META_KEY,
                         "value": ssh_keys
+                    },
+                    {
+                        "key": BLOCK_PROJECT_SSH_KEY,
+                        "value": True
                     }
                 ]
             },

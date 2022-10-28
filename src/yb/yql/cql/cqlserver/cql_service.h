@@ -14,8 +14,7 @@
 // This file contains the CQLServiceImpl class that implements the CQL server to handle requests
 // from Cassandra clients using the CQL native protocol.
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_
+#pragma once
 
 #include <vector>
 
@@ -69,10 +68,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(
-      const ql::CQLMessage::QueryId& id, const std::string& keyspace, const std::string& query);
+      const ql::CQLMessage::QueryId& id, const std::string& query, ql::QLEnv* ql_env);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
-  std::shared_ptr<const CQLStatement> GetPreparedStatement(const ql::CQLMessage::QueryId& id);
+  Result<std::shared_ptr<const CQLStatement>> GetPreparedStatement(
+      const ql::CQLMessage::QueryId& id, SchemaVersion version);
 
   std::shared_ptr<ql::Statement> GetAuthPreparedStatement() const { return auth_prepared_stmt_; }
 
@@ -187,4 +187,3 @@ class CQLServiceImpl : public CQLServerServiceIf,
 }  // namespace cqlserver
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_

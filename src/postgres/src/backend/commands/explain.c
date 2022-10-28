@@ -114,6 +114,7 @@ static void show_foreignscan_info(ForeignScanState *fsstate, ExplainState *es);
 static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
+static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
@@ -167,6 +168,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 			es->costs = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "buffers") == 0)
 			es->buffers = defGetBoolean(opt);
+		else if (strcmp(opt->defname, "dist") == 0)
+			es->rpc = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
 		{
 			timing_set = true;
@@ -220,6 +223,11 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 
 	/* if the summary was not set explicitly, set default value */
 	es->summary = (summary_set) ? es->summary : es->analyze;
+
+	if (es->rpc && !es->analyze)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option DIST requires ANALYZE")));
 
 	/*
 	 * Parse analysis was done already, but we still have to run the rule
@@ -536,6 +544,13 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		else
 			dir = ForwardScanDirection;
 
+		/* clear the stats by dummy read */
+		if (es->rpc)
+		{
+			uint64_t count, wait_time;
+			YBGetAndResetOperationFlushRpcStats(&count, &wait_time);
+		}
+
 		/* run the plan */
 		ExecutorRun(queryDesc, dir, 0L, true);
 
@@ -602,6 +617,22 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	{
 		ExplainPropertyFloat("Execution Time", "ms", 1000.0 * totaltime, 3,
 							 es);
+		if (es->rpc)
+		{
+			double total_rpc_wait = 0.0;
+			uint64_t flush_count, flush_wait_time;
+			YBGetAndResetOperationFlushRpcStats(&flush_count, &flush_wait_time);
+			if (flush_count > 0)
+				total_rpc_wait += (double)flush_wait_time;
+			if (es->yb_total_read_rpc_count > 0.0)
+				total_rpc_wait += es->yb_total_read_rpc_wait;
+
+			ExplainPropertyFloat("Storage Read Requests", NULL,
+								 es->yb_total_read_rpc_count, 0, es);
+			ExplainPropertyInteger("Storage Write Requests", NULL, flush_count, es);
+			ExplainPropertyFloat("Storage Execution Time", "ms",
+								 total_rpc_wait / 1000000.0, 3, es);
+		}
 
 		if (IsYugaByteEnabled())
 			appendPgMemInfo(es, peakMem);
@@ -1015,6 +1046,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	int			save_indent = es->indent;
 	bool		haschildren;
 
+	if (planstate->instrument)
+	{
+		es->yb_total_read_rpc_count
+			+= (planstate->instrument->yb_read_rpcs.count
+				+ planstate->instrument->yb_tbl_read_rpcs.count);
+		es->yb_total_read_rpc_wait
+			+= (planstate->instrument->yb_read_rpcs.wait_time
+				+ planstate->instrument->yb_tbl_read_rpcs.wait_time);
+	}
+
 	switch (nodeTag(plan))
 	{
 		case T_Result:
@@ -1058,6 +1099,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		case T_NestLoop:
 			pname = sname = "Nested Loop";
+			break;
+		case T_YbBatchedNestLoop:
+			pname = sname = "YB Batched Nested Loop";
 			break;
 		case T_MergeJoin:
 			pname = "Merge";	/* "Join" gets added by jointype switch */
@@ -1343,6 +1387,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			ExplainModifyTarget((ModifyTable *) plan, es);
 			break;
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			{
@@ -1513,6 +1558,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	switch (nodeTag(plan))
 	{
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			/* try not to be too chatty about this in text mode */
@@ -1549,6 +1595,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
 			break;
 		case T_IndexOnlyScan:
 			show_scan_qual(((IndexOnlyScan *) plan)->indexqual,
@@ -1570,6 +1618,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->analyze)
 				ExplainPropertyFloat("Heap Fetches", NULL,
 									 planstate->instrument->ntuples2, 0, es);
+			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
 			break;
 		case T_BitmapIndexScan:
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
@@ -1603,6 +1653,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
 			break;
 		case T_YbSeqScan:
 			/*
@@ -1747,6 +1799,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_scan_qual(((ForeignScan *) plan)->fdw_recheck_quals,
 						   "Remote Filter", planstate, ancestors, es);
 			show_foreignscan_info((ForeignScanState *) planstate, es);
+			if (es->rpc && es->analyze && planstate->instrument->nloops > 0)
+				show_yb_rpc_stats(planstate, false/*indexScan*/, es);
 			break;
 		case T_CustomScan:
 			{
@@ -1761,6 +1815,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			}
 			break;
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 			show_upper_qual(((NestLoop *) plan)->join.joinqual,
 							"Join Filter", planstate, ancestors, es);
 			if (((NestLoop *) plan)->join.joinqual)
@@ -2937,6 +2992,47 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage)
 								 INSTR_TIME_GET_MILLISEC(usage->blk_write_time),
 								 3, es);
 		}
+	}
+}
+
+/*
+ * Show YB RPC stats.
+ */
+static void
+show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
+{
+	double nloops = planstate->instrument->nloops;
+	double reads = planstate->instrument->yb_read_rpcs.count / nloops;
+	double read_wait
+		= planstate->instrument->yb_read_rpcs.wait_time / nloops;
+	double tbl_reads
+		= planstate->instrument->yb_tbl_read_rpcs.count / nloops;
+	double tbl_read_wait
+		= planstate->instrument->yb_tbl_read_rpcs.wait_time / nloops;
+
+	if (reads > 0.0)
+	{
+		const char *kindStr = indexScan? "Index": "Table";
+		char *str;
+		str = psprintf("Storage %s Read Requests", kindStr);
+		ExplainPropertyFloat(str, NULL, reads, (reads < 1.0? 2: 0), es);
+		if (es->timing)
+		{
+			pfree(str);
+			str = psprintf("Storage %s Execution Time", kindStr);
+			ExplainPropertyFloat(str, "ms", read_wait / 1000000.0, 3, es);
+		}
+		pfree(str);
+	}
+
+	if (tbl_reads > 0.0)
+	{
+		ExplainPropertyFloat("Storage Table Read Requests", NULL,
+							 tbl_reads,
+							 (tbl_reads < 1.0? 2: 0), es);
+		if (es->timing)
+			ExplainPropertyFloat("Storage Table Execution Time", "ms",
+								 tbl_read_wait / 1000000.0, 3, es);
 	}
 }
 

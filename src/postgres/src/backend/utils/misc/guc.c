@@ -570,6 +570,7 @@ static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
 static char *yb_effective_transaction_isolation_level_string;
+static char *yb_xcluster_consistency_level_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -1011,6 +1012,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_parallel_hash,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_bnl_enable_hashing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables batched nested loop joins to use hashing to "
+						 "process its matches."),
+			NULL
+		},
+		&yb_bnl_enable_hashing,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2154,6 +2165,17 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 1000000,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_bnl_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Batch size of nested loop joins"),
+			gettext_noop("Set to 1 to always use simple nested loop joins"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_bnl_batch_size,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
@@ -4078,6 +4100,16 @@ static struct config_string ConfigureNamesString[] =
 		&yb_effective_transaction_isolation_level_string,
 		"default",
 		NULL, NULL, show_yb_effective_transaction_isolation_level
+	},
+
+	{
+		{"yb_xcluster_consistency_level", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Controls the consistency level of xCluster replicated databases."),
+			gettext_noop("Valid values are \"database\" and \"tablet\".")
+		},
+		&yb_xcluster_consistency_level_string,
+		"database",
+		check_yb_xcluster_consistency_level, assign_yb_xcluster_consistency_level, NULL
 	},
 
 	{
@@ -11624,7 +11656,7 @@ check_maxconnections(int *newval, void **extra, GucSource source)
 
 /*
  * For YB-managed (cloud), the cloud user won't be aware of superuser.
- * When YB shows max_connections, the connections reserved for superusers (and 
+ * When YB shows max_connections, the connections reserved for superusers (and
  * other backends) are hidden from cloud users.
  * The reference of the relations can be found in postmaster.c.
  */
@@ -11724,6 +11756,8 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	char	   *dname;
 	char	   *tname;
 	char	   *fname;
+	char	   *yb_tname;
+	char	   *yb_fname;
 
 	/* directory */
 	dname = guc_malloc(ERROR, strlen(newval) + 1);	/* runtime dir */
@@ -11734,6 +11768,10 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	sprintf(tname, "%s/global.tmp", newval);
 	fname = guc_malloc(ERROR, strlen(newval) + 13); /* /global.stat */
 	sprintf(fname, "%s/global.stat", newval);
+	yb_tname = guc_malloc(ERROR, strlen(newval) + 15); /* /yb_global.tmp */
+	sprintf(yb_tname, "%s/yb_global.tmp", newval);
+	yb_fname = guc_malloc(ERROR, strlen(newval) + 16); /* /yb_global.stat */
+	sprintf(yb_fname, "%s/yb_global.stat", newval);
 
 	if (pgstat_stat_directory)
 		free(pgstat_stat_directory);
@@ -11744,6 +11782,12 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	if (pgstat_stat_filename)
 		free(pgstat_stat_filename);
 	pgstat_stat_filename = fname;
+	if (pgstat_ybstat_tmpname)
+		free(pgstat_ybstat_tmpname);
+	pgstat_ybstat_tmpname = yb_tname;
+	if (pgstat_ybstat_filename)
+		free(pgstat_ybstat_filename);
+	pgstat_ybstat_filename = yb_fname;
 }
 
 static bool

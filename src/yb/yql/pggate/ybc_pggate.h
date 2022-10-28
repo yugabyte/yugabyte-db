@@ -12,8 +12,7 @@
 
 // C wrappers around "pggate" for PostgreSQL to call.
 
-#ifndef YB_YQL_PGGATE_YBC_PGGATE_H
-#define YB_YQL_PGGATE_YBC_PGGATE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -57,9 +56,18 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
-// Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
-// if the shared memory has not been initialized (e.g. in initdb).
+// Set global catalog_version to the local tserver's catalog version stored in shared memory.
+// Return error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
+
+// Set per-db catalog_version to the local tserver's per-db catalog version stored in shared
+// memory. Return error if the shared memory has not been initialized (e.g. in initdb).
+YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version);
+
+// Get the tserver catalog version info that can be used to translate a database oid to the
+// index of its slot in the shared memory array db_catalog_versions_.
+YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info);
+
 // Set auth_key to the local tserver's postgres authentication key stored in shared memory.  Return
 // error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
@@ -246,6 +254,10 @@ YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
 
+YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
+                                        uint32_t db_oid,
+                                        uint64_t db_catalog_cache_version);
+
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,
                            bool *exists);
@@ -258,7 +270,8 @@ YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
 YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
-                            YBCPgSplitDatum *split_points);
+                            YBCPgSplitDatum *split_points,
+                            bool *has_null);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
@@ -403,6 +416,8 @@ YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time);
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -473,6 +488,10 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
+
+// RPC stats for EXPLAIN ANALYZE
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();
@@ -620,4 +639,3 @@ void YBCInitPgGateEx(
 } // namespace yb
 #endif
 
-#endif  // YB_YQL_PGGATE_YBC_PGGATE_H

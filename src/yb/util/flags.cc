@@ -30,10 +30,12 @@
 // under the License.
 //
 
-
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <boost/algorithm/string/replace.hpp>
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/split.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/heap-profiler.h>
@@ -43,7 +45,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/auto_flags_util.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
@@ -55,6 +56,7 @@ using std::cout;
 using std::endl;
 using std::string;
 using std::unordered_set;
+using std::vector;
 
 // Because every binary initializes its flags here, we use it as a convenient place
 // to offer some global flags as well.
@@ -179,7 +181,14 @@ TAG_FLAG(v, runtime);
 
 DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
+TAG_FLAG(vmodule, runtime);
 TAG_FLAG(vmodule, advanced);
+namespace yb {
+bool ValidateVmodule(const char* flag_name, const string& new_value);
+void UpdateVmodule();
+}  // namespace yb
+DEFINE_validator(vmodule, &yb::ValidateVmodule);
+REGISTER_CALLBACK(vmodule, "UpdateVmodule", &yb::UpdateVmodule);
 
 DECLARE_bool(symbolize_stacktrace);
 TAG_FLAG(symbolize_stacktrace, stable);
@@ -243,7 +252,31 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
+DEFINE_string(
+    dynamically_linked_exe_suffix, "",
+    "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
+    "generation of Link Time Optimized builds.");
+TAG_FLAG(dynamically_linked_exe_suffix, advanced);
+TAG_FLAG(dynamically_linked_exe_suffix, hidden);
+TAG_FLAG(dynamically_linked_exe_suffix, unsafe);
+
 namespace yb {
+
+// In LTO builds we first generate executable like yb-master and yb-tserver with a suffix
+// ("-dynamic") added to their names. These executables are then optimized to produce the
+// final executable without the suffix. Certain build targets like gen_flags_metadata and
+// gen_auto_flags are run using the dynamic executables to generate metadata files which should
+// contain final the program name.
+string GetStaticProgramName() {
+  auto program_name = BaseName(google::ProgramInvocationShortName());
+  if (PREDICT_FALSE(
+          !FLAGS_dynamically_linked_exe_suffix.empty() &&
+          program_name.ends_with(FLAGS_dynamically_linked_exe_suffix))) {
+    boost::replace_last(program_name, FLAGS_dynamically_linked_exe_suffix, "");
+  }
+  return program_name;
+}
+
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
@@ -256,6 +289,20 @@ static string DescribeOneFlagInXML(
     const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
   unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+  // TODO(#14400): Until we make gflags string modifications atomic, we should not be making
+  // runtime changes to string flags. However, to not have to do two rounds of auditing, we continue
+  // to mark flags as runtime, regardless of their data type, purely based on whether they can
+  // logically be modified at runtime.
+  //
+  // To keep external clients oblivious to this, we strip the runtime tag here, so to external
+  // metadata, tooling and Platform automation, all string flags will be treated explicitly as not
+  // runtime!
+  if (flag.type == "string") {
+    auto runtime_it = tags.find(FlagTag::kRuntime);
+    if (runtime_it != tags.end()) {
+      tags.erase(runtime_it);
+    }
+  }
 
   if (only_display_default_values && tags.contains(FlagTag::kHidden)) {
     return {};
@@ -285,15 +332,7 @@ static string DescribeOneFlagInXML(
     AppendXMLTag("initial", auto_flag_desc->initial_val, &r);
     AppendXMLTag("target", auto_flag_desc->target_val, &r);
   } else {
-    if (only_display_default_values) {
-      // gFlags have one hard-coded static default value in all programs that include the file
-      // where it was defined. Programs that need custom defaults set the flag at runtime before the
-      // call to ParseCommandLineFlags. So the current value is technically the default value used
-      // by this program.
-      AppendXMLTag("default", flag.current_value, &r);
-    } else {
-      AppendXMLTag("default", flag.default_value, &r);
-    }
+    AppendXMLTag("default", flag.default_value, &r);
   }
 
   if (!only_display_default_values) {
@@ -307,6 +346,7 @@ static string DescribeOneFlagInXML(
 }
 
 namespace {
+
 struct sort_flags_by_name {
   inline bool operator()(const CommandLineFlagInfo& flag1, const CommandLineFlagInfo& flag2) {
     const auto& a = flag1.name;
@@ -327,8 +367,8 @@ void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values
   cout << "<?xml version=\"1.0\"?>" << endl;
   cout << "<AllFlags>" << endl;
   cout << strings::Substitute(
-      "<program>$0</program>",
-      EscapeForHtmlToString(BaseName(google::ProgramInvocationShortName()))) << endl;
+              "<program>$0</program>", EscapeForHtmlToString(GetStaticProgramName()))
+       << endl;
   cout << strings::Substitute(
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
@@ -351,13 +391,59 @@ void ShowVersionAndExit() {
   exit(0);
 }
 
-} // anonymous namespace
+void DumpAutoFlagsJSONAndExit() {
+  // Promote all AutoFlags to ensure the target value passes any flag validation functions. Its ok
+  // if the current values change as we don't print them out.
+  auto status = PromoteAllAutoFlags();
+  if (!status.ok()) {
+    LOG(FATAL) << "Failed to promote all AutoFlags: " << status.ToString();
+  }
 
-int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
-  int ret = google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+  cout << AutoFlagsUtil::DumpAutoFlagsToJSON(GetStaticProgramName());
+  exit(0);
+}
+
+void SetFlagDefaultsToCurrent(const std::vector<google::CommandLineFlagInfo>& flag_infos) {
+  for (const auto& flag_info : flag_infos) {
+    if (!flag_info.is_default) {
+      // This is not expected to fail as we are setting default to the already validated current
+      // value.
+      CHECK(!gflags::SetCommandLineOptionWithMode(
+                 flag_info.name.c_str(),
+                 flag_info.current_value.c_str(),
+                 gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+                 .empty());
+    }
+  }
+}
+
+void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_infos) {
+  for (const auto& flag_info : flag_infos) {
+    flags_callback_internal::InvokeCallbacks(flag_info.flag_ptr, flag_info.name);
+  }
+}
+
+}  // anonymous namespace
+
+void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+  {
+    std::vector<google::CommandLineFlagInfo> flag_infos;
+    google::GetAllFlags(&flag_infos);
+
+    // gFlags have one hard-coded static default value in all programs that include the file
+    // where it was defined. Programs that need custom defaults set the flag at runtime before the
+    // call to ParseCommandLineFlags. So the current value is technically the default value used
+    // by this program.
+    SetFlagDefaultsToCurrent(flag_infos);
+
+    google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+    InvokeAllCallbacks(flag_infos);
+
+    // flag_infos is no longer valid as default and current values have changed.
+  }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    PromoteAllAutoFlags();
+    CHECK_OK(PromoteAllAutoFlags());
   }
 
   if (FLAGS_helpxml) {
@@ -365,8 +451,7 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   } else if (FLAGS_dump_flags_xml) {
     DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kTrue);
   } else if (FLAGS_help_auto_flag_json) {
-    cout << AutoFlagsUtil::DumpAutoFlagsToJSON();
-    exit(0);
+    DumpAutoFlagsJSONAndExit();
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
     JsonWriter w(&s, JsonWriter::PRETTY);
@@ -380,8 +465,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    FLAGS_heap_profile_path = strings::Substitute(
-        "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path =
+        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
 
 #ifdef TCMALLOC_ENABLED
@@ -389,8 +475,6 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   }
 #endif
-
-  return ret;
 }
 
 bool RefreshFlagsFile(const std::string& filename) {
@@ -403,10 +487,202 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    PromoteAllAutoFlags();
+    CHECK_OK(PromoteAllAutoFlags());
   }
 
   return true;
 }
+
+// Validates that the requested updates to vmodule can be made.
+bool ValidateVmodule(const char* flag_name, const string& new_value) {
+  auto requested_settings = strings::Split(new_value, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
+      LOG(ERROR) << Format(
+          "'$0' is not valid. vmodule should be a comma list of <module_pattern>=<logging_level>",
+          module_value);
+      return false;
+    }
+
+    char* end;
+    errno = 0;
+    const int64 value = strtol(kv[1].c_str(), &end, 10);
+    if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
+      LOG(ERROR) << Format(
+          "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
+          kv[1], kv[0]);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+namespace {
+std::mutex vmodule_mtx;
+// Use a vector instead of map as order matters. For each file the first matching pattern is applied
+// and it is not updated even if a better matching pattern is found later.
+vector<std::pair<string, int>> vmodule_values GUARDED_BY(vmodule_mtx);
+}  // namespace
+
+void UpdateVmodule() {
+  std::lock_guard l(vmodule_mtx);
+  // Set everything to 0
+  for (auto& module_value : vmodule_values) {
+    module_value.second = 0;
+  }
+
+  // Set to new requested values
+  auto requested_settings = strings::Split(FLAGS_vmodule, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+
+    // Values has been validated in ValidateVmodule
+    const int value = static_cast<int>(strtol(kv[1].c_str(), nullptr /* end ptr */, 10));
+
+    auto it = std::find_if(
+        vmodule_values.begin(), vmodule_values.end(),
+        [&](std::pair<string, int> const& elem) { return elem.first == kv[0]; });
+
+    if (it == vmodule_values.end()) {
+      vmodule_values.push_back({kv[0], value});
+    } else {
+      it->second = value;
+    }
+  }
+
+  std::vector<string> module_values_str;
+  for (auto elem : vmodule_values) {
+    module_values_str.emplace_back(Format("$0=$1", elem.first, elem.second));
+  }
+  std::string set_vmodules = JoinStrings(module_values_str, ",");
+
+  // Directly invoke SetCommandLineOption instead of SetFlagInternal which would result in infinite
+  // recursion.
+  google::SetCommandLineOption("vmodule", set_vmodules.c_str());
+
+  // Now update previously set modules
+  for (auto elem : vmodule_values) {
+    google::SetVLOGLevel(elem.first.c_str(), elem.second);
+  }
+}
+
+namespace flags_internal {
+string SetFlagInternal(
+    const void* flag_ptr, const char* flag_name, const string& new_value,
+    const gflags::FlagSettingMode set_mode) {
+  // The gflags library sets new values of flags without synchronization.
+  // TODO: patch gflags to use proper synchronization.
+  ANNOTATE_IGNORE_WRITES_BEGIN();
+  // Try to set the new value.
+  string output_msg = google::SetCommandLineOptionWithMode(flag_name, new_value.c_str(), set_mode);
+  ANNOTATE_IGNORE_WRITES_END();
+
+  if (output_msg.empty()) {
+    return output_msg;
+  }
+
+  flags_callback_internal::InvokeCallbacks(flag_ptr, flag_name);
+
+  return output_msg;
+}
+
+Status SetFlagInternal(
+    const void* flag_ptr, const char* flag_name, const std::string& new_value) {
+  auto res = SetFlagInternal(flag_ptr, flag_name, new_value, google::SET_FLAGS_VALUE);
+  SCHECK_FORMAT(!res.empty(), InvalidArgument, "Failed to set flag $0: $1", flag_name, new_value);
+  return Status::OK();
+}
+
+Status SetFlagDefaultAndCurrentInternal(
+    const void* flag_ptr, const char* flag_name, const string& value) {
+  // SetCommandLineOptionWithMode returns non-empty string on success
+  auto res = gflags::SetCommandLineOptionWithMode(
+      flag_name, value.c_str(), gflags::FlagSettingMode::SET_FLAGS_DEFAULT);
+  SCHECK_FORMAT(
+      !res.empty(), InvalidArgument, "Failed to set flag $0 default to value $1", flag_name, value);
+
+  res = SetFlagInternal(flag_ptr, flag_name, value, google::SET_FLAGS_VALUE);
+  SCHECK_FORMAT(
+      !res.empty(), InvalidArgument, "Failed to set flag $0 to value $1", flag_name, value);
+  return Status::OK();
+}
+
+Status SetFlag(const std::string* flag_ptr, const char* flag_name, const std::string& new_value) {
+  return SetFlagInternal(flag_ptr, flag_name, new_value);
+}
+
+Status SetFlagDefaultAndCurrent(
+    const std::string* flag_ptr, const char* flag_name, const std::string& new_value) {
+  return SetFlagDefaultAndCurrentInternal(flag_ptr, flag_name, new_value);
+}
+
+void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_yyyy) {
+  gflags::CommandLineFlagInfo info;
+  if (!gflags::GetCommandLineFlagInfo(flagname.c_str(), &info)) {
+    LOG(DFATAL) << "Internal error -- called WarnFlagDeprecated on undefined flag " << flagname;
+    return;
+  }
+  if (!info.is_default) {
+    LOG(WARNING) << "Found explicit setting for deprecated flag " << flagname << ". "
+                 << "This flag has been deprecated since " << date_mm_yyyy << ". "
+                 << "Please remove this from your configuration, as this may cause the process to "
+                 << "crash in future releases.";
+  }
+}
+
+SetFlagResult SetFlag(
+    const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
+    string* output_msg) {
+  // Validate that the flag exists and get the current value.
+  CommandLineFlagInfo flag_info;
+  if (!google::GetCommandLineFlagInfo(flag_name.c_str(), &flag_info)) {
+    *output_msg = "Flag does not exist";
+    return SetFlagResult::NO_SUCH_FLAG;
+  }
+  const string& old_val = flag_info.current_value;
+
+  // Validate that the flag is runtime-changeable.
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  if (!ContainsKey(tags, FlagTag::kRuntime)) {
+    if (force) {
+      LOG(WARNING) << "Forcing change of non-runtime-safe flag " << flag_name;
+    } else {
+      *output_msg = "Flag is not safe to change at runtime";
+      return SetFlagResult::NOT_SAFE;
+    }
+  }
+
+  string ret = flags_internal::SetFlagInternal(
+      flag_info.flag_ptr, flag_name.c_str(), new_value, google::SET_FLAGS_VALUE);
+
+  if (ret.empty()) {
+    *output_msg = "Unable to set flag: bad value. Check stderr for more information.";
+    return SetFlagResult::BAD_VALUE;
+  }
+
+  // Callbacks might have changed the value of the flag, so retrieve current value again.
+  string final_value;
+  // We have already validated the flag_name with GetCommandLineFlagInfo, so this should not fail.
+  CHECK(google::GetCommandLineOption(flag_name.c_str(), &final_value));
+
+  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
+  LOG(INFO) << "Changed flag: " << flag_name << " from '" << (is_sensitive ? "***" : old_val)
+            << "' to '" << (is_sensitive ? "***" : final_value) << "'";
+
+  *output_msg = ret;
+  *old_value = old_val;
+
+  return SetFlagResult::SUCCESS;
+}
+}  // namespace flags_internal
 
 } // namespace yb

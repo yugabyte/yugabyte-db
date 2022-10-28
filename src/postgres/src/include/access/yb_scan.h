@@ -119,6 +119,8 @@ typedef struct YbScanDescData
 
 typedef struct YbScanDescData *YbScanDesc;
 
+extern void ybc_free_ybscan(YbScanDesc ybscan);
+
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
  * We ignore the index id and always do a regular YugaByte scan (Postgres
@@ -184,8 +186,6 @@ Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
 /*
  * Backwards scans are more expensive in DocDB.
- * TODO: the ysql_backward_prefetch_scale_factor gflag is correlated to this
- * but is too low (1/16 implying 16x slower) to be used here.
  */
 #define YBC_BACKWARDS_SCAN_COST_FACTOR 1.1
 

@@ -28,6 +28,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Universe UUID", required = true)
   public UUID universeUUID = null;
 
+  @Constraints.Required
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -48,6 +49,9 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
 
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
@@ -78,6 +82,15 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
+
+  @ApiModelProperty(value = "UUID of the parent backup")
+  public UUID baseBackupUUID = null;
+
+  @ApiModelProperty(value = "Frequency of incremental backups")
+  public long incrementalBackupFrequency = 0L;
+
+  @ApiModelProperty(value = "Time unit for user input incremental backup schedule frequency")
+  public TimeUnit incrementalBackupFrequencyTimeUnit;
 
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
@@ -116,6 +129,10 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.scheduleName = backupRequestParams.scheduleName;
     this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
     this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
+    this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
+    this.incrementalBackupFrequencyTimeUnit =
+        backupRequestParams.incrementalBackupFrequencyTimeUnit;
 
     // Deep copy.
     if (backupRequestParams.keyspaceTableList == null) {

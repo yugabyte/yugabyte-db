@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_CLIENT_H
-#define YB_YQL_PGGATE_PG_CLIENT_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -37,6 +36,7 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -97,7 +97,7 @@ class PgClient {
 
   Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options);
-  Status RollbackToSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
   Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
@@ -132,6 +132,8 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -147,4 +149,3 @@ class PgClient {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_CLIENT_H

@@ -23,12 +23,17 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -39,6 +44,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -58,6 +64,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
@@ -67,6 +74,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   private TaskExecutor taskExecutor;
 
   private Config mockConfig;
+
+  private final Set<TaskType> RETRYABLE_TASKS =
+      ImmutableSet.of(
+          TaskType.CreateUniverse,
+          TaskType.EditUniverse,
+          TaskType.ReadOnlyClusterCreate,
+          TaskType.RemoveNodeFromUniverse,
+          TaskType.DeleteNodeFromUniverse,
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.RebootNodeInUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -82,7 +99,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
                     bind(PlatformReplicationManager.class)
                         .toInstance(mock(PlatformReplicationManager.class)))
                 .overrides(
-                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class)))
+                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
+                .overrides(
+                    bind(CustomWsClientFactory.class)
+                        .toProvider(CustomWsClientFactoryProvider.class)))
         .build();
   }
 
@@ -521,5 +541,68 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
+  }
+
+  @Test
+  public void testRetryableAnnotation() {
+    // Iterate through allowed Task Types by Commissioner only
+    Set<TaskType> retryableTaskTypes =
+        TaskType.filteredValues()
+            .stream()
+            .filter(Commissioner::isTaskRetryable)
+            .collect(Collectors.toSet());
+    assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
+  }
+
+  @Test
+  public void testTaskCache() throws InterruptedException {
+    ITask task = mockTaskCommon(false);
+    ITask subTask = mockTaskCommon(false);
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              TaskCache taskCache = runnable.getTaskCache();
+              // Retrieve the cached data in the subtask.
+              ObjectNode object = (ObjectNode) taskCache.get("key1");
+              assertEquals(2, object.size());
+              assertEquals("innerVal1", object.get("innerKey1").asText());
+              assertEquals("innerVal2", object.get("innerKey2").asText());
+              return null;
+            })
+        .when(subTask)
+        .run();
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              TaskCache taskCache = runnable.getTaskCache();
+              ObjectNode object = Json.newObject();
+              // Put in the cache in the parent task.
+              object.put("innerKey1", "innerVal1");
+              object.put("innerKey2", "innerVal2");
+              taskCache.put("key1", object);
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup = taskExecutor.createSubTaskGroup("test");
+              subTasksGroup.addSubTask(subTask);
+              runnable.addSubTaskGroup(subTasksGroup);
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+
+    taskUUIDRef.set(taskRunner.getTaskUUID());
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(1, subTasksByPosition.size());
+    verify(subTask, times(1)).run();
+    verify(task, times(1)).setTaskUUID(any());
+    verify(subTask, times(1)).setTaskUUID(any());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
   }
 }

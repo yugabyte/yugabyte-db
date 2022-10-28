@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_INBOUND_CALL_H_
-#define YB_RPC_INBOUND_CALL_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -53,6 +52,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/locks.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
@@ -252,6 +252,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   scoped_refptr<Counter> rpc_method_response_bytes_;
   scoped_refptr<Histogram> rpc_method_handler_latency_;
 
+  bool cleared_ = false;
+  mutable simple_spinlock mutex_;
+
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
@@ -288,4 +291,3 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_INBOUND_CALL_H_

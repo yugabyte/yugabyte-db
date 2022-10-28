@@ -44,6 +44,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+using std::vector;
+
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
 

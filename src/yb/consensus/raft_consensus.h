@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_RAFT_CONSENSUS_H_
-#define YB_CONSENSUS_RAFT_CONSENSUS_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -264,7 +263,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
+    const yb::OpId& from,
     int64_t* last_replicated_opid_index,
     const CoarseTimePoint deadline = CoarseTimePoint::max()) override;
 
@@ -290,6 +290,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The 'client_cb' will be invoked at the end of this execution.
   virtual void NonTrackedRoundReplicationFinished(
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
+
+  Result<RetryableRequests> GetRetryableRequests() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.
@@ -613,7 +615,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Helper API to check if the pending/committed configuration has a PRE_VOTER. Non-null return
   // string implies there are servers in transit.
-  string ServersInTransitionMessage();
+  std::string ServersInTransitionMessage();
 
   // Prevent starting new election for some time, after we stepped down.
   // protege_uuid - in case of step down we remember our protege.
@@ -753,4 +755,3 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_RAFT_CONSENSUS_H_ */

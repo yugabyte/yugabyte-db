@@ -86,7 +86,8 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
     case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
-    case consensus::SPLIT_OP:
+    case consensus::SPLIT_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);

@@ -77,6 +77,9 @@ const mapDispatchToProps = (dispatch) => {
     showGFlagsModal: () => {
       dispatch(openDialog('gFlagsModal'));
     },
+    showHelmOverridesModal: () => {
+      dispatch(openDialog('helmOverridesModal'));
+    },
     showManageKeyModal: () => {
       dispatch(openDialog('manageKeyModal'));
     },
@@ -234,7 +237,8 @@ function mapStateToProps(state, ownProps) {
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state),
     featureFlags: state.featureFlags,
-    accessKeys: state.cloud.accessKeys
+    accessKeys: state.cloud.accessKeys,
+    graph: state.graph
   };
 }
 

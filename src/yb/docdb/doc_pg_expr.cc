@@ -127,17 +127,7 @@ class DocPgExprExecutor::Private {
 
   // Retrieve expressions from the row according to the added column references
   Status PreparePgRowData(const QLTableRow& table_row) {
-    YbgMemoryContext old;
     Status s = Status::OK();
-    if (row_ctx_ == nullptr) {
-      // The first row, prepare memory context for per row allocations
-      YbgCreateMemoryContext(mem_ctx_, "DocPg Row Context", &row_ctx_);
-      YbgSetCurrentMemoryContext(row_ctx_, &old);
-    } else {
-      // Clean up memory allocations that may be still around after previous row was processed
-      YbgSetCurrentMemoryContext(row_ctx_, &old);
-      YbgResetMemoryContext();
-    }
     // If there are no column references the expression context will not be used
     if (!var_map_.empty()) {
       s = ensure_expr_context();
@@ -147,8 +137,6 @@ class DocPgExprExecutor::Private {
       }
     }
 
-    // Restore previous memory context
-    YbgSetCurrentMemoryContext(old, nullptr);
     return s;
   }
 
@@ -167,12 +155,11 @@ class DocPgExprExecutor::Private {
 
   // Evaluate where clause expressions
   Status EvalWhereExprCalls(bool *result) {
-    YbgMemoryContext old;
-    uint64_t datum;
-    bool is_null;
-    YbgSetCurrentMemoryContext(row_ctx_, &old);
     // If where_clause_ is empty or all the expressions yield true, the result will remain true
     *result = true;
+
+    uint64_t datum;
+    bool is_null;
     for (auto expr : where_clause_) {
       // Evaluate expression
       RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx_, &datum, &is_null));
@@ -182,14 +169,11 @@ class DocPgExprExecutor::Private {
         break;
       }
     }
-    // Restore previous context
-    YbgSetCurrentMemoryContext(old, nullptr);
     return Status::OK();
   }
 
   // Evaluate target expressions and write results into provided vector elements
   Status EvalTargetExprCalls(std::vector<QLExprResult>* results) {
-    YbgMemoryContext old;
     // Shortcut if there is nothing to evaluate
     if (targets_.empty()) {
       return Status::OK();
@@ -200,8 +184,6 @@ class DocPgExprExecutor::Private {
 
     // Output element's index
     int i = 0;
-    // Use per row memory context for allocations
-    YbgSetCurrentMemoryContext(row_ctx_, &old);
     for (const DocPgEvalExprData& target : targets_) {
       // Container for the DocDB result
       QLExprResult &result = (*results)[i++];
@@ -214,9 +196,42 @@ class DocPgExprExecutor::Private {
       RETURN_NOT_OK(
           PgValueToPB(target.second.var_type, datum, is_null, &result.Writer().NewValue()));
     }
-    // Restore previous context
-    YbgSetCurrentMemoryContext(old, nullptr);
     return Status::OK();
+  }
+
+  Status Exec(const QLTableRow& table_row,
+              std::vector<QLExprResult>* results,
+              bool* match) {
+    *match = true;
+
+    // early exit if there are no operations to process
+    if(var_map_.empty() && where_clause_.empty() && targets_.empty()) {
+      return Status::OK();
+    }
+
+    // Set the correct memory context
+    YbgMemoryContext old;
+    if (row_ctx_ == nullptr) {
+      // The first row, prepare memory context for per row allocations
+      YbgCreateMemoryContext(mem_ctx_, "DocPg Row Context", &row_ctx_);
+      YbgSetCurrentMemoryContext(row_ctx_, &old);
+    } else {
+      // Clean up memory allocations that may be still around after previous row was processed
+      YbgSetCurrentMemoryContext(row_ctx_, &old);
+      YbgResetMemoryContext();
+    }
+
+    Status status = PreparePgRowData(table_row);
+    if (status.ok())
+      status = EvalWhereExprCalls(match);
+
+    if (status.ok() && *match)
+      status = EvalTargetExprCalls(results);
+
+    // Restore previous memory context
+    YbgSetCurrentMemoryContext(old, nullptr);
+
+    return status;
   }
 
  private:
@@ -267,18 +282,9 @@ Status DocPgExprExecutor::AddTargetExpression(const PgsqlExpressionPB& ql_expr) 
   return private_->PreparePgTargetExpr(ql_expr, schema_);
 }
 
-Status DocPgExprExecutor::Exec(const QLTableRow& table_row,
-                                       std::vector<QLExprResult>* results,
-                                       bool* match) {
-  if (private_.get() == nullptr) {
-    return Status::OK();
-  }
-
-  RETURN_NOT_OK(private_->PreparePgRowData(table_row));
-  RETURN_NOT_OK(private_->EvalWhereExprCalls(match));
-  if (*match)
-    RETURN_NOT_OK(private_->EvalTargetExprCalls(results));
-  return Status::OK();
+Status DocPgExprExecutor::Exec(
+    const QLTableRow& table_row, std::vector<QLExprResult>* results, bool* match) {
+  return !private_.get() ? Status::OK() : private_->Exec(table_row, results, match);
 }
 
 }  // namespace docdb

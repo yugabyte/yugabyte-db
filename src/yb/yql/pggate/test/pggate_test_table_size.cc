@@ -251,7 +251,7 @@ TEST_F(PggateTestTableSize, TestTableNotExists) {
 
   // Check result
   EXPECT_EQ(YBCStatusIsNotFound(status), true);
-
+  YBCFreeStatus(status);
 }
 
 } // namespace pggate

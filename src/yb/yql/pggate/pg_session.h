@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SESSION_H_
-#define YB_YQL_PGGATE_PG_SESSION_H_
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -117,7 +116,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(PgClient* pg_client,
-            const string& database_name,
+            const std::string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
             const tserver::TServerSharedObject* tserver_shared_object,
@@ -127,6 +126,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
+  [[nodiscard]] bool HasCatalogReadPoint() const;
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -253,7 +253,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return connected_database_.c_str();
   }
 
-  const string& connected_database() const {
+  const std::string& connected_database() const {
     return connected_database_;
   }
   void set_connected_database(const std::string& database) {
@@ -264,7 +264,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   // Generate a new random and unique rowid. It is a v4 UUID.
-  string GenerateNewRowid() {
+  std::string GenerateNewRowid() {
     return GenerateObjectId(true /* binary_id */);
   }
 
@@ -279,9 +279,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  // Return the local tserver's catalog version stored in shared memory or an error if the shared
-  // memory has not been initialized (e.g. in initdb).
+  // Return the local tserver's global catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
+
+  // Return the local tserver's per-db catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
+
+  // Return the tserver catalog version info that can be used to translate a database oid to the
+  // index of its slot in the shared memory array db_catalog_versions_.
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+
   // Return the local tserver's postgres authentication key stored in shared memory or an error if
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();
@@ -296,14 +305,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
-  Status PatchStatus(const Status& status, const PgObjectIds& relations);
-
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -320,6 +327,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool HasWriteOperationsInDdlMode() const;
 
   Result<bool> CheckIfPitrActive();
+
+  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
   Result<PerformFuture> FlushOperations(
@@ -356,12 +365,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const scoped_refptr<server::HybridClock> clock_;
 
-  // YBSession to read data from catalog tables.
-  boost::optional<ReadHybridTime> catalog_read_time_;
+  ReadHybridTime catalog_read_time_;
 
   // Execution status.
   Status status_;
-  string errmsg_;
+  std::string errmsg_;
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
@@ -384,4 +392,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_SESSION_H_

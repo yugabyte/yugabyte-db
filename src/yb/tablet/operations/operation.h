@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_H
-#define YB_TABLET_OPERATIONS_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -68,7 +67,8 @@ YB_DEFINE_ENUM(
     ((kTruncate, consensus::TRUNCATE_OP))
     ((kEmpty, consensus::UNKNOWN_OP))
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
-    ((kSplit, consensus::SPLIT_OP)));
+    ((kSplit, consensus::SPLIT_OP))
+    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
 
@@ -84,7 +84,7 @@ class Operation {
     TRACE_TXNS = 1
   };
 
-  explicit Operation(OperationType operation_type, Tablet* tablet);
+  explicit Operation(OperationType operation_type, TabletPtr tablet);
 
   // Returns this transaction's type.
   OperationType operation_type() const { return operation_type_; }
@@ -140,14 +140,21 @@ class Operation {
     return consensus_round_atomic_.load(std::memory_order_acquire);
   }
 
-  Tablet* tablet() const {
-    return tablet_;
+  // Returns the shared pointer to the tablet which is guaranteed to be non-null.
+  // Fatals in case tablet is null.
+  TabletPtr tablet() const;
+
+  // Returns a non-null shared pointer to the tablet or an error.
+  Result<TabletPtr> tablet_safe() const;
+
+  TabletPtr tablet_nullable() const {
+    return tablet_.lock();
   }
 
   virtual void Release();
 
-  void SetTablet(Tablet* tablet) {
-    tablet_ = tablet;
+  void SetTablet(TabletWeakPtr tablet) {
+    tablet_ = std::move(tablet);
   }
 
   // Completion callback must be set while the operation is only known to the thread creating it.
@@ -232,7 +239,7 @@ class Operation {
   virtual void RemovedFromPending() {}
 
   // The tablet peer that is coordinating this transaction.
-  Tablet* tablet_;
+  TabletWeakPtr tablet_;
 
   // Optional callback to be called once the transaction completes.
   OperationCompletionCallback completion_clbk_;
@@ -272,8 +279,8 @@ consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
 template <OperationType op_type, class Request, class Base = Operation>
 class OperationBase : public Base {
  public:
-  explicit OperationBase(Tablet* tablet, const Request* request = nullptr)
-      : Base(op_type, tablet), request_(request) {}
+  explicit OperationBase(TabletPtr tablet, const Request* request = nullptr)
+      : Base(op_type, std::move(tablet)), request_(request) {}
 
   const Request* request() const override {
     return request_.load(std::memory_order_acquire);
@@ -377,4 +384,3 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_OPERATION_H

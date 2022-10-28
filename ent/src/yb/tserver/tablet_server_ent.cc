@@ -38,6 +38,8 @@
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
+using std::string;
+
 DEFINE_int32(ts_backup_svc_num_threads, 4,
              "Number of RPC worker threads for the TS backup service");
 TAG_FLAG(ts_backup_svc_num_threads, advanced);
@@ -164,8 +166,9 @@ Status TabletServer::CreateCDCConsumer() {
     }
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   };
-  cdc_consumer_ = VERIFY_RESULT(CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(),
-                                                    this));
+
+  cdc_consumer_ = VERIFY_RESULT(
+    CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
   return Status::OK();
 }
 

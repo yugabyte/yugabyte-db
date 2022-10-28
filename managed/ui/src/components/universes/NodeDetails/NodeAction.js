@@ -43,18 +43,21 @@ export default class NodeAction extends Component {
     });
   }
 
-  static getCaption(actionType) {
+  //Need to add caption to new actionTypes to paint in the UI
+  static getCaption(actionType, dedicatedTo) {
     let caption = null;
     if (actionType === 'STOP') {
-      caption = 'Stop Processes';
+      caption = dedicatedTo ? 'Stop ' + NodeAction.processName(dedicatedTo) : 'Stop Processes';
     } else if (actionType === 'REMOVE') {
       caption = 'Remove Node';
     } else if (actionType === 'DELETE') {
       caption = 'Delete Node';
     } else if (actionType === 'RELEASE') {
       caption = 'Release Instance';
+    } else if (actionType === 'REBOOT') {
+      caption = 'Reboot Node';
     } else if (actionType === 'START') {
-      caption = 'Start Processes';
+      caption = dedicatedTo ? 'Start ' + NodeAction.processName(dedicatedTo) : 'Start Processes';
     } else if (actionType === 'ADD') {
       caption = 'Add Node';
     } else if (actionType === 'CONNECT') {
@@ -71,8 +74,12 @@ export default class NodeAction extends Component {
     return caption;
   }
 
-  getLabel(actionType) {
-    const btnLabel = NodeAction.getCaption(actionType);
+  static processName(dedicatedTo) {
+    return dedicatedTo.charAt(0).toUpperCase() + dedicatedTo.toLowerCase().slice(1);
+  }
+
+  getLabel(actionType, dedicatedTo) {
+    const btnLabel = NodeAction.getCaption(actionType, dedicatedTo);
     let btnIcon = null;
     if (actionType === 'STOP') {
       btnIcon = 'fa fa-stop-circle';
@@ -82,6 +89,8 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-minus-circle';
     } else if (actionType === 'RELEASE') {
       btnIcon = 'fa fa-trash';
+    } else if (actionType === 'REBOOT') {
+      btnIcon = 'fa fa-repeat';
     } else if (actionType === 'START') {
       btnIcon = 'fa fa-play-circle';
     } else if (actionType === 'ADD') {
@@ -97,7 +106,6 @@ export default class NodeAction extends Component {
     } else if (actionType === 'DOWNLOAD_LOGS') {
       btnIcon = 'fa fa-download';
     }
-
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
   }
 
@@ -141,23 +149,33 @@ export default class NodeAction extends Component {
         disabled ||
         (actionType === 'STOP' && disableStop) ||
         (actionType === 'REMOVE' && disableRemove);
+
       if (actionType === 'QUERY') {
         if (!hideQueries) {
           return (
             <Fragment>
-              <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
-                disabled={disabled} onClick={this.handleLiveQueryClick}>
-                {this.getLabel('LIVE_QUERIES')}
+              <MenuItem
+                key="live_queries_action_btn"
+                eventKey="live_queries_action_btn"
+                disabled={disabled}
+                onClick={this.handleLiveQueryClick}
+              >
+                {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
               </MenuItem>
-              <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
-                disabled={disabled} onClick={this.handleSlowQueryClick}>
-                {this.getLabel('SLOW_QUERIES')}
+              <MenuItem
+                key="slow_queries_action_btn"
+                eventKey="slow_queries_action_btn"
+                disabled={disabled}
+                onClick={this.handleSlowQueryClick}
+              >
+                {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
               </MenuItem>
             </Fragment>
           );
         }
         return null;
       }
+      if (!NodeAction.getCaption(actionType, currentRow.dedicatedTo)) return null;
       return (
         <MenuItem
           key={btnId}
@@ -165,7 +183,7 @@ export default class NodeAction extends Component {
           disabled={isDisabled}
           onClick={() => isDisabled || this.openModal(actionType)}
         >
-          {this.getLabel(actionType)}
+          {this.getLabel(actionType, currentRow.dedicatedTo)}
         </MenuItem>
       );
     });
@@ -173,16 +191,14 @@ export default class NodeAction extends Component {
     // Add action to download master/tserver logs.
     const btnId = _.uniqueId('node_action_btn_');
     actionButtons.push(
-      (
-        <MenuItem
-          key={btnId}
-          eventKey={btnId}
-          disabled={false}
-          onClick={() => downloadLogs(universeUUID, currentRow.name)}
-        >
-          {this.getLabel('DOWNLOAD_LOGS')}
-        </MenuItem>
-      )
+      <MenuItem
+        key={btnId}
+        eventKey={btnId}
+        disabled={false}
+        onClick={() => downloadLogs(universeUUID, currentRow.name)}
+      >
+        {this.getLabel('DOWNLOAD_LOGS', currentRow.dedicatedTo)}
+      </MenuItem>
     );
 
     return (
@@ -191,7 +207,7 @@ export default class NodeAction extends Component {
           <NodeConnectModal
             currentRow={currentRow}
             providerUUID={providerUUID}
-            label={this.getLabel('CONNECT')}
+            label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
           />
         )}
         {isNonEmptyArray(currentRow.allowedActions) ? (

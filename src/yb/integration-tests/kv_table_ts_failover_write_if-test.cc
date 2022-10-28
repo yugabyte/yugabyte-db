@@ -28,9 +28,9 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
-#include "yb/util/test_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -45,6 +45,8 @@ using client::YBqlWriteOp;
 using itest::TServerDetails;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 using namespace std::literals;
 

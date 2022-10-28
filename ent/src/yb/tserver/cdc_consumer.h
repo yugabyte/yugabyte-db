@@ -11,15 +11,24 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
-#define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
+#pragma once
 
 #include <condition_variable>
 #include <unordered_map>
 #include <unordered_set>
 
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
+
 #include "yb/cdc/cdc_util.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
@@ -41,12 +50,6 @@ class ConsumerRegistryPB;
 
 } // namespace cdc
 
-namespace client {
-
-class YBClient;
-
-} // namespace client
-
 namespace tserver {
 namespace enterprise {
 
@@ -62,20 +65,23 @@ struct CDCClient {
   void Shutdown();
 };
 
+typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
+
 class CDCConsumer {
  public:
   static Result<std::unique_ptr<CDCConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
-      TabletServer* tserver);
+     TabletServer* tserver);
 
   CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
-      std::unique_ptr<CDCClient> local_client);
+      std::unique_ptr<CDCClient> local_client,
+      client::TransactionManager* transaction_manager);
 
   ~CDCConsumer();
-  void Shutdown();
+  void Shutdown() EXCLUDES(should_run_mutex_);
 
   // Refreshes the in memory state when we receive a new registry from master.
   void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
@@ -101,9 +107,23 @@ class CDCConsumer {
 
   Status ReloadCertificates();
 
+  Status PublishXClusterSafeTime();
+
+  client::TransactionManager* TransactionManager();
+
+  Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(const TabletId& producer_tablet_id);
+
+  // Stores a replication error and detail. This overwrites a previously stored 'error'.
+  void StoreReplicationError(
+    const TabletId& tablet_id, const CDCStreamId& stream_id, ReplicationErrorPb error,
+    const std::string& detail);
+
+  // Returns the replication error map.
+  cdc::TabletReplicationErrorMap GetReplicationErrors() const;
+
  private:
   // Runs a thread that periodically polls for any new threads.
-  void RunThread();
+  void RunThread() EXCLUDES(should_run_mutex_);
 
   // Loops through all the entries in the registry and creates a producer -> consumer tablet
   // mapping.
@@ -114,30 +134,53 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
-  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
-                             const cdc::ConsumerTabletInfo consumer_tablet_info);
+  // Loop through pollers and check if they should still be polling, if not, shut them down.
+  void TriggerDeletionOfOldPollers();
+
+  bool ShouldContinuePolling(
+      const cdc::ProducerTabletInfo producer_tablet_info,
+      const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
   // Mutex and cond for should_run_ state.
   std::mutex should_run_mutex_;
   std::condition_variable cond_;
+  bool should_run_ = true;
 
   // Mutex for producer_consumer_tablet_map_from_master_.
-  rw_spinlock master_data_mutex_ ACQUIRED_AFTER(should_run_mutex_);
+  rw_spinlock master_data_mutex_;
 
   // Mutex for producer_pollers_map_.
-  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(should_run_mutex_, master_data_mutex_);
+  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
 
-  std::unordered_map<cdc::ProducerTabletInfo, cdc::ConsumerTabletInfo,
-                     cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_
-                     GUARDED_BY(master_data_mutex_);
+  class TabletTag;
+  using ProducerConsumerTabletMap = boost::multi_index_container <
+    cdc::XClusterTabletInfo,
+    boost::multi_index::indexed_by <
+      boost::multi_index::hashed_unique <
+          boost::multi_index::member <
+              cdc::XClusterTabletInfo, cdc::ProducerTabletInfo,
+              &cdc::XClusterTabletInfo::producer_tablet_info>
+      >,
+      boost::multi_index::hashed_non_unique <
+          boost::multi_index::tag <TabletTag>,
+          boost::multi_index::const_mem_fun <
+              cdc::XClusterTabletInfo, const TabletId&,
+              &cdc::XClusterTabletInfo::producer_tablet_id
+          >
+      >
+    >
+  >;
+
+  ProducerConsumerTabletMap producer_consumer_tablet_map_from_master_
+      GUARDED_BY(master_data_mutex_);
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, uint32_t> stream_to_schema_version_
+  std::unordered_map<std::string, SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
@@ -159,15 +202,29 @@ class CDCConsumer {
     GUARDED_BY(master_data_mutex_);
   std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
-  bool should_run_ = true;
-
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
+  std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
+
+  std::mutex safe_time_update_mutex_;
+  MonoTime last_safe_time_published_at_ GUARDED_BY(safe_time_update_mutex_);
+
+  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_) = false;
+  std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
+
+  client::TransactionManager* transaction_manager_;
+
+  client::YBTablePtr global_transaction_status_table_;
+
+  bool enable_replicate_transaction_status_table_;
+
+  mutable simple_spinlock tablet_replication_error_map_lock_;
+  cdc::TabletReplicationErrorMap tablet_replication_error_map_
+    GUARDED_BY(tablet_replication_error_map_lock_);
 };
 
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_CDC_CONSUMER_H

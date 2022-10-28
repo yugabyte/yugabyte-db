@@ -18,8 +18,7 @@
 //
 // Utilities to be used for RPC services.
 
-#ifndef YB_UTIL_SERVICE_UTIL_H_
-#define YB_UTIL_SERVICE_UTIL_H_
+#pragma once
 
 #include "yb/rpc/rpc_context.h"
 
@@ -30,6 +29,16 @@
 #define RPC_STATUS_RETURN_ERROR(s, error, code, context) do { \
     auto s_tmp = (s); \
     if (PREDICT_FALSE(!s_tmp.ok())) { \
+      SetupErrorAndRespond(error, s_tmp, code, &(context)); \
+      return; \
+    } \
+  } while (false)
+
+// Utility macro to setup error response and return if status is not OK.
+#define RPC_RESULT_RETURN_ERROR(result, error, code, context) \
+  do { \
+    if (PREDICT_FALSE(!result.ok())) { \
+      auto s_tmp = (result).status(); \
       SetupErrorAndRespond(error, s_tmp, code, &(context)); \
       return; \
     } \
@@ -82,4 +91,3 @@ void SetupErrorAndRespond(ErrType* error,
 } // namespace yb
 
 
-#endif  // YB_UTIL_SERVICE_UTIL_H_

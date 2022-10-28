@@ -40,7 +40,7 @@ For building and using this project, the following tools must be installed on yo
     ```sh
     mkdir -p ~/yb-kafka
     cd ~/yb-kafka
-    wget http://apache.cs.utah.edu/kafka/2.5.0/kafka_2.12-2.5.0.tgz
+    wget https://archive.apache.org/dist/kafka/2.5.0/kafka_2.12-2.5.0.tgz
     tar -xzf kafka_2.12-2.5.0.tgz
     ```
 

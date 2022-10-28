@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ID_MAPPING_H
-#define YB_COMMON_ID_MAPPING_H
+#pragma once
 
 #include <vector>
 
@@ -145,6 +144,8 @@ class IdMapping {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  friend bool operator==(const IdMapping& lhs, const IdMapping& rhs);
+
  private:
   int slot(int key) const {
     return key & mask_;
@@ -175,4 +176,3 @@ class IdMapping {
 };
 
 } // namespace yb
-#endif /* YB_COMMON_ID_MAPPING_H */

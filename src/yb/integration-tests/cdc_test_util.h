@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
+#pragma once
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -42,4 +41,3 @@ Status CorrectlyPollingAllTablets(
 } // namespace cdc
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H

@@ -66,6 +66,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
@@ -147,6 +148,8 @@ namespace tablet {
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 using log::Log;
 using log::LogEntryPB;
@@ -959,6 +962,9 @@ class TabletBootstrap {
       case consensus::SPLIT_OP:
         return PlaySplitOpRequest(replicate);
 
+      case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+        return PlayChangeAutoFlagsConfigRequest(replicate);
+
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
         return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
@@ -972,7 +978,7 @@ class TabletBootstrap {
   Status PlayTabletSnapshotRequest(ReplicateMsg* replicate_msg) {
     TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
-    SnapshotOperation operation(tablet_.get(), snapshot);
+    SnapshotOperation operation(tablet_, snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
@@ -981,8 +987,7 @@ class TabletBootstrap {
   }
 
   Status PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
-    HistoryCutoffOperation operation(
-        tablet_.get(), replicate_msg->mutable_history_cutoff());
+    HistoryCutoffOperation operation(tablet_, replicate_msg->mutable_history_cutoff());
 
     return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
@@ -1002,7 +1007,7 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    SplitOperation operation(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
+    SplitOperation operation(tablet_, data_.tablet_init_data.tablet_splitter, split_request);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(
@@ -1017,12 +1022,27 @@ class TabletBootstrap {
     // - tablet bootstrap of new after-split tablet replaying split operation.
   }
 
+  Status PlayChangeAutoFlagsConfigRequest(ReplicateMsg* replicate_msg) {
+    if (!tablet_->is_sys_catalog()) {
+      // This should never happen. We use WAL to propagate AutoFlags config only to other masters.
+      // For tablet servers we use heartbeats.
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+          << "AutoFlags config request ignored on non-sys_catalog tablet";
+      return Status::OK();
+    }
+
+    ChangeAutoFlagsConfigOperation operation(
+        tablet_, replicate_msg->mutable_auto_flags_config());
+
+    return operation.Apply();
+  }
+
   void HandleRetryableRequest(
       const ReplicateMsg& replicate, RestartSafeCoarseTimePoint entry_time) {
     if (!replicate.has_write())
       return;
 
-    if (data_.retryable_requests) {
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
       data_.retryable_requests->Bootstrap(replicate, entry_time);
     }
 
@@ -1151,8 +1171,9 @@ class TabletBootstrap {
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    const RestartSafeCoarseDuration min_seconds_to_retain_logs =
-        std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    const RestartSafeCoarseDuration min_seconds_to_retain_logs = data_.bootstrap_retryable_requests
+        ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+        : 0s;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
@@ -1421,7 +1442,7 @@ class TabletBootstrap {
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(tablet_.get(), write);
+    WriteOperation operation(tablet_, write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);
@@ -1520,7 +1541,7 @@ class TabletBootstrap {
   Status PlayTruncateRequest(ReplicateMsg* replicate_msg) {
     auto* req = replicate_msg->mutable_truncate();
 
-    TruncateOperation operation(tablet_.get(), req);
+    TruncateOperation operation(tablet_, req);
 
     Status s = tablet_->Truncate(&operation);
 

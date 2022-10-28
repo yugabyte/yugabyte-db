@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_LOCKS_H
-#define YB_UTIL_LOCKS_H
+#pragma once
 
 #include <algorithm>
 #include <mutex>
@@ -93,7 +92,7 @@ struct padded_spinlock : public simple_spinlock {
 
 // Reader-writer lock.
 // This is functionally equivalent to rw_semaphore in rw_semaphore.h, but should be
-// used whenever the lock is expected to only be acquired on a single thread.
+// used whenever the lock is expected to be released on the same thread which acquired it.
 // It adds TSAN annotations which will detect misuse of the lock, but those
 // annotations also assume that the same thread the takes the lock will unlock it.
 //
@@ -301,4 +300,3 @@ class ReverseLock {
 
 } // namespace yb
 
-#endif // YB_UTIL_LOCKS_H

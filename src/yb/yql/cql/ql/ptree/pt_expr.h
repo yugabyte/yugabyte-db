@@ -15,8 +15,7 @@
 // Tree node definitions for expression.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
-#define YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -1184,6 +1183,8 @@ class PTSubscriptedColumn : public PTOperator0 {
   // Analyze LHS expression.
   virtual Status CheckLhsExpr(SemContext *sem_context) override;
 
+  virtual std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
+
  private:
   PTQualifiedNamePtr name_;
   PTExprListNode::SharedPtr args_;
@@ -1416,4 +1417,3 @@ class PTBindVar : public PTExpr {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_EXPR_H_

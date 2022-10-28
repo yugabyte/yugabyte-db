@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RUNNING_TRANSACTION_H
-#define YB_TABLET_RUNNING_TRANSACTION_H
+#pragma once
 
 #include <memory>
 
@@ -122,6 +121,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   std::string LogPrefix() const;
 
+  const TabletId& status_tablet() const;
+
  private:
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
@@ -190,4 +191,3 @@ Status MakeAbortedStatus(const TransactionId& id);
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_RUNNING_TRANSACTION_H

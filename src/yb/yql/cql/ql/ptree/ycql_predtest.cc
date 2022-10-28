@@ -24,6 +24,8 @@
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
+using std::vector;
+
 namespace yb {
 namespace ql {
 

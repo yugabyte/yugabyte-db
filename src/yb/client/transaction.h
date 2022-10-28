@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_H
-#define YB_CLIENT_TRANSACTION_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -153,7 +152,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
-  bool HasSubTransactionState();
+  bool HasSubTransaction(SubTransactionId id);
 
  private:
   class Impl;
@@ -169,6 +168,8 @@ class YBSubTransaction {
   void SetActiveSubTransaction(SubTransactionId id);
 
   Status RollbackToSubTransaction(SubTransactionId id);
+
+  bool HasSubTransaction(SubTransactionId id) const;
 
   const SubTransactionMetadata& get();
 
@@ -187,4 +188,3 @@ class YBSubTransaction {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TRANSACTION_H

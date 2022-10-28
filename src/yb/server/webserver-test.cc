@@ -44,6 +44,7 @@
 #include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -52,10 +53,12 @@
 #include "yb/util/zlib.h"
 
 using std::string;
+using std::vector;
 using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
+DECLARE_string(webserver_ca_certificate_file);
 
 namespace yb {
 
@@ -169,9 +172,26 @@ TEST_F(WebserverTest, TestDefaultPaths) {
 #endif
 
   // Test varz -- check for one of the built-in gflags flags.
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)),
-                           &buf_));
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)), &buf_));
   ASSERT_STR_CONTAINS(buf_.ToString(), "--v=");
+
+  // Test varz json api
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/api/v1/varz", ToString(addr_)), &buf_));
+  // Output is a JSON array of 'flags'
+  JsonReader jr(buf_.ToString());
+  ASSERT_OK(jr.Init());
+  vector<const rapidjson::Value *> entries;
+  ASSERT_OK(jr.ExtractObjectArray(jr.root(), "flags", &entries));
+
+  // Find flag with name 'v'
+  auto it = std::find_if(entries.begin(), entries.end(), [&](const rapidjson::Value *value) {
+    string name;
+    if (!jr.ExtractString(value, "name", &name).ok()) {
+      return false;
+    }
+    return name == "v";
+  });
+  ASSERT_NE(it, entries.end());
 
   // Test status.
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/status", ToString(addr_)),
@@ -256,7 +276,7 @@ class WebserverSecureTest : public WebserverTest {
     const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
-    ca_cert_ = JoinPathSegments(certs_dir, "ca.crt");
+    FLAGS_webserver_ca_certificate_file = JoinPathSegments(certs_dir, "ca.crt");
     return opts;
   }
 
@@ -264,15 +284,13 @@ class WebserverSecureTest : public WebserverTest {
     WebserverTest::SetUp();
 
     url_ = Substitute("https://$0", ToString(addr_));
+    curl_.set_ca_cert(FLAGS_webserver_ca_certificate_file);
   }
-
- protected:
-  std::string ca_cert_;
 };
 
 // Test HTTPS endpoint.
 TEST_F(WebserverSecureTest, TestIndexPage) {
-  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */, ca_cert_));
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
 }
 
 } // namespace yb

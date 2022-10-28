@@ -55,18 +55,15 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
 
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
+
   // The number of concurrent commands to run on nodes over SSH
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
   @ApiModelProperty(value = "Restore TimeStamp")
   public String restoreTimeStamp = null;
-
-  @ApiModelProperty(value = "User name of the current tables owner")
-  public String oldOwner = "yugabyte";
-
-  @ApiModelProperty(value = "User name of the new tables owner")
-  public String newOwner = null;
 
   @ApiModel(description = "Backup Storage Info for doing restore operation")
   public static class BackupStorageInfo {
@@ -87,6 +84,12 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "Is SSE")
     public boolean sse = false;
+
+    @ApiModelProperty(value = "User name of the current tables owner")
+    public String oldOwner = "postgres";
+
+    @ApiModelProperty(value = "User name of the new tables owner")
+    public String newOwner = null;
   }
 
   public RestoreBackupParams(
