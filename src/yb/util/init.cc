@@ -112,7 +112,7 @@ Status SetupLogDir(const std::string& server_type) {
     RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(Env::Default(), out_dir, &created),
                           "Unable to create FSManager path component " + out_dir);
     // Set the log dir.
-    RETURN_NOT_OK(SetFlagDefaultAndCurrent("log_dir", out_dir));
+    RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(log_dir, out_dir));
   }
   // If we have a custom specified log_dir, use that.
   return Status::OK();
