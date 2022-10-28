@@ -1237,6 +1237,20 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditBackupWithIncrementalBackup() {
+    defaultBackup.baseBackupUUID = UUID.randomUUID();
+    defaultBackup.state = BackupState.Completed;
+    defaultBackup.update();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("timeBeforeDeleteFromPresentInMillis", 86400000L);
+    bodyJson.put("expiryTimeUnit", "DAYS");
+    Result result =
+        assertPlatformException(() -> editBackup(defaultUser, bodyJson, defaultBackup.backupUUID));
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequest(result, "Cannot edit an incremental backup");
+  }
+
+  @Test
   public void testEditStorageConfigSuccess() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
     BackupTableParams bp = new BackupTableParams();
