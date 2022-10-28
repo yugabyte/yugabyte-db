@@ -94,7 +94,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList =
@@ -122,7 +122,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList =
@@ -146,7 +146,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList = Arrays.asList("application-log-2022-03-05.gz");
@@ -169,7 +169,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList = Arrays.asList();

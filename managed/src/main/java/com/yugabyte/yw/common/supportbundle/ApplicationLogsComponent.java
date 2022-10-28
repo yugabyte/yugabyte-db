@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.ArrayList;
 import java.nio.file.Files;
@@ -36,8 +37,8 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws IOException {
     String appHomeDir =
         config.hasPath("application.home") ? config.getString("application.home") : ".";
     String logDir =
@@ -55,7 +56,12 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
       throws IOException, ParseException {
 
     // Get application configured locations
