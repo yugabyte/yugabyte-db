@@ -113,20 +113,40 @@ class GcpCloud(AbstractCloud):
         self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
 
     def stop_instance(self, args):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
-                                                  filters="(status = \"RUNNING\")")
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
-            logging.error("Host {} does not exist or not running".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(args['search_pattern']))
             return
-        self.admin.stop_instance(instance['zone'], instance['name'])
+        instance_state = instance['instance_state']
+        if instance_state == 'TERMINATED':
+            pass
+        elif instance_state == 'RUNNING':
+            self.admin.stop_instance(instance['zone'], instance['name'])
+        elif instance_state == 'STOPPING':
+            self.admin.wait_for_operation(zone=instance['zone'],
+                                          instance=instance['name'],
+                                          operation_type='stop')
+        else:
+            raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
+                instance['name'], instance_state))
 
     def start_instance(self, args, ssh_ports):
-        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
-                                                  filters="(status = \"TERMINATED\")")
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'])
         if not instance:
-            logging.error("Host {} does not exist or not stopped".format(args['search_pattern']))
+            logging.error("Host {} does not exist".format(args['search_pattern']))
             return
-        self.admin.start_instance(instance['zone'], instance['name'])
+        instance_state = instance['instance_state']
+        if instance_state == 'RUNNING':
+            pass
+        elif instance_state == 'TERMINATED':
+            self.admin.start_instance(instance['zone'], instance['name'])
+        elif instance_state in ('PROVISIONING', 'STAGING'):
+            self.admin.wait_for_operation(zone=instance['zone'],
+                                          instance=instance['name'],
+                                          operation_type='start')
+        else:
+            raise YBOpsRuntimeError("Host {} cannot be started while in '{}' state".format(
+                instance['name'], instance_state))
         self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
 
     def delete_instance(self, args, filters=None):
