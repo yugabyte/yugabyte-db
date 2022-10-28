@@ -48,11 +48,7 @@ DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
              "tablet splitting method, which checks for the time since last run, is run once per "
              "loop.");
-DEFINE_int32(max_queued_split_candidates, 0,
-             "DEPRECATED. The max number of pending tablet split candidates we will hold onto. We "
-             "potentially iterate through every candidate in the queue for each tablet we process "
-             "in a tablet report so this size should be kept relatively small to avoid any "
-             "issues.");
+DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022")
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
