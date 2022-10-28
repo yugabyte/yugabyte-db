@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
@@ -50,6 +51,8 @@ import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
+
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 
 @Api(
     value = "Node instances",
@@ -314,7 +317,13 @@ public class NodeInstanceController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
+    NodeActionType nodeAction = nodeActionFormData.getNodeAction();
     NodeTaskParams taskParams = new NodeTaskParams();
+    if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
+      RebootNodeInUniverse.Params params = new RebootNodeInUniverse.Params();
+      params.isHardReboot = nodeAction == HARD_REBOOT;
+      taskParams = params;
+    }
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
@@ -325,14 +334,14 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
       taskParams.ybcInstalled = true;
     }
-    NodeActionType nodeAction = nodeActionFormData.getNodeAction();
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
     if (nodeAction == NodeActionType.STOP
         || nodeAction == NodeActionType.REMOVE
         || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT) {
+        || nodeAction == NodeActionType.REBOOT
+        || nodeAction == NodeActionType.HARD_REBOOT) {
       // Always check this?? For now leaving it as is since it breaks many tests
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);

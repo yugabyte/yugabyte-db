@@ -44,11 +44,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
@@ -3001,16 +3003,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RebootServer", executor);
+  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes, boolean isHardReboot) {
+    Class<? extends NodeTaskBase> taskClass =
+        isHardReboot ? HardRebootServer.class : RebootServer.class;
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(taskClass.getSimpleName(), executor);
     for (NodeDetails node : nodes) {
-
-      RebootServer.Params params = new RebootServer.Params();
+      NodeTaskParams params = isHardReboot ? new NodeTaskParams() : new RebootServer.Params();
       params.nodeName = node.nodeName;
       params.universeUUID = taskParams().universeUUID;
       params.azUuid = node.azUuid;
 
-      RebootServer task = createTask(RebootServer.class);
+      NodeTaskBase task = createTask(taskClass);
       task.initialize(params);
 
       subTaskGroup.addSubTask(task);

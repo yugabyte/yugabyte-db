@@ -743,7 +743,8 @@ public class UniverseTest extends FakeDBApplication {
                   NodeActionType.STOP,
                   NodeActionType.REMOVE,
                   NodeActionType.QUERY,
-                  NodeActionType.REBOOT),
+                  NodeActionType.REBOOT,
+                  NodeActionType.HARD_REBOOT),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           if (nd.isMaster) {
@@ -796,8 +797,17 @@ public class UniverseTest extends FakeDBApplication {
         } else if (nodeState == NodeDetails.NodeState.Terminating) {
           assertEquals(
               ImmutableSet.of(NodeActionType.RELEASE, NodeActionType.DELETE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Terminated) {
+        } else if (nodeState == NodeState.Terminated) {
           assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeState.Rebooting) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(ImmutableSet.of(), allowedActions);
+          } else {
+            assertEquals(ImmutableSet.of(NodeActionType.REBOOT), allowedActions);
+          }
+        } else if (nodeState == NodeState.HardRebooting) {
+          assertEquals(ImmutableSet.of(NodeActionType.HARD_REBOOT), allowedActions);
         } else {
           assertTrue(allowedActions.isEmpty());
         }

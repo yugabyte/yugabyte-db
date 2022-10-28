@@ -277,12 +277,17 @@ public class CustomerTaskController extends AuthenticatedController {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
+      case RebootNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
-        int expectedUniverseVersion = oldTaskParams.get("expectedUniverseVersion").asInt();
         // Build node task params for node actions.
         NodeTaskParams nodeTaskParams = new NodeTaskParams();
+        if (taskType == TaskType.RebootNodeInUniverse) {
+          nodeTaskParams = new RebootNodeInUniverse.Params();
+          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
+              oldTaskParams.get("isHardReboot").asBoolean();
+        }
         nodeTaskParams.nodeName = nodeName;
         nodeTaskParams.universeUUID = universeUUID;
         nodeTaskParams.expectedUniverseVersion = -1;

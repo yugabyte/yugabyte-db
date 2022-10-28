@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.ADD;
 import static com.yugabyte.yw.common.NodeActionType.DELETE;
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
@@ -93,7 +94,7 @@ public class NodeDetails {
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live(STOP, REMOVE, QUERY, REBOOT),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -136,8 +137,10 @@ public class NodeDetails {
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
     Terminated(DELETE),
-    // Set when the node is being rebooted
-    Rebooting();
+    // Set when the node is being rebooted.
+    Rebooting(REBOOT),
+    // Set when the node is being stopped + started.
+    HardRebooting(HARD_REBOOT);
 
     private final NodeActionType[] allowedActions;
 
@@ -299,7 +302,7 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isActionAllowedOnState(NodeActionType actionType) {
-    return state == null ? false : state.allowedActions().contains(actionType);
+    return state != null && state.allowedActions().contains(actionType);
   }
 
   /** Validates if the action is allowed on the state for the node. */
@@ -332,7 +335,8 @@ public class NodeDetails {
         || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
         || state == NodeState.Terminated
-        || state == NodeState.Rebooting);
+        || state == NodeState.Rebooting
+        || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore

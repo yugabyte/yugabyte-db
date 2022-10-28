@@ -1656,6 +1656,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
+        if not host_info['is_running']:
+            raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
+                                    .format(host_info['instance_state']))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User
@@ -1682,7 +1685,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             self.wait_for_host(args, False)
         else:
             extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-            self.cloud.reboot_instance(args, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+            self.cloud.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
 
 
 class RunHooks(AbstractInstancesMethod):
