@@ -40,7 +40,7 @@
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/algorithm_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -55,9 +55,7 @@ using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
-DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
-              "DEPRECATED. Has no affect, use ysql_scan_deadline_margin_ms to control the client "
-              "timeout");
+DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
