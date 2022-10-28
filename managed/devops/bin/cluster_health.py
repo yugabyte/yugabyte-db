@@ -200,7 +200,7 @@ def check_output(cmd, env):
 
 
 def safe_pipe(command_str):
-    return "set -o pipefail; " + command_str
+    return "timeout {} bash -c 'set -o pipefail; {}'".format(CMD_TIMEOUT_SEC, command_str)
 
 
 def has_errors(str):
@@ -649,7 +649,8 @@ class NodeChecker():
         logging.info("Checking for open file descriptors on node {}".format(self.node))
         e = self._new_entry("Opened file descriptors")
 
-        remote_cmd = 'ulimit -n; cat /proc/sys/fs/file-max; awk \'{print $1}\' /proc/sys/fs/file-nr'
+        remote_cmd = "ulimit -n; cat /proc/sys/fs/file-max; \
+               awk '\"'\"'{print $1}'\"'\"' /proc/sys/fs/file-nr"
         output = self._remote_check_output(remote_cmd)
 
         if has_errors(output):
