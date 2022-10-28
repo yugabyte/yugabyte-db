@@ -34,8 +34,7 @@
 //
 // Memory arena for variable-length datatypes and STL collections.
 
-#ifndef YB_UTIL_MEMORY_ARENA_H_
-#define YB_UTIL_MEMORY_ARENA_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -541,4 +540,3 @@ void* operator new(size_t bytes, yb::internal::ArenaBase<Traits>* arena) noexcep
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
 
-#endif  // YB_UTIL_MEMORY_ARENA_H_

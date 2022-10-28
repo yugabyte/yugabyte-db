@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTION_UTIL_H
-#define YB_ENCRYPTION_ENCRYPTION_UTIL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -188,4 +187,3 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 } // namespace encryption
 } // namespace yb
 
-#endif // YB_ENCRYPTION_ENCRYPTION_UTIL_H

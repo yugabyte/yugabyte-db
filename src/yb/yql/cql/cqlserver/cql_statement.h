@@ -16,8 +16,7 @@
 // ID and caching prepared statements in a list.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_STATEMENT_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_STATEMENT_H_
+#pragma once
 
 #include <list>
 
@@ -74,4 +73,3 @@ class CQLStatement : public ql::Statement {
 }  // namespace cqlserver
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_CQLSERVER_CQL_STATEMENT_H_

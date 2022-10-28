@@ -17,8 +17,7 @@
 //
 // Convert strings to numbers or numbers to strings.
 
-#ifndef YB_GUTIL_STRINGS_NUMBERS_H
-#define YB_GUTIL_STRINGS_NUMBERS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -590,4 +589,3 @@ inline std::string UInt64ToString(uint64 ui64) {
 
 std::string HumanizeBytes(uint64_t bytes, int precision = 2);
 
-#endif // YB_GUTIL_STRINGS_NUMBERS_H

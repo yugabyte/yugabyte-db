@@ -709,17 +709,19 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
     : conf_(std::move(conf)) {
   if (tserver) {
     tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
-    RegisterPgConfigReloader(std::bind(&PgSupervisor::UpdateAndReloadConfig, this));
   }
 }
 
 PgSupervisor::~PgSupervisor() {
+  std::lock_guard<std::mutex> lock(mtx_);
+  DeregisterPgFlagChangeNotifications();
 }
 
 Status PgSupervisor::Start() {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
   RETURN_NOT_OK(CleanupOldServerUnlocked());
+  RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
   LOG(INFO) << "Starting PostgreSQL server";
   RETURN_NOT_OK(StartServerUnlocked());
 
@@ -846,6 +848,8 @@ void PgSupervisor::Stop() {
   {
     std::lock_guard<std::mutex> lock(mtx_);
     state_ = PgProcessState::kStopping;
+    DeregisterPgFlagChangeNotifications();
+
     if (pg_wrapper_) {
       pg_wrapper_->Kill();
     }
@@ -869,5 +873,38 @@ Status PgSupervisor::UpdateAndReloadConfig() {
   return Status::OK();
 }
 
+Status PgSupervisor::RegisterReloadPgConfigCallback(const void* flag_ptr) {
+  // DeRegisterForPgFlagChangeNotifications is called before flag_callbacks_ is destroyed, so its
+  // safe to bind to this.
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      flag_ptr, "ReloadPgConfig", std::bind(&PgSupervisor::UpdateAndReloadConfig, this))));
+
+  return Status::OK();
+}
+
+Status PgSupervisor::RegisterPgFlagChangeNotifications() {
+  DeregisterPgFlagChangeNotifications();
+
+  vector<CommandLineFlagInfo> flags;
+  GetAllFlags(&flags);
+  for (const CommandLineFlagInfo& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (tags.contains(FlagTag::kPg)) {
+      RETURN_NOT_OK(RegisterReloadPgConfigCallback(flag.flag_ptr));
+    }
+  }
+
+  RETURN_NOT_OK(RegisterReloadPgConfigCallback(&FLAGS_ysql_pg_conf_csv));
+
+  return Status::OK();
+}
+
+void PgSupervisor::DeregisterPgFlagChangeNotifications() {
+  for (auto& callback : flag_callbacks_) {
+    callback.Deregister();
+  }
+  flag_callbacks_.clear();
+}
 }  // namespace pgwrapper
 }  // namespace yb

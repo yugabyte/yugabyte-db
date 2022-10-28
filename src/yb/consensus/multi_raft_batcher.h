@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_CONSENSUS_MULTI_RAFT_BATCHER_H_
-#define YB_CONSENSUS_MULTI_RAFT_BATCHER_H_
+#pragma once
 
 #include <memory>
 
@@ -134,4 +133,3 @@ class MultiRaftManager: public std::enable_shared_from_this<MultiRaftManager> {
 }   // namespace consensus
 }   // namespace yb
 
-#endif /* YB_CONSENSUS_MULTI_RAFT_BATCHER_H_ */

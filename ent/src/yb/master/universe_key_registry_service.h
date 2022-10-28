@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
-#define ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
+#pragma once
 
 #include <string>
 
@@ -40,4 +39,3 @@ Status RotateUniverseKey(const Slice& old_universe_key,
 } // namespace master
 } // namespace yb
 
-#endif // ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H

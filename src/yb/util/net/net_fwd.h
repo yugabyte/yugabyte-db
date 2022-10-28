@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_NET_NET_FWD_H
-#define YB_UTIL_NET_NET_FWD_H
+#pragma once
 
 namespace boost {
 namespace asio {
@@ -51,4 +50,3 @@ typedef boost::asio::ip::basic_resolver_results<boost::asio::ip::tcp> ResolverRe
 
 } // namespace yb
 
-#endif // YB_UTIL_NET_NET_FWD_H

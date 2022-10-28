@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_TEST_BASE_H
-#define YB_DOCDB_DOCDB_TEST_BASE_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -69,4 +68,3 @@ class DocDBTestBase : public YBTest, public DocDBRocksDBFixture {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_TEST_BASE_H

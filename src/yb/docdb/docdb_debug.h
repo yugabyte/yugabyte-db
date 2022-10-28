@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_DEBUG_H_
-#define YB_DOCDB_DOCDB_DEBUG_H_
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -70,4 +69,3 @@ void DumpRocksDBToLog(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_DEBUG_H_

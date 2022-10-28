@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COMMON_FLAGS_H
-#define YB_COMMON_COMMON_FLAGS_H
+#pragma once
 
 #include <gflags/gflags.h>
 
@@ -32,4 +31,3 @@ void InitCommonFlags();
 
 } // namespace yb
 
-#endif  // YB_COMMON_COMMON_FLAGS_H

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_SUBPROCESS_H
-#define YB_UTIL_SUBPROCESS_H
+#pragma once
 
 #include <signal.h>
 #include <spawn.h>
@@ -264,4 +263,3 @@ class Subprocess {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_SUBPROCESS_H */

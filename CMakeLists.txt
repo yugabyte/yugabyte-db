@@ -785,7 +785,6 @@ string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
 yb_deduplicate_arguments(CMAKE_C_FLAGS)
-message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
 
 set(CMAKE_CXX_STANDARD 20)
 

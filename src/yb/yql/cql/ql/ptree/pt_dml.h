@@ -15,8 +15,7 @@
 // Tree node definitions for INSERT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DML_H_
-#define YB_YQL_CQL_QL_PTREE_PT_DML_H_
+#pragma once
 
 #include <iosfwd>
 
@@ -544,4 +543,3 @@ class PTDmlStmt : public PTCollection {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_DML_H_

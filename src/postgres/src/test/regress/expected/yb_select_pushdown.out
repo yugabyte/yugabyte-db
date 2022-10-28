@@ -707,6 +707,67 @@ SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
  2 |  2 |  2
 (1 row)
 
+-- Test rescan of a subquery with pushdown of PARAM_EXEC parameters
+CREATE TABLE tidxrescan1(k1 int, k2 int, v1 int, v2 int, primary key (k1 hash, k2 asc));
+CREATE TABLE tidxrescan2(k1 int primary key, v1 int);
+CREATE TABLE tidxrescan3(k1 int, v1 int);
+CREATE INDEX ON tidxrescan3(k1) INCLUDE (v1);
+INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
+INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
+INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+                                          QUERY PLAN
+-----------------------------------------------------------------------------------------------
+ Index Scan using tidxrescan1_pkey on tidxrescan1 t1  (cost=0.00..427.00 rows=100 width=12)
+   Index Cond: (k1 = 1)
+   SubPlan 1
+     ->  Index Scan using tidxrescan2_pkey on tidxrescan2 t2  (cost=0.00..4.12 rows=1 width=4)
+           Index Cond: (k1 = t1.k2)
+           Remote Filter: (v1 = t1.v1)
+(6 rows)
+
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+ k2 | v1 | v1
+----+----+----
+  1 |  2 |  2
+  2 |  4 |
+(2 rows)
+
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+ k2 | v1 | v1
+----+----+----
+  2 |  4 |
+  1 |  2 |  2
+(2 rows)
+
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+                                                QUERY PLAN
+----------------------------------------------------------------------------------------------------------
+ Index Scan using tidxrescan1_pkey on tidxrescan1 t1  (cost=0.00..532.75 rows=100 width=12)
+   Index Cond: (k1 = 1)
+   SubPlan 1
+     ->  Index Only Scan using tidxrescan3_k1_v1_idx on tidxrescan3 t2  (cost=0.00..5.18 rows=10 width=4)
+           Index Cond: (k1 = t1.k2)
+           Remote Filter: (v1 = t1.v1)
+(6 rows)
+
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+ k2 | v1 | v1
+----+----+----
+  1 |  2 |  2
+  2 |  4 |
+(2 rows)
+
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+ k2 | v1 | v1
+----+----+----
+  2 |  4 |
+  1 |  2 |  2
+(2 rows)
+
+DROP TABLE tidxrescan1;
+DROP TABLE tidxrescan2;
+DROP TABLE tidxrescan3;
 DROP TABLE tmaster;
 DROP TABLE tsub;
 DROP TABLE tlateral1;

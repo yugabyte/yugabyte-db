@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
-#define YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
+#pragma once
 
 #ifdef __cplusplus
 #include <atomic>
@@ -96,4 +95,3 @@ void WriteStatArrayElemToJson(void *p1, void *p2);
 }  // namespace yb
 #endif
 
-#endif  // YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H

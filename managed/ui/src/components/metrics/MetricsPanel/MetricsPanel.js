@@ -101,7 +101,7 @@ export default class MetricsPanel extends Component {
             ? dataItem['instanceName'] + (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
             : MetricConsts.NODE_AVERAGE;
         } else if (metricType === MetricTypes.OUTLIER_TABLES) {
-          dataItem['name'] = dataItem['tableName'];
+          dataItem['name'] = `${dataItem['namespaceName']}.${dataItem['tableName']}`;
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -131,7 +131,11 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
-        data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        if (metricType === MetricTypes.OUTLIER_TABLES) {
+          data.hovertemplate = '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
+        } else {
+          data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        }
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;

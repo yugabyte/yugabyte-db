@@ -33,8 +33,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_ESCAPING_H
-#define YB_GUTIL_STRINGS_ESCAPING_H
+#pragma once
 
 #include <stddef.h>
 
@@ -681,4 +680,3 @@ using strings::ByteStringFromAscii;
 using strings::ByteStringToAscii;
 using strings::CleanStringLineEndings;
 
-#endif  // YB_GUTIL_STRINGS_ESCAPING_H

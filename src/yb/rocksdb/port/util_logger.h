@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef STORAGE_LEVELDB_PORT_UTIL_LOGGER_H_
-#define STORAGE_LEVELDB_PORT_UTIL_LOGGER_H_
+#pragma once
 
 // Include the appropriate platform specific file below.  If you are
 // porting to a new platform, see "port_example.h" for documentation
@@ -34,4 +33,3 @@
 #include "yb/rocksdb/port/win/win_logger.h"
 #endif
 
-#endif  // STORAGE_LEVELDB_PORT_UTIL_LOGGER_H_

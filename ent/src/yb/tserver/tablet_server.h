@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TSERVER_TABLET_SERVER_H
-#define ENT_SRC_YB_TSERVER_TABLET_SERVER_H
+#pragma once
 
 #include "../../../../src/yb/tserver/tablet_server.h"
 
@@ -77,4 +76,3 @@ class TabletServer : public yb::tserver::TabletServer {
 } // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_TABLET_SERVER_H

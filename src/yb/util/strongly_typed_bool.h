@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRONGLY_TYPED_BOOL_H
-#define YB_UTIL_STRONGLY_TYPED_BOOL_H
+#pragma once
 
 #include <vector>
 
@@ -63,4 +62,3 @@ class StronglyTypedBool {
 
 }  // namespace yb
 
-#endif // YB_UTIL_STRONGLY_TYPED_BOOL_H

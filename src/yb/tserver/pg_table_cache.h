@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_TABLE_CACHE_H
-#define YB_TSERVER_PG_TABLE_CACHE_H
+#pragma once
 
 #include <future>
 
@@ -53,4 +52,3 @@ class PgTableCache {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_PG_TABLE_CACHE_H

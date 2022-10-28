@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_COORDINATOR_H
-#define YB_TABLET_TRANSACTION_COORDINATOR_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -164,4 +163,3 @@ class TransactionCoordinator {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_COORDINATOR_H

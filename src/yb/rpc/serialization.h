@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_SERIALIZATION_H_
-#define YB_RPC_SERIALIZATION_H_
+#pragma once
 
 #include <inttypes.h>
 #include <string.h>
@@ -103,4 +102,3 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_SERIALIZATION_H_

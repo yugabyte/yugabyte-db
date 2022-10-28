@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_FWD_H
-#define YB_TABLET_TABLET_FWD_H
+#pragma once
 
 #include <memory>
 
@@ -102,4 +101,3 @@ enum class FlushFlags {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TABLET_FWD_H

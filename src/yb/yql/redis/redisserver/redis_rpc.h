@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -179,4 +178,3 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 } // namespace redisserver
 } // namespace yb
 
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H

@@ -19,8 +19,7 @@
 // Generalizes the plethora of ARM flavors available to an easier to manage set
 // Defs reference is at https://wiki.edubuntu.org/ARM/Thumb2PortingHowto
 
-#ifndef ARM_INSTRUCTION_SET_SELECT_H_
-#define ARM_INSTRUCTION_SET_SELECT_H_
+#pragma once
 
 #if defined(__ARM_ARCH_7__) || \
     defined(__ARM_ARCH_7R__) || \
@@ -63,4 +62,3 @@
 # define ARMV2 1
 #endif
 
-#endif  // ARM_INSTRUCTION_SET_SELECT_H_

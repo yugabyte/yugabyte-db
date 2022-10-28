@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTION_INTENT_APPLIER_H
-#define YB_TABLET_TRANSACTION_INTENT_APPLIER_H
+#pragma once
 
 #include <type_traits>
 
@@ -48,4 +47,3 @@ class TransactionIntentApplier {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TRANSACTION_INTENT_APPLIER_H

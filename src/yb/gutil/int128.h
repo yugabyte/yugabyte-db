@@ -16,8 +16,7 @@
 // under the License.
 //
 
-#ifndef BASE_INT128_H_
-#define BASE_INT128_H_
+#pragma once
 
 #include <iosfwd>
 #include "yb/gutil/integral_types.h"
@@ -342,4 +341,3 @@ inline uint128& uint128::operator--() {
   return *this;
 }
 
-#endif  // BASE_INT128_H_

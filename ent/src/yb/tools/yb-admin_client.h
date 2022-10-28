@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
-#define ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
+#pragma once
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -178,4 +177,3 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 }  // namespace tools
 }  // namespace yb
 
-#endif // ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H

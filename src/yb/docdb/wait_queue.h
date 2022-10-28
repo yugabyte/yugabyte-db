@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_WAIT_QUEUE_H
-#define YB_DOCDB_WAIT_QUEUE_H
+#pragma once
 
 #include <future>
 
@@ -91,4 +90,3 @@ class WaitQueue {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_WAIT_QUEUE_H

@@ -15,8 +15,7 @@
 // Tree node definitions for INSERT INTO ... JSON clause.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_INSERT_JSON_CLAUSE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_INSERT_JSON_CLAUSE_H_
+#pragma once
 
 #include <boost/optional.hpp>
 #include <rapidjson/document.h>
@@ -103,4 +102,3 @@ class PTInsertJsonClause: public PTCollection {
 }  // namespace ql
 }  // namespace yb
 
-#endif // YB_YQL_CQL_QL_PTREE_PT_INSERT_JSON_CLAUSE_H_

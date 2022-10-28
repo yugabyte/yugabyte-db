@@ -138,10 +138,6 @@ DECLARE_string(ysql_hba_conf);
 DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 
-// Deprecated because it's misspelled.  But if set, this flag takes precedence over
-// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
-
 namespace yb {
 namespace tserver {
 namespace {

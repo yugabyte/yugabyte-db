@@ -72,11 +72,11 @@ After the cluster is provisioned, you can [add more users and change your passwo
 
 ## Inactive Sandbox clusters
 
-Sandbox clusters are paused after 21 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it. If you don't resume your cluster, a second notification is sent after 28 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
+Sandbox clusters are paused after 10 days of inactivity. When a cluster is paused, you receive an email notification. You need to resume the paused cluster before you can perform any operations on it. If you don't resume your cluster, a second notification is sent after 13 days of inactivity, notifying you that the cluster will be deleted in 48 hours.
 
 To resume your paused cluster, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
-Sandbox clusters are deleted after 30 days of inactivity. Only paused clusters are deleted. YugabyteDB Managed runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
+Sandbox clusters are deleted after 15 days of inactivity. Only paused clusters are deleted. YugabyteDB Managed runs idle cluster deletion jobs daily, so your cluster may be paused or deleted any time up to 24 hours after the time mentioned in the notification email.
 
 To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 

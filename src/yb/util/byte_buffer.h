@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BYTE_BUFFER_H
-#define YB_UTIL_BYTE_BUFFER_H
+#pragma once
 
 #include <cstddef>
 #include <string>
@@ -288,4 +287,3 @@ struct ByteBufferHash {
 
 } // namespace yb
 
-#endif // YB_UTIL_BYTE_BUFFER_H

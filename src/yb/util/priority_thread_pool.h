@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PRIORITY_THREAD_POOL_H
-#define YB_UTIL_PRIORITY_THREAD_POOL_H
+#pragma once
 
 #include <memory>
 
@@ -146,4 +145,3 @@ class PriorityThreadPool {
 
 } // namespace yb
 
-#endif // YB_UTIL_PRIORITY_THREAD_POOL_H

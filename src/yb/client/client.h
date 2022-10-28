@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_CLIENT_H_
-#define YB_CLIENT_CLIENT_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -851,4 +850,3 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
-#endif  // YB_CLIENT_CLIENT_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_UTIL_FWD_H
-#define YB_TSERVER_TSERVER_UTIL_FWD_H
+#pragma once
 
 namespace yb {
 
@@ -40,4 +39,3 @@ using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_UTIL_FWD_H

@@ -55,8 +55,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef UTIL_GTL_MANUAL_CONSTRUCTOR_H_
-#define UTIL_GTL_MANUAL_CONSTRUCTOR_H_
+#pragma once
 
 #include <stddef.h>
 
@@ -262,4 +261,3 @@ class ManualConstructor {
 
 }
 
-#endif  // UTIL_GTL_MANUAL_CONSTRUCTOR_H_

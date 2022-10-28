@@ -28,8 +28,7 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef YB_ROCKSDB_ENV_H
-#define YB_ROCKSDB_ENV_H
+#pragma once
 
 #include <stdint.h>
 
@@ -740,4 +739,3 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_ENV_H

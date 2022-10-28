@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_CLIENT_FWD_H
-#define YB_CLIENT_CLIENT_FWD_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -157,4 +156,3 @@ class AsyncClientInitialiser;
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_CLIENT_FWD_H

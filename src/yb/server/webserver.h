@@ -40,8 +40,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YB_SERVER_WEBSERVER_H
-#define YB_SERVER_WEBSERVER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -99,4 +98,3 @@ class Webserver : public WebCallbackRegistry {
 
 } // namespace yb
 
-#endif // YB_SERVER_WEBSERVER_H

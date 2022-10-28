@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSUTIL_YB_ROCKSDB_H
-#define YB_ROCKSUTIL_YB_ROCKSDB_H
+#pragma once
 
 #include <cstddef>
 #include <string>
@@ -28,4 +27,3 @@ void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options);
 
 }  // namespace yb
 
-#endif // YB_ROCKSUTIL_YB_ROCKSDB_H
