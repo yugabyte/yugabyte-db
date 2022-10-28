@@ -10167,7 +10167,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   if ([&]() {SharedLock lock(mutex_); return IsTableCdcConsumer(*table);}()) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table));
+    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);

@@ -136,6 +136,11 @@ DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 
+DEFINE_bool(xcluster_skip_schema_compatibility_checks_on_alter, false,
+            "When xCluster replication sends a DDL change, skip checks "
+            "for any schema compatibility");
+TAG_FLAG(xcluster_skip_schema_compatibility_checks_on_alter, runtime);
+
 DEFINE_bool(allow_consecutive_restore, true,
             "DEPRECATED. Has no effect, use ForwardRestoreCheck to disallow any forward restores.");
 TAG_FLAG(allow_consecutive_restore, runtime);
@@ -2513,13 +2518,17 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
   return result;
 }
 
-Result<std::map<std::string, KeyRange>> CatalogManager::GetTableKeyRanges(const TableId& table_id) {
-  TableIdentifierPB table_identifier;
-  table_identifier.set_table_id(table_id);
+Result<SchemaVersion> CatalogManager::GetTableSchemaVersion(const TableId& table_id) {
+  auto table = VERIFY_RESULT(FindTableById(table_id));
+  auto lock = table->LockForRead();
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(lock));
+  return lock->pb.version();
+}
 
-  auto table = VERIFY_RESULT(FindTable(table_identifier));
-  auto l = table->LockForRead();
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
+Result<std::map<std::string, KeyRange>> CatalogManager::GetTableKeyRanges(const TableId& table_id) {
+  auto table = VERIFY_RESULT(FindTableById(table_id));
+  auto lock = table->LockForRead();
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(lock));
 
   auto tablets = table->GetTablets();
 
@@ -5460,12 +5469,16 @@ Status CatalogManager::InitCDCConsumer(
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
     auto consumer_tablet_keys = VERIFY_RESULT(GetTableKeyRanges(stream_info.consumer_table_id));
+    auto schema_version = VERIFY_RESULT(GetTableSchemaVersion(stream_info.consumer_table_id));
 
     cdc::StreamEntryPB stream_entry;
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(InitCDCStream(
         stream_info.producer_table_id, stream_info.consumer_table_id, consumer_tablet_keys,
         &stream_entry, cdc_rpc_tasks));
+    // Set the validated consumer schema version
+    auto* producer_schema_pb = stream_entry.mutable_producer_schema();
+    producer_schema_pb->set_last_compatible_consumer_schema_version(schema_version);
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 
@@ -6476,7 +6489,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  if (!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter)) {
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_skip_schema_compatibility_checks_on_alter))) {
     resp->set_should_wait(false);
     return Status::OK();
   }
@@ -6506,6 +6519,16 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   }
   SCHECK(table, NotFound, Substitute("Missing table id $0", consumer_table_id));
 
+  // Colocated, Tablegroup schema changes are not handled yet.
+  if (IsColocationParentTableId(consumer_table_id)) {
+    LOG(INFO) << "XCluster Ignoring schema changes on parent colocated/tablegroup id: "
+              << consumer_table_id;
+    resp->set_should_wait(false);
+    return Status::OK();
+  }
+
+  auto current_consumer_schema_version = VERIFY_RESULT(GetTableSchemaVersion(consumer_table_id));
+
   {
     // Use the stream ID to find ClusterConfig entry.
     auto cluster_config = ClusterConfig();
@@ -6525,6 +6548,11 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     if (version_validated > 0 && version_received <= version_validated) {
       LOG(INFO) << "Received known schema (v" << version_received << "). Continuing Replication.";
       resp->set_should_wait(false);
+      // The first cdc poller to process a compatible schema update will cause the
+      // replication to resume, but all subsequent pollers should also be sent the
+      // the last compatible consumer schema version
+      resp->set_last_compatible_consumer_schema_version(
+          schema_cached->last_compatible_consumer_schema_version());
       return Status::OK();
     }
 
@@ -6538,18 +6566,27 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
 
       if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
         resp->set_should_wait(false);
+        // NOTE: If the consumer schema is first updated, followed by the Producer
+        // schema, then the replication never really halts, so we need to let the
+        // pollers know about the updated consumer schema version immediately so that
+        // subsequent records can use the update consumer schema version for rewriting packed rows.
+        resp->set_last_compatible_consumer_schema_version(current_consumer_schema_version);
+
         LOG(INFO) << "Received Compatible Producer schema version: " << version_received;
         // Update the schema version if we're functionally equivalent.
         if (version_received > version_validated) {
           DCHECK(!schema_cached->has_pending_schema());
           schema_cached->set_validated_schema_version(version_received);
+          schema_cached->set_last_compatible_consumer_schema_version(
+              current_consumer_schema_version);
         } else {
           // Nothing to modify.  Don't write to sys catalog.
+          // When would this even happen given that we already check if we have already
+          // received this version
           return Status::OK();
         }
       } else {
-        resp->set_should_wait(true);
-
+        resp->set_should_wait(GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter));
         std::string error_msg =
           Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
                  consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
@@ -6570,9 +6607,15 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
         } else {
           // Why would we be getting different schema versions across tablets? Partial apply?
           DCHECK_EQ(version_received, producer_schema->pending_schema_version());
+          // If we reach here, we have already processed and persisted the pending schema
+          // as a result of an update from a different tablet, so it should be sufficient to
+          // send the response back of whether or not to halt replication.
+          return Status::OK();
         }
       }
 
+      // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
+      l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
       RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
           "Updating cluster config in sys-catalog"));
       l.Commit();
@@ -7141,9 +7184,9 @@ Status CatalogManager::ValidateNewSchemaWithCdc(const TableInfo& table_info,
       RETURN_NOT_OK(SchemaFromPB(producer_schema_pb.pending_schema(), &producer_schema));
 
       // This new schema update should either make the data source copy equivalent
-      // OR be copy equivalent to the data source (meaning it's a subset of the changes we need).
-      bool can_apply = consumer_schema.EquivalentForDataCopy(producer_schema) ||
-                       producer_schema.EquivalentForDataCopy(consumer_schema);
+      // OR be a subset of the changes we need.
+      bool can_apply = consumer_schema.IsSubsetOf(producer_schema) ||
+                       producer_schema.IsSubsetOf(consumer_schema);
       SCHECK(can_apply, IllegalState, Substitute(
              "New Schema not compatible with XCluster Producer Schema:\n new={$0}\n producer={$1}",
              consumer_schema.ToString(), producer_schema.ToString()));
@@ -7153,7 +7196,8 @@ Status CatalogManager::ValidateNewSchemaWithCdc(const TableInfo& table_info,
   return Status::OK();
 }
 
-Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
+Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info,
+                                               SchemaVersion consumer_schema_version) {
   if (PREDICT_FALSE(!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter))) {
     return Status::OK();
   }
@@ -7193,11 +7237,13 @@ Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
       if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
         resuming_replication = true;
         auto pending_version = producer_schema_pb->pending_schema_version();
-        LOG(INFO) << "Consumer schema now data copy compatible with Producer: "
+        LOG(INFO) << "Consumer schema @ version " << consumer_schema_version
+                  << " is now data copy compatible with Producer: "
                   << stream_id << " @ schema version " << pending_version;
         // Clear meta we use to track progress on receiving all WAL entries with old schema.
         producer_schema_pb->set_validated_schema_version(
             std::max(producer_schema_pb->validated_schema_version(), pending_version));
+        producer_schema_pb->set_last_compatible_consumer_schema_version(consumer_schema_version);
         producer_schema_pb->clear_pending_schema();
         // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
         l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
@@ -7218,7 +7264,7 @@ Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
     l.Commit();
     LOG(INFO) << "Resuming Replication on " << table_info.id() << " after Consumer ALTER.";
   } else if (!found_schema) {
-    LOG(INFO) << "Schema changed on Consumer without receiving a Producer change.";
+    LOG(INFO) << "No pending schema change from Producer.";
   }
 
   return Status::OK();
@@ -7467,7 +7513,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
           streams_already_deleted.push_back(stream);
           continue;
         }
-
         if (request_source == cdc::XCLUSTER) {
           if (row_block->row(0).column(0).IsNull()) {
             // Still haven't processed this tablet since timestamp is null, no need to check

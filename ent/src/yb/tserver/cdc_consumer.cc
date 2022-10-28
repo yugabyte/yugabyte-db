@@ -34,6 +34,7 @@
 #include "yb/tserver/cdc_poller.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/cdc_util.h"
 
 #include "yb/client/error.h"
 #include "yb/client/client.h"
@@ -312,8 +313,9 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
         streams_with_local_tserver_optimization_.insert(stream_entry.first);
       }
       if (stream_entry_pb.has_producer_schema()) {
-        stream_to_schema_version_[stream_entry.first] =
-            stream_entry_pb.producer_schema().validated_schema_version();
+        stream_to_schema_version_[stream_entry.first] = std::make_pair(
+            stream_entry_pb.producer_schema().validated_schema_version(),
+            stream_entry_pb.producer_schema().last_compatible_consumer_schema_version());
       }
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
         const auto& consumer_tablet_id = tablet_entry.first;
@@ -437,6 +439,12 @@ void CDCConsumer::TriggerPollForNewTablets() {
           remote_clients_[uuid] = std::move(remote_client);
         }
 
+        SchemaVersion last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
+        auto schema_version_iter = stream_to_schema_version_.find(producer_tablet_info.stream_id);
+        if (schema_version_iter != stream_to_schema_version_.end()) {
+          last_compatible_consumer_schema_version = schema_version_iter->second.second;
+        }
+
         // now create the poller
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.find(producer_tablet_info.stream_id) !=
@@ -444,7 +452,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
         auto cdc_poller = std::make_shared<CDCPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
             local_client_, remote_clients_[uuid], this, use_local_tserver,
-            global_transaction_status_table_, enable_replicate_transaction_status_table_);
+            global_transaction_status_table_, enable_replicate_transaction_status_table_,
+            last_compatible_consumer_schema_version);
         LOG_WITH_PREFIX(INFO) << Format(
             "Start polling for producer tablet $0, consumer tablet $1", producer_tablet_info,
             consumer_tablet_info.tablet_id);
@@ -457,7 +466,8 @@ void CDCConsumer::TriggerPollForNewTablets() {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
       auto cdc_poller_iter = producer_pollers_map_.find(producer_tablet_info);
       if (cdc_poller_iter != producer_pollers_map_.end()) {
-        cdc_poller_iter->second->SetSchemaVersion(schema_version_iter->second);
+        cdc_poller_iter->second->SetSchemaVersion(schema_version_iter->second.first,
+                                                  schema_version_iter->second.second);
       }
     }
   }

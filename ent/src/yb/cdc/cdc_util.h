@@ -32,6 +32,8 @@ typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
 typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
 typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
 
+constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
+
 struct ConsumerTabletInfo {
   std::string tablet_id;
   TableId table_id;

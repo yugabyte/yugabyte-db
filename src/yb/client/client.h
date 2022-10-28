@@ -433,7 +433,8 @@ class YBClient {
   // Result value is set only on success.
   Result<bool> TablegroupExists(const std::string& namespace_name,
                                 const std::string& tablegroup_id);
-  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
+  Result<std::vector<master::TablegroupIdentifierPB>> ListTablegroups(
+      const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
@@ -547,9 +548,10 @@ class YBClient {
                                                const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
-  Result<bool> UpdateConsumerOnProducerMetadata(const string& producer_id,
-                                                const TableId& table_id,
-                                                const tablet::ChangeMetadataRequestPB& meta_info);
+  Status UpdateConsumerOnProducerMetadata(const std::string& producer_id,
+                                          const TableId& table_id,
+                                          const tablet::ChangeMetadataRequestPB& meta_info,
+                                          master::UpdateConsumerOnProducerMetadataResponsePB *resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
