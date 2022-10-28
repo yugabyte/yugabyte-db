@@ -18,7 +18,6 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.ProducerEntryPB;
-import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 

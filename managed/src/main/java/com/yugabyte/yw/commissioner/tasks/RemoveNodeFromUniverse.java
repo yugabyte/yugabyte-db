@@ -141,7 +141,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
         if (rfInZone == -1) {
           log.error(
-              "Unexpected placement info in univ {} {} {}",
+              "Unexpected placement info in universe {} {} {}",
               universe.name,
               rfInZone,
               nodesActiveInAZExcludingCurrentNode);
