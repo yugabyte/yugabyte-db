@@ -253,7 +253,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    checkBootstrapRequiredForReplicationSetup(tableIds);
+    checkBootstrapRequiredForReplicationSetup(getTableIdsNeedBootstrap(tableIds));
 
     Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
     groupByNamespaceName(requestedTableInfoList)
@@ -308,13 +308,14 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap) {
     BackupRequestParams backupRequestParams;
-    if (bootstrapParams.backupRequestParams != null) {
+    if (bootstrapParams != null && bootstrapParams.backupRequestParams != null) {
       backupRequestParams = new BackupRequestParams();
       backupRequestParams.storageConfigUUID = bootstrapParams.backupRequestParams.storageConfigUUID;
       backupRequestParams.parallelism = bootstrapParams.backupRequestParams.parallelism;
     } else {
       // In case the user does not pass the backup parameters, use the default values.
       backupRequestParams = new BackupRequestParams();
+      backupRequestParams.customerUUID = Customer.get(sourceUniverse.customerId).uuid;
       // Use the last storage config used for a successful backup as the default one.
       Optional<Backup> latestCompletedBackupOptional =
           Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
