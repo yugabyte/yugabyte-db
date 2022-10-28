@@ -166,11 +166,17 @@ Sandbox clusters are limited to a single node in a single region.
 
 You can connect to clusters in the following ways:
 
-#### Cloud Shell
+{{< tabpane code=false >}}
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../quick-start-yugabytedb-managed/), with a series of pre-built queries for you to run.
+  {{% tab header="Cloud Shell" lang="Cloud Shell" %}}
 
-#### Client Shell
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+
+When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
+
+  {{% /tab %}}
+
+  {{% tab header="Client Shell" lang="Client Shell" %}}
 
 Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
@@ -188,7 +194,9 @@ Windows client shells require Docker:
 docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
 ```
 
-#### psql
+  {{% /tab %}}
+
+  {{% tab header="psql" lang="psql" %}}
 
 Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
 
@@ -201,7 +209,9 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 
 For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
 
-#### Applications
+  {{% /tab %}}
+
+  {{% tab header="Applications" lang="Applications" %}}
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
 
@@ -213,23 +223,27 @@ Clusters have SSL ([encryption in-transit](../../yugabyte-cloud/cloud-secure-clu
 
 Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
 
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
 For more details, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect/).
 
 ### Why is my Sandbox cluster paused?
 
-Sandbox clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
+Sandbox clusters are paused after 10 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
 For more details, refer to [Inactive Sandbox clusters](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
 
 ### How do I keep my Sandbox cluster from being paused or deleted?
 
-Sandbox clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
+Sandbox clusters are paused after 10 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
 To keep a paused cluster from being deleted, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
-Sandbox clusters are paused after 21 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+Sandbox clusters are paused after 10 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
 - Any SELECT, UPDATE, INSERT, or DELETE database operation.
 
