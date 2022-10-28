@@ -20,7 +20,7 @@ You can scale the following cluster properties:
 - Number of vCPUs per node (vertical).
 - Disk size per node.
 
-Cluster edit operations are performed using the **Edit Infrastructure** on the cluster **Settings** tab.
+Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
 
 {{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
