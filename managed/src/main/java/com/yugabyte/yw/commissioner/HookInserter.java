@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;

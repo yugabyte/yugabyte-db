@@ -8,13 +8,11 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
 import org.yb.ybc.BackupServiceTaskProgressResponse;
-import org.yb.ybc.BackupServiceTaskStage;
 import org.yb.ybc.ControllerStatus;
 
 @Slf4j

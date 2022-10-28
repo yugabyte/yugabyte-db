@@ -274,6 +274,7 @@ public class CustomerTaskController extends AuthenticatedController {
         resizeNodeParams.setErrorString(null);
         taskParams = resizeNodeParams;
         break;
+      case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
@@ -290,7 +291,17 @@ public class CustomerTaskController extends AuthenticatedController {
         }
         nodeTaskParams.nodeName = nodeName;
         nodeTaskParams.universeUUID = universeUUID;
+
+        // Populate the user intent for software upgrades like gFlag upgrades.
+        Universe universe = Universe.getOrBadRequest(universeUUID);
+        UniverseDefinitionTaskParams.Cluster nodeCluster = Universe.getCluster(universe, nodeName);
+        nodeTaskParams.upsertCluster(
+            nodeCluster.userIntent, nodeCluster.placementInfo, nodeCluster.uuid);
+
         nodeTaskParams.expectedUniverseVersion = -1;
+        if (oldTaskParams.has("rootCA")) {
+          nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
+        }
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:
