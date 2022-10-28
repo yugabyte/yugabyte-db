@@ -34,10 +34,8 @@ DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DEFINE_bool(
-    enable_single_record_update, true,
+DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
-TAG_FLAG(enable_single_record_update, runtime);
 
 namespace yb {
 namespace cdc {

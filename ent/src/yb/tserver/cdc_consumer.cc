@@ -56,11 +56,10 @@ DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
              "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
-DEFINE_int32(xcluster_safe_time_update_interval_secs, 1,
+DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
     "seen when performing database level xcluster consistent reads. If there is any additional lag "
     "in the replication, then it will add to the overall staleness of the data.");
-TAG_FLAG(xcluster_safe_time_update_interval_secs, runtime);
 
 static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 value) {
   if (value <= 0) {

@@ -57,17 +57,15 @@ using std::vector;
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(txn_print_trace_every_n, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_print_trace_every_n, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_print_trace_every_n, advanced);
-TAG_FLAG(txn_print_trace_every_n, runtime);
 
-DEFINE_int32(txn_slow_op_threshold_ms, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
-TAG_FLAG(txn_slow_op_threshold_ms, runtime);
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");

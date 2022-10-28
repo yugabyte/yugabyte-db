@@ -8,6 +8,7 @@ import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -267,12 +268,17 @@ public class CustomerTaskController extends AuthenticatedController {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
+      case RebootNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
-        int expectedUniverseVersion = oldTaskParams.get("expectedUniverseVersion").asInt();
         // Build node task params for node actions.
         NodeTaskParams nodeTaskParams = new NodeTaskParams();
+        if (taskType == TaskType.RebootNodeInUniverse) {
+          nodeTaskParams = new RebootNodeInUniverse.Params();
+          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
+              oldTaskParams.get("isHardReboot").asBoolean();
+        }
         nodeTaskParams.nodeName = nodeName;
         nodeTaskParams.universeUUID = universeUUID;
         nodeTaskParams.expectedUniverseVersion = -1;

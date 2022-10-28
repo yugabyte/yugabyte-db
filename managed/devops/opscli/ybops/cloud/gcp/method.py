@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import json
+import logging
 
 from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMethod,
                                        AbstractMethod, UpdateMountedDisksMethod,
@@ -18,7 +19,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.utils.ssh import format_rsa_key, validated_key_file
+from ybops.utils.ssh import format_rsa_key, validated_key_file, get_ssh_host_port, DEFAULT_SSH_PORT
 
 
 class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
@@ -324,6 +325,32 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.cloud.stop_instance(vars(args))
+
+
+class GcpHardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpHardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super(GcpHardRebootInstancesMethod, self).add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        instance_state = host_info['instance_state']
+        if instance_state not in ('RUNNING', 'STOPPING', 'TERMINATED', 'PROVISIONING', 'STAGING'):
+            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
+                                    .format(instance_state))
+        if instance_state in ('RUNNING', 'STOPPING'):
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
+        logging.info("Starting instance {}".format(args.search_pattern))
+        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
+        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
