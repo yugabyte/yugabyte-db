@@ -16,7 +16,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, get_root_label
-
+from ybops.utils.ssh import get_ssh_host_port, DEFAULT_SSH_PORT
 import json
 import os
 import logging
@@ -249,6 +249,32 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
             logging.error("Host {} does not exist.".format(args.search_pattern))
             return
         self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+
+
+class AwsHardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AwsHardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super(AwsHardRebootInstancesMethod, self).add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        instance_state = host_info['instance_state']
+        if instance_state not in ('running', 'stopping', 'stopped', 'pending'):
+            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
+                                    .format(instance_state))
+        if instance_state in ('running', 'stopping'):
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
+        logging.info("Starting instance {}".format(args.search_pattern))
+        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
+        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

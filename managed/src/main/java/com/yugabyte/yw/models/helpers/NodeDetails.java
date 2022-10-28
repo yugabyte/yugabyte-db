@@ -4,13 +4,13 @@ package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.ADD;
 import static com.yugabyte.yw.common.NodeActionType.DELETE;
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditionalAllowedActions;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
-import java.util.EnumMap;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -95,7 +94,7 @@ public class NodeDetails {
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live(STOP, REMOVE, QUERY, REBOOT),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -139,19 +138,11 @@ public class NodeDetails {
     // If the node is still hanging around due to failure, it can be deleted.
     Terminated(DELETE),
     // Set when the node is being rebooted.
-    Rebooting(),
+    Rebooting(REBOOT),
     // Set when the node is being stopped + started.
-    HardRebooting();
+    HardRebooting(HARD_REBOOT);
 
     private final NodeActionType[] allowedActions;
-    // Additional allowed actions that are not exposed to NodeDetails, which means it is not exposed
-    // to the UI.
-    public static final EnumMap<NodeState, Set<NodeActionType>> apiAdditionalAllowedActions =
-        new EnumMap<>(NodeState.class);
-
-    static {
-      apiAdditionalAllowedActions.put(Live, ImmutableSet.of(NodeActionType.HARD_REBOOT));
-    }
 
     NodeState(NodeActionType... allowedActions) {
       this.allowedActions = allowedActions;
@@ -318,10 +309,6 @@ public class NodeDetails {
   @JsonIgnore
   public void validateActionOnState(NodeActionType actionType) {
     if (!isActionAllowedOnState(actionType)) {
-      if (apiAdditionalAllowedActions.containsKey(this.state)
-          && apiAdditionalAllowedActions.get(this.state).contains(actionType)) {
-        return;
-      }
       String msg =
           String.format(
               "Node %s is in %s state, but not in one of %s, so action %s is not allowed.",
