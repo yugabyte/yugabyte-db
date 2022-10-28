@@ -83,7 +83,7 @@ struct TabletInitData {
   TransactionManagerProvider transaction_manager_provider;
   LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
-  ThreadPool* post_split_compaction_pool;
+  ThreadPool* full_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 

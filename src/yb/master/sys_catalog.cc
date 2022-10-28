@@ -578,8 +578,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->auto_flags_manager(),
-      // We don't support splitting the catalog tablet, these fields are unneeded.
-      .post_split_compaction_pool = nullptr,
+      // We won't be doing full compactions on the catalog tablet.
+      .full_compaction_pool = nullptr,
+      // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr
   };
   tablet::BootstrapTabletData data = {
