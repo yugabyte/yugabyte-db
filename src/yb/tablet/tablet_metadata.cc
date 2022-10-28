@@ -66,7 +66,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -75,11 +75,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
-DEFINE_NON_RUNTIME_bool(enable_tablet_orphaned_block_deletion, true,
-    "DEPRECATED. Whether to enable deletion of orphaned blocks from disk. "
-    "Note: This is only exposed for debugging purposes!");
-TAG_FLAG(enable_tablet_orphaned_block_deletion, advanced);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
+DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
 using std::shared_ptr;
 using std::string;
