@@ -8192,8 +8192,12 @@ BackfillIndexStmt:
 
 opt_for_bfinstr:
 			/*EMPTY*/		{ $$ = NULL; }
-			/* Strip the leading 'x' */
-			| WITH XCONST	{ $$ = $2 + 1; }
+			| WITH XCONST
+				{
+					/* Strip the leading 'x' */
+					$$ = $2 + 1;
+				}
+		;
 
 oid_list:	Oid
 				{

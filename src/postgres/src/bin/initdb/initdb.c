@@ -244,7 +244,6 @@ static char **filter_lines_with_token(char **lines, const char *token);
 static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
-static void exit_nicely(void) pg_attribute_noreturn();
 static void exit_nicely_with_code(int) pg_attribute_noreturn();
 static char *get_id(void);
 static int	get_encoding_id(const char *encoding_name);
@@ -609,6 +608,48 @@ cleanup_directories_atexit(void)
 {
 	if (success)
 		return;
+
+	if (!noclean)
+	{
+		if (made_new_pgdata)
+		{
+			pg_log_info("removing data directory \"%s\"", pg_data);
+			if (!rmtree(pg_data, true))
+				pg_log_error("failed to remove data directory");
+		}
+		else if (found_existing_pgdata)
+		{
+			pg_log_info("removing contents of data directory \"%s\"",
+						pg_data);
+			if (!rmtree(pg_data, false))
+				pg_log_error("failed to remove contents of data directory");
+		}
+
+		if (made_new_xlogdir)
+		{
+			pg_log_info("removing WAL directory \"%s\"", xlog_dir);
+			if (!rmtree(xlog_dir, true))
+				pg_log_error("failed to remove WAL directory");
+		}
+		else if (found_existing_xlogdir)
+		{
+			pg_log_info("removing contents of WAL directory \"%s\"", xlog_dir);
+			if (!rmtree(xlog_dir, false))
+				pg_log_error("failed to remove contents of WAL directory");
+		}
+		/* otherwise died during startup, do nothing! */
+	}
+	else
+	{
+		if (made_new_pgdata || found_existing_pgdata)
+			pg_log_info("data directory \"%s\" not removed at user's request",
+						pg_data);
+
+		if (made_new_xlogdir || found_existing_xlogdir)
+			pg_log_info("WAL directory \"%s\" not removed at user's request",
+						xlog_dir);
+	}
+}
 
 static void
 exit_nicely_with_code(int final_exit_code)
@@ -2593,10 +2634,10 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-  if (IsYugaByteGlobalClusterInitdb())
-    set_input(&bki_file, "yb_postgres.bki");
-  else
-	set_input(&bki_file, "postgres.bki");
+	if (IsYugaByteGlobalClusterInitdb())
+		set_input(&bki_file, "yb_postgres.bki");
+	else
+		set_input(&bki_file, "postgres.bki");
 
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
@@ -2995,14 +3036,7 @@ initialize_data_directory(void)
 
 	setup_collation(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
-	{
-		setup_conversion(cmdfd);
-	}
-
 	setup_run_file(cmdfd, dictionary_file);
-
-	setup_dictionary(cmdfd);
 
 	setup_privileges(cmdfd);
 
