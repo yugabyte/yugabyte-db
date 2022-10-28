@@ -29,6 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#ifndef YB_TABLET_TABLET_METADATA_H
+#define YB_TABLET_TABLET_METADATA_H
+
 #pragma once
 
 #include <memory>
@@ -70,6 +73,8 @@ extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
 extern const std::string kSnapshotsDirSuffix;
+
+const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
 YB_STRONGLY_TYPED_BOOL(Primary);
 
@@ -182,6 +187,9 @@ struct KvStoreInfo {
 
   // See KvStoreInfoPB field with the same name.
   bool has_been_fully_compacted = false;
+
+  // See KvStoreInfoPB field with the same name.
+  uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
 
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
@@ -338,6 +346,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  uint64_t last_full_compaction_time() {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.last_full_compaction_time;
+  }
+
+  void set_last_full_compaction_time(const uint64& value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.last_full_compaction_time = value;
   }
 
   bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
@@ -636,3 +654,4 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 } // namespace tablet
 } // namespace yb
 
+#endif /* YB_TABLET_TABLET_METADATA_H */
