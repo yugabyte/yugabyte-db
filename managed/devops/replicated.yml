@@ -404,6 +404,8 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
             container_path: /opt/yugabyte/ybc/releases
+          - host_path: '{{repl ConfigOption "storage_path"}}/node-agent/releases'
+            container_path: /opt/yugabyte/node-agent/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
@@ -511,6 +513,9 @@ components:
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
                 url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
                 security.ssh2_enabled = false
+                node_agent {
+                  releases.path = "/opt/yugabyte/node-agent/releases"
+                }
               }
 
               ybc {
