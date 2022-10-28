@@ -30,10 +30,6 @@
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
-// Deprecated because it's misspelled.  But if set, this flag takes precedence over
-// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
-
 namespace yb {
 
 Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc, char*** argv) {
@@ -59,13 +55,6 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
 
   RETURN_NOT_OK(consensus::ValidateFlags());
-
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
-    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
-                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
-    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
-        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
-  }
 
   RETURN_NOT_OK(GetPrivateIpMode());
 

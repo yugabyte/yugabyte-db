@@ -28,23 +28,21 @@
 
 #include "yb/util/flag_tags.h"
 
-DEFINE_bool(file_expiration_ignore_value_ttl, false,
-             "When deciding whether a file has expired, assume that it is safe to ignore "
-             "value-level TTL and expire based on table TTL only. CAUTION - Shoule only be "
-             "used for expiration of older SST files without value-level TTL metadata, or "
-             "for expiring files with incorrect value-level expiration. Misuse can result "
-             "in the deletion of live data!");
+DEFINE_RUNTIME_bool(file_expiration_ignore_value_ttl, false,
+    "When deciding whether a file has expired, assume that it is safe to ignore "
+    "value-level TTL and expire based on table TTL only. CAUTION - Shoule only be "
+    "used for expiration of older SST files without value-level TTL metadata, or "
+    "for expiring files with incorrect value-level expiration. Misuse can result "
+    "in the deletion of live data!");
 TAG_FLAG(file_expiration_ignore_value_ttl, unsafe);
-TAG_FLAG(file_expiration_ignore_value_ttl, runtime);
 
-DEFINE_bool(file_expiration_value_ttl_overrides_table_ttl, false,
-            "When deciding whether a file has expired, assume that any file with "
-            "value-level TTL metadata can be expired solely on that metadata. Useful for "
-            "the expiration of files earlier than the table-level TTL that is set. "
-            "CAUTION - Should only be used in workloads where the user is certain all data is "
-            "written with a value-level TTL. Misuse can result in the deletion of live data!");
+DEFINE_RUNTIME_bool(file_expiration_value_ttl_overrides_table_ttl, false,
+    "When deciding whether a file has expired, assume that any file with "
+    "value-level TTL metadata can be expired solely on that metadata. Useful for "
+    "the expiration of files earlier than the table-level TTL that is set. "
+    "CAUTION - Should only be used in workloads where the user is certain all data is "
+    "written with a value-level TTL. Misuse can result in the deletion of live data!");
 TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, unsafe);
-TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, runtime);
 
 namespace yb {
 namespace docdb {

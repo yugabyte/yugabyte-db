@@ -282,7 +282,7 @@ public class XClusterConfigController extends AuthenticatedController {
         .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.tableId))
         .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.Error);
 
-    // Wrap XClusterConfig with lag metric data and return
+    // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
     resp.xClusterConfig = xClusterConfig;
     resp.lag = lagMetricData;

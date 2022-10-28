@@ -45,6 +45,21 @@
           "Queries": "Queries"
         }
       }
+    },
+    "admin": {
+      "advanced": {
+        "globalConfig": {
+          "GlobalConfigReqFailed": "Failed to fetch global config values",
+          "GlobalConfigTitle": "Global Configuration",
+          "CustomerConfigTitle": "Customer Configuration",
+          "UniverseConfigTitle": "Universe Configuration",
+          "ProviderConfigTitle": "Provider Configuration",
+          "ModalKeyField": "Config Key",
+          "ModalKeyValue": "Config Value",
+          "ModelEditConfigTitle": "Edit Configuration",
+          "ModelDeleteConfigTitle": "Delete Configuration"
+        }
+      }
     }
   }
 }

@@ -39,9 +39,7 @@ DEFINE_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
 
 DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
@@ -50,9 +48,7 @@ DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_bool(disable_hybrid_scan, false,
-            "If true, hybrid scan will be disabled");
-TAG_FLAG(disable_hybrid_scan, runtime);
+DEFINE_RUNTIME_bool(disable_hybrid_scan, false, "If true, hybrid scan will be disabled");
 
 DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);

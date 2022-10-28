@@ -417,7 +417,7 @@ class UniverseForm extends Component {
     ) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
-      if (currentCluster && newCluster) {
+      if (currentCluster && newCluster && currentCluster.userIntent.providerType !== 'kubernetes') {
         const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
         const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
         const instanceChanged =
@@ -532,6 +532,14 @@ class UniverseForm extends Component {
             .map((userTag) => {
               return { name: userTag.name, value: userTag.value.trim() };
             });
+        }
+
+        if (formValues[clusterType]?.universeOverrides?.length !== 0) {
+          clusterIntent.universeOverrides = formValues[clusterType].universeOverrides;
+        }
+
+        if (formValues[clusterType]?.azOverrides?.length !== 0) {
+          clusterIntent.azOverrides = formValues[clusterType].azOverrides;
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {

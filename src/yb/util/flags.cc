@@ -82,8 +82,7 @@ TAG_FLAG(svc_queue_length_default, advanced);
 
 // This provides a more accurate representation of default gFlag values for application like
 // yb-master which override the hard coded values at process startup time.
-DEFINE_bool(
-    dump_flags_xml, false,
+DEFINE_bool(dump_flags_xml, false,
     "Dump a XLM document describing all of gFlags used in this binary. Differs from helpxml by "
     "displaying the current runtime value as the default instead of the hard coded values from the "
     "flag definitions. ");
@@ -112,15 +111,15 @@ TAG_FLAG(alsologtoemail, unsafe);
 // --alsologtostderr is deprecated in favor of --stderrthreshold
 DECLARE_bool(alsologtostderr);
 TAG_FLAG(alsologtostderr, hidden);
-TAG_FLAG(alsologtostderr, runtime);
+_TAG_FLAG_RUNTIME(alsologtostderr);
 
 DECLARE_bool(colorlogtostderr);
 TAG_FLAG(colorlogtostderr, stable);
-TAG_FLAG(colorlogtostderr, runtime);
+_TAG_FLAG_RUNTIME(colorlogtostderr);
 
 DECLARE_bool(drop_log_memory);
 TAG_FLAG(drop_log_memory, advanced);
-TAG_FLAG(drop_log_memory, runtime);
+_TAG_FLAG_RUNTIME(drop_log_memory);
 
 DECLARE_string(log_backtrace_at);
 TAG_FLAG(log_backtrace_at, advanced);
@@ -135,14 +134,14 @@ TAG_FLAG(log_link, advanced);
 DECLARE_bool(log_prefix);
 TAG_FLAG(log_prefix, stable);
 TAG_FLAG(log_prefix, advanced);
-TAG_FLAG(log_prefix, runtime);
+_TAG_FLAG_RUNTIME(log_prefix);
 
 DECLARE_int32(logbuflevel);
 TAG_FLAG(logbuflevel, advanced);
-TAG_FLAG(logbuflevel, runtime);
+_TAG_FLAG_RUNTIME(logbuflevel);
 DECLARE_int32(logbufsecs);
 TAG_FLAG(logbufsecs, advanced);
-TAG_FLAG(logbufsecs, runtime);
+_TAG_FLAG_RUNTIME(logbufsecs);
 
 DECLARE_int32(logemaillevel);
 TAG_FLAG(logemaillevel, hidden);
@@ -153,35 +152,35 @@ TAG_FLAG(logmailer, hidden);
 
 DECLARE_bool(logtostderr);
 TAG_FLAG(logtostderr, stable);
-TAG_FLAG(logtostderr, runtime);
+_TAG_FLAG_RUNTIME(logtostderr);
 
 DECLARE_int32(max_log_size);
 TAG_FLAG(max_log_size, stable);
-TAG_FLAG(max_log_size, runtime);
+_TAG_FLAG_RUNTIME(max_log_size);
 
 DECLARE_int32(minloglevel);
 TAG_FLAG(minloglevel, stable);
 TAG_FLAG(minloglevel, advanced);
-TAG_FLAG(minloglevel, runtime);
+_TAG_FLAG_RUNTIME(minloglevel);
 
 DECLARE_int32(stderrthreshold);
 TAG_FLAG(stderrthreshold, stable);
 TAG_FLAG(stderrthreshold, advanced);
-TAG_FLAG(stderrthreshold, runtime);
+_TAG_FLAG_RUNTIME(stderrthreshold);
 
 DECLARE_bool(stop_logging_if_full_disk);
 TAG_FLAG(stop_logging_if_full_disk, stable);
 TAG_FLAG(stop_logging_if_full_disk, advanced);
-TAG_FLAG(stop_logging_if_full_disk, runtime);
+_TAG_FLAG_RUNTIME(stop_logging_if_full_disk);
 
 DECLARE_int32(v);
 TAG_FLAG(v, stable);
 TAG_FLAG(v, advanced);
-TAG_FLAG(v, runtime);
+_TAG_FLAG_RUNTIME(v);
 
 DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
-TAG_FLAG(vmodule, runtime);
+_TAG_FLAG_RUNTIME(vmodule);
 TAG_FLAG(vmodule, advanced);
 namespace yb {
 bool ValidateVmodule(const char* flag_name, const string& new_value);
@@ -192,7 +191,7 @@ REGISTER_CALLBACK(vmodule, "UpdateVmodule", &yb::UpdateVmodule);
 
 DECLARE_bool(symbolize_stacktrace);
 TAG_FLAG(symbolize_stacktrace, stable);
-TAG_FLAG(symbolize_stacktrace, runtime);
+_TAG_FLAG_RUNTIME(symbolize_stacktrace);
 TAG_FLAG(symbolize_stacktrace, advanced);
 
 //------------------------------------------------------------
@@ -510,7 +509,7 @@ bool ValidateVmodule(const char* flag_name, const string& new_value) {
 
     char* end;
     errno = 0;
-    const long value = strtol(kv[1].c_str(), &end, 10);
+    const int64 value = strtol(kv[1].c_str(), &end, 10);
     if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
       LOG(ERROR) << Format(
           "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
@@ -622,6 +621,20 @@ Status SetFlag(const std::string* flag_ptr, const char* flag_name, const std::st
 Status SetFlagDefaultAndCurrent(
     const std::string* flag_ptr, const char* flag_name, const std::string& new_value) {
   return SetFlagDefaultAndCurrentInternal(flag_ptr, flag_name, new_value);
+}
+
+void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_yyyy) {
+  gflags::CommandLineFlagInfo info;
+  if (!gflags::GetCommandLineFlagInfo(flagname.c_str(), &info)) {
+    LOG(DFATAL) << "Internal error -- called WarnFlagDeprecated on undefined flag " << flagname;
+    return;
+  }
+  if (!info.is_default) {
+    LOG(WARNING) << "Found explicit setting for deprecated flag " << flagname << ". "
+                 << "This flag has been deprecated since " << date_mm_yyyy << ". "
+                 << "Please remove this from your configuration, as this may cause the process to "
+                 << "crash in future releases.";
+  }
 }
 
 SetFlagResult SetFlag(

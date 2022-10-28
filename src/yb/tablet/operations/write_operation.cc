@@ -45,8 +45,6 @@ DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
                  "How much latency to inject when a write operation is applied.");
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
                  "Pause applying of write operations.");
-TAG_FLAG(TEST_tablet_inject_latency_on_apply_write_txn_ms, runtime);
-TAG_FLAG(TEST_tablet_pause_apply_write_ops, runtime);
 
 namespace yb {
 namespace tablet {

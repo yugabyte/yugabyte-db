@@ -171,6 +171,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
   db_server_base.cc
+  full_compaction_manager.cc
   heartbeater.cc
   heartbeater_factory.cc
   metrics_snapshotter.cc

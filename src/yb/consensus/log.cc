@@ -99,22 +99,20 @@ using namespace std::placeholders;
 
 // Log retention configuration.
 // -----------------------------
-DEFINE_int32(log_min_segments_to_retain, 2,
-             "The minimum number of past log segments to keep at all times,"
-             " regardless of what is required for durability. "
-             "Must be at least 1.");
-TAG_FLAG(log_min_segments_to_retain, runtime);
+DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
+    "The minimum number of past log segments to keep at all times,"
+    " regardless of what is required for durability. "
+    "Must be at least 1.");
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
-DEFINE_int32(log_min_seconds_to_retain, 900,
-             "The minimum number of seconds for which to keep log segments to keep at all times, "
-             "regardless of what is required for durability. Logs may be still retained for "
-             "a longer amount of time if they are necessary for correct restart. This should be "
-             "set long enough such that a tablet server which has temporarily failed can be "
-             "restarted within the given time period. If a server is down for longer than this "
-             "amount of time, it is possible that its tablets will be re-replicated on other "
-             "machines.");
-TAG_FLAG(log_min_seconds_to_retain, runtime);
+DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
+    "The minimum number of seconds for which to keep log segments to keep at all times, "
+    "regardless of what is required for durability. Logs may be still retained for "
+    "a longer amount of time if they are necessary for correct restart. This should be "
+    "set long enough such that a tablet server which has temporarily failed can be "
+    "restarted within the given time period. If a server is down for longer than this "
+    "amount of time, it is possible that its tablets will be re-replicated on other "
+    "machines.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
@@ -142,15 +140,13 @@ DEFINE_double(log_background_sync_interval_fraction, 0.6,
 
 
 // Flags for controlling kernel watchdog limits.
-DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
-             "If calling consensus log callback(s) take longer than this, the kernel watchdog "
-             "will print out a stack trace.");
-TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, runtime);
+DEFINE_RUNTIME_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
+    "If calling consensus log callback(s) take longer than this, the kernel watchdog "
+    "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, advanced);
-DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 1000,
-             "If consensus log append takes longer than this, the kernel watchdog "
-             "will print out a stack trace.");
-TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, runtime);
+DEFINE_RUNTIME_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 1000,
+    "If consensus log append takes longer than this, the kernel watchdog "
+    "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, advanced);
 
 // Fault/latency injection flags.
