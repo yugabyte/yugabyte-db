@@ -17,15 +17,15 @@ The following projects can be used to implement C# applications using the Yugaby
 ## Supported projects
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
-| ------- | ------------------------ | ------------------------ | ---------------------|
-| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql) <br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
-| YugabyteDB C# Driver for YCQL | [Documentation](ycql) |
+| :------ | :----------------------- | :-------------------- | :--------------------------- |
+| PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql/) <br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| YugabyteDB C# Driver for YCQL | [Documentation](ycql/) |
 
 | Project | Documentation and Guides | Example Apps |
-| ------- | ------------------------ | ------------ |
-| Entity Framework ORM | [Documentation](entityframework) | [Hello World App](../../develop/build-apps/csharp/ysql-entity-framework/) |
+| :------ | :----------------------- | :---------- |
+| Entity Framework ORM | [Documentation](entityframework/) | [Hello World App](../../develop/build-apps/csharp/ysql-entity-framework/) |
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](postgres-npgsql/) or [Use an ORM](ysql-entity-framework/).
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](postgres-npgsql/) or [Use an ORM](entityframework/).
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 
@@ -33,10 +33,10 @@ For reference documentation, including using projects with SSL, refer to the [dr
 
 To develop C# applications for YugabyteDB, you need the following:
 
-- **.NET SDK**
+- **.NET SDK**\
   Install .NET SDK 6.0 or later. To download it for your supported OS, visit [Download .NET](https://dotnet.microsoft.com/en-us/download).
 
-- **Create a C# project**
+- **Create a C# project**\
    For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
   - To create a C# project in Visual Studio, select [Console Application](https://docs.microsoft.com/en-us/dotnet/core/tutorials/with-visual-studio?pivots=dotnet-6-0) as template when creating a new project.
   - If you are not using an IDE, use the dotnet command:

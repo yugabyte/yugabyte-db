@@ -134,7 +134,7 @@ namespace Yugabyte_CSharp_Demo
     {
         static void Main(string[] args)
         {
-            var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+            var connStringBuilder = "host=localhost;port=5433;database=yugabyte;userid=yugabyte;password="
             NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 
             try
@@ -176,6 +176,18 @@ namespace Yugabyte_CSharp_Demo
     }
 }
 ```
+
+You should see output similar to the following:
+
+```output
+Created table Employee
+Inserted data (1, 'John', 35, 'CSharp')
+Query returned:
+Name  Age  Language
+John  35   CSharp
+```
+
+### Step 4: Write your application with SSL (optional)
 
 Copy the following code to your `Program.cs` file , and replace the values in the `connStringBuilder` object as appropriate for your cluster if you're using SSL.
 
@@ -248,16 +260,6 @@ namespace Yugabyte_CSharp_Demo
 
 To run the project `Program.cs`, choose _Run -> Start Without Debugging_.
 
-You should see output similar to the following:
-
-```output
-Created table Employee
-Inserted data (1, 'John', 35, 'CSharp')
-Query returned:
-Name  Age  Language
-John  35   CSharp
-```
-
 You should see output similar to the following if you're using SSL:
 
 ```output
@@ -272,5 +274,5 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Learn more
 
-- [PostgreSQL Npgsql driver reference](../../../reference/drivers/csharp/postgres-npgsql-reference/).
-- Build C# applications using [EntityFramework ORM](../entityframework).
+- [PostgreSQL Npgsql driver reference](../../../reference/drivers/csharp/postgres-npgsql-reference/)
+- Build C# applications using [EntityFramework ORM](../entityframework)

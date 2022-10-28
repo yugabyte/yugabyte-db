@@ -148,4 +148,4 @@ Name: Ivy Age: 27 Language: C++
 
 ## Next steps
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB

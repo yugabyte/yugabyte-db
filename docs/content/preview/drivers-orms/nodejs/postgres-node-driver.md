@@ -46,7 +46,7 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres smart driver.
+The following sections demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -261,7 +261,7 @@ If there is no output or you get an error, verify the parameters included in the
 
 ## Learn more
 
-- [PostgreSQL node-postgres driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/).
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/).
-- Build Node.js applications using [Sequelize ORM](../sequelize/).
-- Build Node.js applications using [Prisma ORM](../prisma/).
+- [PostgreSQL node-postgres driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- Build Node.js applications using [Prisma ORM](../prisma/)

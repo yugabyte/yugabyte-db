@@ -187,6 +187,6 @@ If there is no output or you get an error, verify the parameters included in the
 ## Learn more
 
 - Refer to [YugabyteDB node-postgres smart driver reference](../../../reference/drivers/nodejs/yugabyte-pg-reference/) and [Try it out](../../../reference/drivers/nodejs/yugabyte-pg-reference/#try-it-out) for detailed smart driver examples.
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/).
-- Build Node.js applications using [Sequelize ORM](../sequelize/).
-- Build Node.js applications using [Prisma ORM](../prisma/).
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- Build Node.js applications using [Prisma ORM](../prisma/)
