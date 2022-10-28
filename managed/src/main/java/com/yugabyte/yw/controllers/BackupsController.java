@@ -769,6 +769,8 @@ public class BackupsController extends AuthenticatedController {
         && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Please provide a time unit for backup expiry");
+    } else if (!backup.backupUUID.equals(backup.baseBackupUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot edit an incremental backup");
     }
     if (taskParams.storageConfigUUID != null) {
       updateBackupStorageConfig(customerUUID, backupUUID, taskParams);
