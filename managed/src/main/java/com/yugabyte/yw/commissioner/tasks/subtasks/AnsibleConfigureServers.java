@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
@@ -29,7 +28,6 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -47,9 +45,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   }
 
   public static class Params extends NodeTaskParams {
-    public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
+    public UpgradeTaskType type = UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
-
     public boolean enableybc;
     public String ybcSoftwareVersion = null;
 
@@ -108,8 +105,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
 
-    if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
-        && !taskParams().updateMasterAddrsOnly) {
+    if (taskParams().type == UpgradeTaskType.Everything && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.
       if (!taskParams().useSystemd) {
         response =
@@ -150,8 +146,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       String processType = taskParams().getProperty("processType");
       if (ServerType.MASTER.toString().equalsIgnoreCase(processType)) {
         setNodeStatus(NodeStatus.builder().masterState(MasterState.Configured).build());
-      } else {
-        // We set the node state to SoftwareInstalled when configuration type is Everything.
+      } else if (taskParams().type == UpgradeTaskType.Everything
+          && !taskParams().updateMasterAddrsOnly) {
+        // Set node state to SoftwareInstalled only when-
+        // configuration type Everything + not updating master address only = installing software
         // TODO: Why is upgrade task type used to map to node state update?
         setNodeStatus(NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build());
       }

@@ -13,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.MasterErrorException;
 import org.yb.client.YBClient;
-import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
 public class DeleteReplication extends XClusterConfigTaskBase {
