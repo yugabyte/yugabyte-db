@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_MAINTENANCE_MANAGER_H
-#define YB_TABLET_MAINTENANCE_MANAGER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -321,4 +320,3 @@ class ScopedMaintenanceOpRun {
 
 } // namespace yb
 
-#endif // YB_TABLET_MAINTENANCE_MANAGER_H

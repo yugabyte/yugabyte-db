@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RANDOM_H_
-#define YB_UTIL_RANDOM_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -245,4 +244,3 @@ class ThreadSafeRandom {
 
 }  // namespace yb
 
-#endif // YB_UTIL_RANDOM_H_

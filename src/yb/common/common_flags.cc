@@ -39,9 +39,7 @@ DEFINE_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
 
 DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
@@ -104,12 +102,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(yb_num_shards_per_tserver, value));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ysql_num_shards_per_tserver, value));
   }
 }
 

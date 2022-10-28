@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DECIMAL_H
-#define YB_UTIL_DECIMAL_H
+#pragma once
 
 #include <vector>
 #include <limits>
@@ -237,4 +236,3 @@ inline double CanonicalizeDouble(double d) {
 } // namespace util
 } // namespace yb
 
-#endif // YB_UTIL_DECIMAL_H

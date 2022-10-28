@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TOOLS_YB_ADMIN_CLI_H
-#define ENT_SRC_YB_TOOLS_YB_ADMIN_CLI_H
+#pragma once
 
 namespace yb {
 namespace tools {
@@ -40,4 +39,3 @@ class ClusterAdminCli : public yb::tools::ClusterAdminCli {
 }  // namespace tools
 }  // namespace yb
 
-#endif // ENT_SRC_YB_TOOLS_YB_ADMIN_CLI_H

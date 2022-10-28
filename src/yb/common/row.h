@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ROW_H
-#define YB_COMMON_ROW_H
+#pragma once
 
 #include <string>
 #include <utility>
@@ -465,4 +464,3 @@ void ContiguousRowCell<ConstContiguousRow>::set_null(bool null) const;
 
 } // namespace yb
 
-#endif // YB_COMMON_ROW_H

@@ -12,8 +12,7 @@
 //--------------------------------------------------------------------------------------------------
 // Utility functions and macros to manage process signals.
 
-#ifndef YB_UTIL_SIGNAL_UTIL_H
-#define YB_UTIL_SIGNAL_UTIL_H
+#pragma once
 
 #include <signal.h>
 
@@ -68,4 +67,3 @@ typename std::invoke_result<Functor>::type WithMaskedYsqlSignals(Functor callbac
 
 } // namespace yb
 
-#endif // YB_UTIL_SIGNAL_UTIL_H

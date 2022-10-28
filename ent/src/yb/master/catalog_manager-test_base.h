@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
-#define ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
+#pragma once
 
 #include "../../src/yb/master/catalog_manager-test_base.h"
 #include "yb/util/status_log.h"
@@ -90,4 +89,3 @@ void SetupClusterConfigEnt(
 }  // namespace master
 }  // namespace yb
 
-#endif  // ENT_SRC_YB_MASTER_CATALOG_MANAGER_TEST_BASE_H

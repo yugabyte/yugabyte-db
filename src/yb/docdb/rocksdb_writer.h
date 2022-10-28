@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_ROCKSDB_WRITER_H
-#define YB_DOCDB_ROCKSDB_WRITER_H
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
@@ -225,4 +224,3 @@ class RemoveIntentsContext : public IntentsWriterContext {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_ROCKSDB_WRITER_H

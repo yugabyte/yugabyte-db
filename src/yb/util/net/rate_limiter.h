@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NET_RATE_LIMITER_H
-#define YB_UTIL_NET_RATE_LIMITER_H
+#pragma once
 
 #include <functional>
 #include <vector>
@@ -132,4 +131,3 @@ class RateLimiter {
 
 } // namespace yb
 
-#endif // YB_UTIL_NET_RATE_LIMITER_H

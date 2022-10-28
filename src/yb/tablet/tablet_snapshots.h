@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_SNAPSHOTS_H
-#define YB_TABLET_TABLET_SNAPSHOTS_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -136,4 +135,3 @@ class TabletRestorePatch : public RestorePatch {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TABLET_SNAPSHOTS_H

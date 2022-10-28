@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
-#define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -200,4 +199,3 @@ bool HasTryAgain(const Status& status);
 } // namespace pgwrapper
 } // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_LIBPQ_UTILS_H

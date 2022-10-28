@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_
-#define YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_
+#pragma once
 
 #include <memory>
 #include <unordered_map>
@@ -38,4 +37,3 @@ bool AreLoadsAsExpected(const std::unordered_map<TabletServerId, int>& tserver_l
 
 }  // namespace integration_tests
 }  // namespace yb
-#endif  // YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_

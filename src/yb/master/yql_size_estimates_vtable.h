@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
-#define YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -43,4 +42,3 @@ class YQLSizeEstimatesVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H

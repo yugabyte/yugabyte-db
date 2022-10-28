@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TOOLS_YB_ADMIN_CLIENT_H
-#define YB_TOOLS_YB_ADMIN_CLIENT_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -456,4 +455,3 @@ std::string HybridTimeToString(HybridTime ht);
 }  // namespace tools
 }  // namespace yb
 
-#endif // YB_TOOLS_YB_ADMIN_CLIENT_H

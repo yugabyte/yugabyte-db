@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_SERVICE_POOL_H
-#define YB_RPC_SERVICE_POOL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -91,4 +90,3 @@ class ServicePool : public RpcService {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_SERVICE_POOL_H

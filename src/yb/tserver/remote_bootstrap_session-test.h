@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
-#define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
+#pragma once
 
 #include <memory>
 
@@ -119,4 +118,3 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_DEFAULTS_H
-#define YB_MASTER_MASTER_DEFAULTS_H
+#pragma once
 
 #include <string>
 
@@ -101,4 +100,3 @@ constexpr uint16_t kMasterDefaultWebPort = 7000;
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_DEFAULTS_H

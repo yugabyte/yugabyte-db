@@ -13,8 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_UTIL_YB_PARTITION_H
-#define YB_UTIL_YB_PARTITION_H
+#pragma once
 
 #include <string>
 #include "yb/util/status_fwd.h"
@@ -46,4 +45,3 @@ class YBPartition {
 
 } // namespace yb
 
-#endif // YB_UTIL_YB_PARTITION_H

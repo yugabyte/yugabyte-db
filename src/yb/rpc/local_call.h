@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_LOCAL_CALL_H
-#define YB_RPC_LOCAL_CALL_H
+#pragma once
 
 #include "yb/gutil/casts.h"
 
@@ -129,4 +128,3 @@ auto HandleCall(InboundCallPtr call, F f) {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_LOCAL_CALL_H

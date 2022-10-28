@@ -174,7 +174,9 @@ EXAMPLE = {
               "yugabyted start\n\n"+
               "# Create a single-node locally and join other nodes " +
               "that are part of the same cluster:\n" +
-              "yugabyted start -join=host:port,[host:port]\n\n",
+              "yugabyted start --join=host:port,[host:port]\n\n" +
+              "# Create a secure cluster:\n" +
+              "yugabyted start --secure --certs_dir=<path_to_certs_dir>\n\n",
     'stop' : "",
     'destroy' : "",
     'status' : "",
@@ -2113,6 +2115,33 @@ class ControlScript(object):
             Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
 
+    # Check whether the hostnames or IP provided is in correct format.
+    def validate_hostname_ip(self, ip):
+        # Regex expression for validating IPv4
+        ipv4_regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
+            "[0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
+
+        # Regex expression for validating IPv6
+        ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
+
+        ipv4_pattern = re.compile(ipv4_regex)
+        ipv6_pattern = re.compile(ipv6_regex)
+
+        # Checking if it is not a valid IPv4 or IPv6 addresses
+        if not (re.search(ipv4_pattern, ip) or re.search(ipv6_pattern, ip)):
+            return False
+
+        return True
+
+    # Returns a list of invalid IPs from the list of IPs provided.
+    def get_invalid_ips(self, ips):
+        invalid_ips = []
+        for ip in ips:
+            if not self.validate_hostname_ip(ip):
+                invalid_ips.append(ip)
+
+        return invalid_ips
+
     def find_ip_address_of_node(self):
 
         host_name = self.find_hostname_of_node()
@@ -2435,6 +2464,21 @@ class ControlScript(object):
                 has_errors = True
                 Output.print_and_log(Output.make_red("Error") + ": Please provide the " +
                     "--hostnames along with \'yugabyted cert generate_server_certs\' command.")
+            else:
+                hostnames = args.hostnames.split(",")
+                invalid_hostnames = self.get_invalid_ips(hostnames)
+                if invalid_hostnames:
+                    if len(invalid_hostnames) > 1:
+                        msg = Output.make_red("ERROR") + ": Hostnames {} are not valid IPv4 or "\
+                            "IPv6 addresses. Please try again with valid "\
+                            "hostnames.".format(",".join(invalid_hostnames))
+                    else:
+                        msg = Output.make_red("ERROR") + ": Hostname {} is not a valid IPv4 or "\
+                            "IPv6 address. Please try again with valid "\
+                            "hostnames.".format(",".join(invalid_hostnames))
+
+                    has_errors = True
+                    Output.print_and_log(msg)
 
             self.configs.temp_data["hostnames"] = args.hostnames
 
@@ -2485,6 +2529,12 @@ class ControlScript(object):
                     # Case Scenario: When advertise_address has a value in conf file and then
                     # use that regardless of the OS.
                     args.advertise_address = self.configs.saved_data.get("advertise_address")
+            else:
+                if not self.validate_hostname_ip(args.advertise_address):
+                    has_errors = True
+                    Output.print_and_log(Output.make_red("ERROR") + ": --advertise_address " +
+                        "provided is not a valid IPv4 or IPv6 address. " +
+                        "Please try again with a valid IP.")
 
             if args.daemon is not None:
                 if args.background is not None and \
@@ -2751,11 +2801,17 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--secure", help="Start the cluster in a secure manner", action="store_true",
-                    default=None)
+                "--secure", help="Start a YugabyteDB cluster in secure mode with encryption in " +
+                "transit and password authentication enabled. No need to set a value for the " +
+                "flag. Use --secure or --insecure flag to toggle security features on a " +
+                "YugabyteDB cluster. Need to be used along with --certs_dir flag.",
+                action="store_true", default=None)
             cur_parser.add_argument(
-                "--insecure", help="Start the cluster in an insecure manner", action="store_true",
-                    default=None)
+                "--insecure", help="Start a YugabyteDB cluster in an insecure mode without " +
+                "encryption in transit and password authentication enabled. For non-production " +
+                "use only, not to be used without firewalls blocking the internet traffic. No " +
+                "need to set a value for the flag. Use --secure or --insecure flag to toggle " +
+                "security features on a YugabyteDB cluster.", action="store_true", default=None)
             cur_parser.add_argument(
                 "--certs_dir", help="Path to the certificates to be used for secure deployment.",
                 metavar="")
@@ -3528,7 +3584,13 @@ class YsqlProxy(object):
     def try_update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
         cmd = self.cmd_with_password + \
             ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
-        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
+
+        encrypted_password = "*" * len(new_password)
+        encrypted_cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, encrypted_password)]
+
+        out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
+                env_vars=self.env)
         if (retcode != 0):
             raise RetryableError
 
@@ -3604,7 +3666,13 @@ class YcqlProxy(object):
     def try_update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
-        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=os.environ.copy())
+
+        encrypted_password = "*" * len(new_password)
+        encrypted_cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
+                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, encrypted_password)]
+
+        out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
+                env_vars=os.environ.copy())
         if (retcode != 0):
             raise RetryableError
 
@@ -4128,16 +4196,23 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd, timeout=None, log_cmd=False, env_vars=None, shell=False):
+def run_process(cmd, encrypted_cmd=None, timeout=None, log_cmd=False, env_vars=None, shell=False):
     if log_cmd:
-        Output.log("run_process: cmd: {}".format(str(cmd)))
+        if encrypted_cmd:
+            Output.log("run_process: cmd: {}".format(str(encrypted_cmd)))
+        else:
+            Output.log("run_process: cmd: {}".format(str(cmd)))
+
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                             env=env_vars, shell=shell)
     if PY_VERSION >= 3:
         try:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as e:
-            Output.log("run_process: {} timeout expired for command: ".format(cmd))
+            if encrypted_cmd:
+                Output.log("run_process: {} timeout expired for command: ".format(encrypted_cmd))
+            else:
+                Output.log("run_process: {} timeout expired for command: ".format(cmd))
             return None, str(e), -1
     else:
         out, err = proc.communicate()

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PGSQL_SCANSPEC_H
-#define YB_DOCDB_DOC_PGSQL_SCANSPEC_H
+#pragma once
 
 #include <functional>
 
@@ -166,4 +165,3 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOC_PGSQL_SCANSPEC_H

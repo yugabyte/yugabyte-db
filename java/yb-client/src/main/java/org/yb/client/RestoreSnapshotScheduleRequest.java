@@ -11,32 +11,33 @@ import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterBackupOuterClass;
-import org.yb.master.MasterBackupOuterClass.RestoreSnapshotResponsePB;
-import org.yb.master.MasterBackupOuterClass.RestoreSnapshotRequestPB;
+import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleResponsePB;
+import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleRequestPB;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
 @InterfaceAudience.Public
-public class RestoreSnapshotRequest extends YRpc<RestoreSnapshotResponse> {
+public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotScheduleResponse> {
 
-    private UUID snapshotUUID;
+    private UUID snapshotScheduleUUID;
     private long restoreTimeInMillis;
 
-    RestoreSnapshotRequest(YBTable table,
-        UUID snapshotUUID,
-        long restoreHybridTime) {
+    RestoreSnapshotScheduleRequest(YBTable table,
+        UUID snapshotScheduleUUID,
+        long restoreTimeInMillis) {
         super(table);
-        this.snapshotUUID = snapshotUUID;
+        this.snapshotScheduleUUID = snapshotScheduleUUID;
         this.restoreTimeInMillis = restoreTimeInMillis;
     }
 
     @Override
     ByteBuf serialize(Message header) {
         assert header.isInitialized();
-        final RestoreSnapshotRequestPB.Builder builder = RestoreSnapshotRequestPB.newBuilder();
-        if (snapshotUUID != null) {
-            builder.setSnapshotId(SnapshotUtil.convertToByteString(snapshotUUID));
+        final RestoreSnapshotScheduleRequestPB.Builder builder =
+                RestoreSnapshotScheduleRequestPB.newBuilder();
+        if (snapshotScheduleUUID != null) {
+            builder.setSnapshotScheduleId(SnapshotUtil.convertToByteString(snapshotScheduleUUID));
         }
         builder.setRestoreHt(
             clockTimestampToHTTimestamp(restoreTimeInMillis, TimeUnit.MILLISECONDS));
@@ -48,24 +49,24 @@ public class RestoreSnapshotRequest extends YRpc<RestoreSnapshotResponse> {
 
     @Override
     String method() {
-        return "RestoreSnapshot";
+        return "RestoreSnapshotSchedule";
     }
 
     @Override
-    Pair<RestoreSnapshotResponse, Object> deserialize(CallResponse callResponse,
+    Pair<RestoreSnapshotScheduleResponse, Object> deserialize(CallResponse callResponse,
                                                    String masterUUID) throws Exception {
 
-        final RestoreSnapshotResponsePB.Builder respBuilder =
-                RestoreSnapshotResponsePB.newBuilder();
+        final RestoreSnapshotScheduleResponsePB.Builder respBuilder =
+                RestoreSnapshotScheduleResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
         MasterTypes.MasterErrorPB serverError =
                 respBuilder.hasError() ? respBuilder.getError() : null;
 
         UUID restorationUUID = SnapshotUtil.convertToUUID(respBuilder.getRestorationId());
-        RestoreSnapshotResponse response =
-                new RestoreSnapshotResponse(deadlineTracker.getElapsedMillis(),
-                        masterUUID, serverError, restorationUUID);
-        return new Pair<RestoreSnapshotResponse, Object>(response, serverError);
+        UUID snapshotUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotId());
+        RestoreSnapshotScheduleResponse response =
+                new RestoreSnapshotScheduleResponse(deadlineTracker.getElapsedMillis(),
+                        masterUUID, serverError, restorationUUID, snapshotUUID);
+        return new Pair<RestoreSnapshotScheduleResponse, Object>(response, serverError);
     }
-
 }

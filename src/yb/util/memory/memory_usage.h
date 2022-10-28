@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_MEMORY_MEMORY_USAGE_H
-#define YB_UTIL_MEMORY_MEMORY_USAGE_H
+#pragma once
 
 #include <string>
 #include <type_traits>
@@ -164,4 +163,3 @@ std::size_t DynamicMemoryUsageOf(const T& entity, const Types&... rest_entities)
 
 }  // namespace yb
 
-#endif  // YB_UTIL_MEMORY_MEMORY_USAGE_H

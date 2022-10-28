@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PRIORITY_QUEUE_H
-#define YB_UTIL_PRIORITY_QUEUE_H
+#pragma once
 
 namespace yb {
 
@@ -95,4 +94,3 @@ class PriorityQueue {
 
 } // namespace yb
 
-#endif // YB_UTIL_PRIORITY_QUEUE_H

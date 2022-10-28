@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_ACCEPTOR_H
-#define YB_RPC_ACCEPTOR_H
+#pragma once
 
 #include <mutex>
 #include <vector>
@@ -102,4 +101,3 @@ class Acceptor {
 
 } // namespace rpc
 } // namespace yb
-#endif // YB_RPC_ACCEPTOR_H

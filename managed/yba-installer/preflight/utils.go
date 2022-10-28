@@ -70,6 +70,8 @@ func GetCurrentUser() (string) {
 
 func ExecuteBashCommand(command string, args []string) (o string, e error) {
 
+    // Add a starting proc here
+    LogDebug("Running command " + command + " " + strings.Join(args, " "))
     cmd := exec.Command(command, args...)
 
     var execOut bytes.Buffer
@@ -81,7 +83,10 @@ func ExecuteBashCommand(command string, args []string) (o string, e error) {
 
     if err == nil {
         LogDebug(command + " " + strings.Join(args, " ") + " successfully executed.")
-    }
+    } else {
+        LogDebug(command + " " + strings.Join(args, " ") + " failed with error " + err.Error() +
+        "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
+	}
 
     return execOut.String(), err
 }

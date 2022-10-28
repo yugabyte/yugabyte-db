@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
-#define YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
+#pragma once
 
 #include <map>
 #include <memory>
@@ -954,4 +953,3 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_ */

@@ -75,14 +75,15 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private Config mockConfig;
 
-  private Set<TaskType> RETRYABLE_TASKS =
+  private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
-          TaskType.ReleaseInstanceFromUniverse);
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.RebootNodeInUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -548,7 +549,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues()
             .stream()
-            .filter(t -> Commissioner.isTaskRetryable(t))
+            .filter(Commissioner::isTaskRetryable)
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }

@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UNIVERSAL_COMPACTION_H
-#define YB_ROCKSDB_UNIVERSAL_COMPACTION_H
+#pragma once
 
 #include <climits>
 
@@ -107,4 +106,3 @@ class CompactionOptionsUniversal {
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_UNIVERSAL_COMPACTION_H

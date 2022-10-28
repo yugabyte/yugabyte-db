@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
-#define YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
@@ -149,4 +148,3 @@ class TabletServerTestBase : public YBTest {
 } // namespace tserver
 } // namespace yb
 
-#endif /* YB_TSERVER_TABLET_SERVER_TEST_BASE_H_ */

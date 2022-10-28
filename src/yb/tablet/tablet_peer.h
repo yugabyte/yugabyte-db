@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_H_
-#define YB_TABLET_TABLET_PEER_H_
+#pragma once
 
 #include <atomic>
 #include <future>
@@ -557,4 +556,3 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_TABLET_PEER_H_ */

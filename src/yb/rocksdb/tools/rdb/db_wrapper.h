@@ -11,8 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef DBWRAPPER_H
-#define DBWRAPPER_H
+#pragma once
 
 #include <map>
 #include <node.h>
@@ -68,4 +67,3 @@ class DBWrapper : public node::ObjectWrap {
         columnFamilies_;
 };
 
-#endif

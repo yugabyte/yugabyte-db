@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_METRIC_DESCRIPTOR_H
-#define YB_GEN_YRPC_METRIC_DESCRIPTOR_H
+#pragma once
 
 #include <string>
 
@@ -47,4 +46,3 @@ void GenerateMethodAssignments(
 } // namespace gen_yrpc
 } // namespace yb
 
-#endif // YB_GEN_YRPC_METRIC_DESCRIPTOR_H

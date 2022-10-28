@@ -15,8 +15,7 @@
 // This class represents a SQL statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_STATEMENT_H_
-#define YB_YQL_CQL_QL_STATEMENT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
@@ -90,4 +89,3 @@ class Statement {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_STATEMENT_H_

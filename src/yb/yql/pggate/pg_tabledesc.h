@@ -15,8 +15,7 @@
 // Structure definitions for a Postgres table descriptor.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_TABLEDESC_H_
-#define YB_YQL_PGGATE_PG_TABLEDESC_H_
+#pragma once
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_types.h"
@@ -115,4 +114,3 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_TABLEDESC_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
-#define YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H
+#pragma once
 
 #include <bitset>
 
@@ -26,4 +25,3 @@ class SharedLockManager;
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_SHARED_LOCK_MANAGER_FWD_H

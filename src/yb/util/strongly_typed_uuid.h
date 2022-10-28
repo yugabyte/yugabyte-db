@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRONGLY_TYPED_UUID_H
-#define YB_UTIL_STRONGLY_TYPED_UUID_H
+#pragma once
 
 #include <random>
 
@@ -202,4 +201,3 @@ std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
 
 } // namespace yb
 
-#endif // YB_UTIL_STRONGLY_TYPED_UUID_H

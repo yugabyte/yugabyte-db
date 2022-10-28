@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_ALTERER_H
-#define YB_CLIENT_TABLE_ALTERER_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -131,4 +130,3 @@ class YBTableAlterer {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLE_ALTERER_H

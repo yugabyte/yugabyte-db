@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_HANDLE_H
-#define YB_CLIENT_TABLE_HANDLE_H
+#pragma once
 
 #include <unordered_map>
 
@@ -315,4 +314,3 @@ FilterEqualImpl<T> FilterEqual(const T& t, std::string column = "key") {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLE_HANDLE_H

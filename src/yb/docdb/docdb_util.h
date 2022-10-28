@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_DOCDB_UTIL_H
-#define YB_DOCDB_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -254,4 +253,3 @@ class DocDBRocksDBUtil {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOCDB_UTIL_H

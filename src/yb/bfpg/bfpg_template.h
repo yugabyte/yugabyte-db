@@ -16,8 +16,7 @@
 // implementation for compilation and execution of a builtin call.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFPG_TEMPLATE_H
-#define YB_BFPG_BFPG_TEMPLATE_H
+#pragma once
 
 #include <fcntl.h>
 
@@ -82,4 +81,3 @@ Status FindOpcode(const std::string& ql_name,
 } // namespace bfpg
 } // namespace yb
 
-#endif  // YB_BFPG_BFPG_TEMPLATE_H

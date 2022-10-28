@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_STATE_WITH_TABLETS_H
-#define YB_MASTER_STATE_WITH_TABLETS_H
+#pragma once
 
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -207,4 +206,3 @@ class StateWithTablets {
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_STATE_WITH_TABLETS_H

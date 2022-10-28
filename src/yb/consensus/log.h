@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LOG_H_
-#define YB_CONSENSUS_LOG_H_
+#pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -630,4 +629,3 @@ class Log : public RefCountedThreadSafe<Log> {
 
 }  // namespace log
 }  // namespace yb
-#endif /* YB_CONSENSUS_LOG_H_ */

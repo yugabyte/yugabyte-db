@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READER_H_
-#define YB_DOCDB_DOC_READER_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -115,4 +114,3 @@ class DocDBTableReader {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_READER_H_

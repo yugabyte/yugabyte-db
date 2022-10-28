@@ -22,8 +22,7 @@
 // See the header of file "/util/bfpg/bfpg.h" for more general info.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFUNC_STANDARD_H_
-#define YB_BFPG_BFUNC_STANDARD_H_
+#pragma once
 
 #include <string>
 
@@ -164,4 +163,3 @@ Status NowTimeUuid(RTypePtr result) {
 } // namespace bfpg
 } // namespace yb
 
-#endif  // YB_BFPG_BFUNC_STANDARD_H_

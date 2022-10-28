@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_CONTEXT_H
-#define YB_CONSENSUS_CONSENSUS_CONTEXT_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -80,4 +79,3 @@ class ConsensusContext {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_CONTEXT_H

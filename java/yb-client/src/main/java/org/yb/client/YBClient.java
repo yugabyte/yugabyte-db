@@ -1786,10 +1786,10 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public RestoreSnapshotResponse restoreSnapshot(UUID snapshotUUID,
-                                                 long restoreHybridTime) throws Exception {
-    Deferred<RestoreSnapshotResponse> d =
-      asyncClient.restoreSnapshot(snapshotUUID, restoreHybridTime);
+  public RestoreSnapshotScheduleResponse restoreSnapshotSchedule(UUID snapshotScheduleUUID,
+                                                 long restoreTimeInMillis) throws Exception {
+    Deferred<RestoreSnapshotScheduleResponse> d =
+      asyncClient.restoreSnapshotSchedule(snapshotScheduleUUID, restoreTimeInMillis);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
