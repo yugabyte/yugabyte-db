@@ -4,6 +4,7 @@ import java.util.Collections;
 
 import javax.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
@@ -13,9 +14,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 
 import lombok.extern.slf4j.Slf4j;
 
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditionalAllowedActions;
-
 @Slf4j
+@Retryable
 public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
   public static class Params extends NodeTaskParams {
@@ -34,7 +34,8 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    NodeDetails currentNode = null;
+    NodeDetails currentNode;
+    boolean isHardReboot = taskParams().isHardReboot;
 
     try {
       checkUniverseVersion();
@@ -58,24 +59,23 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      boolean isHardReboot = taskParams().isHardReboot;
-      NodeActionType nodeAction = isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT;
-      NodeState nodeState = isHardReboot ? NodeState.HardRebooting : NodeState.Rebooting;
-      SubTaskGroupType subTaskGroup =
-          isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode;
-
-      currentNode.validateActionOnState(nodeAction);
+      currentNode.validateActionOnState(
+          isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
       preTaskActions();
 
-      createSetNodeStateTask(currentNode, nodeState)
+      createSetNodeStateTask(
+              currentNode, isHardReboot ? NodeState.HardRebooting : NodeState.Rebooting)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-      boolean hasMaster = currentNode.isMaster;
 
       // Stop the tserver.
-      createTServerTaskForNode(currentNode, "stop")
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      if (currentNode.isTserver) {
+        boolean tserverAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
+        if (tserverAlive) {
+          createTServerTaskForNode(currentNode, "stop")
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+      }
 
       // Stop Yb-controller on this node.
       if (universe.isYbcEnabled()) {
@@ -84,17 +84,22 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Stop the master process on this node.
-      if (hasMaster) {
-        createStopMasterTasks(Collections.singleton(currentNode))
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      if (currentNode.isMaster) {
+        boolean masterAlive = isMasterAliveOnNode(currentNode, universe.getMasterAddresses());
+        if (masterAlive) {
+          createStopMasterTasks(Collections.singleton(currentNode))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
       }
 
       // Reboot the node.
       createRebootTasks(Collections.singletonList(currentNode), isHardReboot)
-          .setSubTaskGroupType(subTaskGroup);
+          .setSubTaskGroupType(
+              isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode);
 
-      if (hasMaster) {
+      if (currentNode.isMaster) {
         // Start the master.
         createStartMasterTasks(Collections.singleton(currentNode))
             .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);

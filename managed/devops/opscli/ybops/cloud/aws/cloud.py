@@ -557,8 +557,10 @@ class AwsCloud(AbstractCloud):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
             instance = ec2.Instance(id=host_info["id"])
-            instance.stop()
-            instance.wait_until_stopped()
+            if instance.state['Name'] != 'stopped':
+                if instance.state['Name'] != 'stopping':
+                    instance.stop()
+                instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
 
@@ -567,13 +569,16 @@ class AwsCloud(AbstractCloud):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=host_info["id"])
-            instance.start()
-            # Default is 15, 40, double it to work around failures in provisioning instances.
-            wait_config = {
-                'Delay': 15,
-                'MaxAttempts': 80
-            }
-            instance.wait_until_running(WaiterConfig=wait_config)
+            if instance.state['Name'] != 'running':
+                if instance.state['Name'] != 'pending':
+                    instance.start()
+                # Increase wait timeout to 15 * 80 = 1200 seconds
+                # to work around failures in provisioning instances.
+                wait_config = {
+                    'Delay': 15,
+                    'MaxAttempts': 80
+                }
+                instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
             self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)

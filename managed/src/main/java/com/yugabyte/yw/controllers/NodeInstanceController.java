@@ -49,12 +49,10 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
 import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditionalAllowedActions;
 
 @Api(
     value = "Node instances",
