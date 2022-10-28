@@ -32,6 +32,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -108,9 +109,8 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
                  "Limit the functionality of the load balancer during tests so tests can make "
                  "progress");
 
-// No longer used because leader stepdown is not as slow as it used to be.)
-DEFINE_bool(load_balancer_skip_leader_as_remove_victim, false,
-            "DEPRECATED. Should the LB skip a leader as a possible remove candidate.");
+// No longer used because leader stepdown is not as slow as it used to be.
+DEPRECATE_FLAG(bool, load_balancer_skip_leader_as_remove_victim, "10_2022")
 
 DEFINE_bool(allow_leader_balancing_dead_node, true,
             "When a tserver is marked as dead, do we continue leader balancing for tables that "
