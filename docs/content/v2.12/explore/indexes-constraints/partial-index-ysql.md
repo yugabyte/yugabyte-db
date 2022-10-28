@@ -79,7 +79,7 @@ Without creating the partial index, querying the `customers` table with the `WHE
 northwind=# CREATE INDEX index_country ON customers(country) WHERE(contact_title = 'Sales Manager');
 ```
 
-- Verify with the `EXPLAIN` statment that the number of rows will be significantly less compared to the original query plan.
+- Verify with the `EXPLAIN` statement that the number of rows will be significantly less compared to the original query plan.
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');

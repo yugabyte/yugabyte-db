@@ -302,7 +302,7 @@ comment_on = 'COMMENT' 'ON' (
   'TEXT' 'SEARCH' 'DICTIONARY' object_name |
   'TEXT' 'SEARCH' 'PARSER' object_name |
   'TEXT' 'SEARCH' 'TEMPLATE' object_name |
-  (* 'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name | bllewell: n/a except with implementation langauges like C *)
+  (* 'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name | bllewell: n/a except with implementation languages like C *)
   'TRIGGER' trigger_name 'ON' table_name |
   'TYPE' object_name |
   'VIEW' object_name
@@ -473,7 +473,7 @@ fn_invocation = subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')
 subprogram_call_signature = arg_type { ',' arg_type } ;
 
 unalterable_fn_attribute = 'WINDOW'
-                            (* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+                            (* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation languages like C *)
                             | 'LANGUAGE' lang_name
                             | 'AS' implementation_definition
 ;
@@ -583,7 +583,7 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
                     ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute )
                     { ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute ) } ;
 
-unalterable_proc_attribute =  (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
+unalterable_proc_attribute =  (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation languages like C *)
                               | 'LANGUAGE' lang_name
                               | 'AS' implementation_definition;
 

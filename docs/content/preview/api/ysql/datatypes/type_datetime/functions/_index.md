@@ -88,7 +88,7 @@ Notice that _timeofday()_ has the identical effect to `to_char(clock_timestamp()
 Try this:
 
 ```plpgsql
--- Because "fmt" uses the plain forms "Dy" and "Mon", the test is insensitve to the value of "lc_time".
+-- Because "fmt" uses the plain forms "Dy" and "Mon", the test is insensitive to the value of "lc_time".
 -- Setting it here to Finnish simply emphasizes this point.
 set lc_time = 'fi_FI';
 

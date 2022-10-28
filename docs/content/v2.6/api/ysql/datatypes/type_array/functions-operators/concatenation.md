@@ -184,7 +184,7 @@ declare
     ];
 
   -- Notice that this is a 1-d array.
-  -- Its lenth is the same as that of arr_1
+  -- Its length is the same as that of arr_1
   -- along arr_1's SECOND dimension.
   arr_3 constant int[] := array[31, 32, 33];
 

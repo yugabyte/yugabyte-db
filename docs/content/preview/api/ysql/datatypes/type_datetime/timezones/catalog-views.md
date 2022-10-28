@@ -227,7 +227,7 @@ The column structure and naming of the _pg_timezone_names_ and _pg_timezone_abbr
 
 - There is no requirement that every _abbrev_ value from _pg_timezone_names_, establishing this set over the whole year maps to the same _utc_offset_ value as does its match in _pg_timezone_abbrevs_ when such a match is found.
 
-- Nor could there be, given what the previous bullet states. The purpose of the _pg_timezone_abbrevs view_, these days, is dubious. In historical versions of PostgreSQL, it provided a useful way to allow the specification of a timezone that wasn't defined in the shipped files described in appendix [B.4](https://www.postgresql.org/docs/11/datetime-config-files.html). of the PostgreSQL documenation.
+- Nor could there be, given what the previous bullet states. The purpose of the _pg_timezone_abbrevs view_, these days, is dubious. In historical versions of PostgreSQL, it provided a useful way to allow the specification of a timezone that wasn't defined in the shipped files described in appendix [B.4](https://www.postgresql.org/docs/11/datetime-config-files.html). of the PostgreSQL documentation.
 
 ## Interesting pg_timezone_names and pg_timezone_abbrevs queries
 

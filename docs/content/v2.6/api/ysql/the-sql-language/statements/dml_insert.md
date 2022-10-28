@@ -219,7 +219,7 @@ with "WHERE sample.c1 <> 'tiger'".
 INSERT INTO sample(id, c1, c2)
   VALUES (4, 'deer'   , 'vulture'),
          (5, 'lion'   , 'hawk'),
-         (6, 'cheeta' , 'chaffinch')
+         (6, 'cheetah', 'chaffinch')
   ON CONFLICT (id)
   DO UPDATE SET (c1, c2) = (EXCLUDED.c1, EXCLUDED.c2)
   WHERE sample.c1 <> 'tiger';
@@ -235,14 +235,14 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |   c1   |    c2
-----+--------+-----------
-  1 | cat    | sparrow
-  2 | dog    | blackbird
-  3 | horse  | pigeon
-  4 | deer   | vulture
-  5 | tiger  | starling
-  6 | cheeta | chaffinch
+ id |   c1    |    c2
+----+---------+-----------
+  1 | cat     | sparrow
+  2 | dog     | blackbird
+  3 | horse   | pigeon
+  4 | deer    | vulture
+  5 | tiger   | starling
+  6 | cheetah | chaffinch
 ```
 
 Notice that this restriction is legal too:

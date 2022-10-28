@@ -520,7 +520,7 @@ create procedure test_array_slices(
   -- The "real" formal.
   arr   in     anyarray,
 
-  -- used as "local varables
+  -- used as "local variables
   val   in out anyelement,
   slice in out anyarray)
   language plpgsql
