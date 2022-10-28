@@ -79,7 +79,7 @@ type: indexpage
         <div class="title">Foreign data wrappers</div>
       </div>
       <div class="body">
-          Use Foreign data wrappers to access and interact with an external data source.
+          Use foreign data wrappers to access and interact with an external data source.
       </div>
     </a>
   </div>
