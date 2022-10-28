@@ -126,12 +126,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	if provider.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	//To-do: Should the api return a string instead of a list?
-	if data := provider.CustomHostCidrs; len(data) > 0 {
-		options = append(options, "--yb_home_dir", data[0])
-	} else {
-		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
-	}
+	options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
 
 	if data := provider.SshPort; data != 0 {
 		options = append(options, "--ssh_port", fmt.Sprint(data))

@@ -5704,13 +5704,6 @@
           },
           "type" : "object"
         },
-        "customHostCidrs" : {
-          "description" : "Transient property - only present in mutate API request",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
         "customerUUID" : {
           "description" : "Customer uuid",
           "format" : "uuid",

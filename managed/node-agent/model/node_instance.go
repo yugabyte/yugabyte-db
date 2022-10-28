@@ -19,7 +19,6 @@ type Provider struct {
 	Cuuid               string            `json:"customerUUID"`
 	AirGapInstall       bool              `json:"airGapInstall"`
 	SshPort             int               `json:"sshPort"`
-	CustomHostCidrs     []string          `json:"customHostCidrs"`
 	OverrideKeyValidate bool              `json:"overrideKeyValidate"`
 	SetUpChrony         bool              `json:"setUpChrony"`
 	NtpServers          []string          `json:"ntpServers"`
