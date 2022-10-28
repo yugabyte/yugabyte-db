@@ -89,7 +89,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -141,9 +141,7 @@ DEFINE_RUNTIME_bool(xcluster_skip_schema_compatibility_checks_on_alter, false,
     "When xCluster replication sends a DDL change, skip checks "
     "for any schema compatibility");
 
-// Marking as NON_RUNTIME as it's deprecated.
-DEFINE_NON_RUNTIME_bool(allow_consecutive_restore, true,
-    "DEPRECATED. Has no effect, use ForwardRestoreCheck to disallow any forward restores.");
+DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 
 DEFINE_bool(check_bootstrap_required, false,
             "Is it necessary to check whether bootstrap is required for Universe Replication.");
