@@ -302,10 +302,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
 
-  Status RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) override;
+  Status RemoveIntents(
+      const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
 
   Status RemoveIntents(
-      const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
+      const RemoveIntentsData& data, RemoveReason reason,
+      const TransactionIdSet& transactions) override;
 
   Status GetIntents(
       const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
@@ -1009,7 +1011,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 
   template <class Ids>
-  Status RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids);
+  Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
   // Tries to find intent .SST files that could be deleted and remove them.
   void CleanupIntentFiles();
