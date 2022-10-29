@@ -175,6 +175,8 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   container: {
