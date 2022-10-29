@@ -1843,7 +1843,8 @@ Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApply
 }
 
 template <class Ids>
-Status Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
+Status Tablet::RemoveIntentsImpl(
+    const RemoveIntentsData& data, RemoveReason reason, const Ids& ids) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -1851,7 +1852,7 @@ Status Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) 
   for (const auto& id : ids) {
     boost::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
-      docdb::RemoveIntentsContext context(id);
+      docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
           apply_state ? apply_state->key : Slice(), intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
@@ -1874,12 +1875,14 @@ Status Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) 
 }
 
 
-Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) {
-  return RemoveIntentsImpl(data, std::initializer_list<TransactionId>{id});
+Status Tablet::RemoveIntents(
+    const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) {
+  return RemoveIntentsImpl(data, reason, std::initializer_list<TransactionId>{id});
 }
 
-Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdSet& transactions) {
-  return RemoveIntentsImpl(data, transactions);
+Status Tablet::RemoveIntents(
+    const RemoveIntentsData& data, RemoveReason reason, const TransactionIdSet& transactions) {
+  return RemoveIntentsImpl(data, reason, transactions);
 }
 
 // We batch this as some tx could be very large and may not fit in one batch

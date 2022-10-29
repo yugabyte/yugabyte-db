@@ -21,6 +21,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/walltime.h"
@@ -553,6 +554,10 @@ Result<bool> ApplyIntentsContext::Entry(
     handler->Put(key_parts, value_parts);
     ++write_id_;
     RegisterRecord();
+
+    YB_TRANSACTION_DUMP(
+        ApplyIntent, transaction_id(), intent.doc_path.size(), intent.doc_path,
+        commit_ht_, write_id_, decoded_value.body);
   }
 
   return false;
@@ -566,8 +571,8 @@ void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
   }
 }
 
-RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id)
-    : IntentsWriterContext(transaction_id) {
+RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason)
+    : IntentsWriterContext(transaction_id), reason_(reason) {
 }
 
 Result<bool> RemoveIntentsContext::Entry(
@@ -578,9 +583,12 @@ Result<bool> RemoveIntentsContext::Entry(
   }
 
   handler->SingleDelete(key);
+  YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, key);
   RegisterRecord();
+
   if (!metadata) {
     handler->SingleDelete(value);
+    YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, value);
     RegisterRecord();
   }
   return false;

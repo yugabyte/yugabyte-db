@@ -26,13 +26,14 @@ namespace yb {
 namespace docdb {
 
 YB_DEFINE_ENUM(TransactionDumpOp,
-               ((kApplyIntents, 1)) // Apply intents at participant.
+               ((kApplyIntent, 1)) // Apply intents at participant.
                ((kRead, 2)) // Any read.
                ((kCommit, 3)) // Transaction committed.
                ((kStatus, 4)) // Transaction status received.
                ((kConflicts, 5)) // Transaction conflicts.
                ((kApplied, 6)) // Transaction applied on all involved tablets.
                ((kRemove, 7)) // Transaction removed from participant.
+               ((kRemoveIntent, 8)) // Remove intents at participant.
                );
 
 void TransactionDump(const SliceParts& parts);

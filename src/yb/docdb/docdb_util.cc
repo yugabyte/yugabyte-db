@@ -116,8 +116,9 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
   explicit DirectWriteToWriteBatchHandler(rocksdb::WriteBatch *write_batch)
       : write_batch_(write_batch) {}
 
-  void Put(const SliceParts& key, const SliceParts& value) override {
+  std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
     write_batch_->Put(key, value);
+    return std::pair(Slice(), Slice());
   }
 
   void SingleDelete(const Slice& key) override {
