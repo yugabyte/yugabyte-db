@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_LISTENER_H
-#define YB_ROCKSDB_LISTENER_H
 
 #pragma once
 
@@ -261,4 +259,3 @@ class EventListener {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_LISTENER_H

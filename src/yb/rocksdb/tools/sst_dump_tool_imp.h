@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
-#define YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
@@ -98,4 +96,3 @@ class SstFileReader {
 
 #endif  // ROCKSDB_LITE
 
-#endif // YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H

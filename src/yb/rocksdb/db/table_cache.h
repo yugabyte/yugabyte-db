@@ -22,8 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Thread-safe (provides internal synchronization)
-#ifndef YB_ROCKSDB_DB_TABLE_CACHE_H
-#define YB_ROCKSDB_DB_TABLE_CACHE_H
 
 #pragma once
 
@@ -192,4 +190,3 @@ class TableCache {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_TABLE_CACHE_H

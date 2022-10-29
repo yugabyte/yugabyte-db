@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COMPACTION_H
-#define YB_ROCKSDB_DB_COMPACTION_H
 
 #pragma once
 
@@ -395,4 +393,3 @@ extern uint64_t TotalFileSize(const std::vector<FileMetaData*>& files);
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_COMPACTION_H

@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_MEMTABLE_H
-#define YB_ROCKSDB_DB_MEMTABLE_H
 
 #pragma once
 
@@ -449,4 +447,3 @@ extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_MEMTABLE_H
