@@ -1629,15 +1629,14 @@ public class YBClient implements AutoCloseable {
 
   /**
    * It makes parallel calls to {@link AsyncYBClient#isBootstrapRequired(java.util.Map)} method with
-   * batches of 8 tables.
+   * batches of {@code partitionSize} tables.
    *
    * @see YBClient#isBootstrapRequired(java.util.Map)
    */
   public List<IsBootstrapRequiredResponse> isBootstrapRequiredParallel(
-      Map<String, String> tableIdStreamIdMap) throws Exception {
+      Map<String, String> tableIdStreamIdMap, int partitionSize) throws Exception {
     // Partition the tableIdStreamIdMap.
     List<Map<String, String>> tableIdStreamIdMapList = new ArrayList<>();
-    int partitionSize = 8;
     Iterator<Entry<String, String>> iter = tableIdStreamIdMap.entrySet().iterator();
     while (iter.hasNext()) {
       Map<String, String> partition = new HashMap<>();
