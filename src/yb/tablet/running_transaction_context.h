@@ -59,9 +59,6 @@ class RunningTransaction;
 
 typedef std::shared_ptr<RunningTransaction> RunningTransactionPtr;
 
-YB_DEFINE_ENUM(RemoveReason,
-               (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived));
-
 class RunningTransactionContext {
  public:
   RunningTransactionContext(TransactionParticipantContext* participant_context,

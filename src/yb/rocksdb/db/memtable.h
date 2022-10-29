@@ -86,6 +86,8 @@ struct PreparedAdd {
   SequenceNumber min_seq_no = 0;
   size_t total_encoded_len = 0;
   size_t num_deletes = 0;
+  Slice last_key;
+  Slice last_value;
 };
 
 // Note:  Many of the methods in this class have comments indicating that

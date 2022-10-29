@@ -211,7 +211,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
 class RemoveIntentsContext : public IntentsWriterContext {
  public:
-  explicit RemoveIntentsContext(const TransactionId& transaction_id);
+  explicit RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason);
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
@@ -219,6 +219,7 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
+  uint8_t reason_;
 };
 
 } // namespace docdb

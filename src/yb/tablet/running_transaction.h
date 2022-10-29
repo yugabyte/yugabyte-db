@@ -100,7 +100,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
              std::unique_lock<std::mutex>* lock);
 
   std::string ToString() const;
-  void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self);
+  void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self, RemoveReason reason);
 
   // Sets apply state for this transaction.
   // If data is not null, then apply intents task will be initiated if was not previously started.

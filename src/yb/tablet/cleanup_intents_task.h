@@ -18,6 +18,7 @@
 #include "yb/rpc/strand.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/transaction_intent_applier.h"
 
 namespace yb {
 namespace tablet {
@@ -27,7 +28,7 @@ class CleanupIntentsTask : public rpc::StrandTask {
  public:
   CleanupIntentsTask(
       TransactionParticipantContext* participant_context, TransactionIntentApplier* applier,
-      const TransactionId& id);
+      RemoveReason reason, const TransactionId& id);
 
   void Prepare(std::shared_ptr<CleanupIntentsTask> self);
 
@@ -40,6 +41,7 @@ class CleanupIntentsTask : public rpc::StrandTask {
  private:
   TransactionParticipantContext& participant_context_;
   TransactionIntentApplier& applier_;
+  RemoveReason reason_;
   TransactionId id_;
   std::shared_ptr<CleanupIntentsTask> retain_self_;
 };
