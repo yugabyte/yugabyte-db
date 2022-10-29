@@ -229,6 +229,7 @@ public class UniverseCRUDHandler {
         } catch (Exception e) {
           LOG.error("Failed to calculate update options", e);
         }
+        UniverseResp.fillClusterRegions(taskParams.clusters);
       } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
