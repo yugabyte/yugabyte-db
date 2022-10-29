@@ -34,7 +34,6 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/builtins.h"
 #include "utils/elog.h"
@@ -566,14 +565,7 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 	/* targets */
 	ybginSetupTargets(scan);
 
-	/* syscatalog version */
-	if (YBIsDBCatalogVersionMode())
-		HandleYBStatus(YBCPgSetDBCatalogCacheVersion(ybso->handle,
-													 MyDatabaseId,
-													 yb_catalog_cache_version));
-	else
-		HandleYBStatus(YBCPgSetCatalogCacheVersion(ybso->handle,
-												   yb_catalog_cache_version));
+	YbSetCatalogCacheVersion(ybso->handle, yb_catalog_cache_version);
 
 	/* execute select */
 	ybginExecSelect(scan, dir);
