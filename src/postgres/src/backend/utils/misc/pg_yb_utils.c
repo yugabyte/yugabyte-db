@@ -91,14 +91,6 @@
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-YbTserverCatalogInfo yb_tserver_catalog_info = NULL;
-
-/*
- * Shared memory array db_catalog_versions_ index of the slot allocated for the
- * MyDatabaseId.
- */
-int yb_my_database_id_shm_index = -1;
-
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
 	    YBGetDdlNestingLevel() > 0)
@@ -2923,4 +2915,20 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
 	reads->wait_time += read_wait;
 	tbl_reads->count += tbl_read_count;
 	tbl_reads->wait_time += tbl_read_wait;
+}
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)
+{
+	HandleYBStatus(YBIsDBCatalogVersionMode()
+		? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
+		: YBCPgSetCatalogCacheVersion(handle, version));
+}
+
+uint64_t YbGetSharedCatalogVersion()
+{
+	uint64_t version = 0;
+	HandleYBStatus(YBIsDBCatalogVersionMode()
+		? YBCGetSharedDBCatalogVersion(MyDatabaseId, &version)
+		: YBCGetSharedCatalogVersion(&version));
+	return version;
 }
