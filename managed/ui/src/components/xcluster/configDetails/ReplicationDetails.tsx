@@ -389,7 +389,8 @@ export function ReplicationDetails({
           onHide={hideModal}
         />
         <DeleteConfigModal
-          currentUniverseUUID={currentUniverseUUID}
+          sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+          targetUniverseUUID={xClusterConfig.targetUniverseUUID}
           xClusterConfig={xClusterConfig}
           onHide={hideModal}
           visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
