@@ -185,11 +185,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     }
     finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
+      unlocked_ = std::nullopt;
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_ = std::nullopt;;
+    unlocked_ = std::nullopt;
     callback(locks->status());
   }
 
