@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
-#define YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
 
 #pragma once
 #include <string>
@@ -362,4 +360,3 @@ class StackableDB : public DB {
 
 } //  namespace rocksdb
 
-#endif // YB_ROCKSDB_UTILITIES_STACKABLE_DB_H

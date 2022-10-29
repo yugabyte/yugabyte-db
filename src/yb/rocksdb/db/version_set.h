@@ -31,8 +31,6 @@
 // Version,VersionSet are thread-compatible, but require external
 // synchronization on all accesses.
 
-#ifndef YB_ROCKSDB_DB_VERSION_SET_H
-#define YB_ROCKSDB_DB_VERSION_SET_H
 
 #pragma once
 
@@ -844,4 +842,3 @@ class VersionSet {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_VERSION_SET_H

@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_OPTIONS_PARSER_H
-#define YB_ROCKSDB_UTIL_OPTIONS_PARSER_H
 
 #pragma once
 
@@ -161,4 +159,3 @@ class RocksDBOptionsParser {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_OPTIONS_PARSER_H
