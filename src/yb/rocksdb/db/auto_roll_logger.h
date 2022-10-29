@@ -20,8 +20,6 @@
 // Logger implementation that can be shared by all environments
 // where enough posix functionality is available.
 
-#ifndef YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
-#define YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
 
 #pragma once
 
@@ -139,4 +137,3 @@ Status CreateLoggerFromOptions(const std::string& dbname,
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H

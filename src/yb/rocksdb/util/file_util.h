@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_FILE_UTIL_H
-#define YB_ROCKSDB_UTIL_FILE_UTIL_H
 
 #pragma once
 
@@ -44,4 +42,3 @@ Status DeleteSSTFile(
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_UTIL_FILE_UTIL_H

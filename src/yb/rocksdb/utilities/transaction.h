@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_TRANSACTION_H
-#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_TRANSACTION_H
 
 #pragma once
 
@@ -409,4 +407,3 @@ class Transaction {
 
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_TRANSACTION_H

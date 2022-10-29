@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H
-#define ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
@@ -114,4 +112,3 @@ class TransactionLockMgr {
 }  //  namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H

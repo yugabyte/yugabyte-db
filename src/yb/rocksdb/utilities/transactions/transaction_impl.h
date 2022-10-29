@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_IMPL_H
-#define ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_IMPL_H
 
 #pragma once
 
@@ -159,4 +157,3 @@ class TransactionCallback : public WriteCallback {
 
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_IMPL_H
