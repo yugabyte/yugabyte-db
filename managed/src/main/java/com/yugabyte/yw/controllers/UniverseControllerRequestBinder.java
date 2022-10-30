@@ -20,12 +20,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
 
@@ -34,6 +37,7 @@ import play.mvc.Http;
  * first step to that cleanup we have moved it out of Universe controller to keep the controller
  * sane.
  */
+@Slf4j
 public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
@@ -59,17 +63,122 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
-      Http.Context ctx, Http.Request request, Class<T> paramType) {
+      Http.Context ctx, Http.Request request, Class<T> paramType, Universe universe) {
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
-      List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, false);
-      T taskParams = Json.mapper().treeToValue(formData, paramType);
+      ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
+      List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
+      if (clustersJson == null || clustersJson.size() == 0) {
+        log.debug("No clusters provided, taking current clusters");
+        clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
+      } else {
+        for (JsonNode clusterJson : clustersJson) {
+          ObjectNode userIntent = (ObjectNode) clusterJson.get("userIntent");
+          JsonNode masterGFlagsNode = null;
+          JsonNode tserverGFlagsNode = null;
+          JsonNode instanceTagsNode = null;
+          if (userIntent != null) {
+            masterGFlagsNode = userIntent.remove("masterGFlags");
+            tserverGFlagsNode = userIntent.remove("tserverGFlags");
+            instanceTagsNode = userIntent.remove("instanceTags");
+          }
+          UniverseDefinitionTaskParams.Cluster currentCluster;
+          if (clustersJson.has("uuid")) {
+            UUID uuid = UUID.fromString(clusterJson.get("uuid").asText());
+            currentCluster = universe.getCluster(uuid);
+            if (currentCluster == null) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "Cluster %s is not found in universe %s", uuid, universe.universeUUID));
+            }
+          } else {
+            JsonNode clusterType = clusterJson.get("clusterType");
+            if (clusterType == null) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "Unknown cluster in request for universe %s", universe.universeUUID));
+            }
+            if (clusterType
+                .asText()
+                .equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY.toString())) {
+              currentCluster = universe.getUniverseDetails().getPrimaryCluster();
+            } else {
+              if (universe.getUniverseDetails().getReadOnlyClusters().size() != 1) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "Cannot choose readonly cluster in universe %s (cluster type %s)",
+                        universe.universeUUID, clusterType.asText()));
+              }
+              currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+            }
+          }
+
+          JsonNode currentClusterJson = Json.mapper().valueToTree(currentCluster);
+          CommonUtils.deepMerge(currentClusterJson, clusterJson);
+          UniverseDefinitionTaskParams.Cluster cluster =
+              Json.mapper()
+                  .treeToValue(currentClusterJson, UniverseDefinitionTaskParams.Cluster.class);
+
+          checkAndAddMapField(masterGFlagsNode, gflags -> cluster.userIntent.masterGFlags = gflags);
+          checkAndAddMapField(
+              tserverGFlagsNode, gflags -> cluster.userIntent.tserverGFlags = gflags);
+          checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
+          clusters.add(cluster);
+        }
+      }
+      T taskParams = mergeWithUniverse(formData, universe, paramType);
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
           BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
+    }
+  }
+
+  public static <T extends UniverseDefinitionTaskParams> T mergeWithUniverse(
+      T params, Universe universe, Class<T> paramsClass) {
+    try {
+      ObjectNode paramsJson = Json.mapper().valueToTree(params);
+      if (params.clusters != null && params.clusters.isEmpty()) {
+        paramsJson.remove("clusters");
+      }
+      T result = mergeWithUniverse(paramsJson, universe, paramsClass);
+      if (universe.isYbcEnabled()) {
+        result.installYbc = true;
+        result.enableYbc = true;
+      }
+      return result;
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "JsonProcessingException parsing request body: " + e.getMessage());
+    }
+  }
+
+  private static <T extends UniverseDefinitionTaskParams> T mergeWithUniverse(
+      ObjectNode paramsJson, Universe universe, Class<T> paramsClass)
+      throws JsonProcessingException {
+    // Merging with universe details.
+    ObjectNode universeDetailsNode = Json.mapper().valueToTree(universe.getUniverseDetails());
+    CommonUtils.deepMerge(universeDetailsNode, paramsJson);
+    universeDetailsNode.remove("targetXClusterConfigs");
+    universeDetailsNode.remove("sourceXClusterConfigs");
+    T result = Json.mapper().treeToValue(universeDetailsNode, paramsClass);
+    result.universeUUID = universe.universeUUID;
+    result.expectedUniverseVersion = universe.version;
+    return result;
+  }
+
+  private static void checkAndAddMapField(
+      JsonNode serializedValue, Consumer<Map<String, String>> setter) {
+    if (serializedValue == null) {
+      return;
+    }
+    if (serializedValue.isArray()) {
+      setter.accept(mapFromKeyValueArray((ArrayNode) serializedValue));
+    } else if (serializedValue.isObject()) {
+      setter.accept(Json.fromJson(serializedValue, Map.class));
     }
   }
 
@@ -140,14 +249,19 @@ public class UniverseControllerRequestBinder {
     JsonNode formNodeList = formNode.remove(listType);
     if (formNodeList != null) {
       if (formNodeList.isArray()) {
-        ArrayNode flagNodeArray = (ArrayNode) formNodeList;
-        for (JsonNode gflagNode : flagNodeArray) {
-          if (gflagNode.has("name")) {
-            gflagMap.put(gflagNode.get("name").asText(), gflagNode.get("value").asText());
-          }
-        }
+        gflagMap = mapFromKeyValueArray((ArrayNode) formNodeList);
       } else if (formNodeList instanceof ObjectNode) {
         gflagMap = Json.fromJson(formNodeList, Map.class);
+      }
+    }
+    return gflagMap;
+  }
+
+  private static Map<String, String> mapFromKeyValueArray(ArrayNode flagNodeArray) {
+    Map<String, String> gflagMap = new HashMap<>();
+    for (JsonNode gflagNode : flagNodeArray) {
+      if (gflagNode.has("name")) {
+        gflagMap.put(gflagNode.get("name").asText(), gflagNode.get("value").asText());
       }
     }
     return gflagMap;
