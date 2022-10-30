@@ -77,6 +77,9 @@ const mapDispatchToProps = (dispatch) => {
     showGFlagsModal: () => {
       dispatch(openDialog('gFlagsModal'));
     },
+    showHelmOverridesModal: () => {
+      dispatch(openDialog('helmOverridesModal'));
+    },
     showManageKeyModal: () => {
       dispatch(openDialog('manageKeyModal'));
     },

@@ -45,6 +45,7 @@ import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fi
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
+import { HelmOverridesUniversePage } from './HelmOverrides';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -123,6 +124,8 @@ const initialState = {
   placementInfo: {},
   ybSoftwareVersion: '',
   ybcSoftwareVersion: '',
+  universeOverrides: '',
+  azOverrides: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
   accessKeyCode: '',
@@ -385,7 +388,8 @@ export default class ClusterFields extends Component {
             : primaryCluster && {
                 ...primaryCluster.userIntent,
                 universeName: primaryCluster.userIntent.universeName,
-                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion
+                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion,
+                universeOverrides: primaryCluster.userIntent.universeOverrides
               }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
@@ -422,6 +426,8 @@ export default class ClusterFields extends Component {
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
           ybcSoftwareVersion: userIntent.ybcSoftwareVersion,
+          universeOverrides: userIntent.universeOverrides,
+          azOverrides: userIntent.azOverrides,
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
@@ -443,7 +449,7 @@ export default class ClusterFields extends Component {
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
           mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
-          dedicatedNodes: userIntent.dedicatedNodes,
+          dedicatedNodes: userIntent.dedicatedNodes
         });
       }
       this.props.getRegionListItems(providerUUID);
@@ -1393,7 +1399,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  configureUniverseNodeList(regionsChanged) {
+  configureUniverseNodeList(regionsChanged, returnResults = false) {
     const {
       universe: { universeConfigTemplate, currentUniverse },
       formValues,
@@ -1465,6 +1471,10 @@ export default class ClusterFields extends Component {
         universeTaskParams.mastersInDefaultRegion = false;
         delete cluster.placementInfo.cloudList[0].defaultRegion;
       }
+    }
+
+    if (returnResults) {
+      return universeTaskParams;
     }
 
     this.handleUniverseConfigure(universeTaskParams);
@@ -1557,6 +1567,10 @@ export default class ClusterFields extends Component {
     this.setState({
       isKubernetesUniverse: currentProviderData.code === 'kubernetes'
     });
+
+    // - reset overrides afer provider changes
+    updateFormField(`${clusterType}.universeOverrides`, '');
+    updateFormField(`${clusterType}.azOverrides`, '');
 
     this.setDefaultProviderStorage(currentProviderData);
   };
@@ -1674,6 +1688,12 @@ export default class ClusterFields extends Component {
     ));
   };
 
+  updateHelmOverrides = (helmYAML) => {
+    const { updateFormField } = this.props;
+    updateFormField('primary.universeOverrides', helmYAML.universeOverrides);
+    updateFormField('primary.azOverrides', helmYAML.azOverrides);
+  };
+
   render() {
     const {
       clusterType,
@@ -1688,13 +1708,16 @@ export default class ClusterFields extends Component {
     const { hasInstanceTypeChanged } = this.state;
     const self = this;
     let gflagArray = <span />;
+    let helmOverrides = <span />;
     let tagsArray = <span />;
     let universeProviderList = [];
     let currentProviderCode = '';
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const isAuthEnforced = !(featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth);
+    const isAuthEnforced = !(
+      featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth
+    );
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -2001,16 +2024,16 @@ export default class ClusterFields extends Component {
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
     const showDedicatedNodesToggle =
-        featureFlags.test['enableDedicatedNodes'] ||
-        featureFlags.released['enableDedicatedNodes'];
+      featureFlags.test['enableDedicatedNodes'] || featureFlags.released['enableDedicatedNodes'];
     if (
-        isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === 'aws' ||
-         currentProvider.code === 'gcp' ||
-         currentProvider.code === 'azu' ||
-         currentProvider.code === 'onprem') &&
-         clusterType === 'primary' &&
-         showDedicatedNodesToggle) {
+      isDefinedNotNull(currentProvider) &&
+      (currentProvider.code === 'aws' ||
+        currentProvider.code === 'gcp' ||
+        currentProvider.code === 'azu' ||
+        currentProvider.code === 'onprem') &&
+      clusterType === 'primary' &&
+      showDedicatedNodesToggle
+    ) {
       dedicatedNodes = (
         <Field
           name={`${clusterType}.dedicatedNodes`}
@@ -2042,7 +2065,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
-      enableYSQLAuth = (!isAuthEnforced &&
+      enableYSQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2101,7 +2124,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YCQL API endpoint to run cassandra compatible workloads."
         />
       );
-      enableYCQLAuth = (!isAuthEnforced &&
+      enableYCQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2542,6 +2565,24 @@ export default class ClusterFields extends Component {
       }
     }
 
+    if (clusterType === 'primary' && this.state.isKubernetesUniverse && !isReadOnlyOnEdit) {
+      helmOverrides = (
+        <div className="form-section" data-yb-section="helm-overrides">
+          <Row>
+            <Col md={12}>
+              <h4>Helm Overrides</h4>
+            </Col>
+            <Col md={12}>
+              <HelmOverridesUniversePage
+                getConfiguretaskParams={() => this.configureUniverseNodeList(false, true)}
+                setHelmOverridesData={this.updateHelmOverrides}
+              />
+            </Col>
+          </Row>
+        </div>
+      );
+    }
+
     const softwareVersionOptions = (type?.toUpperCase() === 'CREATE' && clusterType === 'primary'
       ? this.state.supportedReleases
       : softwareVersions
@@ -2800,9 +2841,7 @@ export default class ClusterFields extends Component {
 
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {dedicatedNodes}
-              </div>
+              <div className="form-right-aligned-labels">{dedicatedNodes}</div>
             </Col>
           </Row>
 
@@ -3139,7 +3178,7 @@ export default class ClusterFields extends Component {
                 </Col>
               </Row>
             )}
-            {this.state.customizePorts && currentProvider.code !== "onPrem" && (
+            {this.state.customizePorts && currentProvider.code !== 'onPrem' && (
               <Row>
                 <Col sm={3}>
                   <div className="form-right-aligned-labels">
@@ -3161,6 +3200,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
+        {helmOverrides}
         {clusterType === 'primary' && <div className="form-section no-border">{tagsArray}</div>}
       </div>
     );

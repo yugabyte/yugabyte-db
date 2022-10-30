@@ -780,7 +780,9 @@ export function fetchSlowQueries(universeUUID, cancelFn) {
 export async function fetchUnusedIndexesSuggestions(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/unused_indexes`);
+    return await axios.get(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/unused_indexes`
+    );
   } catch (e) {
     return e.response;
   }
@@ -789,7 +791,9 @@ export async function fetchUnusedIndexesSuggestions(universeUUID) {
 export async function fetchQueryLoadSkewSuggestions(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/query_distribution_suggestions`);
+    return await axios.get(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/query_distribution_suggestions`
+    );
   } catch (e) {
     return e.response;
   }
@@ -798,7 +802,9 @@ export async function fetchQueryLoadSkewSuggestions(universeUUID) {
 export async function fetchRangeShardingSuggestions(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/range_hash`);
+    return await axios.get(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/range_hash`
+    );
   } catch (e) {
     return e.response;
   }
@@ -888,4 +894,11 @@ export async function fetchSupportedReleases(pUUID) {
   } catch (e) {
     throw e.response.data;
   }
+}
+
+export function validateHelmYAML(UniverseConfigureTaskParams) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
+    ...UniverseConfigureTaskParams
+  });
 }

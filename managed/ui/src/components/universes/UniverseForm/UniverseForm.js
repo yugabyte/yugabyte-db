@@ -209,7 +209,7 @@ class UniverseForm extends Component {
         enableYEDIS: formValues[clusterType].enableYEDIS,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
-        dedicatedNodes: formValues[clusterType].dedicatedNodes,
+        dedicatedNodes: formValues[clusterType].dedicatedNodes
       };
       if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
         intent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
@@ -246,8 +246,9 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    universeTaskParams.enableYbc = this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc']
-    universeTaskParams.ybcSoftwareVersion = ""
+    universeTaskParams.enableYbc =
+      this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+    universeTaskParams.ybcSoftwareVersion = '';
   };
 
   createUniverse = () => {
@@ -390,44 +391,45 @@ class UniverseForm extends Component {
   };
 
   getCurrentCluster = () => {
-    const {
-      universe
-    } = this.props;
+    const { universe } = this.props;
     return this.state.currentView === 'Primary'
       ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters)
       : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
-  }
+  };
 
   getNewCluster = () => {
     const {
-      universe: { universeConfigTemplate },
+      universe: { universeConfigTemplate }
     } = this.props;
     return this.state.currentView === 'Primary'
-           ? getPrimaryCluster(universeConfigTemplate.data.clusters)
-           : getReadOnlyCluster(universeConfigTemplate.data.clusters);
-  }
+      ? getPrimaryCluster(universeConfigTemplate.data.clusters)
+      : getReadOnlyCluster(universeConfigTemplate.data.clusters);
+  };
 
   isResizePossible = () => {
     const {
-      universe: { universeConfigTemplate },
+      universe: { universeConfigTemplate }
     } = this.props;
-    if (getPromiseState(universeConfigTemplate).isSuccess() &&
-        this.state.currentView === 'Primary' &&
-        universeConfigTemplate.data.nodesResizeAvailable) {
+    if (
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      this.state.currentView === 'Primary' &&
+      universeConfigTemplate.data.nodesResizeAvailable
+    ) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
-      if (currentCluster && newCluster) {
+      if (currentCluster && newCluster && currentCluster.userIntent.providerType !== 'kubernetes') {
         const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
         const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
-        const instanceChanged = newCluster.userIntent.instanceType !== currentCluster.userIntent
-            .instanceType;
-        return newVolumeSize > oldVolumeSize
-               || (instanceChanged && oldVolumeSize === newVolumeSize);
+        const instanceChanged =
+          newCluster.userIntent.instanceType !== currentCluster.userIntent.instanceType;
+        return (
+          newVolumeSize > oldVolumeSize || (instanceChanged && oldVolumeSize === newVolumeSize)
+        );
       }
       return false;
     }
     return false;
-  }
+  };
 
   getYEDISstate = (clusterType) => {
     const { formValues, universe } = this.props;
@@ -530,6 +532,14 @@ class UniverseForm extends Component {
             .map((userTag) => {
               return { name: userTag.name, value: userTag.value.trim() };
             });
+        }
+
+        if (formValues[clusterType]?.universeOverrides?.length !== 0) {
+          clusterIntent.universeOverrides = formValues[clusterType].universeOverrides;
+        }
+
+        if (formValues[clusterType]?.azOverrides?.length !== 0) {
+          clusterIntent.azOverrides = formValues[clusterType].azOverrides;
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
@@ -650,7 +660,7 @@ class UniverseForm extends Component {
 
     if (!isDefinedNotNull(submitPayload.enableYbc))
       submitPayload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
-    
+
     return submitPayload;
   };
 

@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "lint": "eslint --ext .jsx,.js src/",
-    "prettier": "prettier --write src/redesign/**/*",
+    "lint": "eslint --ext .jsx,.js src/components/universes/UniverseForm/UniverseFormContainer.js",
+    "prettier": "prettier --write src/components/universes/UniverseForm/UniverseFormContainer.js",
     "start": "EXTEND_ESLINT=true react-scripts start",
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",

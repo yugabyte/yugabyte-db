@@ -19,7 +19,12 @@ import {
   fetchAuthConfigList,
   fetchAuthConfigListResponse
 } from '../../../actions/cloud';
-import { fetchRunTimeConfigs, fetchRunTimeConfigsResponse, getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
+import {
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+  getTlsCertificates,
+  getTlsCertificatesResponse
+} from '../../../actions/customers';
 import {
   rollingUpgrade,
   rollingUpgradeResponse,
@@ -220,10 +225,10 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     fetchRunTimeConfigs: () => {
-      return dispatch(fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000',true)).then((response) =>
-        dispatch(fetchRunTimeConfigsResponse(response.payload))
-      );
-    },
+      return dispatch(
+        fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000', true)
+      ).then((response) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+    }
   };
 };
 
@@ -266,6 +271,8 @@ const formFieldNames = [
   'primary.awsArnString',
   'primary.useSystemd',
   'primary.dedicatedNodes',
+  'primary.universeOverrides',
+  'primary.azOverrides',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -392,9 +399,7 @@ function getFormData(currentUniverse, formType, clusterType) {
 function mapStateToProps(state, ownProps) {
   const {
     universe: { currentUniverse },
-    customer: {
-      runtimeConfigs
-    }
+    customer: { runtimeConfigs }
   } = state;
   let data = {
     formType: 'Create',
@@ -402,6 +407,8 @@ function mapStateToProps(state, ownProps) {
       universeName: '',
       ybSoftwareVersion: '',
       ybcSoftwareVersion: '',
+      universeOverrides: '',
+      azOverrides: '',
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.4xlarge',
@@ -423,7 +430,7 @@ function mapStateToProps(state, ownProps) {
       selectEncryptionAtRestConfig: null,
       diskIops: null,
       throughput: null,
-      dedicatedNodes: false,
+      dedicatedNodes: false
     },
     async: {
       universeName: '',
@@ -445,7 +452,7 @@ function mapStateToProps(state, ownProps) {
       enableClientToNodeEncrypt: true,
       diskIops: null,
       throughput: null,
-      dedicatedNodes: false,
+      dedicatedNodes: false
     }
   };
 
@@ -526,6 +533,8 @@ function mapStateToProps(state, ownProps) {
       'primary.useSystemd',
       'primary.ybcSoftwareVersion',
       'primary.dedicatedNodes',
+      'primary.universeOverrides',
+      'primary.azOverrides',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -609,12 +618,13 @@ const validateProviderFields = (values, props, clusterType) => {
     }
     if (currentProviderCode === 'gcp' || currentProviderCode === 'kubernetes') {
       const specialCharsRegex = /^[a-z0-9-]*$/;
-      const errorProviderName = currentProviderCode === 'gcp' ? 
-          currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
+      const errorProviderName =
+        currentProviderCode === 'gcp'
+          ? currentProviderCode.toUpperCase()
+          : makeFirstLetterUpperCase(currentProviderCode);
 
       if (!specialCharsRegex.test(currentClusterData.universeName)) {
-        errors.universeName =
-          `${errorProviderName} Universe name cannot contain capital letters or special characters except dashes`;
+        errors.universeName = `${errorProviderName} Universe name cannot contain capital letters or special characters except dashes`;
       }
     }
     if (
