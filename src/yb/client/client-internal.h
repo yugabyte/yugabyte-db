@@ -523,7 +523,7 @@ class YBClient::Data {
   };
 
   simple_spinlock tablet_requests_mutex_;
-  std::unordered_map<TabletId, TabletRequests> tablet_requests_;
+  TabletRequests requests_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
 
