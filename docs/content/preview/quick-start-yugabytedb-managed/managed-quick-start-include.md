@@ -1,6 +1,6 @@
 Choose the language you want to use to build your application.
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="Java" lang="java" %}}
 

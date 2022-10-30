@@ -192,7 +192,7 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="macOS Pre-Monterey" lang="Pre-Monterey" %}}
 
