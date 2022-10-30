@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_SERVER_EVENT_H
-#define YB_RPC_SERVER_EVENT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -44,4 +43,3 @@ class ServerEventList : public OutboundData {
 
 }  // namespace rpc
 }  // namespace yb
-#endif // YB_RPC_SERVER_EVENT_H

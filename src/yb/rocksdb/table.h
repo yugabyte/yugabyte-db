@@ -29,8 +29,7 @@
 // Example code is also available
 //   https://github.com/facebook/rocksdb/wiki/A-Tutorial-of-RocksDB-SST-formats#wiki-examples
 
-#ifndef YB_ROCKSDB_TABLE_H
-#define YB_ROCKSDB_TABLE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -446,4 +445,3 @@ extern TableFactory* NewAdaptiveTableFactory(
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_TABLE_H

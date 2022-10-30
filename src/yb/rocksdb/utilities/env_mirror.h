@@ -28,8 +28,7 @@
 // This is useful when implementing a new Env and ensuring that the
 // semantics and behavior are correct (in that they match that of an
 // existing, stable Env, like the default POSIX one).
-#ifndef YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
-#define YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#pragma once
 
 #ifndef ROCKSDB_LITE
 
@@ -94,4 +93,3 @@ class EnvMirror : public EnvWrapper {
 
 #endif  // ROCKSDB_LITE
 
-#endif  // YB_ROCKSDB_UTILITIES_ENV_MIRROR_H

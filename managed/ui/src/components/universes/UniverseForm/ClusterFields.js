@@ -45,6 +45,7 @@ import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fi
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { fetchSupportedReleases } from '../../../actions/universe';
 import { sortVersion } from '../../releases';
+import { HelmOverridesUniversePage } from './HelmOverrides';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -122,6 +123,8 @@ const initialState = {
   deviceInfo: {},
   placementInfo: {},
   ybSoftwareVersion: '',
+  universeOverrides: '',
+  azOverrides: '',
   ybcSoftwareVersion: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
@@ -385,7 +388,8 @@ export default class ClusterFields extends Component {
             : primaryCluster && {
                 ...primaryCluster.userIntent,
                 universeName: primaryCluster.userIntent.universeName,
-                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion
+                ybcSoftwareVersion: primaryCluster.userIntent.ybcSoftwareVersion,
+                universeOverrides: primaryCluster.userIntent.universeOverrides
               }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
@@ -422,6 +426,8 @@ export default class ClusterFields extends Component {
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
           ybcSoftwareVersion: userIntent.ybcSoftwareVersion,
+          universeOverrides: userIntent.universeOverrides,
+          azOverrides: userIntent.azOverrides,
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
@@ -730,7 +736,6 @@ export default class ClusterFields extends Component {
       updateFormField(`${clusterType}.provider`, primaryClusterProviderUUID);
       this.providerChanged(primaryClusterProviderUUID);
     }
-    this.props.fetchRunTimeConfigs();
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -1400,7 +1405,7 @@ export default class ClusterFields extends Component {
     }
   }
 
-  configureUniverseNodeList(regionsChanged) {
+  configureUniverseNodeList(regionsChanged, returnResults = false) {
     const {
       universe: { universeConfigTemplate, currentUniverse },
       formValues,
@@ -1473,7 +1478,9 @@ export default class ClusterFields extends Component {
         delete cluster.placementInfo.cloudList[0].defaultRegion;
       }
     }
-
+    if (returnResults) {
+      return universeTaskParams;
+    }
     this.handleUniverseConfigure(universeTaskParams);
   }
 
@@ -1564,6 +1571,10 @@ export default class ClusterFields extends Component {
     this.setState({
       isKubernetesUniverse: currentProviderData.code === 'kubernetes'
     });
+
+    // - reset overrides afer provider changes
+    updateFormField(`${clusterType}.universeOverrides`, '');
+    updateFormField(`${clusterType}.azOverrides`, '');
 
     this.setDefaultProviderStorage(currentProviderData);
   };
@@ -1681,6 +1692,12 @@ export default class ClusterFields extends Component {
     ));
   };
 
+  updateHelmOverrides = (helmYAML) => {
+    const { updateFormField } = this.props;
+    updateFormField('primary.universeOverrides', helmYAML.universeOverrides);
+    updateFormField('primary.azOverrides', helmYAML.azOverrides);
+  };
+
   render() {
     const {
       clusterType,
@@ -1695,15 +1712,20 @@ export default class ClusterFields extends Component {
     const { hasInstanceTypeChanged } = this.state;
     const self = this;
     let gflagArray = <span />;
+    let helmOverrides = <span />;
     let tagsArray = <span />;
     let universeProviderList = [];
     let currentProviderCode = '';
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const isAuthEnforced = !(
-      featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth
+    const authEnforcedObject = (this.props.runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.universe.create.is_auth_enforced')
     );
+    // Runtime config sends value as string, so need to parse it
+    // TODO: Ask server team to do a future improvement to send boolean
+    const isAuthEnforced = !!(authEnforcedObject?.value === 'true');
+
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -2052,6 +2074,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
+
       enableYSQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>
@@ -2550,6 +2573,24 @@ export default class ClusterFields extends Component {
           </Row>
         );
       }
+    }
+
+    if (clusterType === 'primary' && this.state.isKubernetesUniverse && !isReadOnlyOnEdit) {
+      helmOverrides = (
+        <div className="form-section" data-yb-section="helm-overrides">
+          <Row>
+            <Col md={12}>
+              <h4>Helm Overrides</h4>
+            </Col>
+            <Col md={12}>
+              <HelmOverridesUniversePage
+                getConfiguretaskParams={() => this.configureUniverseNodeList(false, true)}
+                setHelmOverridesData={this.updateHelmOverrides}
+              />
+            </Col>
+          </Row>
+        </div>
+      );
     }
 
     const softwareVersionOptions = (type?.toUpperCase() === 'CREATE' && clusterType === 'primary'
@@ -3169,6 +3210,7 @@ export default class ClusterFields extends Component {
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
+        {helmOverrides}
         {clusterType === 'primary' && <div className="form-section no-border">{tagsArray}</div>}
       </div>
     );

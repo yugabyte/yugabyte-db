@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READER_REDIS_H_
-#define YB_DOCDB_DOC_READER_REDIS_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -191,4 +190,3 @@ Status GetRedisSubDocument(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_READER_REDIS_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_CAST_H_
-#define YB_UTIL_CAST_H_
+#pragma once
 
 #include <memory>
 
@@ -57,4 +56,3 @@ std::unique_ptr<D> down_pointer_cast(std::unique_ptr<S> s) {
 
 using yb::pointer_cast;
 
-#endif  // YB_UTIL_CAST_H_

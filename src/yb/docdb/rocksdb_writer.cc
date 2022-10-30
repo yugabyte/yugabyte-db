@@ -18,7 +18,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value_type.h"
@@ -116,7 +116,7 @@ void PutApplyState(
 } // namespace
 
 NonTransactionalWriter::NonTransactionalWriter(
-    std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch, HybridTime hybrid_time)
+    std::reference_wrapper<const docdb::LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time)
     : put_batch_(put_batch), hybrid_time_(hybrid_time) {
 }
 
@@ -144,7 +144,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     CHECK(s.ok())
         << "Failed decoding key: " << s.ToString() << "; "
         << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-        << "value: " << FormatBytesAsStr(kv_pair.value());
+        << "value: " << kv_pair.value().ToDebugHexString();
 #endif
 
     // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
@@ -173,7 +173,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 }
 
 TransactionalWriter::TransactionalWriter(
-    std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch,
+    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch,
     HybridTime hybrid_time,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
@@ -211,7 +211,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       Slice(&txn_value_type, 1),
       transaction_id_.AsSlice(),
     };
-    auto data_copy = *metadata_to_store_;
+    yb::LWTransactionMetadataPB data_copy(&metadata_to_store_->arena(), *metadata_to_store_);
     // We use hybrid time only for backward compatibility, actually wall time is required.
     data_copy.set_metadata_write_time(GetCurrentTimeMicros());
     auto value = data_copy.SerializeAsString();

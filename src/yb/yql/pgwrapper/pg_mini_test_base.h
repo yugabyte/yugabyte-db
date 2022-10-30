@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
+#pragma once
 
 #include <functional>
 
@@ -104,4 +103,3 @@ class HistogramMetricWatcher {
 } // namespace pgwrapper
 } // namespace yb
 
-#endif // YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H

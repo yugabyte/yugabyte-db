@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_LOADERS_H
-#define YB_MASTER_CATALOG_LOADERS_H
+#pragma once
 
 #include <type_traits>
 
@@ -107,4 +106,3 @@ bool ShouldLoadObject(const SysTabletsEntryPB& pb);
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_CATALOG_LOADERS_H

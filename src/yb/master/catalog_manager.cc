@@ -199,6 +199,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+#include "yb/util/flag_tags.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -330,22 +331,19 @@ DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
              "Number of tablets to use when creating the metrics snapshots table."
              "0 to use the same default num tablets as for regular tables.");
 
-DEFINE_bool(disable_index_backfill, false,
+DEFINE_RUNTIME_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
-TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
-DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
+DEFINE_RUNTIME_bool(disable_index_backfill_for_non_txn_tables, true,
     "A kill switch to disable multi-stage backfill for user enforced YCQL indexes. "
     "Note that enabling this feature may cause the create index flow to be slow. "
     "This is needed to ensure the safety of the index backfill process. See also "
     "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
-TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_bool(enable_transactional_ddl_gc, true,
+DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
-TAG_FLAG(enable_transactional_ddl_gc, runtime);
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
 DEFINE_bool(
@@ -369,10 +367,9 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
-DEFINE_bool(master_drop_table_after_task_response, true,
-            "Mark a table as DELETED as soon as we get all the responses from all the TS.");
+DEFINE_RUNTIME_bool(master_drop_table_after_task_response, true,
+    "Mark a table as DELETED as soon as we get all the responses from all the TS.");
 TAG_FLAG(master_drop_table_after_task_response, advanced);
-TAG_FLAG(master_drop_table_after_task_response, runtime);
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
@@ -383,10 +380,9 @@ DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver f
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
-DEFINE_bool(use_create_table_leader_hint, true,
-            "Whether the Master should hint which replica for each tablet should "
-            "be leader initially on tablet creation.");
-TAG_FLAG(use_create_table_leader_hint, runtime);
+DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
+    "Whether the Master should hint which replica for each tablet should "
+    "be leader initially on tablet creation.");
 
 DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
@@ -399,7 +395,6 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
-TAG_FLAG(TEST_num_missing_tablets, runtime);
 
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
              "Amount of time to wait before refreshing the system.partitions cached vtable. "
@@ -417,19 +412,14 @@ TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 DEFINE_bool(master_auto_run_initdb, false,
             "Automatically run initdb on master leader initialization");
 
-DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
-            "If set, tablespaces will be used for placement of YSQL tables.");
-TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
+DEFINE_RUNTIME_bool(enable_ysql_tablespaces_for_placement, true,
+    "If set, tablespaces will be used for placement of YSQL tables.");
 
-DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
-             "Frequency at which the table to tablespace information will be updated in master "
-             "from pg catalog tables. A value of -1 disables the refresh task.");
-TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
+DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
+    "Frequency at which the table to tablespace information will be updated in master "
+    "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEFINE_int64(tablet_split_size_threshold_bytes, 0,
-             "DEPRECATED -- Threshold on tablet size after which tablet should be split. Automated "
-             "splitting is disabled if this value is set to 0.");
-TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
+DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
 
 DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 8,
              "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
@@ -453,12 +443,11 @@ DEFINE_int64(tablet_force_split_threshold_bytes, 100_GB,
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
-DEFINE_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
-             "When a master leader failsover, the time until which the progress of load movement "
-             "off the blacklisted tservers is reported as 0. This initial delay "
-             "gives sufficient time for heartbeats so that we don't report"
-             " a premature incorrect completion.");
-TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
+DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+    "When a master leader failsover, the time until which the progress of load movement "
+    "off the blacklisted tservers is reported as 0. This initial delay "
+    "gives sufficient time for heartbeats so that we don't report"
+    " a premature incorrect completion.");
 
 DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
                  "When set to true, consider any tablet a valid candidate for splitting. "
@@ -469,7 +458,6 @@ DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
 DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  "When set, it skips checking that all the tablets of a table have enough tservers"
                  " conforming to the table placement policy during CreateTable API call.");
-TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
 DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
                  "Slows down the alter table rpc's send and response handler so that the TServer "
@@ -485,56 +473,56 @@ DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
                  "Return an error inside CatalogManager::RegisterNewTabletForSplit "
                  "after calling Upsert.");
 
-DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
+DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
-TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
-DEFINE_bool(xcluster_wait_on_ddl_alter, true,
-            "When xCluster replication sends a DDL change, wait for the user to enter a "
-            "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
-TAG_FLAG(xcluster_wait_on_ddl_alter, runtime);
+DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
+    "When xCluster replication sends a DDL change, wait for the user to enter a "
+    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
 
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
                  "tests output consistent and predictable.");
 
-DEFINE_bool(disable_truncate_table, false, "When enabled, truncate table will be disallowed");
-TAG_FLAG(disable_truncate_table, runtime);
+DEFINE_RUNTIME_bool(disable_truncate_table, false,
+    "When enabled, truncate table will be disallowed");
 
-DEFINE_bool(enable_truncate_on_pitr_table, false,
+DEFINE_RUNTIME_bool(enable_truncate_on_pitr_table, false,
     "When enabled, truncate table will be allowed on PITR tables");
-TAG_FLAG(enable_truncate_on_pitr_table, runtime);
 
 DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
                  "Crash after registering the children for a tablet split.");
 DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
                  "Number of seconds to sleep before a sys catalog reload.");
-TAG_FLAG(TEST_delay_sys_catalog_reload_secs, runtime);
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
-DEFINE_bool(batch_ysql_system_tables_metadata, false,
-            "Whether change metadata operation for ysql system tables during "
-            "a create database is performed one by one or batched together");
-TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
+DEFINE_RUNTIME_bool(
+    batch_ysql_system_tables_metadata, true,
+    "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
+    "create database is performed one by one or batched together");
 
 DEFINE_test_flag(bool, pause_split_child_registration,
                  false, "Pause split after registering one child");
-TAG_FLAG(TEST_pause_split_child_registration, runtime);
 
 DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
                  "tables only being dropped in the postgres layer.");
 
-DEFINE_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
-             "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
-TAG_FLAG(max_concurrent_delete_replica_rpcs_per_ts, runtime);
+DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
+    "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_bool(
-    enable_delete_truncate_cdcsdk_table, false,
+DEFINE_RUNTIME_bool(enable_delete_truncate_cdcsdk_table, false,
     "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
-TAG_FLAG(enable_delete_truncate_cdcsdk_table, runtime);
+
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
+
+DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
 namespace yb {
 namespace master {
@@ -751,8 +739,7 @@ void InitMasterFlags() {
       kAutoDetectNumShardsPerTServer) {
     const auto value = GetTransactionTableNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent(
-        "transaction_table_num_tablets_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(transaction_table_num_tablets_per_tserver, value));
   }
 }
 
@@ -2811,92 +2798,96 @@ Status CatalogManager::ShouldSplitValidCandidate(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
     std::string split_partition_key, const ManualSplit is_manual_split) {
-  auto source_table_lock = source_tablet_info->table()->LockForWrite();
-  auto source_tablet_lock = source_tablet_info->LockForWrite();
-
-  // We must re-validate the split candidate here *after* grabbing locks on the table and tablet to
-  // ensure a backfill does not happen before we modify catalog metadata to include new subtablets.
-  // This process adds new subtablets in the CREATING state, which if encountered by backfill code
-  // will block the backfill process.
-  //
-  // If this is a manual split, then we should select all potential tablets for the split
-  // (i.e. ignore the disabled tablets list and ignore TTL validation).
-  auto s = ValidateSplitCandidate(source_tablet_info, is_manual_split);
-  if (!s.ok()) {
-    VLOG_WITH_FUNC(2) << Format(
-        "ValidateSplitCandidate for tablet $0 returned: $1.",
-        source_tablet_info->tablet_id(), s);
-    return s;
-  }
-
-  auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-  if (!is_manual_split) {
-    // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
-    // time, a valid split candidate, but by the time the candidate was actually processed here, the
-    // cluster may have changed, putting us in a new split threshold phase, and it may no longer be
-    // a valid candidate. This is not an unexpected error, but we should bail out of splitting this
-    // tablet regardless.
-    Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
-    if (!status.ok()) {
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Tablet split candidate $0 is no longer a valid split candidate: $1",
-          source_tablet_info->tablet_id(),
-          status);
-    }
-  }
-
-  // Check if at least one child tablet already registered
-  if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
-    const auto child_tablet_id = source_tablet_lock->pb.split_tablet_ids(0);
-    const auto child_tablet = VERIFY_RESULT(GetTabletInfo(child_tablet_id));
-    const auto parent_partition = source_tablet_lock->pb.partition();
-    const auto child_partition = child_tablet->LockForRead()->pb.partition();
-
-    if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
-      split_partition_key = child_partition.partition_key_end();
-    } else {
-      SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
-        IllegalState, "Parent partion key end does not equal child partition key end");
-      split_partition_key = child_partition.partition_key_start();
-    }
-
-    // Re-compute the encoded key
-    // to ensure we use the same partition boundary for both child tablets
-    split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
-        split_partition_key, source_table_lock->pb.partition_schema()));
-  }
-
-  LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
-            << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
-
-  std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
-      CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
-
   std::array<TabletId, kNumSplitParts> new_tablet_ids_sorted;
-  for (int i = 0; i < kNumSplitParts; ++i) {
-    TabletId child_tablet_id;
-    for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
-      const auto child_tablet = VERIFY_RESULT(GetTabletInfo(split_tablet_id));
-      const auto child_partition = child_tablet->LockForRead()->pb.partition();
-      if (child_partition.partition_key_start() == new_tablets_partition[i].partition_key_start()) {
-        child_tablet_id = split_tablet_id;
-        break;
+  {
+    LockGuard lock(mutex_);
+    auto source_table_lock = source_tablet_info->table()->LockForWrite();
+    auto source_tablet_lock = source_tablet_info->LockForWrite();
+
+    // We must re-validate the split candidate here *after* grabbing locks on the table and tablet
+    // to ensure a backfill does not happen before we modify catalog metadata to include new
+    // subtablets. This process adds new subtablets in the CREATING state, which if encountered by
+    // backfill code will block the backfill process.
+
+    // If this is a manual split, then we should select all potential tablets for the split
+    // (i.e. ignore the disabled tablets list and ignore TTL validation).
+    auto s = ValidateSplitCandidateUnlocked(source_tablet_info, is_manual_split);
+    if (!s.ok()) {
+      VLOG_WITH_FUNC(4) << Format(
+          "ValidateSplitCandidate for tablet $0 returned: $1.",
+          source_tablet_info->tablet_id(), s);
+      return s;
+    }
+
+    auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
+    if (!is_manual_split) {
+      // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
+      // time, a valid split candidate, but by the time the candidate was actually processed here,
+      // the cluster may have changed, putting us in a new split threshold phase, and it may no
+      // longer be a valid candidate. This is not an unexpected error, but we should bail out of
+      // splitting this tablet regardless.
+      Status status = ShouldSplitValidCandidate(*source_tablet_info, drive_info);
+      if (!status.ok()) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Tablet split candidate $0 is no longer a valid split candidate: $1",
+            source_tablet_info->tablet_id(),
+            status);
       }
     }
 
-    if (child_tablet_id.empty()) {
-      auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablets_partition[i],
-          &source_table_lock, &source_tablet_lock));
+    // Check if at least one child tablet already registered
+    if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+      const auto child_tablet_id = source_tablet_lock->pb.split_tablet_ids(0);
+      const auto child_tablet = VERIFY_RESULT(GetTabletInfoUnlocked(child_tablet_id));
+      const auto parent_partition = source_tablet_lock->pb.partition();
+      const auto child_partition = child_tablet->LockForRead()->pb.partition();
 
-      child_tablet_id = new_tablet_info->id();
+      if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
+        split_partition_key = child_partition.partition_key_end();
+      } else {
+        SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
+          IllegalState, "Parent partion key end does not equal child partition key end");
+        split_partition_key = child_partition.partition_key_start();
+      }
+
+      // Re-compute the encoded key
+      // to ensure we use the same partition boundary for both child tablets
+      split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
+        split_partition_key, source_table_lock->pb.partition_schema()));
     }
 
-    new_tablet_ids_sorted[i] = child_tablet_id;
+    LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
+              << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+
+    std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
+        CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
+
+    for (int i = 0; i < kNumSplitParts; ++i) {
+      TabletId child_tablet_id;
+      for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
+        const auto child_tablet = VERIFY_RESULT(GetTabletInfoUnlocked(split_tablet_id));
+        const auto child_partition = child_tablet->LockForRead()->pb.partition();
+        if (child_partition.partition_key_start() ==
+            new_tablets_partition[i].partition_key_start()) {
+          child_tablet_id = split_tablet_id;
+          break;
+        }
+      }
+
+      if (child_tablet_id.empty()) {
+        auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
+            source_tablet_info.get(), new_tablets_partition[i],
+            &source_table_lock, &source_tablet_lock));
+
+        child_tablet_id = new_tablet_info->id();
+      }
+
+      new_tablet_ids_sorted[i] = child_tablet_id;
+    }
+    source_tablet_lock.Commit();
+    source_table_lock.Commit();
   }
-  source_tablet_lock.Commit();
-  source_table_lock.Commit();
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
   // Handle xCluster metadata updates for local splits. Handle after registration but before
@@ -2930,10 +2921,14 @@ Status CatalogManager::DoSplitTablet(
       is_manual_split);
 }
 
-Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id) {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfo(const TabletId& tablet_id)
+    EXCLUDES(mutex_) {
+  SharedLock lock(mutex_);
+  return GetTabletInfoUnlocked(tablet_id);
+}
 
+Result<scoped_refptr<TabletInfo>> CatalogManager::GetTabletInfoUnlocked(const TabletId& tablet_id)
+    REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   SCHECK(tablet_info != nullptr, NotFound, Format("Tablet $0 not found", tablet_id));
 
@@ -2996,16 +2991,48 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split);
 }
 
+Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) const {
+  SharedLock lock(mutex_);
+  return ValidateSplitCandidateTableCdcUnlocked(table);
+}
+
+Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
+  // Check if this table is part of a cdc stream.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
+      IsCdcEnabledUnlocked(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDC stream, table_id: $0", table.id());
+  }
+  // Check if the table is in the bootstrapping phase of xCluster.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
+      IsTablePartOfBootstrappingCdcStreamUnlocked(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, table_id: $0", table.id());
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::ValidateSplitCandidate(
+    const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
+  SharedLock lock(mutex_);
+  return ValidateSplitCandidateUnlocked(tablet, is_manual_split);
+}
+
+Status CatalogManager::ValidateSplitCandidateUnlocked(
     const scoped_refptr<TabletInfo>& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
       *tablet->table(), ignore_disabled_list));
+  RETURN_NOT_OK(ValidateSplitCandidateTableCdcUnlocked(*tablet->table()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
 
   const TabletId parent_id = tablet->LockForRead()->pb.split_parent_tablet_id();
-  auto parent_result = GetTabletInfo(parent_id);
+  auto parent_result = GetTabletInfoUnlocked(parent_id);
   TabletInfoPtr parent = parent_result.ok() ? parent_result.get() : nullptr;
   return tablet_split_manager_.ValidateSplitCandidateTablet(
       *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
@@ -3114,7 +3141,7 @@ Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
 
 Status CatalogManager::CreateYsqlSysTable(
     const CreateTableRequestPB* req, CreateTableResponsePB* resp,
-    tablet::ChangeMetadataRequestPB* change_meta_req) {
+    tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
   LOG(INFO) << "CreateYsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -3195,11 +3222,17 @@ Status CatalogManager::CreateYsqlSysTable(
   {
     auto tablet_lock = sys_catalog_tablet->LockForWrite();
     tablet_lock.mutable_data()->pb.add_table_ids(table->id());
+    Status s;
+    if (!writer) {
+      s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);
+    } else {
+      s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet);
+    }
 
-    Status s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
-        "An error occurred while inserting to sys-tablets: "), resp);
+      return AbortTableCreation(
+          table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+          resp);
     }
     table->set_is_system();
     table->AddTablet(sys_catalog_tablet.get());
@@ -3208,12 +3241,18 @@ Status CatalogManager::CreateYsqlSysTable(
   TRACE("Inserted new table info into CatalogManager maps");
 
   // Update the on-disk table state to "running".
-  // TODO(Sanket) : Can batch upserts for all ysql system tables together.
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
-  Status s = sys_catalog_->Upsert(leader_ready_term(), table);
+
+  Status s;
+  if (!writer) {
+    s = sys_catalog_->Upsert(leader_ready_term(), table);
+  } else {
+    s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, table);
+  }
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
-      "An error occurred while inserting to sys-tablets: "), resp);
+    return AbortTableCreation(
+        table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+        resp);
   }
   TRACE("Wrote table to system table");
 
@@ -3333,6 +3372,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   vector<TableId> target_table_ids;
   tablet::ChangeMetadataRequestPB change_meta_req;
   bool batching = false;
+  auto writer = sys_catalog_->NewWriter(leader_ready_term());
   for (const auto& table : tables) {
     CreateTableRequestPB table_req;
     CreateTableResponsePB table_resp;
@@ -3381,7 +3421,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       s = CreateYsqlSysTable(&table_req, &table_resp, nullptr);
       batching = false;
     } else {
-      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req);
+      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req, writer.get());
       batching = true;
     }
     if (!s.ok()) {
@@ -3397,6 +3437,8 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     // Sync change metadata requests for the entire batch.
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+    // Sync sys catalog table upserts for the entire batch.
+    RETURN_NOT_OK(sys_catalog_->SyncWrite(writer.get()));
   }
 
   RETURN_NOT_OK(
@@ -6370,10 +6412,7 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
 
   auto table = source_tablet_info->table();
   TabletInfoPtr new_tablet;
-  {
-    LockGuard lock(mutex_);
-    new_tablet = CreateTabletInfo(table.get(), partition);
-  }
+  new_tablet = CreateTabletInfo(table.get(), partition);
   const auto& source_tablet_meta = tablet_lock->pb;
 
   auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
@@ -6388,30 +6427,26 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
   // - Long enough partition while trying to send out the splits so that they timeout and
   //   not get executed.
   int new_partition_list_version;
-  {
-    LockGuard lock(mutex_);
+  auto& table_pb = table_write_lock->mutable_data()->pb;
+  new_partition_list_version = table_pb.partition_list_version() + 1;
+  table_pb.set_partition_list_version(new_partition_list_version);
 
-    auto& table_pb = table_write_lock->mutable_data()->pb;
-    new_partition_list_version = table_pb.partition_list_version() + 1;
-    table_pb.set_partition_list_version(new_partition_list_version);
+  tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
-    tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
-
-    TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
-    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
-    if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
-      return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
-    }
-
-    table->AddTablet(new_tablet);
-    // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
-    // committed TabletInfo from the `table` ?
-    new_tablet->mutable_metadata()->CommitMutation();
-
-    auto tablet_map_checkout = tablet_map_.CheckOut();
-    (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
+  TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
+  MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+  if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+    return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
   }
+  table->AddTablet(new_tablet);
+  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+  // committed TabletInfo from the `table` ?
+  new_tablet->mutable_metadata()->CommitMutation();
+
+  auto tablet_map_checkout = tablet_map_.CheckOut();
+  (*tablet_map_checkout)[new_tablet->id()] = new_tablet;
+
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
             << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
             << ", partition_key_end: "
@@ -8518,7 +8553,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
   for (auto &table_id : sys_table_ids) {
-    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id));
+    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id, leader_ready_term()));
   }
   // Remove the system tables from the system catalog TabletInfo.
   RETURN_NOT_OK(RemoveTableIdsFromTabletInfo(sys_tablet_info, sys_table_ids));

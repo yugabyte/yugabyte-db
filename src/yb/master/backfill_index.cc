@@ -80,52 +80,40 @@
 using std::vector;
 using std::string;
 
-DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
-             "Timeout used by the master when attempting to backfill a YSQL tablet during index "
-             "creation.");
+DEFINE_RUNTIME_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
+    "Timeout used by the master when attempting to backfill a YSQL tablet during index creation.");
 TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);
-TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, runtime);
 
-DEFINE_int32(index_backfill_rpc_timeout_ms, 1 * 30 * 1000, // 30 sec.
-             "Timeout used by the master when attempting to backfill a tablet "
-             "during index creation.");
+DEFINE_RUNTIME_int32(index_backfill_rpc_timeout_ms, 1 * 30 * 1000, // 30 sec.
+    "Timeout used by the master when attempting to backfill a tablet during index creation.");
 TAG_FLAG(index_backfill_rpc_timeout_ms, advanced);
-TAG_FLAG(index_backfill_rpc_timeout_ms, runtime);
 
-DEFINE_int32(index_backfill_rpc_max_retries, 150,
-             "Number of times to retry backfilling a tablet chunk "
-             "during index creation.");
+DEFINE_RUNTIME_int32(index_backfill_rpc_max_retries, 150,
+    "Number of times to retry backfilling a tablet chunk during index creation.");
 TAG_FLAG(index_backfill_rpc_max_retries, advanced);
-TAG_FLAG(index_backfill_rpc_max_retries, runtime);
 
-DEFINE_int32(index_backfill_rpc_max_delay_ms, 10 * 60 * 1000, // 10 min.
-             "Maximum delay before retrying a backfill tablet chunk request "
-             "during index creation.");
+DEFINE_RUNTIME_int32(index_backfill_rpc_max_delay_ms, 10 * 60 * 1000, // 10 min.
+    "Maximum delay before retrying a backfill tablet chunk request during index creation.");
 TAG_FLAG(index_backfill_rpc_max_delay_ms, advanced);
-TAG_FLAG(index_backfill_rpc_max_delay_ms, runtime);
 
-DEFINE_int32(index_backfill_wait_for_alter_table_completion_ms, 100,
-             "Delay before retrying to see if an in-progress alter table has "
-             "completed, during index backfill.");
+DEFINE_RUNTIME_int32(index_backfill_wait_for_alter_table_completion_ms, 100,
+    "Delay before retrying to see if an in-progress alter table has "
+    "completed, during index backfill.");
 TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, advanced);
-TAG_FLAG(index_backfill_wait_for_alter_table_completion_ms, runtime);
 
-DEFINE_int32(index_backfill_tablet_split_completion_timeout_sec, 30,
-             "Total time to wait for tablet splitting to complete on a table from which we are "
-             "running a backfill before aborting the backfill and marking it as failed.");
+DEFINE_RUNTIME_int32(index_backfill_tablet_split_completion_timeout_sec, 30,
+    "Total time to wait for tablet splitting to complete on a table from which we are "
+    "running a backfill before aborting the backfill and marking it as failed.");
 TAG_FLAG(index_backfill_tablet_split_completion_timeout_sec, advanced);
-TAG_FLAG(index_backfill_tablet_split_completion_timeout_sec, runtime);
 
-DEFINE_int32(index_backfill_tablet_split_completion_poll_freq_ms, 2000,
-             "Delay before retrying to see if tablet splitting has completed on the table from "
-             "which we are running a backfill.");
+DEFINE_RUNTIME_int32(index_backfill_tablet_split_completion_poll_freq_ms, 2000,
+    "Delay before retrying to see if tablet splitting has completed on the table from "
+    "which we are running a backfill.");
 TAG_FLAG(index_backfill_tablet_split_completion_poll_freq_ms, advanced);
-TAG_FLAG(index_backfill_tablet_split_completion_poll_freq_ms, runtime);
 
-DEFINE_bool(defer_index_backfill, false,
-            "Defer index backfill so that backfills can be performed as a batch later on.");
+DEFINE_RUNTIME_bool(defer_index_backfill, false,
+    "Defer index backfill so that backfills can be performed as a batch later on.");
 TAG_FLAG(defer_index_backfill, advanced);
-TAG_FLAG(defer_index_backfill, runtime);
 
 DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "

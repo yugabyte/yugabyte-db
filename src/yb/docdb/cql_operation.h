@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CQL_OPERATION_H
-#define YB_DOCDB_CQL_OPERATION_H
+#pragma once
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/typedefs.h"
@@ -226,7 +225,7 @@ class QLReadOperation : public DocExprExecutor {
                         int* match_count,
                         size_t* num_rows_skipped);
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 
@@ -247,4 +246,3 @@ class QLReadOperation : public DocExprExecutor {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_CQL_OPERATION_H

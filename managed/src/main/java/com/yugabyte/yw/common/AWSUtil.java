@@ -221,7 +221,9 @@ public class AWSUtil implements CloudUtil {
     try {
       instanceCredentials = getTemporaryCredentialsInstanceProfile();
     } catch (Exception e) {
-      log.error("Fetching instance credentials failed: {}", e.getMessage());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Fetching instance credentials failed: %s", e.getMessage()));
     }
     if (assumeRoleCredentials != null) {
       if (assumeRoleCredentials.getExpiration().compareTo(instanceCredentials.getExpiration())
@@ -246,19 +248,22 @@ public class AWSUtil implements CloudUtil {
 
   public static AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
       throws AmazonS3Exception {
-    AmazonS3ClientBuilder s3ClientBuilder = AmazonS3Client.builder();
+    AmazonS3ClientBuilder s3ClientBuilder = null;
     AWSCredentialsProvider creds = null;
     if (s3Data.isIAMInstanceProfile) {
-      // Using instance creds from ec2.services.com here
-      // since the client is used on Platform itself unlike backups.
-      creds = new InstanceProfileCredentialsProvider(false);
+      // Using default credential chaining here.
+      // This first looks for K8s service account IAM role,
+      // then falls back to the Node/EC2 IAM role.
+      s3ClientBuilder = AmazonS3ClientBuilder.standard();
     } else {
+      s3ClientBuilder = AmazonS3Client.builder();
       String key = s3Data.awsAccessKeyId;
       String secret = s3Data.awsSecretAccessKey;
       AWSCredentials credentials = new BasicAWSCredentials(key, secret);
       creds = new AWSStaticCredentialsProvider(credentials);
+      s3ClientBuilder.withCredentials(creds);
     }
-    s3ClientBuilder.withCredentials(creds).withForceGlobalBucketAccessEnabled(true);
+    s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
     EndpointConfiguration endpointConfiguration = null;
     String endpoint = s3Data.awsHostBase;
     if (StringUtils.isNotBlank(endpoint)) {

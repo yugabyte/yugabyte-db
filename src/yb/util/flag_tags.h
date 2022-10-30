@@ -128,8 +128,7 @@
 //
 // To fetch the list of tags associated with a flag, use 'GetFlagTags'.
 
-#ifndef YB_UTIL_FLAG_TAGS_H
-#define YB_UTIL_FLAG_TAGS_H
+#pragma once
 
 #include <string>
 #include <unordered_set>
@@ -160,7 +159,6 @@ YB_DEFINE_ENUM(
 #define FLAG_TAG_hidden ::yb::FlagTag::kHidden
 #define FLAG_TAG_advanced ::yb::FlagTag::kAdvanced
 #define FLAG_TAG_unsafe ::yb::FlagTag::kUnsafe
-#define FLAG_TAG_runtime ::yb::FlagTag::kRuntime
 #define FLAG_TAG_sensitive_info ::yb::FlagTag::kSensitive_info
 #define FLAG_TAG_auto ::yb::FlagTag::kAuto
 #define FLAG_TAG_pg ::yb::FlagTag::kPg
@@ -179,6 +177,16 @@ YB_DEFINE_ENUM(
   ::yb::flag_tags_internal::FlagTagger BOOST_PP_CAT( \
       t_, BOOST_PP_CAT(flag_name, BOOST_PP_CAT(_, tag)))( \
       AS_STRING(flag_name), BOOST_PP_CAT(FLAG_TAG_, tag)); \
+  }
+
+// Internal only macro for tagging as kRuntime, to explicitly disallow new additions of the old
+// approach of: TAG_FLAG(foo, runtime);
+#define _TAG_FLAG_RUNTIME(flag_name) \
+  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
+  namespace { \
+  ::yb::flag_tags_internal::FlagTagger BOOST_PP_CAT( \
+      t_, BOOST_PP_CAT(flag_name, _runtime))( \
+      AS_STRING(flag_name), ::yb::FlagTag::kRuntime); \
   }
 
 // Fetch the list of flags associated with the given flag.
@@ -213,27 +221,27 @@ class FlagTagger {
 // Runtime flags.
 #define DEFINE_RUNTIME_bool(name, default_value, description) \
   DEFINE_bool(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 #define DEFINE_RUNTIME_int32(name, default_value, description) \
   DEFINE_int32(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 #define DEFINE_RUNTIME_int64(name, default_value, description) \
   DEFINE_int64(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 #define DEFINE_RUNTIME_uint64(name, default_value, description) \
   DEFINE_uint64(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 #define DEFINE_RUNTIME_double(name, default_value, description) \
   DEFINE_double(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 #define DEFINE_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description); \
-  TAG_FLAG(name, runtime);
+  _TAG_FLAG_RUNTIME(name);
 
 // Non Runtime flags.
 #define DEFINE_NON_RUNTIME_bool(name, default_value, description) \
@@ -254,4 +262,3 @@ class FlagTagger {
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description);
 
-#endif /* YB_UTIL_FLAG_TAGS_H */

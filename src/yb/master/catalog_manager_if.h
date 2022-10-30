@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_IF_H
-#define YB_MASTER_CATALOG_MANAGER_IF_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -273,4 +272,3 @@ bool IsYcqlTable(const TableInfo& table);
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_CATALOG_MANAGER_IF_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
-#define YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -74,4 +73,3 @@ class MiniClusterBase {
 
 }  // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_

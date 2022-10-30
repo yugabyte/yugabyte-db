@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_LOCK_BATCH_H
-#define YB_DOCDB_LOCK_BATCH_H
+#pragma once
 
 #include <string>
 
@@ -140,4 +139,3 @@ class UnlockedBatch {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_LOCK_BATCH_H

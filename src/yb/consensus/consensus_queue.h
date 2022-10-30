@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_QUEUE_H_
-#define YB_CONSENSUS_CONSENSUS_QUEUE_H_
+#pragma once
 
 #include <iosfwd>
 #include <map>
@@ -294,8 +293,8 @@ class PeerMessageQueue {
   // the old ones if they are still required.
   virtual Status RequestForPeer(
       const std::string& uuid,
-      ConsensusRequestPB* request,
-      ReplicateMsgsHolder* msgs_holder,
+      LWConsensusRequestPB* request,
+      LWReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       PeerMemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);
@@ -320,7 +319,7 @@ class PeerMessageQueue {
   // Updates the request queue with the latest response of a peer, returns whether this peer has
   // more requests pending.
   virtual bool ResponseFromPeer(const std::string& peer_uuid,
-                                const ConsensusResponsePB& response);
+                                const LWConsensusResponsePB& response);
 
   void RequestWasNotSent(const std::string& peer_uuid);
 
@@ -662,4 +661,3 @@ Status ValidateFlags();
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_QUEUE_H_

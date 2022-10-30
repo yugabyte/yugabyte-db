@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
-#define YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
+#pragma once
 
 #include <map>
 #include <memory>
@@ -45,13 +44,16 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/test_consensus_context.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
@@ -93,13 +95,13 @@ inline ReplicateMsgPtr CreateDummyReplicate(int64_t term,
                                             int64_t index,
                                             const HybridTime& hybrid_time,
                                             int64_t payload_size) {
-  auto msg = std::make_shared<ReplicateMsg>();
-  OpIdPB* id = msg->mutable_id();
+  auto msg = rpc::MakeSharedMessage<LWReplicateMsg>();
+  auto* id = msg->mutable_id();
   id->set_term(term);
   id->set_index(index);
 
   msg->set_op_type(NO_OP);
-  msg->mutable_noop_request()->mutable_payload_for_tests()->resize(payload_size);
+  msg->mutable_noop_request()->dup_payload_for_tests(std::string(payload_size, 'Y'));
   msg->set_hybrid_time(hybrid_time.ToUint64());
   return msg;
 }
@@ -165,7 +167,7 @@ RaftConfigPB BuildRaftConfigPBForTests(int num) {
 class TestPeerProxy : public PeerProxy {
  public:
   // Which PeerProxy method to invoke.
-  enum Method {
+  enum class Method {
     kUpdate,
     kRequestVote,
   };
@@ -177,7 +179,7 @@ class TestPeerProxy : public PeerProxy {
   // We currently only support one request of each method being in flight at a time.
   virtual void RegisterCallback(Method method, const rpc::ResponseCallback& callback) {
     std::lock_guard<simple_spinlock> lock(lock_);
-    InsertOrDie(&callbacks_, method, callback);
+    CHECK(callbacks_.emplace(method, callback).second) << "Method: " << to_underlying(method);
   }
 
   // Answer the peer.
@@ -185,8 +187,10 @@ class TestPeerProxy : public PeerProxy {
     rpc::ResponseCallback callback;
     {
       std::lock_guard<simple_spinlock> lock(lock_);
-      callback = FindOrDie(callbacks_, method);
-      CHECK_EQ(1, callbacks_.erase(method));
+      auto it = callbacks_.find(method);
+      CHECK(it != callbacks_.end()) << "Method: " << to_underlying(method);
+      callback = std::move(it->second);
+      callbacks_.erase(it);
       // Drop the lock before submitting to the pool, since the callback itself may
       // destroy this instance.
     }
@@ -240,25 +244,25 @@ class DelayablePeerProxy : public TestPeerProxy {
     return TestPeerProxy::Respond(method);
   }
 
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
-                           RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
-                           rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) override {
-    RegisterCallback(kUpdate, callback);
+  void UpdateAsync(const LWConsensusRequestPB* request,
+                   RequestTriggerMode trigger_mode,
+                   LWConsensusResponsePB* response,
+                   rpc::RpcController* controller,
+                   const rpc::ResponseCallback& callback) override {
+    RegisterCallback(Method::kUpdate, callback);
     return proxy_->UpdateAsync(
         request, trigger_mode, response, controller,
-        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, kUpdate));
+        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, Method::kUpdate));
   }
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
                                          const rpc::ResponseCallback& callback) override {
-    RegisterCallback(kRequestVote, callback);
+    RegisterCallback(Method::kRequestVote, callback);
     return proxy_->RequestConsensusVoteAsync(
         request, response, controller,
-        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, kRequestVote));
+        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, Method::kRequestVote));
   }
 
   ProxyType* proxy() const {
@@ -294,11 +298,11 @@ class MockedPeerProxy : public TestPeerProxy {
     }
   }
 
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
-                           RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
-                           rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) override {
+  void UpdateAsync(const LWConsensusRequestPB* request,
+                   RequestTriggerMode trigger_mode,
+                   LWConsensusResponsePB* response,
+                   rpc::RpcController* controller,
+                   const rpc::ResponseCallback& callback) override {
     {
       std::lock_guard<simple_spinlock> l(lock_);
       switch (trigger_mode) {
@@ -306,9 +310,9 @@ class MockedPeerProxy : public TestPeerProxy {
         case RequestTriggerMode::kAlwaysSend: forced_update_count_++; break;
       }
       update_count_++;
-      *response = update_response_;
+      response->CopyFrom(update_response_);
     }
-    return RegisterCallbackAndRespond(kUpdate, callback);
+    return RegisterCallbackAndRespond(Method::kUpdate, callback);
   }
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -316,7 +320,7 @@ class MockedPeerProxy : public TestPeerProxy {
                                          rpc::RpcController* controller,
                                          const rpc::ResponseCallback& callback) override {
     *response = vote_response_;
-    return RegisterCallbackAndRespond(kRequestVote, callback);
+    return RegisterCallbackAndRespond(Method::kRequestVote, callback);
   }
 
   // Return the number of times that UpdateAsync() has been called.
@@ -355,36 +359,35 @@ class NoOpTestPeerProxy : public TestPeerProxy {
 
   explicit NoOpTestPeerProxy(ThreadPool* pool, const consensus::RaftPeerPB& peer_pb)
     : TestPeerProxy(pool), peer_pb_(peer_pb) {
-    last_received_.CopyFrom(MinimumOpId());
   }
 
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
-                           RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
-                           rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) override {
+  void UpdateAsync(const LWConsensusRequestPB* request,
+                   RequestTriggerMode trigger_mode,
+                   LWConsensusResponsePB* response,
+                   rpc::RpcController* controller,
+                   const rpc::ResponseCallback& callback) override {
 
     response->Clear();
     {
       std::lock_guard<simple_spinlock> lock(lock_);
-      if (OpIdLessThan(last_received_, request->preceding_id())) {
-        ConsensusErrorPB* error = response->mutable_status()->mutable_error();
+      if (last_received_ < OpId::FromPB(request->preceding_id())) {
+        auto* error = response->mutable_status()->mutable_error();
         error->set_code(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
         StatusToPB(STATUS(IllegalState, ""), error->mutable_status());
-      } else if (request->ops_size() > 0) {
-        last_received_.CopyFrom(request->ops(request->ops_size() - 1).id());
+      } else if (!request->ops().empty()) {
+        last_received_ = OpId::FromPB(request->ops().back().id());
       }
 
-      response->set_responder_uuid(peer_pb_.permanent_uuid());
+      response->ref_responder_uuid(peer_pb_.permanent_uuid());
       response->set_responder_term(request->caller_term());
-      response->mutable_status()->mutable_last_received()->CopyFrom(last_received_);
-      response->mutable_status()->mutable_last_received_current_leader()->CopyFrom(last_received_);
+      last_received_.ToPB(response->mutable_status()->mutable_last_received());
+      last_received_.ToPB(response->mutable_status()->mutable_last_received_current_leader());
       // We set the last committed index to be the same index as the last received. While
       // this is unlikely to happen in a real situation, its not technically incorrect and
       // avoids having to come up with some other index that it still correct.
-      response->mutable_status()->set_last_committed_idx(last_received_.index());
+      response->mutable_status()->set_last_committed_idx(last_received_.index);
     }
-    return RegisterCallbackAndRespond(kUpdate, callback);
+    return RegisterCallbackAndRespond(Method::kUpdate, callback);
   }
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -397,18 +400,18 @@ class NoOpTestPeerProxy : public TestPeerProxy {
       response->set_responder_term(request->candidate_term());
       response->set_vote_granted(true);
     }
-    return RegisterCallbackAndRespond(kRequestVote, callback);
+    return RegisterCallbackAndRespond(Method::kRequestVote, callback);
   }
 
-  const OpIdPB& last_received() {
+  OpId last_received() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return last_received_;
   }
 
  private:
   const consensus::RaftPeerPB peer_pb_;
-  ConsensusStatusPB last_status_; // Protected by lock_.
-  OpIdPB last_received_;            // Protected by lock_.
+  ConsensusStatusPB last_status_ GUARDED_BY(lock_);
+  OpId last_received_ GUARDED_BY(lock_);
 };
 
 class NoOpTestPeerProxyFactory : public PeerProxyFactory {
@@ -485,7 +488,6 @@ class TestPeerMapManager {
   mutable simple_spinlock lock_;
 };
 
-
 // Allows to test remote peers by emulating an RPC.
 // Both the "remote" peer's RPC call and the caller peer's response are executed
 // asynchronously in a ThreadPool.
@@ -498,21 +500,22 @@ class LocalTestPeerProxy : public TestPeerProxy {
         peers_(peers),
         miss_comm_(false) {}
 
-  void UpdateAsync(const ConsensusRequestPB* request,
+  void UpdateAsync(const LWConsensusRequestPB* request,
                    RequestTriggerMode trigger_mode,
-                   ConsensusResponsePB* response,
+                   LWConsensusResponsePB* response,
                    rpc::RpcController* controller,
                    const rpc::ResponseCallback& callback) override {
-    RegisterCallback(kUpdate, callback);
+    RegisterCallback(Method::kUpdate, callback);
+    auto request_copy = rpc::CopySharedMessage(*request);
     CHECK_OK(pool_->SubmitFunc(
-        std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, *request, response)));
+        std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request_copy, response)));
   }
 
   void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                  VoteResponsePB* response,
                                  rpc::RpcController* controller,
                                  const rpc::ResponseCallback& callback) override {
-    RegisterCallback(kRequestVote, callback);
+    RegisterCallback(Method::kRequestVote, callback);
     WARN_NOT_OK(
         pool_->SubmitFunc(std::bind(&LocalTestPeerProxy::SendVoteRequest, this, request, response)),
         "Submit failed");
@@ -520,7 +523,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
 
   template<class Response>
   void SetResponseError(const Status& status, Response* response) {
-    tserver::TabletServerErrorPB* error = response->mutable_error();
+    auto* error = response->mutable_error();
     error->set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
     StatusToPB(status, error->mutable_status());
     ClearStatus(response);
@@ -533,10 +536,13 @@ class LocalTestPeerProxy : public TestPeerProxy {
     response->clear_status();
   }
 
+  void ClearStatus(LWConsensusResponsePB* response) {
+    response->clear_status();
+  }
+
   template<class Request, class Response>
-  void RespondOrMissResponse(Request* request,
-                             const Response& response_temp,
-                             Response* final_response,
+  void RespondOrMissResponse(const Request* request,
+                             Response* response,
                              Method method) {
     bool miss_comm_copy;
     {
@@ -547,39 +553,34 @@ class LocalTestPeerProxy : public TestPeerProxy {
     if (PREDICT_FALSE(miss_comm_copy)) {
       VLOG(2) << this << ": injecting fault on " << request->ShortDebugString();
       SetResponseError(STATUS(IOError, "Artificial error caused by communication "
-          "failure injection."), final_response);
-    } else {
-      final_response->CopyFrom(response_temp);
+          "failure injection."), response);
     }
     Respond(method);
   }
 
-  void SendUpdateRequest(ConsensusRequestPB request,
-                         ConsensusResponsePB* response) {
+  void SendUpdateRequest(const std::shared_ptr<LWConsensusRequestPB>& request,
+                         LWConsensusResponsePB* response) {
     // Give the other peer a clean response object to write to.
-    ConsensusResponsePB other_peer_resp;
+    LWConsensusResponsePB other_peer_resp(&request->arena());
     std::shared_ptr<RaftConsensus> peer;
     Status s = peers_->GetPeerByUuid(peer_uuid_, &peer);
 
     if (s.ok()) {
-      s = peer->Update(&request, &other_peer_resp, CoarseBigDeadline());
+      s = peer->Update(request, &other_peer_resp, CoarseBigDeadline());
       if (s.ok() && !other_peer_resp.has_error()) {
         CHECK(other_peer_resp.has_status());
-        CHECK(other_peer_resp.status().IsInitialized());
       }
     }
     if (!s.ok()) {
       LOG(WARNING) << "Could not Update replica with request: "
-                   << request.ShortDebugString()
+                   << request->ShortDebugString()
                    << " Status: " << s.ToString();
       SetResponseError(s, &other_peer_resp);
     }
 
     response->CopyFrom(other_peer_resp);
-    RespondOrMissResponse(&request, other_peer_resp, response, kUpdate);
+    RespondOrMissResponse(request.get(), response, Method::kUpdate);
   }
-
-
 
   void SendVoteRequest(const VoteRequestPB* request,
                        VoteResponsePB* response) {
@@ -605,7 +606,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
     }
 
     response->CopyFrom(other_peer_resp);
-    RespondOrMissResponse(request, other_peer_resp, response, kRequestVote);
+    RespondOrMissResponse(request, response, Method::kRequestVote);
   }
 
   void InjectCommFaultLeaderSide() {
@@ -954,4 +955,3 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_ */

@@ -4,8 +4,7 @@
 // This module defines the ResultSet that YQL database returns to a query request.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_EXPR_H_
-#define YB_COMMON_QL_EXPR_H_
+#pragma once
 
 #include <boost/container/small_vector.hpp>
 
@@ -407,4 +406,3 @@ bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_EXPR_H_

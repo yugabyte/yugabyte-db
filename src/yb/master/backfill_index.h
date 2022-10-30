@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_BACKFILL_INDEX_H
-#define YB_MASTER_BACKFILL_INDEX_H
+#pragma once
 
 #include <float.h>
 
@@ -406,4 +405,3 @@ class BackfillChunk : public RetryingTSRpcTask {
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_BACKFILL_INDEX_H

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_LOCAL_CALL_H
-#define YB_RPC_LOCAL_CALL_H
+#pragma once
 
 #include "yb/gutil/casts.h"
 
@@ -92,7 +91,7 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  private:
   friend class LocalOutboundCall;
 
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
@@ -129,4 +128,3 @@ auto HandleCall(InboundCallPtr call, F f) {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_LOCAL_CALL_H

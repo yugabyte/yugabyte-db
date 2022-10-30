@@ -385,16 +385,14 @@ void TabletServer::AutoInitServiceFlags() {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
     const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("tablet_server_svc_num_threads", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(tablet_server_svc_num_threads, num_threads));
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
   }
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
     const int32 num_threads = std::max(1, std::min(8, num_cores / 2));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("num_concurrent_backfills_allowed", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_concurrent_backfills_allowed, num_threads));
     LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
               << FLAGS_num_concurrent_backfills_allowed;
   }
@@ -403,8 +401,7 @@ void TabletServer::AutoInitServiceFlags() {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
     const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("ts_consensus_svc_num_threads", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ts_consensus_svc_num_threads, num_threads));
     LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
               << FLAGS_ts_consensus_svc_num_threads;
   }
@@ -438,13 +435,9 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
-      this /* tablet_server */,
-      tablet_manager_->client_future(),
-      clock(),
-      std::bind(&TabletServer::TransactionPool, this),
-      metric_entity(),
-      &messenger()->scheduler(),
-      &xcluster_safe_time_map_);
+      *this, tablet_manager_->client_future(), clock(),
+      std::bind(&TabletServer::TransactionPool, this), metric_entity(),
+      &messenger()->scheduler(), &xcluster_safe_time_map_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
@@ -663,7 +656,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       continue;
     }
     // Try to insert a new entry, using -1 as shm_index which will be updated later if the
-    // new entry is inserted successully.
+    // new entry is inserted successfully.
     // Design note:
     // In per-db catalog version mode once a database is allocated a slot in the shared memory
     // array db_catalog_versions_, it will remain allocated and will not change across the
@@ -731,7 +724,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
     if (row_inserted || row_updated) {
       // Set the new catalog version in shared memory at slot shm_index.
-      shared_object().SetYsqlDbCatalogVersion(shm_index, new_version);
+      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
@@ -754,7 +747,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
-      shared_object().SetYsqlDbCatalogVersion(shm_index, 0);
+      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
     } else {
       ++it;
     }

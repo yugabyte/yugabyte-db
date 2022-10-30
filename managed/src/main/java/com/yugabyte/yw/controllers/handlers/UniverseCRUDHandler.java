@@ -245,6 +245,7 @@ public class UniverseCRUDHandler {
         } catch (Exception e) {
           LOG.error("Failed to calculate update options", e);
         }
+        UniverseResp.fillClusterRegions(taskParams.clusters);
       } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
@@ -895,6 +896,13 @@ public class UniverseCRUDHandler {
               + taskParams.clusters
               + " for "
               + universe.universeUUID);
+    }
+
+    if (universe.isYbcEnabled()) {
+      taskParams.installYbc = true;
+      taskParams.enableYbc = true;
+      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      taskParams.ybcInstalled = true;
     }
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();

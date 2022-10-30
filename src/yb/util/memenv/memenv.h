@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_
-#define STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_
+#pragma once
 
 namespace yb {
 
@@ -32,4 +31,3 @@ Env* NewMemEnv(Env* base_env);
 
 } // namespace yb
 
-#endif  // STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_

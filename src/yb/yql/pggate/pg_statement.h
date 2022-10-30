@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_STATEMENT_H_
-#define YB_YQL_PGGATE_PG_STATEMENT_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -103,4 +102,3 @@ class PgStatement : public PgMemctx::Registrable {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_STATEMENT_H_

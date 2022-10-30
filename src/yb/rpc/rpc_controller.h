@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_CONTROLLER_H
-#define YB_RPC_RPC_CONTROLLER_H
+#pragma once
 
 #include <memory>
 
@@ -173,4 +172,3 @@ class RpcController {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_CONTROLLER_H

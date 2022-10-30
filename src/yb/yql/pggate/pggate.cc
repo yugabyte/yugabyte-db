@@ -50,7 +50,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/range.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
@@ -138,15 +137,12 @@ Result<PgApiContext::MessengerHolder> BuildMessenger(
   return PgApiContext::MessengerHolder{std::move(secure_context), std::move(messenger)};
 }
 
-std::unique_ptr<tserver::TServerSharedObject> InitTServerSharedObject() {
-  LOG(INFO) << __func__ << ": " << YBCIsInitDbModeEnvVarSet() << ", "
-            << FLAGS_TEST_pggate_ignore_tserver_shm << ", " << FLAGS_pggate_tserver_shm_fd;
-  // Do not use shared memory in initdb or if explicitly set to be ignored.
-  if (FLAGS_TEST_pggate_ignore_tserver_shm || FLAGS_pggate_tserver_shm_fd == -1) {
-    return nullptr;
-  }
-  return std::make_unique<tserver::TServerSharedObject>(CHECK_RESULT(
-      tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd)));
+tserver::TServerSharedObject BuildTServerSharedObject() {
+  VLOG(1) << __func__
+          << ": " << YBCIsInitDbModeEnvVarSet()
+          << ", " << FLAGS_pggate_tserver_shm_fd;
+  LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
+  return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
 }
 
 // Helper class to collect operations from multiple doc_ops and send them with a single perform RPC.
@@ -404,11 +400,9 @@ PgApiImpl::PgApiImpl(
       interrupter_(new Interrupter(messenger_holder_.messenger.get())),
       proxy_cache_(std::move(context.proxy_cache)),
       clock_(new server::HybridClock()),
-      tserver_shared_object_(InitTServerSharedObject()),
+      tserver_shared_object_(BuildTServerSharedObject()),
       pg_callbacks_(callbacks),
-      pg_txn_manager_(
-          new PgTxnManager(
-              &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)) {
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
 
@@ -419,8 +413,7 @@ PgApiImpl::PgApiImpl(
   }
 
   CHECK_OK(pg_client_.Start(
-      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      *DCHECK_NOTNULL(tserver_shared_object_)));
+      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(), tserver_shared_object_));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -447,12 +440,8 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 Status PgApiImpl::InitSession(const string& database_name) {
   CHECK(!pg_session_);
-  auto session = make_scoped_refptr<PgSession>(&pg_client_,
-                                               database_name,
-                                               pg_txn_manager_,
-                                               clock_,
-                                               tserver_shared_object_.get(),
-                                               pg_callbacks_);
+  auto session = make_scoped_refptr<PgSession>(
+      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -957,7 +946,8 @@ Status PgApiImpl::SetIsSysCatalogVersionChange(PgStatement *handle) {
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
-Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version) {
+Status PgApiImpl::SetCatalogCacheVersion(
+  PgStatement *handle, uint64_t version, std::optional<PgOid> db_oid) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
@@ -967,28 +957,7 @@ Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_c
     case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
     case StmtOp::STMT_DELETE:
-      down_cast<PgDml *>(handle)->SetCatalogCacheVersion(catalog_cache_version);
-      return Status::OK();
-    default:
-      break;
-  }
-
-  return STATUS(InvalidArgument, "Invalid statement handle");
-}
-
-Status PgApiImpl::SetDBCatalogCacheVersion(PgStatement *handle,
-                                           uint32_t db_oid,
-                                           uint64_t catalog_cache_version) {
-  if (!handle) {
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-
-  switch (handle->stmt_op()) {
-    case StmtOp::STMT_SELECT:
-    case StmtOp::STMT_INSERT:
-    case StmtOp::STMT_UPDATE:
-    case StmtOp::STMT_DELETE:
-      down_cast<PgDml *>(handle)->SetDBCatalogCacheVersion(db_oid, catalog_cache_version);
+      down_cast<PgDml*>(handle)->SetCatalogCacheVersion(db_oid, version);
       return Status::OK();
     default:
       break;
@@ -1630,21 +1599,30 @@ Result<bool> PgApiImpl::IsInitDbDone() {
   return pg_session_->IsInitDbDone();
 }
 
-Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
-  return pg_session_->GetSharedCatalogVersion();
+Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
+  if (!db_oid) {
+    return tserver_shared_object_->ysql_catalog_version();
+  }
+  if (!catalog_version_db_index_) {
+    const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
+    for (const auto& entry : info.entries()) {
+      if (entry.db_oid() == *db_oid) {
+        catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
+        break;
+      }
+    }
+    SCHECK(catalog_version_db_index_,
+           IllegalState,
+           "Failed to find suitable shared memory index for db $0", *db_oid);
+  } else if (catalog_version_db_index_->first != *db_oid) {
+    return STATUS(IllegalState, "Forbidden db switch from $0 to $1 detected");
+  }
+  return tserver_shared_object_->ysql_db_catalog_version(
+      static_cast<size_t>(catalog_version_db_index_->second));
 }
 
-Result<uint64_t> PgApiImpl::GetSharedDBCatalogVersion(int db_oid_shm_index) {
-  return pg_session_->GetSharedDBCatalogVersion(db_oid_shm_index);
-}
-
-Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
-PgApiImpl::GetTserverCatalogVersionInfo() {
-  return pg_session_->GetTserverCatalogVersionInfo();
-}
-
-Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
-  return pg_session_->GetSharedAuthKey();
+uint64_t PgApiImpl::GetSharedAuthKey() const {
+  return tserver_shared_object_->postgres_auth_key();
 }
 
 void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,

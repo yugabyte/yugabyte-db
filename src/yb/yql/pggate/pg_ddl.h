@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DDL_H_
-#define YB_YQL_PGGATE_PG_DDL_H_
+#pragma once
 
 #include "yb/common/constants.h"
 #include "yb/common/transaction.h"
@@ -274,4 +273,3 @@ class PgAlterTable : public PgDdl {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_DDL_H_

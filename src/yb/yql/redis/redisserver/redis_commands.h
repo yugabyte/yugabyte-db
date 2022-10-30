@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_COMMANDS_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_COMMANDS_H
+#pragma once
 
 #include <functional>
 #include <string>
@@ -153,4 +152,3 @@ void FillRedisCommands(const scoped_refptr<MetricEntity>& metric_entity,
 } // namespace redisserver
 } // namespace yb
 
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_COMMANDS_H

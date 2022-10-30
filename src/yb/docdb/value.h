@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_VALUE_H_
-#define YB_DOCDB_VALUE_H_
+#pragma once
 
 #include "yb/common/typedefs.h"
 #include "yb/docdb/primitive_value.h"
@@ -132,4 +131,3 @@ class Value {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_VALUE_H_

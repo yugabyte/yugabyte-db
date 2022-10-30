@@ -15,8 +15,7 @@
 // Entry point for the execution process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
-#define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
+#pragma once
 
 #include <mutex>
 #include <vector>
@@ -541,4 +540,3 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_EXEC_EXECUTOR_H_

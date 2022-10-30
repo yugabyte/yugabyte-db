@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H
-#define YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/docdb/docdb_util.h"
 
@@ -40,4 +39,3 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H

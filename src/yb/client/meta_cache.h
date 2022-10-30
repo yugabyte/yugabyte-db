@@ -30,8 +30,7 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef YB_CLIENT_META_CACHE_H
-#define YB_CLIENT_META_CACHE_H
+#pragma once
 
 #include <shared_mutex>
 #include <map>
@@ -719,4 +718,3 @@ int64_t TEST_GetLookupSerial();
 } // namespace client
 } // namespace yb
 
-#endif /* YB_CLIENT_META_CACHE_H */

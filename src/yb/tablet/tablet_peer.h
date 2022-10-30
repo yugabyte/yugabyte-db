@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_H_
-#define YB_TABLET_TABLET_PEER_H_
+#pragma once
 
 #include <atomic>
 #include <future>
@@ -214,7 +213,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) override;
+      std::shared_ptr<LWTransactionStatePB> request) override;
 
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
@@ -448,7 +447,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
 
-  virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
+  virtual std::unique_ptr<Operation> CreateOperation(consensus::LWReplicateMsg* replicate_msg);
 
   const RaftGroupMetadataPtr meta_;
 
@@ -557,4 +556,3 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_TABLET_PEER_H_ */

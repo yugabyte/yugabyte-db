@@ -146,11 +146,6 @@ public class Provider extends Model {
 
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public List<String> customHostCidrs = new ArrayList<>();
-  // TODO(bogdan): only used/needed for GCP.
-
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public String destVpcId = null;
 
   @Transient

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
-#define YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -132,6 +131,10 @@ void AddKVToPB(int32_t key_val,
                const std::string& string_val,
                docdb::KeyValueWriteBatchPB* write_batch);
 
+void AddKVToPB(int32_t key_val,
+               int32_t int_val,
+               const std::string& string_val,
+               docdb::LWKeyValueWriteBatchPB* write_batch);
+
 } // namespace yb
 
-#endif // YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_

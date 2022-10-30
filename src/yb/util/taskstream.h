@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TASKSTREAM_H
-#define YB_UTIL_TASKSTREAM_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -233,4 +232,3 @@ void TaskStream<T>::ProcessItem(T* item) {
 
 }  // namespace yb
 
-#endif  // YB_UTIL_TASKSTREAM_H

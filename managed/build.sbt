@@ -149,11 +149,10 @@ libraryDependencies ++= Seq(
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
-  // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core" % "1.32.0",
-  "com.azure" % "azure-identity" % "1.6.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
-  "com.azure" % "azure-storage-blob" % "12.19.1",
+  "com.azure" % "azure-core" % "1.13.0",
+  "com.azure" % "azure-identity" % "1.2.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
+  "com.azure" % "azure-storage-blob" % "12.7.0",
   "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
@@ -418,7 +417,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.31-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.33-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

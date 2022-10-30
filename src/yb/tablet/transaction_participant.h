@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_PARTICIPANT_H
-#define YB_TABLET_TRANSACTION_PARTICIPANT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -35,6 +34,7 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/operations.fwd.h"
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/enums.h"
@@ -121,7 +121,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // Returns true if transaction was added, false if transaction already present.
   Result<bool> Add(const TransactionMetadata& metadata);
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override;
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb);
 
   // Prepares batch data for specified transaction id.
   // I.e. adds specified batch idx to set of replicated batches and fills encoded_replicated_batches
@@ -155,7 +156,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term = -1;
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
     bool sealed = false;
@@ -248,4 +249,3 @@ class TransactionParticipant : public TransactionStatusManager {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_PARTICIPANT_H

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_INIT_H
-#define YB_UTIL_INIT_H
+#pragma once
 
 #include <string>
 
@@ -55,4 +54,3 @@ void SetGLogHeader(const std::string& server_info = "");
 Status InitYB(const std::string &server_type, const char* argv0);
 
 } // namespace yb
-#endif /* YB_UTIL_INIT_H */

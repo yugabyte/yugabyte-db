@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_YQL_PGWRAPPER_PG_WRAPPER_H
-#define YB_YQL_PGWRAPPER_PG_WRAPPER_H
+#pragma once
 
 #include <string>
 #include <atomic>
@@ -19,6 +18,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/flags_callback.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -145,15 +145,18 @@ class PgSupervisor {
   Status StartServerUnlocked();
   void RunThread();
   Status CleanupOldServerUnlocked();
+  Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
+  Status RegisterReloadPgConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
+  void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);
 
   PgProcessConf conf_;
   boost::optional<PgWrapper> pg_wrapper_;
   PgProcessState state_ = PgProcessState::kNotStarted;
   scoped_refptr<Thread> supervisor_thread_;
+  std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   std::mutex mtx_;
 };
 
 }  // namespace pgwrapper
 }  // namespace yb
 
-#endif  // YB_YQL_PGWRAPPER_PG_WRAPPER_H

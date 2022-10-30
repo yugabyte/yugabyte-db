@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_RPC_TEST_UTIL_H
-#define YB_RPC_RPC_TEST_UTIL_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -31,4 +30,3 @@ AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_TEST_UTIL_H

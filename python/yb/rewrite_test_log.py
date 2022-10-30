@@ -93,6 +93,16 @@ def escape_for_perl(s: str) -> str:
     return s.replace(r'/', r'\/').replace(r'$', r'\$')
 
 
+def get_stack_trace_replacements() -> List[Tuple[str, str]]:
+    return [
+        (
+            'std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>',
+            'string'
+        ),
+        ('std::__1::', 'std::'),
+    ]
+
+
 class LogRewriterConf:
     input_log_path: str
     verbose: bool
@@ -373,7 +383,8 @@ class LogRewriter:
         self.find_daemon_peer_mapping()
         self.find_tablet_to_table_and_partition_mapping()
 
-        self.regex_replacements = []
+        self.regex_replacements = get_stack_trace_replacements()
+
         if self.rewriting_peer_ids:
             for peer_id, daemon_id in sorted(
                     self.peer_to_daemon_id.items(),

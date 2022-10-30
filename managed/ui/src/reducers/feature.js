@@ -21,8 +21,8 @@ const initialStateFeatureInTest = {
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  allowOptionalAuth: false,
   enableTopKMetrics: false,
+  enableRunTimeConfig: false,
   enablePITR: false,
   enableDedicatedNodes: false,
   enableNotificationTemplates: false
@@ -50,7 +50,7 @@ const initialStateFeatureReleased = {
   enableGcpKMS: true,
   enableAzuKMS: true,
   enableTopKMetrics: false,
-  allowOptionalAuth: false,
+  enableRunTimeConfig: false,
   enablePITR: false,
   enableDedicatedNodes: false,
   enableNotificationTemplates: false

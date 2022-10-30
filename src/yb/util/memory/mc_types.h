@@ -39,8 +39,7 @@
 //   can be use to allocate new classes.
 //     MCList<int> mc_list(mc_string.memory_context());
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_UTIL_MEMORY_MC_TYPES_H
-#define YB_UTIL_MEMORY_MC_TYPES_H
+#pragma once
 
 #include <atomic>
 #include <deque>
@@ -176,4 +175,3 @@ class MCBase {
 
 }  // namespace yb
 
-#endif // YB_UTIL_MEMORY_MC_TYPES_H

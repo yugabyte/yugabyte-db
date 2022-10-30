@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
-#define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
+#pragma once
 
 #include "../../../../src/yb/master/catalog_manager.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -288,11 +287,15 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<CDCStreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  bool IsCdcEnabled(const TableInfo& table_info) const override;
+  bool IsCdcEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
+  bool IsCdcEnabledUnlocked(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   bool IsCdcSdkEnabled(const TableInfo& table_info) override;
 
-  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
+  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override
+    EXCLUDES(mutex_);
+  bool IsTablePartOfBootstrappingCdcStreamUnlocked(const TableInfo& table_info) const override
+    REQUIRES_SHARED(mutex_);
 
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
       const override;
@@ -792,4 +795,3 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 } // namespace master
 } // namespace yb
 
-#endif // ENT_SRC_YB_MASTER_CATALOG_MANAGER_H

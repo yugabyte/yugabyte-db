@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_BATCHER_H_
-#define YB_CLIENT_BATCHER_H_
+#pragma once
 
 #include <unordered_map>
 #include <unordered_set>
@@ -338,4 +337,3 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 }  // namespace internal
 }  // namespace client
 }  // namespace yb
-#endif  // YB_CLIENT_BATCHER_H_

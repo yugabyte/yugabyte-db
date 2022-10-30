@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
-#define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
+#pragma once
 
 #include <condition_variable>
 
@@ -23,6 +22,7 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
@@ -36,12 +36,12 @@ class TabletSplitter;
 // Keeps track of the Operation states (request, result, ...).
 // Executes the SplitTablet operation.
 class SplitOperation
-    : public OperationBase<OperationType::kSplit, SplitTabletRequestPB>,
+    : public OperationBase<OperationType::kSplit, LWSplitTabletRequestPB>,
       public OperationFilter {
  public:
   SplitOperation(
       TabletPtr tablet, TabletSplitter* tablet_splitter,
-      const SplitTabletRequestPB* request = nullptr)
+      const LWSplitTabletRequestPB* request = nullptr)
       : OperationBase(std::move(tablet), request),
         tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
 
@@ -69,4 +69,3 @@ class SplitOperation
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_SPLIT_OPERATION_H

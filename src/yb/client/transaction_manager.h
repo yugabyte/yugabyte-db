@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_MANAGER_H
-#define YB_CLIENT_TRANSACTION_MANAGER_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -74,4 +73,3 @@ class TransactionManager {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TRANSACTION_MANAGER_H

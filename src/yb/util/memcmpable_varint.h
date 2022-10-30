@@ -38,8 +38,7 @@
 //
 // See memcmpable_varint.cc for further description.
 
-#ifndef YB_UTIL_MEMCMPABLE_VARINT_H
-#define YB_UTIL_MEMCMPABLE_VARINT_H
+#pragma once
 
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
@@ -59,4 +58,3 @@ Status GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
 } // namespace yb
 
-#endif // YB_UTIL_MEMCMPABLE_VARINT_H"

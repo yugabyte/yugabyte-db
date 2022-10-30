@@ -30,23 +30,16 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_WRITE_OPERATION_H
-#define YB_TABLET_OPERATIONS_WRITE_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations.messages.h"
 
 namespace yb {
-
-namespace tserver {
-class WriteRequestPB;
-class WriteResponsePB;
-}
-
 namespace tablet {
 
 // An operation for a batch of inserts/mutates. This class holds and
@@ -64,7 +57,7 @@ namespace tablet {
 // on the WAL.
 //
 // NOTE: this class isn't thread safe.
-class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
+class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
  public:
   template <class... Args>
   explicit WriteOperation(Args&&... args)
@@ -111,4 +104,3 @@ class WriteOperation : public OperationBase<OperationType::kWrite, WritePB>  {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_WRITE_OPERATION_H

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SERVICE_H_
-#define YB_TSERVER_REMOTE_BOOTSTRAP_SERVICE_H_
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -196,4 +195,3 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_SERVICE_H_

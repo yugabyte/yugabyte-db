@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_COMPARATOR_H
-#define YB_ROCKSDB_COMPARATOR_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -104,4 +103,3 @@ extern const Comparator* Uint64Comparator();
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_COMPARATOR_H

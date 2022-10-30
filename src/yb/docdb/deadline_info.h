@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DEADLINE_INFO_H
-#define YB_DOCDB_DEADLINE_INFO_H
+#pragma once
 
 #include "yb/util/monotime.h"
 
@@ -38,4 +37,3 @@ void SimulateTimeoutIfTesting(CoarseTimePoint* deadline);
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_DEADLINE_INFO_H

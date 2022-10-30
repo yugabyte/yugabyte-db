@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSUTIL_WRITE_BATCH_FORMATTER_H
-#define YB_ROCKSUTIL_WRITE_BATCH_FORMATTER_H
+#pragma once
 
 #include <sstream>
 
@@ -93,4 +92,3 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
 
 } // namespace yb
 
-#endif // YB_ROCKSUTIL_WRITE_BATCH_FORMATTER_H
