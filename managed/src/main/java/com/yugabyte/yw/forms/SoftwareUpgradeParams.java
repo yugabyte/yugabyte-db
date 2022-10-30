@@ -7,8 +7,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.models.Universe;
+import play.api.Play;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -45,10 +47,43 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Invalid Yugabyte software version: " + ybSoftwareVersion);
     }
 
-    if (ybSoftwareVersion.equals(
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+    UserIntent currentIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (ybSoftwareVersion.equals(currentIntent.ybSoftwareVersion)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
+    }
+    RuntimeConfigFactory runtimeConfigFactory =
+        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+
+    // Defaults to false, but we need to extract the variable in case the user wishes to perform
+    // a downgrade with a runtime configuration override. We perform this check before verifying the
+    // general
+    // SoftwareUpgradeParams to avoid introducing an API parameter.
+    boolean isUniverseDowngradeAllowed =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
+
+    String currentVersion = currentIntent.ybSoftwareVersion;
+
+    if (currentVersion != null) {
+      if (Util.compareYbVersions(currentVersion, ybSoftwareVersion, true) > 0) {
+        if (!isUniverseDowngradeAllowed) {
+          String msg =
+              String.format(
+                  "DB version downgrades are not recommended,"
+                      + " %s"
+                      + " would downgrade from"
+                      + " %s"
+                      + ". Aborting."
+                      + " To override this check and force a downgrade, please set the runtime"
+                      + " config yb.upgrade.allow_downgrades"
+                      + " to true"
+                      + " (using the script set-runtime-config.sh if necessary).",
+                  ybSoftwareVersion, currentVersion);
+
+          throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+        }
+      }
     }
   }
 
