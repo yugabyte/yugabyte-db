@@ -1,6 +1,6 @@
 Choose the language you want to use to build your application.
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="Java" lang="java" %}}
 
@@ -362,9 +362,9 @@ To build and run the application, do the following:
 
 1. Clone the sample application to your computer:
 
-```sh
-git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && cd yugabyte-simple-cpp-app
-```
+    ```sh
+    git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && cd yugabyte-simple-cpp-app
+    ```
 
 1. Provide connection parameters.
 
