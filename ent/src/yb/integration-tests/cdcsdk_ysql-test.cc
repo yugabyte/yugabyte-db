@@ -7795,6 +7795,42 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTi
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId)) {
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Invalid()));
+  ASSERT_FALSE(set_resp.has_error());
+
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  change_resp.mutable_cdc_sdk_checkpoint()->set_index(-1);
+  change_resp.mutable_cdc_sdk_checkpoint()->set_term(-1);
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  while (true) {
+    GetChangesResponsePB change_resp_updated =
+        ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    uint32_t read_count = 0;
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::READ) {
+        read_count++;
+      }
+    }
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+    change_resp.mutable_cdc_sdk_checkpoint()->set_index(-1);
+    change_resp.mutable_cdc_sdk_checkpoint()->set_term(-1);
+    if (reads_snapshot == 1000) {
+      break;
+    }
+  }
+  ASSERT_EQ(reads_snapshot, 1000);
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
