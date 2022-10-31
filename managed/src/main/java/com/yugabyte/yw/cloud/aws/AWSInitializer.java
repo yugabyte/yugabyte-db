@@ -319,7 +319,7 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure architecture matches.
       if (regionArch == Architecture.x86_64) {
         include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
-      } else if (regionArch == Architecture.arm64) {
+      } else if (regionArch == Architecture.aarch64) {
         include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
       }
       if (include) {
@@ -447,7 +447,7 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure architecture matches.
       if (regionArch == Architecture.x86_64) {
         include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Intel");
-      } else if (regionArch == Architecture.arm64) {
+      } else if (regionArch == Architecture.aarch64) {
         include &= matches(productAttrs, "physicalProcessor", FilterOp.Contains, "Graviton");
       }
 
