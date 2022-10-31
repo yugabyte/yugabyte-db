@@ -69,17 +69,17 @@ Import Npgsql and use the `NpgsqlConnection` class for getting connection object
 The following table describes the connection parameters required to connect to the YugabyteDB database.
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user id| User for connecting to the database | yugabyte
-| password | Password for connecting to the database | yugabyte
+| :-------- | :---------- | :------ |
+| Host      | Host name of the YugabyteDB instance | localhost
+| Port      |  Listen port for YSQL | 5433
+| Database  | Database name | yugabyte
+| Username  | User connecting to the database | yugabyte
+| Password  | Password for the user | yugabyte
 
-The following is an example connection string for connecting to YugabyteDB.
+The following is a basic example connection string for connecting to YugabyteDB.
 
 ```csharp
-var connStringBuilder = "host=localhost;port=5433;database=yugabyte;user id=yugabyte;password="
+var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
@@ -99,7 +99,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
     connStringBuilder.Port = 5433;
     connStringBuilder.SslMode = SslMode.VerifyFull;
-    connStringBuilder.RootCertificate = "/root.crt" //Provide full path to your root CA.
+    connStringBuilder.RootCertificate = "/root.crt"; //Provide full path to your root CA.
     connStringBuilder.Username = "admin";
     connStringBuilder.Password = "xxxxxx";
     connStringBuilder.Database = "yugabyte";
