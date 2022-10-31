@@ -185,6 +185,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --file-table-map "filename1:table1,filename2:table2" \
         --delimiter "|" \
         –-has-header \
+        --file-opts string
 ```
 
 ## Arguments
@@ -268,6 +269,22 @@ Default: '\t' (tab); can be changed to comma(,), pipe(|) or any other character.
 This argument is to be specified only for CSV file type.
 
 Default: false; change to true if the CSV file contains column names as a header.
+
+**Note**: Boolean flags takes arguments in the format `--flag-name=[true|false]` and not `--flag-name [true|false]`.
+
+### --file-opts
+
+Comma-separated string options for CSV file format. The options can include the following:
+
+1. `escape_char`: escape character
+
+1. `quote_char`: character used to quote the values
+
+Default: double quotes '"'
+
+Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'`
+
+---
 
 ## SSL Connectivity
 

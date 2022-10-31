@@ -272,6 +272,8 @@ This argument is to be specified only for CSV file type.
 
 Default: false; change to true if the CSV file contains column names as a header.
 
+**Note**: Boolean flags takes arguments in the format `--flag-name=[true|false]` and not `--flag-name [true|false]`.
+
 ### --file-opts
 
 Comma-separated string options for CSV file format. The options can include the following:
