@@ -54,7 +54,7 @@ const mapDispatchToProps = (dispatch: any) => {
             if (response.payload.isAxiosError || response.payload.status !== 200) {
               toast.error("Could not delete config, try again");
             } else {
-              toast.success("Config deleted successfully");
+              toast.success("Config resetted to parent scope successfully");
               dispatch(deleteRunTimeConfigResponse(response.payload))
             }
           } catch (error) {
