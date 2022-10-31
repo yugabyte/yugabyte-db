@@ -44,7 +44,7 @@ To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-tes
 
 ### Run all tests
 
-After you've already built the C++ and Java code, you can run the Java tests using following command:
+After you've built the C++ and Java code, run the Java tests using following command:
 
 ```sh
 ./yb_build.sh release --scb --sj --java-tests
