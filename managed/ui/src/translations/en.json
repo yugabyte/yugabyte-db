@@ -57,7 +57,8 @@
           "ModalKeyField": "Config Key",
           "ModalKeyValue": "Config Value",
           "ModelEditConfigTitle": "Edit Configuration",
-          "ModelDeleteConfigTitle": "Delete Configuration"
+          "ModelResetConfigTitle": "Reset Configuration",
+          "ShowOverridenConfigs": "Show overriden configs"
         }
       }
     }
