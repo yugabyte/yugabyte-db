@@ -2819,7 +2819,7 @@ class ControlScript(object):
                 "--secure", help="Start a YugabyteDB cluster in secure mode with encryption in " +
                 "transit and password authentication enabled. No need to set a value for the " +
                 "flag. Use --secure or --insecure flag to toggle security features on a " +
-                "YugabyteDB cluster. Need to be used along with --certs_dir flag.",
+                "YugabyteDB cluster.",
                 action="store_true", default=None)
             cur_parser.add_argument(
                 "--insecure", help="Start a YugabyteDB cluster in an insecure mode without " +
