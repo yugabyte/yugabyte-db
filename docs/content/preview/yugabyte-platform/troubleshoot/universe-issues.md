@@ -22,7 +22,15 @@ A universe's **Metrics** page displays graphs representing information on operat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
 
-![Metrics Page](/images/yp/metrics.png)<br>
+![Metrics Page](/images/yp/metrics_main.png)<br>
+
+You can chose to view metrics based on different criteria:
+
+- If your universe has more than one region, cluster, zone, or node, the **Metrics** page allows you to view metrics for a specific region, cluster, zone, or node.
+- You can view the overall node metrics.
+- You can view metrics for up to five outlier nodes. For example, to display charts for the top three nodes with the highest CPU usage, you would select **Outlier Nodes**, then **Top**, and then **3 nodes**. The chart also includes the average for all nodes.
+- You can view metrics for up to seven outlier tables, including both system and user tables. For example, to display charts for two tables with the highest read latency, you would select **Outlier Tabes**, then **Top**, and then **2 tables**. The chart also includes the average for all tables.
+- You can further restrict the outlier nodes or tables charts to only display metrics for specific operations, events, statuses, and so on. For example, you can find out how many YSQL `SELECT` statements per second have been executed by the top-performing three nodes in the past six hours by selecting **Last 6 hr > Outlier Nodes > Top > 3 nodes > YSQL Ops > Total YSQL Ops / Sec > Select**.
 
 You should do the following on a regular basis:
 
