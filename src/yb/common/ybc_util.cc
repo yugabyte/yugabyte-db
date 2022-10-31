@@ -267,10 +267,6 @@ bool YBCIsRestartReadError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kReadRestartRequired);
 }
 
-YBCStatus YBCInitGFlags(const char* argv0) {
-  return ToYBCStatus(yb::InitGFlags(argv0));
-}
-
 bool YBCIsTxnConflictError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kConflict);
 }
