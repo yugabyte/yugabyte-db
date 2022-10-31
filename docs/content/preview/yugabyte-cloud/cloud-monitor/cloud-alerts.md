@@ -75,7 +75,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | Alert | Chart |
 | :--- | :--- |
 | Node Free Storage | Disk Usage |
-| Nodes Down | Nodes tab |
+| Nodes Down | Cluster **Nodes** tab |
 | Memory Use | Memory Usage |
 | Cluster Queues Overflow | RPC Queue Size |
 | Compaction Overload | Compaction |
