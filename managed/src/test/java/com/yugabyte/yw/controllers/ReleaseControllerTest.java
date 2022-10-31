@@ -135,7 +135,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
       ReleaseManager.ReleaseMetadata armRelease =
           ReleaseManager.ReleaseMetadata.create("0.0.5")
               .withFilePath("yugabyte-0.0.5-aarch64.tar.gz")
-              .withPackage("yugabyte-0.0.5-aarch64.tar.gz", Architecture.arm64);
+              .withPackage("yugabyte-0.0.5-aarch64.tar.gz", Architecture.aarch64);
       ReleaseManager.ReleaseMetadata x86Release =
           ReleaseManager.ReleaseMetadata.create("0.0.4")
               .withFilePath("yugabyte-0.0.4-x86_64.tar.gz")
@@ -144,7 +144,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
           ReleaseManager.ReleaseMetadata.create("0.0.3")
               .withFilePath("yugabyte-0.0.3-x86_64.tar.gz")
               .withPackage("yugabyte-0.0.3-x86_64.tar.gz", Architecture.x86_64)
-              .withPackage("yugabyte-0.0.3-aarch64.tar.gz", Architecture.arm64);
+              .withPackage("yugabyte-0.0.3-aarch64.tar.gz", Architecture.aarch64);
       ReleaseManager.ReleaseMetadata disabledRelease =
           ReleaseManager.ReleaseMetadata.create("0.0.2")
               .withFilePath("yugabyte-0.0.2-x86_64.tar.gz")
@@ -445,7 +445,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesByRegionArm() {
     mockNewReleaseData(true);
-    region.setArchitecture(Architecture.valueOf("arm64"));
+    region.setArchitecture(Architecture.valueOf("aarch64"));
     region.update();
     Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
@@ -461,7 +461,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesByRegionEmpty() {
     mockNewReleaseData(false);
-    region.setArchitecture(Architecture.valueOf("arm64"));
+    region.setArchitecture(Architecture.valueOf("aarch64"));
     region.update();
     Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));

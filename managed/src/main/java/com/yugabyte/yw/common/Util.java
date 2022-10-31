@@ -678,8 +678,7 @@ public class Util {
     String archType = null;
     if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
       archType = Architecture.x86_64.name();
-    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
-        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
       throw new RuntimeException(

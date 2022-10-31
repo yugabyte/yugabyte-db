@@ -207,7 +207,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
           assertTrue(versions.contains(version));
           assertNotNull(release.filePath);
           assertNotNull(release.chartPath);
-          assertEquals(3, release.packages.size());
+          assertEquals(2, release.packages.size());
         });
   }
 
@@ -359,9 +359,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
                         Architecture.x86_64)
                     .withPackage(
                         TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
-                        Architecture.arm64)
-                    .withPackage(
-                        TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
                         Architecture.aarch64));
 
     assertEquals(SoftwareReleases, configType.getValue());
@@ -427,9 +424,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-x86_64.tar.gz",
                     Architecture.x86_64)
-                .withPackage(
-                    TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-aarch64.tar.gz",
-                    Architecture.arm64)
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-aarch64.tar.gz",
                     Architecture.aarch64));
@@ -617,9 +611,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-x86_64.tar.gz",
                     Architecture.x86_64)
-                .withPackage(
-                    TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
-                    Architecture.arm64)
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
                     Architecture.aarch64));
