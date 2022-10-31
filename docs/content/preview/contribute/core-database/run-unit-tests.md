@@ -70,7 +70,7 @@ To run a specific Java sub-test within a test file use the # syntax, for example
 
 You can find Java test output in files typically matching this pattern: `java/*/target/surefire-reports_*/*-output.txt`.
 
-After running a specific Java test, it should output the log location. Example:
+Test output includes the log location. For example:
 
 ```
 [postprocess_test_result.py:183] 2022-10-28 10:49:43,664 INFO: Log path: /path/to/repo/java/yb-pgsql/target/surefire-reports_org.yb.pgsql.TestIndexBackfill__insertsWhileCreatingIndex/org.yb.pgsql.TestIndexBackfill-output.txt
