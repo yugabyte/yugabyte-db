@@ -82,10 +82,6 @@ SLEEP_IN_LEADERS_SEARCHING_ROUND_SEC = 20  # 5*(100 + 20) sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
-XXH64HASH_TOOL_PATH = '/usr/bin/xxh64sum'
-XXH64_FILE_EXT = 'xxh64'
-SHA_TOOL_PATH = '/usr/bin/sha256sum'
-SHA_FILE_EXT = 'sha256'
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
@@ -96,6 +92,13 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/version_metadata.json')
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
+
+XXH64HASH_TOOL_PATH = os.path.join(YB_HOME_DIR, 'bin/xxhash')
+XXH64_FILE_EXT = 'xxh64'
+XXH64_X86_BIN = 'xxhsum_x86'
+XXH64_AARCH_BIN = 'xxhsum_aarch'
+SHA_TOOL_PATH = '/usr/bin/sha256sum'
+SHA_FILE_EXT = 'sha256'
 
 DISABLE_SPLITTING_MS = 30000
 DISABLE_SPLITTING_FREQ_SEC = 10
@@ -1402,12 +1405,36 @@ class YBBackup:
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
 
-        if self.args.mac:
-            XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
-            SHA_TOOL_PATH = '/usr/bin/shasum'
-
-        if self.args.disable_checksums:
+        if not self.args.disable_checksums:
+            live_tservers = self.get_live_tservers()
+            if live_tservers:
+                # Need to check the architecture for only first node, rest
+                # will be same in the cluster.
+                global XXH64HASH_TOOL_PATH
+                tserver = live_tservers[0]
+                try:
+                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH), tserver).strip()
+                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver).strip()
+                    if node_machine_arch and 'x86' not in node_machine_arch:
+                        xxh64_bin = XXH64_AARCH_BIN
+                    else:
+                        xxh64_bin = XXH64_X86_BIN
+                    XXH64HASH_TOOL_PATH = os.path.join(XXH64HASH_TOOL_PATH, xxh64_bin)
+                    self.use_xxhash_checksum = True
+                except Exception:
+                    logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
+                    self.use_xxhash_checksum = False
+            else:
+                raise BackupException("No Live Tserver exists. "
+                                      "Check the tserver nodes status & try again.")
+        else:
             self.use_xxhash_checksum = False
+
+        if self.args.mac:
+            # As this arg is used only for the purpose of tests & we use hardcoded paths only
+            # defaulting it to shasum.
+            global SHA_TOOL_PATH
+            SHA_TOOL_PATH = '/usr/bin/shasum'
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -2386,53 +2413,6 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
-    def check_if_use_xxhash_checksum(self):
-        # Checking the xxh64 binaries on single node(master leader).
-        # In case if the binary is absent on other host, script will fail during execution.
-        if self.args.disable_xxhash_checksum:
-            # Disable the xxhash checksum in case client specifies so.
-            self.use_xxhash_checksum = False
-        else:
-            try:
-                host_ip = self.get_main_host_ip()
-                if self.is_k8s():
-                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_addr_to_cfg)
-                    return self.run_program([
-                        'kubectl',
-                        'exec',
-                        '-t',
-                        '-n={}'.format(k8s_details.namespace),
-                        # For k8s, pick the first qualified name, if given a CNAME.
-                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
-                        env=k8s_details.env_config)
-                elif self.args.no_ssh:
-                    self.run_program([
-                        'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
-                    ])
-                else:
-                    ssh_key_path = self.args.ssh_key_path
-                    if self.ip_to_ssh_key_map:
-                        ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
-                    self.run_program([
-                        'ssh',
-                        '-o', 'StrictHostKeyChecking=no',
-                        '-o', 'UserKnownHostsFile=/dev/null',
-                        '-o', 'ControlMaster=auto',
-                        '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
-                        '-o', 'ControlPersist=1m',
-                        '-i', ssh_key_path,
-                        '-p', self.args.ssh_port,
-                        '-q',
-                        '%s@%s' % (self.args.ssh_user, host_ip),
-                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
-                    ])
-                self.use_xxhash_checksum = True
-            except subprocess.CalledProcessError as e:
-                self.use_xxhash_checksum = False
-                logging.warning(
-                    "Tool {} not found on host {}. Error: {}"
-                    .format(XXH64HASH_TOOL_PATH, host_ip, e))
-
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
         assert self.use_xxhash_checksum is not None
         tool_path = XXH64HASH_TOOL_PATH if self.use_xxhash_checksum else SHA_TOOL_PATH
@@ -2928,9 +2908,6 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
-        if not self.args.disable_checksums:
-            # Define a tool for checksum calculation.
-            self.check_if_use_xxhash_checksum()
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
@@ -3092,10 +3069,6 @@ class YBBackup:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
-
-        if not self.args.disable_checksums:
-            # Define a tool for checksum calculation.
-            self.check_if_use_xxhash_checksum()
 
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)

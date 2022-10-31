@@ -8,7 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
@@ -192,7 +192,7 @@ public class GFlagsUtil {
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
-    } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.name())) {
+    } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
