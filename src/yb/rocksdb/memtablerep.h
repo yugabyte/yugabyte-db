@@ -46,8 +46,6 @@
 // The last four implementations are designed for situations in which
 // iteration over the entire collection is rare since doing so requires all the
 // keys to be copied into a sorted data structure.
-#ifndef YB_ROCKSDB_MEMTABLEREP_H
-#define YB_ROCKSDB_MEMTABLEREP_H
 
 #pragma once
 
@@ -337,4 +335,3 @@ extern MemTableRepFactory* NewHashLinkListRepFactory(
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_MEMTABLEREP_H

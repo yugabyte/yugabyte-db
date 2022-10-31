@@ -225,7 +225,7 @@ class QLReadOperation : public DocExprExecutor {
                         int* match_count,
                         size_t* num_rows_skipped);
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 

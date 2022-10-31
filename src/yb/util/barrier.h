@@ -30,8 +30,6 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BARRIER_H
-#define YB_UTIL_BARRIER_H
 #pragma once
 
 #include "yb/gutil/macros.h"
@@ -94,4 +92,3 @@ class Barrier {
 };
 
 } // namespace yb
-#endif // YB_UTIL_BARRIER_H

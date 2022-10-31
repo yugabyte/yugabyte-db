@@ -22,8 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 
-#ifndef YB_ROCKSDB_DB_INTERNAL_STATS_H
-#define YB_ROCKSDB_DB_INTERNAL_STATS_H
 
 #pragma once
 #include <vector>
@@ -437,4 +435,3 @@ class InternalStats {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_INTERNAL_STATS_H

@@ -30,7 +30,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -40,7 +40,7 @@
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/algorithm_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -55,9 +55,7 @@ using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
-DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
-              "DEPRECATED. Has no affect, use ysql_scan_deadline_margin_ms to control the client "
-              "timeout");
+DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
@@ -128,10 +126,11 @@ Status CreateProjection(
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
-  auto pair = out->mutable_read_pairs()->Add();
-  pair->set_key(encoded_key);
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+void AddIntent(
+    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+  auto* pair = out->add_read_pairs();
+  pair->dup_key(encoded_key);
+  pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
   // Since we don't batch read RPCs that lock rows, we can get away with using a singular
   // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
   // wait policies field.
@@ -139,7 +138,7 @@ void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueW
 }
 
 Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
-                         KeyValueWriteBatchPB* out) {
+                 LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
   AddIntent(val, wait_policy, out);
@@ -1441,7 +1440,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");

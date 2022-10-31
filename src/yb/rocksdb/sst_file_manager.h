@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_SST_FILE_MANAGER_H
-#define YB_ROCKSDB_SST_FILE_MANAGER_H
 
 #pragma once
 
@@ -97,4 +95,3 @@ yb::Result<SstFileManager*> NewSstFileManager(
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_SST_FILE_MANAGER_H

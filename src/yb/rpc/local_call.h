@@ -91,7 +91,7 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  private:
   friend class LocalOutboundCall;
 
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;

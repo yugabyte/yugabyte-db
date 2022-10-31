@@ -41,7 +41,9 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
 #include "yb/fs/fs_manager.h"
@@ -60,6 +62,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -277,7 +280,7 @@ Status ReadableLogSegment::RebuildFooterByScanning() {
   footer_was_rebuilt_ = true;
 
   if (latest_ht > 0) {
-    footer_.set_close_timestamp_micros(yb::HybridTime(latest_ht).GetPhysicalValueMicros());
+    footer_.set_close_timestamp_micros(HybridTime(latest_ht).GetPhysicalValueMicros());
   }
 
   readable_to_offset_.store(read_entries.end_offset, std::memory_order_release);
@@ -308,7 +311,6 @@ Status ReadableLogSegment::CopyTo(
   const auto read_up_to = ReadEntriesUpTo();
   auto offset = first_entry_offset();
 
-  faststring read_buf;
   faststring write_buf;
   size_t num_entries = 0;
   uint64_t latest_ht = 0;
@@ -320,30 +322,29 @@ Status ReadableLogSegment::CopyTo(
   index_entry.segment_sequence_number = header().sequence_number();
   while (offset < read_up_to && !hit_limit) {
     index_entry.offset_in_segment = offset;
-    LogEntryBatchPB current_batch;
 
-    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
-      RETURN_NOT_OK(ReadEntryHeaderAndBatch(&offset, &read_buf, &current_batch));
-    } else {
+    if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) >= read_up_to) {
       return STATUS(Corruption, Format("Truncated log entry at offset $0", offset));
     }
 
-    for (auto it = current_batch.entry().cbegin(); it != current_batch.entry().end(); ++it) {
+    auto current_batch = VERIFY_RESULT(ReadEntryHeaderAndBatch(&offset));
+
+    for (auto it = current_batch->entry().begin(); it != current_batch->entry().end(); ++it) {
       if (!it->has_replicate()) {
         continue;
       }
 
-      index_entry.op_id = yb::OpId::FromPB(it->replicate().id());
+      const auto op_id = OpId::FromPB(it->replicate().id());
+      index_entry.op_id = op_id;
 
       if (has_op_id_limit) {
-        if (OpId::FromPB(current_batch.committed_op_id()) > up_to_op_id) {
-          up_to_op_id.ToPB(current_batch.mutable_committed_op_id());
+        if (OpId::FromPB(current_batch->committed_op_id()) > up_to_op_id) {
+          up_to_op_id.ToPB(current_batch->mutable_committed_op_id());
         }
 
-        const auto op_id = OpId::FromPB(it->replicate().id());
         if (op_id > up_to_op_id) {
           hit_limit = true;
-          current_batch.mutable_entry()->erase(it, current_batch.entry().cend());
+          current_batch->mutable_entry()->erase(it, current_batch->entry().end());
           break;
         }
       }
@@ -353,11 +354,11 @@ Status ReadableLogSegment::CopyTo(
     }
 
     write_buf.clear();
-    write_buf.reserve(current_batch.ByteSize());
-    RETURN_NOT_OK(pb_util::AppendToString(current_batch, &write_buf));
+    write_buf.resize(current_batch->SerializedSize());
+    current_batch->SerializeToArray(write_buf.data());
     RETURN_NOT_OK(dest_segment->WriteEntryBatch(write_buf));
 
-    num_entries += current_batch.entry().size();
+    num_entries += current_batch->entry().size();
   }
   footer.set_num_entries(num_entries);
   if (latest_ht > 0) {
@@ -573,7 +574,7 @@ int64_t ReadableLogSegment::ReadEntriesUpTo() {
 
 namespace {
 
-bool ShouldReadEntry(const LogEntryPB& entry, const EntriesToRead& entries_to_read) {
+bool ShouldReadEntry(const LWLogEntryPB& entry, const EntriesToRead& entries_to_read) {
   switch (entries_to_read) {
     case EntriesToRead::kAll:
       return true;
@@ -601,8 +602,6 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
 
   int64_t num_entries_read = 0;
   int64_t num_entries_found = 0;
-  LogEntries entries_skipped;
-  faststring tmp_buf;
 
   const auto read_up_to = ReadEntriesUpTo();
   VLOG(1) << "Reading segment entries from " << path_
@@ -615,12 +614,16 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
     const int64_t this_batch_offset = offset;
     recent_offsets[batches_read++ % recent_offsets.size()] = offset;
 
-    LogEntryBatchPB current_batch;
-
     // Read and validate the entry header first.
     Status s;
+    std::shared_ptr<LWLogEntryBatchPB> current_batch;
     if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
-      s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
+      auto batch_result = ReadEntryHeaderAndBatch(&offset);
+      if (batch_result.ok()) {
+        current_batch = std::move(*batch_result);
+      } else {
+        s = batch_result.status();
+      }
     } else {
       s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
     }
@@ -671,41 +674,29 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
       break;
     }
 
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Read Log entry batch: " << current_batch.DebugString();
-    }
-    if (current_batch.has_committed_op_id()) {
-      result.committed_op_id = yb::OpId::FromPB(current_batch.committed_op_id());
+    VLOG(3) << "Read Log entry batch: " << current_batch->ShortDebugString();
+    if (current_batch->has_committed_op_id()) {
+      result.committed_op_id = OpId::FromPB(current_batch->committed_op_id());
     }
 
-    // Number of entries to extract from the protobuf repeated field because the ownership of those
-    // entries will be transferred to the caller.
-    int num_entries_to_extract = 0;
-
-    for (int i = 0; i < current_batch.entry_size(); ++i) {
+    for (auto& entry : *current_batch->mutable_entry()) {
       ++num_entries_found;
-      ++num_entries_to_extract;
-      auto* entry = current_batch.mutable_entry(i);
-      if (!ShouldReadEntry(*entry, entries_to_read)) {
-        // Remember pointer to release memory later, because current_batch would lose ownership
-        // of entries after this loop.
-        entries_skipped.emplace_back(entry);
+      if (!ShouldReadEntry(entry, entries_to_read)) {
         continue;
       }
-      result.entries.emplace_back(entry);
-      DCHECK_NE(current_batch.mono_time(), 0);
+      result.entries.emplace_back(current_batch, &entry);
+      DCHECK_NE(current_batch->mono_time(), 0);
       LogEntryMetadata entry_metadata;
       entry_metadata.offset = this_batch_offset;
       entry_metadata.active_segment_sequence_number = header().sequence_number();
-      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
-      result.entry_metadata.emplace_back(std::move(entry_metadata));
+      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(
+          current_batch->mono_time());
+      result.entry_metadata.push_back(std::move(entry_metadata));
       num_entries_read++;
       if (num_entries_read >= max_entries_to_read) {
         break;
       }
     }
-    current_batch.mutable_entry()->ExtractSubrange(
-        0, num_entries_to_extract, /* elements */ nullptr);
     result.end_offset = offset;
     if (num_entries_read >= max_entries_to_read) {
       result.status = Status::OK();
@@ -822,7 +813,7 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     size_t batch_number,
     int64_t batch_offset,
     std::vector<int64_t>* recent_offsets,
-    const std::vector<std::unique_ptr<LogEntryPB>>& entries,
+    const LogEntries& entries,
     const Status& status) const {
 
   string err = Substitute("Failed trying to read batch #$0 at offset $1 for "
@@ -839,11 +830,11 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     const int kNumEntries = 4; // Include up to the last 4 entries in the segment.
     for (size_t i = std::max(0, static_cast<int>(entries.size()) - kNumEntries);
         i < entries.size(); i++) {
-      LogEntryPB* entry = entries[i].get();
-      LogEntryTypePB type = entry->type();
+      auto& entry = *entries[i];
+      LogEntryTypePB type = entry.type();
       string opid_str;
-      if (type == log::REPLICATE && entry->has_replicate()) {
-        opid_str = consensus::OpIdToString(entry->replicate().id());
+      if (type == log::REPLICATE && entry.has_replicate()) {
+        opid_str = OpId::FromPB(entry.replicate().id()).ToString();
       } else {
         opid_str = "<unknown>";
       }
@@ -854,12 +845,11 @@ Status ReadableLogSegment::MakeCorruptionStatus(
   return status.CloneAndAppend(err);
 }
 
-Status ReadableLogSegment::ReadEntryHeaderAndBatch(int64_t* offset, faststring* tmp_buf,
-                                                   LogEntryBatchPB* batch) {
+Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryHeaderAndBatch(
+    int64_t* offset) {
   EntryHeader header;
   RETURN_NOT_OK(ReadEntryHeader(offset, &header));
-  RETURN_NOT_OK(ReadEntryBatch(offset, header, tmp_buf, batch));
-  return Status::OK();
+  return ReadEntryBatch(offset, header);
 }
 
 
@@ -892,10 +882,8 @@ Status ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* hea
 }
 
 
-Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
-                                          const EntryHeader& header,
-                                          faststring *tmp_buf,
-                                          LogEntryBatchPB* entry_batch) {
+Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
+    int64_t *offset, const EntryHeader& header) {
   TRACE_EVENT2("log", "ReadableLogSegment::ReadEntryBatch",
                "path", path_,
                "range", Substitute("offset=$0 entry_len=$1",
@@ -913,14 +901,10 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                    header.msg_length, *offset, path_, limit));
   }
 
-  tmp_buf->clear();
-  tmp_buf->resize(header.msg_length);
+  RefCntBuffer buffer(header.msg_length);
   Slice entry_batch_slice;
 
-  Status s =  readable_file()->Read(*offset,
-                                    header.msg_length,
-                                    &entry_batch_slice,
-                                    tmp_buf->data());
+  Status s = readable_file()->Read(*offset, header.msg_length, &entry_batch_slice, buffer.data());
 
   if (!s.ok()) {
     return STATUS_FORMAT(
@@ -937,11 +921,17 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                          header.msg_crc, read_crc));
   }
 
+  // TODO(lw_uc) embed buffer and first arena block into holder itself.
+  struct DataHolder {
+    RefCntBuffer buffer;
+    Arena arena;
 
-  LogEntryBatchPB read_entry_batch;
-  s = pb_util::ParseFromArray(&read_entry_batch,
-                              entry_batch_slice.data(),
-                              header.msg_length);
+    explicit DataHolder(const RefCntBuffer& buffer_) : buffer(buffer_) {}
+  };
+
+  auto holder = std::make_shared<DataHolder>(buffer);
+  auto batch = holder->arena.NewObject<LWLogEntryBatchPB>(&holder->arena);
+  s = batch->ParseFromSlice(entry_batch_slice.Prefix(header.msg_length));
 
   if (!s.ok()) {
     return STATUS_FORMAT(
@@ -950,8 +940,7 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
   }
 
   *offset += entry_batch_slice.size();
-  entry_batch->Swap(&read_entry_batch);
-  return Status::OK();
+  return rpc::SharedField(holder, batch);
 }
 
 const LogSegmentHeaderPB& ReadableLogSegment::header() const {
@@ -1154,17 +1143,22 @@ Status WritableLogSegment::Sync() {
 // Creates a LogEntryBatchPB from pre-allocated ReplicateMsgs managed using shared pointers. The
 // caller has to ensure these messages are not deleted twice, both by LogEntryBatchPB and by
 // the shared pointers.
-LogEntryBatchPB CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
-  LogEntryBatchPB result;
-  result.set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
-  result.mutable_entry()->Reserve(narrow_cast<int>(msgs.size()));
+std::shared_ptr<LWLogEntryBatchPB> CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs) {
+  std::shared_ptr<LWLogEntryBatchPB> result;
+  if (msgs.empty()) {
+    result = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
+  } else {
+    auto* batch = msgs.front()->arena().NewObject<LWLogEntryBatchPB>(&msgs.front()->arena());
+    result = rpc::SharedField(msgs.front(), batch);
+  }
+  result->set_mono_time(RestartSafeCoarseMonoClock().Now().ToUInt64());
   for (const auto& msg_ptr : msgs) {
-    LogEntryPB* entry_pb = result.add_entry();
+    auto* entry_pb = result->add_entry();
     entry_pb->set_type(log::REPLICATE);
     // entry_pb does not actually own the ReplicateMsg object, even though it thinks it does,
     // because we release it in ~LogEntryBatch. LogEntryBatchPB has a separate vector of shared
     // pointers to messages.
-    entry_pb->set_allocated_replicate(msg_ptr.get());
+    entry_pb->ref_replicate(msg_ptr.get());
   }
   return result;
 }
@@ -1236,7 +1230,7 @@ Status ModifyDurableWriteFlagIfNotODirect() {
 }
 
 void UpdateSegmentFooterIndexes(
-    const consensus::ReplicateMsg& replicate, LogSegmentFooterPB* footer) {
+    const consensus::LWReplicateMsg& replicate, LogSegmentFooterPB* footer) {
   const auto index = replicate.id().index();
   if (!footer->has_min_replicate_index() || index < footer->min_replicate_index()) {
     footer->set_min_replicate_index(index);

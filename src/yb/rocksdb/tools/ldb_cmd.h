@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_TOOLS_LDB_CMD_H
-#define YB_ROCKSDB_TOOLS_LDB_CMD_H
 
 #pragma once
 
@@ -931,4 +929,3 @@ class CheckConsistencyCommand : public LDBCommand {
 } // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-#endif // YB_ROCKSDB_TOOLS_LDB_CMD_H

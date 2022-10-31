@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <future>
 
 #include "yb/client/client_fwd.h"
@@ -65,7 +66,7 @@ namespace tserver {
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
-      TabletServerIf* const tablet_server,
+      std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,

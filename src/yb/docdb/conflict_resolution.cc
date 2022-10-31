@@ -23,7 +23,7 @@
 #include "yb/common/transaction_priority.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
@@ -179,7 +179,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     return doc_db_;
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) {
     return status_manager_.PrepareMetadata(pb);
   }
 
@@ -930,7 +930,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 class TransactionConflictResolverContext : public ConflictResolverContextBase {
  public:
   TransactionConflictResolverContext(const DocOperations& doc_ops,
-                                     const KeyValueWriteBatchPB& write_batch,
+                                     const LWKeyValueWriteBatchPB& write_batch,
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
                                      Counter* conflicts_metric)
@@ -948,7 +948,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // transaction participant. However, the write_batch_ transaction metadata only includes the
     // status tablet on the first write to this tablet.
     if (write_batch_.transaction().has_status_tablet()) {
-      return write_batch_.transaction().status_tablet();
+      return write_batch_.transaction().status_tablet().ToBuffer();
     }
     auto tablet_id_opt = resolver->status_manager().FindStatusTablet(transaction_id());
     if (!tablet_id_opt) {
@@ -1120,7 +1120,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return yb::ToString(transaction_id_);
   }
 
-  const KeyValueWriteBatchPB& write_batch_;
+  const LWKeyValueWriteBatchPB& write_batch_;
 
   // Read time of the transaction identified by transaction_id_, could be HybridTime::kMax in case
   // of serializable isolation or when read time not yet picked for snapshot isolation.
@@ -1224,7 +1224,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 } // namespace
 
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const KeyValueWriteBatchPB& write_batch,
+                                   const LWKeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
                                    HybridTime read_time,
                                    const DocDB& doc_db,

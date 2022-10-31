@@ -58,6 +58,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
@@ -157,7 +158,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // the ThreadPoolToken.
   void Close();
 
-  void SetTermForTest(int term);
+  void TEST_SetTerm(int term, Arena* arena);
 
   ~Peer();
 
@@ -190,7 +191,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Returns true if there are more pending ops to process, false otherwise.
   bool ProcessResponseWithStatus(const Status& status,
-                                 ConsensusResponsePB* response);
+                                 LWConsensusResponsePB* response);
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -218,9 +219,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
     return std::unique_lock<AtomicTryMutex>(performing_heartbeat_mutex_, type);
   }
 
-  // Simple wrapper to cleanup ops from the request.
-  void CleanRequestOps(ConsensusRequestPB* request);
-
   std::string LogPrefix() const;
 
   const std::string& tablet_id() const { return tablet_id_; }
@@ -235,9 +233,10 @@ class Peer : public std::enable_shared_from_this<Peer> {
   PeerMessageQueue* queue_;
   uint64_t failed_attempts_ = 0;
 
-  // The latest consensus update request and response.
-  ConsensusRequestPB update_request_;
-  ConsensusResponsePB update_response_;
+  // The latest consensus update request and response stored in arena_.
+  Arena arena_;
+  LWConsensusRequestPB* update_request_ = nullptr;
+  LWConsensusResponsePB* update_response_ = nullptr;
 
   // Latest heartbeat request and response
   ConsensusRequestPB heartbeat_request_;
@@ -300,9 +299,9 @@ class PeerProxy {
  public:
 
   // Sends a request, asynchronously, to a remote peer.
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
+  virtual void UpdateAsync(const LWConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
+                           LWConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) = 0;
 
@@ -358,9 +357,9 @@ class RpcPeerProxy : public PeerProxy {
  public:
   RpcPeerProxy(HostPort hostport, ConsensusServiceProxyPtr consensus_proxy);
 
-  virtual void UpdateAsync(const ConsensusRequestPB* request,
+  virtual void UpdateAsync(const LWConsensusRequestPB* request,
                            RequestTriggerMode trigger_mode,
-                           ConsensusResponsePB* response,
+                           LWConsensusResponsePB* response,
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) override;
 

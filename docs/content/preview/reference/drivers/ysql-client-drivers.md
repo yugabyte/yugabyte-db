@@ -82,7 +82,7 @@ $ make install
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../develop/build-apps/csharp/ysql/).
+For a tutorial on building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
 
 #### Install the driver
 
@@ -158,7 +158,7 @@ For a tutorial on building a sample Java application with the Vert.x PG Client, 
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository of Vert.x PG Client](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client).
 
-## Node.JS
+## Node.js
 
 ### node-postgres
 
@@ -166,7 +166,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a sample Node.js application with node-postgres, see [Build a Node.js application](../../../develop/build-apps/nodejs/ysql-pg/).
+For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../../../drivers-orms/nodejs/yugabyte-node-driver/).
 
 #### Install the node-postgres (pg) driver
 

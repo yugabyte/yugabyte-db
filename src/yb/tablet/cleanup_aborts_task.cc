@@ -86,7 +86,8 @@ void CleanupAbortsTask::Run() {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
   }
-  WARN_NOT_OK(applier_->RemoveIntents(data, transactions_to_cleanup_),
+  WARN_NOT_OK(applier_->RemoveIntents(
+                  data, RemoveReason::kCleanupAborts, transactions_to_cleanup_),
               "RemoveIntents for transaction cleanup in compaction failed.");
   LOG_WITH_PREFIX(INFO)
       << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()

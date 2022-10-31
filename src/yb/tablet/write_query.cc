@@ -56,8 +56,8 @@ namespace {
 // Separate Redis / QL / row operations write batches from write_request in preparation for the
 // write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
 // in batch_request.
-void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, WritePB* out_request) {
-  out_request->set_unused_tablet_id(""); // Backward compatibility.
+void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB* out_request) {
+  out_request->ref_unused_tablet_id(""); // Backward compatibility.
   auto& out_write_batch = *out_request->mutable_write_batch();
   if (client_request.has_write_batch()) {
     out_write_batch = client_request.write_batch();
@@ -131,7 +131,7 @@ WriteQuery::WriteQuery(
       execute_mode_(ExecuteMode::kSimple) {
 }
 
-WritePB& WriteQuery::request() {
+LWWritePB& WriteQuery::request() {
   return *operation_->mutable_request();
 }
 
@@ -327,9 +327,9 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   doc_ops_.reserve(ql_write_batch.size());
 
   auto txn_op_ctx = VERIFY_RESULT(shared_tablet->CreateTransactionOperationContext(
-      request().write_batch().transaction(),
+      client_request_->write_batch().transaction(),
       /* is_ysql_catalog_table */ false,
-      &request().write_batch().subtransaction()));
+      &client_request_->write_batch().subtransaction()));
   auto table_info = metadata.primary_table_info();
   for (const auto& req : ql_write_batch) {
     QLResponsePB* resp = response_->add_ql_response_batch();
@@ -378,9 +378,9 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
     if (doc_ops_.empty()) {
       // Use the value of is_ysql_catalog_table from the first operation in the batch.
       txn_op_ctx = VERIFY_RESULT(shared_tablet->CreateTransactionOperationContext(
-          request().write_batch().transaction(),
+          client_request_->write_batch().transaction(),
           table_info->schema().table_properties().is_ysql_catalog_table(),
-          &request().write_batch().subtransaction()));
+          &client_request_->write_batch().subtransaction()));
     }
     auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
         req,
@@ -475,11 +475,11 @@ Status WriteQuery::DoExecute() {
           docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
       for (const auto& path : paths) {
         auto key = path.as_slice();
-        auto* pair = write_batch.mutable_read_pairs()->Add();
-        pair->set_key(key.data(), key.size());
+        auto& pair = write_batch.mutable_read_pairs()->emplace_back();
+        pair.dup_key(key);
         // Empty values are disallowed by docdb.
         // https://github.com/YugaByte/yugabyte-db/issues/736
-        pair->set_value(std::string(1, docdb::KeyEntryTypeAsChar::kNullLow));
+        pair.dup_value(std::string(1, docdb::KeyEntryTypeAsChar::kNullLow));
         write_batch.set_wait_policy(WAIT_ERROR);
       }
     }
@@ -593,7 +593,7 @@ Status WriteQuery::DoCompleteExecute() {
 
     restart_read_ht_ = HybridTime();
 
-    request().mutable_write_batch()->clear_write_pairs();
+    request().mutable_write_batch()->mutable_write_pairs()->clear();
 
     for (auto& doc_op : doc_ops_) {
       doc_op->ClearResponse();

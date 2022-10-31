@@ -527,8 +527,12 @@ message PgCheckIfPitrActiveResponsePB {
 message PgGetTserverCatalogVersionInfoRequestPB {}
 
 message PgGetTserverCatalogVersionInfoResponsePB {
-  repeated uint32 db_oid = 2;
-  repeated int32 shm_index = 3;
-  repeated uint64 current_version = 4;
-  AppStatusPB status = 5;
+  message Entry {
+    uint32 db_oid = 1;
+    int32 shm_index = 2;
+    uint64 current_version = 3;
+  }
+
+  repeated Entry entries = 1;
+  AppStatusPB status = 2;
 }

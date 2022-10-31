@@ -71,13 +71,13 @@ class RpcCallParams {
  public:
   virtual ~RpcCallParams() = default;
 
-  virtual Result<size_t> ParseRequest(Slice param) = 0;
+  virtual Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) = 0;
   virtual AnyMessageConstPtr SerializableResponse() = 0;
 };
 
 class RpcCallPBParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
 
   AnyMessageConstPtr SerializableResponse() override;
 
@@ -112,7 +112,7 @@ class RpcCallPBParamsImpl : public RpcCallPBParams {
 
 class RpcCallLWParams : public RpcCallParams {
  public:
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
 
   virtual LightweightMessage& request() = 0;
@@ -121,6 +121,9 @@ class RpcCallLWParams : public RpcCallParams {
   static LightweightMessage* CastMessage(const AnyMessagePtr& msg);
 
   static const LightweightMessage* CastMessage(const AnyMessageConstPtr& msg);
+
+ private:
+  RefCntBuffer buffer_;
 };
 
 template <class Req, class Resp>
@@ -305,6 +308,10 @@ class RpcContext {
 
   RpcCallParams& params() {
     return *params_;
+  }
+
+  const std::shared_ptr<RpcCallParams>& shared_params() const {
+    return params_;
   }
 
   // Panic the server. This logs a fatal error with the given message, and

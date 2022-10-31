@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_FORWARD_ITERATOR_H
-#define ROCKSDB_DB_FORWARD_ITERATOR_H
 
 #pragma once
 
@@ -153,4 +151,3 @@ class ForwardIterator : public InternalIterator {
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_DB_FORWARD_ITERATOR_H
