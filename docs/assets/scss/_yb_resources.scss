@@ -12,17 +12,28 @@ body {
     }
 
     a {
-      border-radius: 5px;
-      padding: 4px 5px;
-      color: #4e5f6d !important;
 
-      &.grey-bg {
-        background: #f0f4f7;
-      }
+      padding: 4px 8px;
+	  font-weight: 400;
+	  font-size: 13px;
+	  line-height: 16px;
+	  color: #4E5F6D!important;
+	  height: 24px;
+	  background: rgba(165, 166, 246, 0.2);
+	  border-radius: 6px;
+	  text-decoration :none !important;
 
-      &.purple-bg {
-        background: #ededfd;
-      }
+	  &:hover{
+		background: rgba(165, 166, 246, 0.3);
+	  }
+
+	  /*      &.grey-bg {
+			  background: #f0f4f7;
+			}
+
+			&.purple-bg {
+			  background: #ededfd;
+			}*/
     }
   }
 }

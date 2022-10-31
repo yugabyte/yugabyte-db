@@ -63,6 +63,10 @@
       line-height: 16px;
       color: $yb-font-dark;
       padding: 8px 16px;
+&:hover{
+  background: #F2F6FF !important;
+
+}
 
       span {
         font-weight: 500;

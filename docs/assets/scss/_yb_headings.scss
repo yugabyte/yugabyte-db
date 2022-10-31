@@ -2,29 +2,37 @@
 .td-content {
   h1 {
     .tag-beta {
-      display: inline-block;
-      text-decoration: none;
-      border: none;
-      height: 30px;
-      width: 70px;
-      color: #f0f9ff;
-      background-color: #35a3ff;
-      border-radius: 4px;
-      font-weight: 500;
-      text-transform: uppercase;
-      font-size: 16px;
-      line-height: 30px;
-      text-align: center;
-      vertical-align: middle;
-      margin-left: 20px;
-      margin-top: -6px;
+	  //display          :inline-block;
+	  text-decoration  :none;
+	  //border           :none;
+	  height           :30px;
+	  width            :70px;
+	  ///*color            :#f0f9ff;*/
+	  ///*background-color :#35a3ff;*/
+	  //border-radius    :4px;
+	  text-transform   :uppercase;
+	  //font-size        :16px;
+	  //line-height      :30px;
+	  margin-left      :20px;
+	  margin-top       :-6px;
+
+	  background: #7879F1;
+	  border: 1px solid #7879F1;
+	  border-radius: 6px;
+	  font-weight: 500;
+	  font-size: 13px;
+	  line-height: 16px;
+	  color: #FFFFFF;
+	  display: inline-flex;
+	  justify-content: center;
+	  align-items: center;
 
       &:hover,
       &:focus,
       &:active {
-        color: #fff;
-        opacity: 0.8;
-        border: none;
+		background:rgba(120,121,241,.8);
+
+		border: none;
       }
     }
   }
@@ -105,6 +113,7 @@
         font-weight: 400;
         line-height: 28px;
         color: $yb-font-gray;
+		margin-bottom: 0;
       }
     }
   }

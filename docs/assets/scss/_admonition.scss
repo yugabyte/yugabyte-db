@@ -61,7 +61,7 @@ main {
       background: rgba(229, 237, 255, 0.5);
       border: 1px solid rgba(203, 219, 255, 0.8);
       border-radius: 8px;
-      padding: 13px 16px 16px 56px;
+      padding: 13px 16px 16px 50px;
       font-family: 'inter';
       font-style: normal;
       font-weight: 400;
@@ -77,7 +77,7 @@ main {
         height: 18px;
         background-image: url(/icons/admonition-note.svg);
         background-repeat: no-repeat;
-        background-size: 100% 100%;
+        background-size: 19px 20px;
         position: absolute;
         top: 16px;
         left: 16px;
@@ -129,6 +129,7 @@ main {
       }
 
       code {
+		/*
         &:not([class*=language]) {
           background-color: #f2f6ff !important;
           box-shadow: 0 0 1px 1px #cbdbff;
@@ -145,10 +146,12 @@ main {
           font-size: 13px !important;
           line-height: 16px;
         }
+		*/
       }
 
       p {
         >code {
+		  /*
           &:not([class*=language]) {
             background-color: #f2f6ff !important;
             box-shadow: 0 0 1px 1px #cbdbff;
@@ -165,14 +168,19 @@ main {
             font-size: 13px !important;
             line-height: 16px;
           }
+		  */
         }
       }
     }
 
     .admonition.note {
+
+	  &:before{
+		background-size: 19px 20px;
+	  }
       code {
-        background-color: #fff !important;
-        box-shadow: 0 0 1px 0 #507ce1;
+        //background-color: #fff !important;
+        //box-shadow: 0 0 1px 0 #507ce1;
       }
 
       p {

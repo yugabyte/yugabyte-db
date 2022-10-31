@@ -21,8 +21,10 @@
     justify-content: center;
 
     .content-child {
-      width: 1120px;
-      max-width: calc(100% - 40px);
+      //width: 1120px;
+      //max-width: calc(100% - 40px);
+      width: 1080px;
+      max-width: 100%;
       display: flex;
     }
   }
@@ -46,6 +48,10 @@
     margin: 0 auto;
     width: 100%;
     max-width: 100% !important;
+	main{
+	  padding-left: 0;
+	  padding-right: 0;
+	}
 
     .td-sidebar:not(.close-bar) {
       width: 300px;
@@ -89,7 +95,7 @@
 @media (min-width: 1500px) {
   .td-main {
     .td-sidebar:not(.close-bar) {
-      margin-right: 110px;
+      //margin-right: 110px;
 
       + {
         main {
