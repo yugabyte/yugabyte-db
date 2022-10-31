@@ -15,7 +15,6 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
-#include "yb/common/pg_types.h"
 
 #include "yb/gutil/bind.h"
 
@@ -54,25 +53,21 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_bool(parallelize_read_ops, true,
-            "Controls whether multiple (Redis) read ops that are present in a operation "
-            "should be executed in parallel.");
+DEFINE_RUNTIME_bool(parallelize_read_ops, true,
+    "Controls whether multiple (Redis) read ops that are present in a operation "
+    "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
-TAG_FLAG(parallelize_read_ops, runtime);
 
-DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
-            "Controls whether ysql follower reads that specify a not-yet-safe read time "
-            "should be rejected. This will force them to go to the leader, which will likely be "
-            "faster than waiting for safe time to catch up.");
+DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+    "Controls whether ysql follower reads that specify a not-yet-safe read time "
+    "should be rejected. This will force them to go to the leader, which will likely be "
+    "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
-TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
 METRIC_DEFINE_coarse_histogram(server, read_time_wait,
                                "Read Time Wait",
                                yb::MetricUnit::kMicroseconds,
                                "Number of microseconds read queries spend waiting for safe time");
-
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace tserver {
@@ -268,54 +263,17 @@ Status ReadQuery::DoPerform() {
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
-  if (!req_->pgsql_batch().empty()) {
-    uint64_t last_breaking_catalog_version = 0; // unset.
-    uint32_t last_db_oid = kPgInvalidOid; // unset.
-    for (const auto& pg_req : req_->pgsql_batch()) {
-      bool invalidated = false;
-      // For postgres requests check that the syscatalog version matches.
-      if (pg_req.has_ysql_catalog_version()) {
-        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
-        CHECK(!pg_req.has_ysql_db_catalog_version());
-        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
-        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
-        if (last_breaking_catalog_version == 0) {
-          // Initialize last breaking version if not yet set.
-          server_.get_ysql_catalog_version(
-              nullptr /* current_version */, &last_breaking_catalog_version);
-        }
-        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      } else if (pg_req.has_ysql_db_catalog_version()) {
-        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
-        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
-        if (last_db_oid == kPgInvalidOid) {
-          last_db_oid = pg_req.ysql_db_oid();
-          server_.get_ysql_db_catalog_version(
-            pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
-        } else {
-          // There should be only one db oid in a request.
-          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
-        }
-        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      }
-      if (invalidated) {
+  CatalogVersionChecker catalog_version_checker(server_);
+  for (const auto& pg_req : req_->pgsql_batch()) {
+    RETURN_NOT_OK(catalog_version_checker(pg_req));
+    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    if (IsValidRowMarkType(current_row_mark)) {
+      if (!req_->has_transaction()) {
         return STATUS(
-            QLError, "The catalog snapshot used for this transaction has been invalidated",
-            TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
+            NotSupported, "Read request with row mark types must be part of a transaction",
+            TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
       }
-      RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
-      if (IsValidRowMarkType(current_row_mark)) {
-        if (!req_->has_transaction()) {
-          return STATUS(
-              NotSupported, "Read request with row mark types must be part of a transaction",
-              TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
-        }
-        batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
-      }
+      batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
   const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
@@ -421,7 +379,7 @@ Status ReadQuery::DoPerform() {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);
     }
-    write.set_unused_tablet_id(""); // For backward compatibility.
+    write.ref_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
     if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {

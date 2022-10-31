@@ -13,15 +13,16 @@
 
 #pragma once
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {
 namespace tablet {
 
 class HistoryCutoffOperation
-    : public OperationBase<OperationType::kHistoryCutoff, consensus::HistoryCutoffPB> {
+    : public OperationBase<OperationType::kHistoryCutoff, consensus::LWHistoryCutoffPB> {
  public:
   template <class... Args>
   explicit HistoryCutoffOperation(Args&&... args) : OperationBase(std::forward<Args>(args)...) {}

@@ -37,11 +37,17 @@ YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  NO_SERVICE_PROTO_FILES
-      redis_protocol.proto ql_protocol.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
-      common.proto common_net.proto common_types.proto pgsql_protocol.proto transaction.proto
-      value.proto wire_protocol.proto)
+      common.proto
+      common_net.proto
+      common_types.proto
+      pgsql_protocol.proto
+      redis_protocol.proto
+      ql_protocol.proto
+      transaction.proto
+      value.proto
+      wire_protocol.proto
+  )
 ADD_YB_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
   DEPS protobuf yrpc_base rpc_base_proto

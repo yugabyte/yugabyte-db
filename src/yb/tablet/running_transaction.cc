@@ -183,8 +183,9 @@ std::string RunningTransaction::ToString() const {
                 TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_);
 }
 
-void RunningTransaction::ScheduleRemoveIntents(const RunningTransactionPtr& shared_self) {
-  if (remove_intents_task_.Prepare(shared_self)) {
+void RunningTransaction::ScheduleRemoveIntents(
+    const RunningTransactionPtr& shared_self, RemoveReason reason) {
+  if (remove_intents_task_.Prepare(shared_self, reason)) {
     context_.participant_context_.StrandEnqueue(&remove_intents_task_);
     VLOG_WITH_PREFIX(1) << "Intents should be removed asynchronously";
   }

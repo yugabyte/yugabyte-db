@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef YB_ROCKSDB_DB_WAL_MANAGER_H
-#define YB_ROCKSDB_DB_WAL_MANAGER_H
 
 #pragma once
 
@@ -113,4 +111,3 @@ class WalManager {
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_WAL_MANAGER_H

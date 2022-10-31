@@ -753,10 +753,10 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 }
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
-    TransactionStatePB* request) {
+    std::shared_ptr<LWTransactionStatePB> request) {
   // TODO: safe handling for the case when tablet is not set.
   auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()));
-  result->TakeRequest(request);
+  result->TakeRequest(std::move(request));
   return result;
 }
 
@@ -1185,7 +1185,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
   return cdc_sdk_intent_retention;
 }
 
-std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
+std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
   auto tablet = CHECK_RESULT(shared_tablet_safe());
   switch (replicate_msg->op_type()) {
@@ -1247,7 +1247,7 @@ Status TabletPeer::StartReplicaOperation(
     return STATUS(IllegalState, RaftGroupStatePB_Name(value));
   }
 
-  consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
+  auto* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
 

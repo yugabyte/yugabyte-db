@@ -226,7 +226,7 @@ class BootstrapTest : public LogTestBase {
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
-      .post_split_compaction_pool = nullptr,
+      .full_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {
@@ -334,7 +334,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   ASSERT_EQ(1, boot_info.orphaned_replicates.size())
       << yb::ToString(boot_info.orphaned_replicates);
   ASSERT_STR_CONTAINS(boot_info.orphaned_replicates[0]->ShortDebugString(),
-                      "this is a test mutate");
+                      "537468697320697320612074657374206D7574617465");
 
   // And it should also include the latest opids.
   EXPECT_EQ("term: 1 index: 1", boot_info.last_id.ShortDebugString());
@@ -402,7 +402,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
   ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
-  ASSERT_OPID_EQ(boot_info.orphaned_replicates[0]->id(), MakeOpId(3, 2));
+  ASSERT_EQ(OpId::FromPB(boot_info.orphaned_replicates[0]->id()), OpId(3, 2));
 
   // Confirm that the legitimate data is there.
   vector<string> results;
@@ -445,7 +445,7 @@ TEST_F(BootstrapTest, OverwriteTailWithFlushedIndex) {
   LOG(INFO) << "Replayed OpIds: " << ToString(test_hooks_->actual_report.replayed);
 
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
-  ASSERT_OPID_EQ(boot_info.orphaned_replicates[0]->id(), MakeOpId(3, 4));
+  ASSERT_EQ(OpId::FromPB(boot_info.orphaned_replicates[0]->id()), OpId(3, 4));
 
   const std::vector<OpId> expected_replayed_op_ids{{3, 3}};
   ASSERT_EQ(expected_replayed_op_ids, test_hooks_->actual_report.replayed);
@@ -468,9 +468,9 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   BuildLog();
 
   // Append NO_OP.
-  auto noop_replicate = std::make_shared<ReplicateMsg>();
+  auto noop_replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
   noop_replicate->set_op_type(consensus::NO_OP);
-  *noop_replicate->mutable_id() = MakeOpId(1, 1);
+  OpId(1, 1).ToPB(noop_replicate->mutable_id());
   noop_replicate->set_hybrid_time(2);
 
   // All YB REPLICATEs require this:

@@ -131,12 +131,11 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
-             "When the total amount of memory from calls to Release() since the last GC exceeds "
-             "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
-             "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
-             "overhead, but more efficient in terms of runtime.");
-TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
+DEFINE_RUNTIME_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
+    "When the total amount of memory from calls to Release() since the last GC exceeds "
+    "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
+    "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
+    "overhead, but more efficient in terms of runtime.");
 
 namespace yb {
 

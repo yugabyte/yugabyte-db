@@ -44,8 +44,6 @@
 // ... prev vs. next pointer ordering ...
 //
 
-#ifndef YB_ROCKSDB_DB_SKIPLIST_H
-#define YB_ROCKSDB_DB_SKIPLIST_H
 
 #pragma once
 
@@ -653,4 +651,3 @@ class SingleWriterInlineSkipList :
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_SKIPLIST_H

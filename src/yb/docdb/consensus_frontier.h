@@ -18,6 +18,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/docdb/docdb.fwd.h"
+
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/util/uuid.h"
@@ -133,12 +135,15 @@ inline void set_history_cutoff(HybridTime history_cutoff, ConsensusFrontiers* fr
 template <class PB>
 void AddTableSchemaVersion(
     const Uuid& table_id, SchemaVersion schema_version, PB* pb) {
-  auto* out = pb->mutable_table_schema_version()->Add();
+  auto* out = pb->add_table_schema_version();
   if (!table_id.IsNil()) {
-    out->set_table_id(table_id.cdata(), table_id.size());
+    out->dup_table_id(table_id.AsSlice());
   }
   out->set_schema_version(schema_version);
 }
+
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, ConsensusFrontierPB* pb);
 
 } // namespace docdb
 } // namespace yb

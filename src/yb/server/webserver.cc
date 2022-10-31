@@ -84,23 +84,20 @@
 typedef sig_t sighandler_t;
 #endif
 
-DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
-             "The maximum length of a POST request that will be accepted by "
-             "the embedded web server.");
+DEFINE_RUNTIME_int32(webserver_max_post_length_bytes, 1024 * 1024,
+    "The maximum length of a POST request that will be accepted by "
+    "the embedded web server.");
 TAG_FLAG(webserver_max_post_length_bytes, advanced);
-TAG_FLAG(webserver_max_post_length_bytes, runtime);
 
-DEFINE_int32(webserver_zlib_compression_level, 1,
-             "The zlib compression level."
-             "Lower compression levels result in faster execution, but less compression");
+DEFINE_RUNTIME_int32(webserver_zlib_compression_level, 1,
+    "The zlib compression level."
+    "Lower compression levels result in faster execution, but less compression");
 TAG_FLAG(webserver_zlib_compression_level, advanced);
-TAG_FLAG(webserver_zlib_compression_level, runtime);
 
-DEFINE_uint64(webserver_compression_threshold_kb, 4,
-              "The threshold of response size above which compression is performed."
-              "Default value is 4KB");
+DEFINE_RUNTIME_uint64(webserver_compression_threshold_kb, 4,
+    "The threshold of response size above which compression is performed."
+    "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
-TAG_FLAG(webserver_compression_threshold_kb, runtime);
 
 DEFINE_bool(webserver_redirect_http_to_https, false,
             "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");

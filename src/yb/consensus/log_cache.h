@@ -77,8 +77,8 @@ class ReplicateMsg;
 
 struct ReadOpsResult {
   ReplicateMsgs messages;
-  yb::OpId preceding_op;
-  yb::SchemaPB header_schema;
+  OpId preceding_op;
+  SchemaPB header_schema;
   uint32_t header_schema_version;
   HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
@@ -195,7 +195,7 @@ class LogCache {
     ReplicateMsgPtr msg;
     // The cached value of msg->SpaceUsedLong(). This method is expensive
     // to compute, so we compute it only once upon insertion.
-    int64_t mem_usage = 0;
+    size_t mem_usage = 0;
 
     // Did we start memory tracking for this entry.
     bool tracked = false;

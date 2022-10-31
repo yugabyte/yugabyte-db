@@ -169,13 +169,33 @@ Status QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
-void AddArgs(QLValuePB* result, std::vector<QLValuePB>* args) {
+// Mini framework to store operands result into vector.
+namespace {
+
+template <class Value> struct ValueVector;
+
+template <>
+struct ValueVector<QLValuePB> {
+  using type = std::vector<QLValuePB>;
+};
+
+void AddValue(QLValuePB* result, std::vector<QLValuePB>* args, ExprResult<QLValuePB>* value) {
   args->emplace_back();
+  value->MoveTo(&args->back());
 }
 
-void AddArgs(LWQLValuePB* result, std::vector<LWQLValuePB>* args) {
-  args->emplace_back(&result->arena());
+template <>
+struct ValueVector<LWQLValuePB> {
+  using type = std::vector<LWQLValuePB*>;
+};
+
+void AddValue(
+    LWQLValuePB* result, std::vector<LWQLValuePB*>* args, ExprResult<LWQLValuePB>* value) {
+  args->push_back(result->arena().NewObject<LWQLValuePB>(&result->arena()));
+  value->MoveTo(args->back());
 }
+
+} // namespace
 
 template <class OpCode, class Expr, class Value>
 Status QLExprExecutor::EvalBFCall(
@@ -196,13 +216,12 @@ Status QLExprExecutor::EvalBFCall(
   //   "SubListList"
 
   // First evaluate the arguments.
-  std::vector<Value> args;
+  typename ValueVector<Value>::type args;
   args.reserve(bfcall.operands().size());
   ExprResult<Value> temp(result);
   for (const auto& operand : bfcall.operands()) {
     RETURN_NOT_OK(EvalExpr(operand, table_row, temp.Writer()));
-    AddArgs(result, &args);
-    temp.MoveTo(&args.back());
+    AddValue(result, &args, &temp);
   }
 
   // Execute the builtin call associated with the given opcode.

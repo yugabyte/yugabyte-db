@@ -19,6 +19,7 @@ option java_package = "org.yb.tablet";
 import "yb/common/common.proto";
 import "yb/common/transaction.proto";
 import "yb/docdb/docdb.proto";
+import "yb/rpc/lightweight_message.proto";
 import "yb/tablet/metadata.proto";
 
 message TransactionStatePB {
@@ -52,6 +53,7 @@ message TransactionStatePB {
 }
 
 message TruncatePB {
+  option (yb.rpc.lightweight_message).force_arena = true;
 }
 
 message WritePB {

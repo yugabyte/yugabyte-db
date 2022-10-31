@@ -58,7 +58,7 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 //              Else, we proceed with pessimistic locking and use the wait_queue to block and
 //              unblock transactions with conflicts.
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const KeyValueWriteBatchPB& write_batch,
+                                   const LWKeyValueWriteBatchPB& write_batch,
                                    HybridTime resolution_ht,
                                    HybridTime read_time,
                                    const DocDB& doc_db,

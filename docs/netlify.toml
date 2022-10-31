@@ -435,6 +435,12 @@
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
 
+# Foreign data wrappers from SQL features to Advanced features
+
+[[redirects]]
+   from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
+   to = "/preview/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
+
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 

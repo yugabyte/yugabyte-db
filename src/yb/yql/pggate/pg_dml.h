@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <boost/unordered_map.hpp>
 
 #include "yb/yql/pggate/pg_doc_op.h"
@@ -80,8 +82,7 @@ class PgDml : public PgStatement {
   // Returns TRUE if desired row is found.
   Result<bool> GetNextRow(PgTuple *pg_tuple);
 
-  virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
-  virtual void SetDBCatalogCacheVersion(uint32_t db_oid, uint64_t catalog_cache_version) = 0;
+  virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
@@ -152,6 +153,18 @@ class PgDml : public PgStatement {
 
   // Allocate a PgsqlColRefPB entriy in the protobuf request
   virtual LWPgsqlColRefPB *AllocColRefPB() = 0;
+
+  template<class Request>
+  static void DoSetCatalogCacheVersion(
+      Request* req, std::optional<PgOid> db_oid, uint64_t version) {
+    auto& request = *DCHECK_NOTNULL(req);
+    if (db_oid) {
+      request.set_ysql_db_catalog_version(version);
+      request.set_ysql_db_oid(*db_oid);
+    } else {
+      request.set_ysql_catalog_version(version);
+    }
+  }
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.

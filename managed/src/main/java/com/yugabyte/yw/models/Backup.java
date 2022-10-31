@@ -402,10 +402,10 @@ public class Backup extends Model {
     this.save();
   }
 
-  public void onIncrementCompletion(Date incrementExpiryDate, long incrementSizeInBytes) {
-    if (incrementExpiryDate == null
-        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
-      this.expiry = incrementExpiryDate;
+  public void onIncrementCompletion(Date incrementCreateDate, long incrementSizeInBytes) {
+    Date newExpiryDate = new Date(incrementCreateDate.getTime() + this.backupInfo.timeBeforeDelete);
+    if (this.getExpiry() != null && this.getExpiry().before(newExpiryDate)) {
+      this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes += incrementSizeInBytes;
     this.save();

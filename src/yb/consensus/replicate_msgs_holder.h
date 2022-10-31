@@ -18,6 +18,7 @@
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace consensus {
@@ -52,6 +53,21 @@ class ReplicateMsgsHolder {
   // loaded these messages from the LogCache, in which case we are potentially sharing the same
   // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
   // them.
+  ReplicateMsgs messages_;
+
+  ScopedTrackedConsumption consumption_;
+};
+
+class LWReplicateMsgsHolder {
+ public:
+  LWReplicateMsgsHolder() = default;
+
+  explicit LWReplicateMsgsHolder(ReplicateMsgs messages, ScopedTrackedConsumption consumption);
+  LWReplicateMsgsHolder(LWReplicateMsgsHolder&& rhs);
+  void operator=(LWReplicateMsgsHolder&& rhs);
+
+  void Reset();
+ private:
   ReplicateMsgs messages_;
 
   ScopedTrackedConsumption consumption_;

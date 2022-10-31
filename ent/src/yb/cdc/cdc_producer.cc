@@ -21,6 +21,7 @@
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
@@ -348,7 +349,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
         // producer and re-serializing on consumer.
         auto kv_pair = record->add_key();
         kv_pair->set_key(std::to_string(decoded_key.doc_key().hash()));
-        kv_pair->mutable_value()->set_binary_value(write_pair.key());
+        kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
       } else {
         AddPrimaryKey(decoded_key, schema, record);
       }
@@ -370,7 +371,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
           RETURN_NOT_OK(SetRecordTime(txn_id, txn_map, record));
         } else {
           record->mutable_transaction_state()->set_transaction_id(
-              batch.transaction().transaction_id());
+              batch.transaction().transaction_id().ToBuffer());
           record->mutable_transaction_state()->add_tablets(tablet_peer->tablet_id());
         }
       }
@@ -380,11 +381,11 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
 
     if (metadata.record_format == CDCRecordFormat::WAL) {
       auto kv_pair = record->add_changes();
-      kv_pair->set_key(write_pair.key());
-      kv_pair->mutable_value()->set_binary_value(write_pair.value());
+      kv_pair->set_key(write_pair.key().ToBuffer());
+      kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
     } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
       docdb::KeyEntryValue column_id;
-      Slice key_column = write_pair.key().data() + key_size;
+      Slice key_column = write_pair.key().WithoutPrefix(key_size);
       RETURN_NOT_OK(column_id.DecodeFromKey(&key_column));
       if (column_id.type() == docdb::KeyEntryType::kColumnId) {
         docdb::Value decoded_value;
@@ -402,16 +403,16 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
 
 // Populate CDC record corresponding to WAL UPDATE_TRANSACTION_OP entry.
 Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
-                                         const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                         ReplicateIntents replicate_intents,
-                                         CDCRecordPB* record) {
+                                 const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                 ReplicateIntents replicate_intents,
+                                 CDCRecordPB* record) {
   SCHECK(msg->has_transaction_state(), InvalidArgument,
          Format("Update transaction message requires transaction_state: $0",
                 msg->ShortDebugString()));
   record->set_operation(CDCRecordPB_OperationType_WRITE);
   record->set_time(replicate_intents ?
       msg->hybrid_time() : msg->transaction_state().commit_hybrid_time());
-  record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
+  msg->transaction_state().ToGoogleProtobuf(record->mutable_transaction_state());
   if (replicate_intents && msg->transaction_state().status() == TransactionStatus::APPLYING) {
     // Add the partition metadata so the consumer knows which tablets to apply the transaction
     // to.
@@ -424,7 +425,7 @@ Status PopulateTransactionRecord(const ReplicateMsgPtr& msg,
 Status PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
   record->set_operation(CDCRecordPB::SPLIT_OP);
   record->set_time(msg->hybrid_time());
-  record->mutable_split_tablet_request()->CopyFrom(msg->split_request());
+  msg->split_request().ToGoogleProtobuf(record->mutable_split_tablet_request());
   return Status::OK();
 }
 
@@ -433,7 +434,7 @@ Status PopulateChangeMetadataRecord(const ReplicateMsgPtr& msg, CDCRecordPB* rec
       Format("METADATA message requires change_metadata_request: $0", msg->ShortDebugString()));
   record->set_operation(CDCRecordPB::CHANGE_METADATA);
   record->set_time(msg->hybrid_time());
-  record->mutable_change_metadata_request()->CopyFrom(msg->change_metadata_request());
+  msg->change_metadata_request().ToGoogleProtobuf(record->mutable_change_metadata_request());
   return Status::OK();
 }
 
@@ -517,7 +518,7 @@ Status GetChangesForXCluster(const std::string& stream_id,
           record->set_operation(CDCRecordPB::APPLY);
           record->set_time(msg->hybrid_time());
           auto* txn_state = record->mutable_transaction_state();
-          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id().ToBuffer());
           txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
           auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
           shared_tablet->metadata()->partition()->ToPB(record->mutable_partition());
@@ -526,8 +527,10 @@ Status GetChangesForXCluster(const std::string& stream_id,
           record->set_operation(CDCRecordPB::COMMITTED);
           record->set_time(msg->hybrid_time());
           auto* txn_state = record->mutable_transaction_state();
-          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
-          *txn_state->mutable_tablets() = msg->transaction_state().tablets();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id().ToBuffer());
+          for (const auto& tablet : msg->transaction_state().tablets()) {
+            txn_state->mutable_tablets()->Add(tablet.ToBuffer());
+          }
         }
         break;
       case consensus::OperationType::WRITE_OP:
@@ -541,7 +544,7 @@ Status GetChangesForXCluster(const std::string& stream_id,
           // Only send split if it is our split, and if we can update the children tablet entries
           // in cdc_state table correctly (the reason for this check is that it is possible to
           // read our parent tablet splits).
-          auto s = update_on_split_op_func(msg);
+          auto s = update_on_split_op_func(msg->ToGoogleProtobuf());
           if (s.ok()) {
             RETURN_NOT_OK(PopulateSplitOpRecord(msg, resp->add_records()));
           } else {
