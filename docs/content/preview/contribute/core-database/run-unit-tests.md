@@ -50,7 +50,7 @@ After you've built the C++ and Java code, run the Java tests using following com
 ./yb_build.sh release --scb --sj --java-tests
 ```
 
-If you omit the release argument, it will run java tests against debug build, so you should either omit `--scb` or first build debug binaries by running `./yb_build.sh` with no test options.
+If you omit the release argument, it will run Java tests against the debug build, so you should either omit `--scb` or first build debug binaries by running `./yb_build.sh` with no test options.
 
 ### Run specific tests
 
