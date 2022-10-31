@@ -225,6 +225,14 @@ const config = {
 }
 ```
 
+The following is another way of passing the connection string for connecting to a YugabyteDB cluster with SSL enabled.
+
+```js
+const connectionString = "postgresql://user:password@localhost:port/database?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+const client = new Client(connectionString);
+client.connect()
+```
+
 ## Transaction and isolation levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.

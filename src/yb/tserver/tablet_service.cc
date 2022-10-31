@@ -92,7 +92,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -114,17 +114,11 @@
 
 using namespace std::literals;  // NOLINT
 
-DEFINE_NON_RUNTIME_int32(scanner_default_batch_size_bytes, 64 * 1024,
-    "DEPRECATED. The default size for batches of scan results");
-TAG_FLAG(scanner_default_batch_size_bytes, hidden);
+DEPRECATE_FLAG(int32, scanner_default_batch_size_bytes, "10_2022");
 
-DEFINE_NON_RUNTIME_int32(scanner_max_batch_size_bytes, 8 * 1024 * 1024,
-    "DEPRECATED. The maximum batch size that a client may request for scan results.");
-TAG_FLAG(scanner_max_batch_size_bytes, hidden);
+DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
-DEFINE_NON_RUNTIME_int32(scanner_batch_size_rows, 100,
-    "DEPRECATED. The number of rows to batch for servicing scan requests.");
-TAG_FLAG(scanner_batch_size_rows, hidden);
+DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
 DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
