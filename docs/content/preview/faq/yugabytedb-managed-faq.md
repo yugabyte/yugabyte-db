@@ -166,7 +166,7 @@ Sandbox clusters are limited to a single node in a single region.
 
 You can connect to clusters in the following ways:
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="Cloud Shell" lang="Cloud Shell" %}}
 
