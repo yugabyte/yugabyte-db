@@ -23,6 +23,9 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 | [lastval()](func_lastval) | Returns the value returned by the most recent call to _nextval()_ for _any_ sequence in the current session |
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
 | [yb_is_local_table()](func_yb_is_local_table) | Returns whether the given 'oid' is a table replicated only in the local region |
+| [yb_server_region()](func_yb_server_region) | Returns the region of the currently connected node |
+| [yb_server_zone()](func_yb_server_zone) | Returns the zone of the currently connected node |
+| [yb_server_cloud()](func_yb_server_cloud) | Returns the cloud of the currently connected node |
 | [JSON functions and operators](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |
 | [Array functions and operators](../datatypes/type_array/functions-operators/) | Detailed list of array-specific functions and operators |
 | [Aggregate functions](./aggregate_functions/) | Detailed list of YSQL aggregate functions |
