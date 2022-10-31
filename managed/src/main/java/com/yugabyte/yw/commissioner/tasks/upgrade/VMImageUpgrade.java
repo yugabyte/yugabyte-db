@@ -6,7 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -90,7 +90,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
 
-      List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+      List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
       if (node.isMaster) processTypes.add(ServerType.MASTER);
       if (node.isTserver) processTypes.add(ServerType.TSERVER);
 

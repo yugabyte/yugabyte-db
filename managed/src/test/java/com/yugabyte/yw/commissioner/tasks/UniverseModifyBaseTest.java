@@ -86,7 +86,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 Universe universe = Universe.getOrBadRequest(params.universeUUID);
                 NodeDetails nodeDetails = universe.getNode(params.nodeName);
                 if (nodeDetails != null
-                    && nodeDetails.dedicatedTo == UniverseDefinitionTaskBase.ServerType.MASTER) {
+                    && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
                   respJson.put("private_ip", "10.0.0." + masterIpCnt.incrementAndGet());
                 }
                 if (params.nodeUuid != null) {

@@ -17,7 +17,8 @@
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
     "reinstall-package.yml",
-    "configure_ssh2.yml"
+    "configure_ssh2.yml",
+    "install-third-party.yml"
   ],
   "bin": [
     "bin/common.sh",
