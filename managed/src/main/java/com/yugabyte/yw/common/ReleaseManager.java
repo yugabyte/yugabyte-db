@@ -711,7 +711,7 @@ public class ReleaseManager {
             if (fp != null) {
               for (Architecture arch : Architecture.values()) {
                 if (getPathMatcher(arch.getDBGlob()).matches(fp)) {
-                  rm.packages = new ArrayList<>();
+                  rm.packages = (rm.packages == null) ? new ArrayList<>() : rm.packages;
                   rm = rm.withPackage(rm.filePath, arch);
                 }
               }
