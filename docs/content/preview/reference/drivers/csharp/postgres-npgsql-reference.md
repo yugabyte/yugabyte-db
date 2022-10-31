@@ -58,7 +58,7 @@ The following table describes the connection parameters required to connect to t
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
+| user id | User connecting to the database | yugabyte
 | password | Password for the user | yugabyte
 
 The following is an example connection string for connecting to YugabyteDB.
