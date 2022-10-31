@@ -54,6 +54,19 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
         </Tab>
 
         <Tab
+          eventKey="customer-config"
+          title={t('admin.advanced.globalConfig.CustomerConfigTitle')}
+          unmountOnExit
+        >
+          <CustomerRuntimeConfig
+            setRuntimeConfig={setRuntimeConfig}
+            deleteRunTimeConfig={deleteRunTimeConfig}
+            fetchRuntimeConfigs={fetchRuntimeConfigs}
+            resetRuntimeConfigs={resetRuntimeConfigs}
+          />
+        </Tab>
+
+        <Tab
           eventKey="universe-config"
           title={t('admin.advanced.globalConfig.UniverseConfigTitle')}
           unmountOnExit
@@ -73,19 +86,6 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
         >
 
           <ProviderRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-          />
-        </Tab>
-
-        <Tab
-          eventKey="customer-config"
-          title={t('admin.advanced.globalConfig.CustomerConfigTitle')}
-          unmountOnExit
-        >
-          <CustomerRuntimeConfig
             setRuntimeConfig={setRuntimeConfig}
             deleteRunTimeConfig={deleteRunTimeConfig}
             fetchRuntimeConfigs={fetchRuntimeConfigs}
