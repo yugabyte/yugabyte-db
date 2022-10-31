@@ -58,7 +58,7 @@ Status ExecBfunc(
     bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result);
 
 Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result);
+    bfpg::BFOpcode opcode, std::vector<LWQLValuePB*>* params, LWQLValuePB *result);
 
 } // namespace yb
 

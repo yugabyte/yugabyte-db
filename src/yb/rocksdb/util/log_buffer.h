@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_LOG_BUFFER_H
-#define YB_ROCKSDB_UTIL_LOG_BUFFER_H
 
 #pragma once
 
@@ -94,4 +92,3 @@ extern void LogToBufferWithContext(
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_LOG_BUFFER_H

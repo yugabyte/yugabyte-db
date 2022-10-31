@@ -22,8 +22,9 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
-
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_types.messages.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/mem_tracker.h"
@@ -66,10 +67,13 @@ DECLARE_int32(memory_limit_warn_threshold_percentage);
 namespace yb {
 namespace tserver {
 
-void SetupErrorAndRespond(TabletServerErrorPB* error,
-                          const Status& s,
-                          TabletServerErrorPB::Code code,
-                          rpc::RpcContext* context) {
+namespace {
+
+template <class PB>
+void DoSetupErrorAndRespond(PB* error,
+                            const Status& s,
+                            TabletServerErrorPB::Code code,
+                            rpc::RpcContext* context) {
   // Generic "service unavailable" errors will cause the client to retry later.
   if (code == TabletServerErrorPB::UNKNOWN_ERROR) {
     if (s.IsServiceUnavailable()) {
@@ -90,14 +94,42 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
   context->RespondSuccess();
 }
 
-void SetupErrorAndRespond(TabletServerErrorPB* error,
-                          const Status& s,
-                          rpc::RpcContext* context) {
+template <class PB>
+void DoSetupErrorAndRespond(PB* error,
+                            const Status& s,
+                            rpc::RpcContext* context) {
   auto ts_error = TabletServerError::FromStatus(s);
-  SetupErrorAndRespond(
+  DoSetupErrorAndRespond(
       error, s, ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR, context);
 }
 
+} // namespace
+
+void SetupErrorAndRespond(TabletServerErrorPB* error,
+                          const Status& s,
+                          TabletServerErrorPB::Code code,
+                          rpc::RpcContext* context) {
+  DoSetupErrorAndRespond(error, s, code, context);
+}
+
+void SetupErrorAndRespond(TabletServerErrorPB* error,
+                          const Status& s,
+                          rpc::RpcContext* context) {
+  DoSetupErrorAndRespond(error, s, context);
+}
+
+void SetupErrorAndRespond(LWTabletServerErrorPB* error,
+                          const Status& s,
+                          TabletServerErrorPB::Code code,
+                          rpc::RpcContext* context) {
+  DoSetupErrorAndRespond(error, s, code, context);
+}
+
+void SetupErrorAndRespond(LWTabletServerErrorPB* error,
+                          const Status& s,
+                          rpc::RpcContext* context) {
+  DoSetupErrorAndRespond(error, s, context);
+}
 void SetupError(TabletServerErrorPB* error, const Status& s) {
   auto ts_error = TabletServerError::FromStatus(s);
   auto code = ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR;
@@ -417,6 +449,18 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   }
 
   return Status::OK();
+}
+
+uint64_t CatalogVersionChecker::GetLastBreakingVersion(DbOid db_oid) const {
+  uint64_t last_breaking_catalog_version;
+  if (db_oid) {
+    tablet_server_.get_ysql_db_catalog_version(
+        *db_oid, nullptr /* current_version */, &last_breaking_catalog_version);
+  } else {
+    tablet_server_.get_ysql_catalog_version(
+        nullptr /* current_version */, &last_breaking_catalog_version);
+  }
+  return last_breaking_catalog_version;
 }
 
 } // namespace tserver

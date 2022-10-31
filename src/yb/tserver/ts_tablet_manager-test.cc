@@ -42,7 +42,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
@@ -363,7 +363,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ASSERT_OK(CreateNewTablet(kTableId, tablet_id, schema_, &peer));
     ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
 
-    auto replicate_ptr = std::make_shared<ReplicateMsg>();
+    auto replicate_ptr = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate_ptr->set_op_type(consensus::NO_OP);
     replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
     ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));

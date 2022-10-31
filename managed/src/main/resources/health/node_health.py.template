@@ -1574,6 +1574,27 @@ def main():
     coordinator.add_precheck(checker, "check_openssl_availability")
 
     coordinator.add_check(checker, "check_node_metrics_collection")
+    coordinator.add_check(checker, "check_disk_utilization")
+    coordinator.add_check(checker, "check_for_core_files")
+    if n.enable_tls:
+        coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
+    if n.enable_tls_client:
+        coordinator.add_check(checker, "check_client_ca_certificate_expiration")
+        coordinator.add_check(checker, "check_client_certificate_expiration")
+        if not n.root_and_client_root_ca_same:
+            coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
+            coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
+
+    if not args.metrics_only:
+        # These checks are not working properly when called from inside the service
+        # Will only call them as part of health checks for now
+        # And metrics will be exposed by Platform
+        if n.tserver_index >= 0:
+            coordinator.add_check(checker, "check_file_descriptors")
+        if n.check_clock:
+            coordinator.add_check(checker, "check_clock_skew")
+
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)
         if alert_enhancements_version:
@@ -1604,24 +1625,7 @@ def main():
             coordinator.add_check(checker, "check_postmaster_rss")
             coordinator.add_check(checker, "check_postgres_workers_rss")
             coordinator.add_check(checker, "check_ysql_connections_count")
-        coordinator.add_check(checker, "check_disk_utilization")
-        coordinator.add_check(checker, "check_for_core_files")
-        if not args.metrics_only:
-            # These checks are not working properly when called from inside the service
-            # Will only call them as part of health checks for now
-            # And metrics will be exposed by Platform
-            coordinator.add_check(checker, "check_file_descriptors")
-            if n.check_clock:
-                coordinator.add_check(checker, "check_clock_skew")
-        if n.enable_tls:
-            coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
-            coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
-        if n.enable_tls_client:
-            coordinator.add_check(checker, "check_client_ca_certificate_expiration")
-            coordinator.add_check(checker, "check_client_certificate_expiration")
-            if not n.root_and_client_root_ca_same:
-                coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
-                coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
+
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
     if n.is_ybc_enabled:

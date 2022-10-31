@@ -158,10 +158,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       GetSplitKeyResponsePB* resp,
       rpc::RpcContext context) override;
 
-  void TakeTransaction(const TakeTransactionRequestPB* req,
-                       TakeTransactionResponsePB* resp,
-                       rpc::RpcContext context) override;
-
   void GetSharedData(const GetSharedDataRequestPB* req,
                      GetSharedDataResponsePB* resp,
                      rpc::RpcContext context) override;
@@ -292,8 +288,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
   virtual ~ConsensusServiceImpl();
 
-  void UpdateConsensus(const consensus::ConsensusRequestPB *req,
-                       consensus::ConsensusResponsePB *resp,
+  void UpdateConsensus(const consensus::LWConsensusRequestPB *req,
+                       consensus::LWConsensusResponsePB *resp,
                        rpc::RpcContext context) override;
 
   void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
@@ -342,7 +338,7 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
  private:
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
-                                       consensus::ConsensusResponsePB* resp);
+                                       consensus::LWConsensusResponsePB* resp);
   TabletPeerLookupIf* tablet_manager_;
 };
 

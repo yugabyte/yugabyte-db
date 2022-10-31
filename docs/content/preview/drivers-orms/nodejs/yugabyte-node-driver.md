@@ -46,9 +46,9 @@ The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-pos
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/nodejs/ysql-pg/).
+The following sections demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Download the driver dependency
 
@@ -101,9 +101,11 @@ If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/manage
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-### Step 3: Query the YugabyteDB cluster from your application
+### Step 3: Write your application
 
-Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following sample code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
+Create a new JavaScript file called `QuickStartApp.js` in your project directory.
+
+Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate, if required.
 
 ```javascript
 const pg = require('@yugabytedb/pg');
@@ -162,7 +164,13 @@ async function fetchData(client){
 })();
 ```
 
-When you run the application using the command `node QuickStartApp.js`, you should see output similar to the following:
+Run the application `QuickStartApp.js` using the following command:
+
+```js
+node QuickStartApp.js
+```
+
+You should see output similar to the following:
 
 ```output
 Connected to the YugabyteDB Cluster successfully.
@@ -176,10 +184,9 @@ Employees Information:
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Node.js application that uses the YugabyteDB node-postgres smart driver to connect to your cluster, set up tables, run queries, and print out results.
-
 ## Learn more
 
-- Build Node.js applications using [Sequelize ORM](../sequelize).
-- [Node.js driver reference](../../../reference/drivers/nodejs/yugabyte-pg-reference/#fundamentals)
+- Refer to [YugabyteDB node-postgres smart driver reference](../../../reference/drivers/nodejs/yugabyte-pg-reference/) and [Try it out](../../../reference/drivers/nodejs/yugabyte-pg-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- Build Node.js applications using [Prisma ORM](../prisma/)

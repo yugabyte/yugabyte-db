@@ -28,7 +28,7 @@ class RemoveIntentsTask : public rpc::StrandTask {
                     RunningTransactionContext* running_transaction_context,
                     const TransactionId& id);
 
-  bool Prepare(RunningTransactionPtr transaction);
+  bool Prepare(RunningTransactionPtr transaction, RemoveReason reason);
   void Run() override;
   void Done(const Status& status) override;
 
@@ -40,6 +40,7 @@ class RemoveIntentsTask : public rpc::StrandTask {
   TransactionIntentApplier& applier_;
   TransactionParticipantContext& participant_context_;
   RunningTransactionContext& running_transaction_context_;
+  RemoveReason reason_;
   TransactionId id_;
   std::atomic<bool> used_{false};
   RunningTransactionPtr transaction_;

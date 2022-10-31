@@ -15,9 +15,7 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
-#include <gflags/gflags.h>
-
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
@@ -78,8 +76,7 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
 
-DEFINE_bool(ysql_enable_update_batching, true,
-            "DEPRECATED. Feature has been removed");
+DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");

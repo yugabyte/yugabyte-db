@@ -32,7 +32,7 @@
 
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -50,13 +50,13 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<WritePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, WritePB* request) {
-  replicate->set_allocated_write(request);
+void RequestTraits<LWWritePB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWWritePB* request) {
+  replicate->ref_write(request);
 }
 
 template <>
-WritePB* RequestTraits<WritePB>::MutableRequest(consensus::ReplicateMsg* replicate) {
+LWWritePB* RequestTraits<LWWritePB>::MutableRequest(consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_write();
 }
 

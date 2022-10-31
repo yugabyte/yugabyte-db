@@ -3964,9 +3964,9 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
     const ProducerTabletInfo& producer_tablet,
-    std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+    const consensus::ReplicateMsg& split_op_msg,
     const client::YBSessionPtr& session) {
-  const auto split_req = split_op_msg->split_request();
+  const auto& split_req = split_op_msg.split_request();
   const auto parent_tablet = split_req.tablet_id();
   const vector<string> children_tablets = {split_req.new_tablet1_id(), split_req.new_tablet2_id()};
 
@@ -4008,7 +4008,7 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
     QLAddStringRangeValue(req, producer_tablet.stream_id);
     // No need to update the timestamp here as we haven't started replicating the child yet.
     cdc_state_table->AddStringColumnValue(
-        req, master::kCdcCheckpoint, consensus::OpIdToString(split_op_msg->id()));
+        req, master::kCdcCheckpoint, consensus::OpIdToString(split_op_msg.id()));
     // Only perform updates from tservers for cdc_state, so check if row exists or not.
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);

@@ -27,20 +27,20 @@ func TestExecutor(t *testing.T) {
 	instance := GetInstance(ctx)
 	future, err := instance.SubmitTask(ctx, testHandler)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
 
 	data, err := future.Get()
 	if err != nil {
-		t.Errorf("Future.Get() failed - %s", err.Error())
+		t.Fatalf("Future.Get() failed - %s", err.Error())
 	}
 	data, ok := data.(string)
 	if !ok {
-		t.Errorf("Future.Get() returned incorrect data - %s", err.Error())
+		t.Fatalf("Future.Get() returned incorrect data - %s", err.Error())
 	}
 
 	if data != "test" {
-		t.Errorf("Result assertion failed.")
+		t.Fatalf("Result assertion failed.")
 	}
 }
 
@@ -49,11 +49,11 @@ func TestExecutorFailure(t *testing.T) {
 	instance := GetInstance(ctx)
 	future, err := instance.SubmitTask(ctx, testHandlerFailure)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
 	_, err = future.Get()
 	if err == nil {
-		t.Errorf("Expected Failure")
+		t.Fatalf("Expected Failure")
 	}
 }
 
@@ -63,15 +63,15 @@ func TestExecutorCancel(t *testing.T) {
 
 	future, err := instance.SubmitTask(ctx, testHandlerSlowTask)
 	if err != nil {
-		t.Errorf("Submitting task to the executor failed - %s", err.Error())
+		t.Fatalf("Submitting task to the executor failed - %s", err.Error())
 	}
 	cancelFunc()
 	_, err = future.Get()
 	if err == nil {
-		t.Errorf("Expected Failure")
+		t.Fatalf("Expected Failure")
 	}
 
 	if err.Error() != "Task is cancelled" {
-		t.Errorf("Expected Canceled status")
+		t.Fatalf("Expected Canceled status")
 	}
 }

@@ -4027,12 +4027,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 	if (YBCIsInitDbModeEnvVarSet())
 		return;
 
-	uint64_t shared_catalog_version;
-	if (YBIsDBCatalogVersionMode())
-		HandleYBStatus(YBCGetSharedDBCatalogVersion(yb_my_database_id_shm_index,
-													&shared_catalog_version));
-	else
-		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	const bool need_global_cache_refresh =
 		yb_catalog_cache_version < shared_catalog_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)

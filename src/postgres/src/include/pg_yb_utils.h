@@ -61,16 +61,6 @@
  */
 extern uint64_t yb_catalog_cache_version;
 
-/* Stores the catalog version info that is fetched from the local tserver. */
-extern YbTserverCatalogInfo yb_tserver_catalog_info;
-
-/*
- * Stores the shared memory array db_catalog_versions_ index of the slot
- * allocated for the MyDatabaseId, or -1 if no slot has been allocated for
- * MyDatabaseId.
- */
-extern int yb_my_database_id_shm_index;
-
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
@@ -689,4 +679,9 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
  * true, then prevent any server file writes/reads/execution.
  */
 extern void YBCheckServerAccessIsAllowed();
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+
+uint64_t YbGetSharedCatalogVersion();
+
 #endif /* PG_YB_UTILS_H */

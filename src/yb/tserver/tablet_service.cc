@@ -43,7 +43,6 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/pg_types.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
@@ -93,7 +92,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -115,17 +114,11 @@
 
 using namespace std::literals;  // NOLINT
 
-DEFINE_NON_RUNTIME_int32(scanner_default_batch_size_bytes, 64 * 1024,
-    "DEPRECATED. The default size for batches of scan results");
-TAG_FLAG(scanner_default_batch_size_bytes, hidden);
+DEPRECATE_FLAG(int32, scanner_default_batch_size_bytes, "10_2022");
 
-DEFINE_NON_RUNTIME_int32(scanner_max_batch_size_bytes, 8 * 1024 * 1024,
-    "DEPRECATED. The maximum batch size that a client may request for scan results.");
-TAG_FLAG(scanner_max_batch_size_bytes, hidden);
+DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
-DEFINE_NON_RUNTIME_int32(scanner_batch_size_rows, 100,
-    "DEPRECATED. The number of rows to batch for servicing scan requests.");
-TAG_FLAG(scanner_batch_size_rows, hidden);
+DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
 DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
@@ -479,7 +472,8 @@ void TabletServiceAdminImpl::BackfillDone(
   }
 
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet, tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -923,7 +917,8 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet, tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1064,7 +1059,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet, &req->state());
+  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
+  state->AllocateRequest()->CopyFrom(req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
@@ -1333,7 +1329,8 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
     return;
   }
 
-  auto operation = std::make_unique<TruncateOperation>(tablet.tablet, &req->truncate());
+  auto operation = std::make_unique<TruncateOperation>(tablet.tablet);
+  operation->AllocateRequest()->CopyFrom(req->truncate());
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1666,9 +1663,9 @@ void TabletServiceAdminImpl::SplitTablet(
   }
 
   auto operation = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.tablet, server_->tablet_manager(), req);
+      leader_tablet_peer.tablet, server_->tablet_manager());
   *operation->AllocateRequest() = *req;
-  operation->mutable_request()->set_split_parent_leader_uuid(
+  operation->mutable_request()->dup_split_parent_leader_uuid(
       leader_tablet_peer.peer->permanent_uuid());
 
   operation->set_completion_callback(
@@ -1812,44 +1809,11 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   // For postgres requests check that the syscatalog version matches.
   if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
-    uint64_t last_breaking_catalog_version = 0; // unset.
-    uint32_t last_db_oid = kPgInvalidOid; // unset.
+    CatalogVersionChecker catalog_version_checker(*server_);
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      bool invalidated = false;
-      if (pg_req.has_ysql_catalog_version()) {
-        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
-        CHECK(!pg_req.has_ysql_db_catalog_version());
-        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
-        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
-        if (last_breaking_catalog_version == 0) {
-          // Initialize last breaking version if not yet set.
-          server_->get_ysql_catalog_version(nullptr /* current_version */,
-                                            &last_breaking_catalog_version);
-        }
-        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      } else if (pg_req.has_ysql_db_catalog_version()) {
-        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
-        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
-        if (last_db_oid == kPgInvalidOid) {
-          last_db_oid = pg_req.ysql_db_oid();
-          server_->get_ysql_db_catalog_version(
-              pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
-        } else {
-          // All the db oids should be identical because they all belong to a single request.
-          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
-        }
-        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      }
-      if (invalidated) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
-                                       "transaction has been invalidated."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+      auto status = catalog_version_checker(pg_req);
+      if (!status.ok()) {
+        SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
       }
     }
   }
@@ -1896,7 +1860,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 
 void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
     std::shared_ptr<tablet::TabletPeer> tablet_peer,
-    consensus::ConsensusResponsePB* resp) {
+    consensus::LWConsensusResponsePB* resp) {
   auto tablet = tablet_peer->shared_tablet();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
@@ -1941,8 +1905,11 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
       }
       auto consensus = *consensus_res;
 
+      // TODO(lw_uc) effective update for multiraft.
+      auto temp_resp = rpc::MakeSharedMessage<consensus::LWConsensusResponsePB>();
       Status s = consensus->Update(
-        consensus_req, consensus_resp, context.GetClientDeadline());
+         rpc::CopySharedMessage(*consensus_req),
+         temp_resp.get(), context.GetClientDeadline());
       if (PREDICT_FALSE(!s.ok())) {
         // Clear the response first, since a partially-filled response could
         // result in confusing a caller, or in having missing required fields
@@ -1952,13 +1919,14 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
         continue;
       }
 
-      CompleteUpdateConsensusResponse(tablet_peer, consensus_resp);
+      CompleteUpdateConsensusResponse(tablet_peer, temp_resp.get());
+      temp_resp->ToGoogleProtobuf(consensus_resp);
     }
     context.RespondSuccess();
 }
 
-void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
-                                           ConsensusResponsePB* resp,
+void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB* req,
+                                           consensus::LWConsensusResponsePB* resp,
                                            rpc::RpcContext context) {
   DVLOG(3) << "Received Consensus Update RPC: " << req->ShortDebugString();
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
@@ -1976,7 +1944,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   // gives us a const request, but we need to be able to move messages out of the request for
   // efficiency.
   Status s = consensus->Update(
-      const_cast<ConsensusRequestPB*>(req), resp, context.GetClientDeadline());
+      rpc::SharedField(context.shared_params(), const_cast<consensus::LWConsensusRequestPB*>(req)),
+      resp, context.GetClientDeadline());
   if (PREDICT_FALSE(!s.ok())) {
     // Clear the response first, since a partially-filled response could
     // result in confusing a caller, or in having missing required fields
@@ -2456,23 +2425,6 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
     return;
   }
-  context.RespondSuccess();
-}
-
-void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
-                                        TakeTransactionResponsePB* resp,
-                                        rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool().Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
-      context.GetClientDeadline());
-  auto metadata = transaction->Release();
-  if (!metadata.ok()) {
-    LOG(INFO) << "Take failed: " << metadata.status();
-    context.RespondFailure(metadata.status());
-    return;
-  }
-  metadata->ForceToPB(resp->mutable_metadata());
-  VLOG(2) << "Taken metadata: " << metadata->ToString();
   context.RespondSuccess();
 }
 

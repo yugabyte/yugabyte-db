@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H
-#define YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H
 
 #pragma once
 
@@ -245,4 +243,3 @@ class PlainTableIndexBuilder {
 
 #endif  // ROCKSDB_LITE
 
-#endif // YB_ROCKSDB_TABLE_PLAIN_TABLE_INDEX_H
