@@ -1,0 +1,14 @@
+- name: xxhash | Copy and unarchive xxhash
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  vars:
+    package_path: "{{local_package_path}}"
+    xxhsum_package_name: "xxhash.tar.gz"
+  tasks:
+    - name: Checking for existence of xxhsum tar file
+      local_action: stat path="{{ local_package_path }}/{{xxhsum_package_name}}"
+      register: xxhsum_bin_present
+    - name: xxhsum | Copy and unarchive {{ xxhsum_package_name }} from {{ package_path }}
+      unarchive:
+        src: "{{ local_package_path }}/{{xxhsum_package_name}}"
+        dest: "{{yb_home_dir}}/bin"
+      when: xxhsum_bin_present.stat.exists

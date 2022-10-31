@@ -34,7 +34,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.PlacementIndexes;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -51,6 +51,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -3030,7 +3031,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             .filter(n -> n.isTserver)
             .mapToInt(
                 node -> {
-                  assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                  assertEquals(UniverseTaskBase.ServerType.TSERVER, node.dedicatedTo);
                   if (node.isMaster) {
                     assertEquals(NodeDetails.MasterState.ToStop, node.masterState);
                     return 1;
@@ -3049,7 +3050,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                   assertTrue(node.isMaster);
                   assertFalse(node.isTserver);
                   assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
-                  assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                  assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
                 })
             .count();
 
@@ -3102,11 +3103,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               if (node.isMaster) {
                 assertFalse(node.isTserver);
                 assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
-                assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
                 addedMasters.incrementAndGet();
               } else {
                 assertTrue(node.isTserver);
-                assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                assertEquals(UniverseTaskBase.ServerType.TSERVER, node.dedicatedTo);
                 addedTservers.incrementAndGet();
                 assertEquals(placementAZ.uuid, node.azUuid);
               }

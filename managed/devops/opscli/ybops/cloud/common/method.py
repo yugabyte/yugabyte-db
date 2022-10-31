@@ -1039,6 +1039,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--http_remote_download', action="store_true")
         self.parser.add_argument('--http_package_checksum', default='')
         self.parser.add_argument('--update_packages', action="store_true", default=False)
+        self.parser.add_argument('--install_third_party_packages',
+                                 action="store_true",
+                                 default=False)
+        self.parser.add_argument("--local_package_path",
+                                 required=False,
+                                 help="Path to local directory with the third-party tarball.")
         self.parser.add_argument('--ssh_user_update_packages')
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
@@ -1243,6 +1249,16 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                                     f"{ybc_package_path} to {args.search_pattern}")
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         ybc_package_path, args.search_pattern, time.time() - start_time))
+
+        if args.install_third_party_packages:
+            if args.local_package_path:
+                self.extra_vars.update({"local_package_path": args.local_package_path})
+            else:
+                logging.warn("Local Directory Tarball Path not specified skipping")
+                return
+            self.cloud.setup_ansible(args).run(
+                "install-third-party.yml", self.extra_vars, host_info)
+            return
 
         # Update packages as "sudo" user as part of software upgrade.
         if args.update_packages:

@@ -14,7 +14,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -238,7 +238,7 @@ public class NodeDetails {
   public boolean cronsActive = true;
 
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
-  public UniverseDefinitionTaskBase.ServerType dedicatedTo = null;
+  public UniverseTaskBase.ServerType dedicatedTo = null;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
