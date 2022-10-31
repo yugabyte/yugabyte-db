@@ -26,11 +26,11 @@ type: docs
 
 Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
 
-## Quick start
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build a C# application](../../../../develop/build-apps/csharp/ysql).
+Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
-## Download the driver dependency
+### Download the driver dependency
 
 If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
 
@@ -44,10 +44,6 @@ dotnet add package Npgsql
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
-
-## Fundamentals
-
-Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
 ### Connect to YugabyteDB database
 
@@ -187,7 +183,3 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 | 6.0.3 | 2.11 (preview) | full
 | 6.0.3 |  2.8 (stable) | full
 | 6.0.3 | 2.6 | full
-
-## Other usage examples
-
-[Sample C# application with SSL](../../../../develop/build-apps/csharp/ysql/#create-a-sample-c-application-with-ssl)
