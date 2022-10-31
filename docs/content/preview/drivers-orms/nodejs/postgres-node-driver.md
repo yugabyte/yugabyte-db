@@ -101,12 +101,20 @@ The following table describes the connection parameters required to connect usin
 | sslmode | SSL mode |
 | sslrootcert | path to the root certificate on your computer |
 
-The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
+By default, the driver supports the `require` SSL mode, in which a root CA certificate isn't required to be configured. This enables SSL communication between the Node.js client and YugabyteDB servers.
 
 ```js
-const connectionString = "postgresql://user:password@localhost:port/database?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
-const client = new Client(connectionString);
-client.connect()
+const config = {
+  user: ' ',
+  database: ' ',
+  host: ' ',
+  password: ' ',
+  port: 5433,
+  // this object will be passed to the TLSSocket constructor
+  ssl: {
+    rejectUnauthorized: false,
+  },
+}
 ```
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
@@ -117,7 +125,7 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 Create a new JavaScript file called `QuickStartApp.js` in your project directory.
 
-Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate, if required.
+Copy the following sample code to set up tables and query the table contents. Replace the connection string parameters with the cluster credentials if required.
 
 ```js
 var pg = require('pg');
@@ -168,6 +176,23 @@ async.series([
   client.end();
 });
 ```
+
+Run the application `QuickStartApp.js` using the following command:
+
+```js
+node QuickStartApp.js
+```
+
+You should see output similar to the following:
+
+```output
+Creating table employee
+Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');
+Query for id=1 returned: name=John, age=35, language=NodeJS
+Shutting down
+```
+
+### Step 4: Write your application with SSL (Optional)
 
 Copy the following sample code to QuickStartApp.js and replace the values for the `config` object as appropriate for your cluster if you're using SSL.
 
@@ -239,15 +264,6 @@ Run the application `QuickStartApp.js` using the following command:
 node QuickStartApp.js
 ```
 
-You should see output similar to the following:
-
-```output
-Creating table employee
-Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');
-Query for id=1 returned: name=John, age=35, language=NodeJS
-Shutting down
-```
-
 You should see output similar to the following if you're using SSL:
 
 ```output
@@ -257,7 +273,7 @@ Query for id=2 returned: name=John, age=35, language=NodeJS + SSL
 Shutting down
 ```
 
-If there is no output or you get an error, verify the parameters included in the connection string.
+If there is no output or you get an error, verify the parameters included in the `config` object.
 
 ## Learn more
 
