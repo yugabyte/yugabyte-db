@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_CDC_CDC_SERVICE_H
-#define ENT_SRC_YB_CDC_CDC_SERVICE_H
+#pragma once
 
 #include <memory>
 
@@ -240,7 +239,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
 
-  Result<std::shared_ptr<StreamMetadata>> GetStream(const std::string& stream_id);
+  Result<std::shared_ptr<StreamMetadata>> GetStream(
+      const std::string& stream_id, bool ignore_cache = false);
 
   std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(const std::string& stream_id,
@@ -372,7 +372,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdateChildrenTabletsOnSplitOp(
       const ProducerTabletInfo& producer_tablet,
-      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const consensus::ReplicateMsg& split_op_msg,
       const client::YBSessionPtr& session);
 
   Status UpdateChildrenTabletsOnSplitOpForCDCSDK(
@@ -451,4 +451,3 @@ class CDCServiceImpl : public CDCServiceIf {
 }  // namespace cdc
 }  // namespace yb
 
-#endif  // ENT_SRC_YB_CDC_CDC_SERVICE_H

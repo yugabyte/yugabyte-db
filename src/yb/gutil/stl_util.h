@@ -39,8 +39,7 @@
 // and Google friendly API.
 //
 
-#ifndef YB_GUTIL_STL_UTIL_H
-#define YB_GUTIL_STL_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
@@ -1030,4 +1029,3 @@ using yb::STLAssignToString;
 using yb::STLStringResizeUninitialized;
 using yb::string_as_array;
 
-#endif  // YB_GUTIL_STL_UTIL_H

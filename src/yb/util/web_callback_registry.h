@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_WEB_CALLBACK_REGISTRY_H
-#define YB_UTIL_WEB_CALLBACK_REGISTRY_H
+#pragma once
 
 #include <functional>
 #include <map>
@@ -90,4 +89,3 @@ class WebCallbackRegistry {
 
 } // namespace yb
 
-#endif /* YB_UTIL_WEB_CALLBACK_REGISTRY_H */

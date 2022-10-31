@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TABLET_RPC_H
-#define YB_CLIENT_TABLET_RPC_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -194,4 +193,3 @@ HybridTime GetPropagatedHybridTime(const Response& response) {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLET_RPC_H

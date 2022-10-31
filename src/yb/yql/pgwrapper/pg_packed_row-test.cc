@@ -359,7 +359,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
       continue;
     }
     auto files = peer->tablet()->doc_db().regular->GetLiveFilesMetaData();

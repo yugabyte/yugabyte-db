@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H
-#define ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H
+#pragma once
 
 #include <vector>
 #include <unordered_set>
@@ -71,4 +70,3 @@ Status UpdateTabletMappingOnProducerSplit(
 } // namespace master
 } // namespace yb
 
-#endif // ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H

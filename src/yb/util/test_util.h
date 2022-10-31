@@ -30,8 +30,7 @@
 // under the License.
 //
 // Base test class, with various utility functions.
-#ifndef YB_UTIL_TEST_UTIL_H
-#define YB_UTIL_TEST_UTIL_H
+#pragma once
 
 #include <dirent.h>
 
@@ -104,7 +103,7 @@ bool AllowSlowTests();
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
 
-void EnableVerboseLoggingForModule(const std::string& module, int level);
+Status EnableVerboseLoggingForModule(const std::string& module, int level);
 
 // Call srand() with a random seed based on the current time, reporting
 // that seed to the logs. The time-based seed may be overridden by passing
@@ -242,4 +241,3 @@ class StopOnFailure {
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())
 
-#endif  // YB_UTIL_TEST_UTIL_H

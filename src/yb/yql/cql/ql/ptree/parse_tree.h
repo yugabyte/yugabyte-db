@@ -18,8 +18,7 @@
 // parser_gram.y will link the tree nodes together to form this parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
-#define YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -161,4 +160,3 @@ class ParseTree {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_

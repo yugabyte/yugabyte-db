@@ -49,10 +49,8 @@
 using std::shared_ptr;
 using std::vector;
 
-DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
-             "Amount of time the catalog manager background task thread waits "
-             "between runs");
-TAG_FLAG(catalog_manager_bg_task_wait_ms, runtime);
+DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
+    "Amount of time the catalog manager background task thread waits between runs");
 
 DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "

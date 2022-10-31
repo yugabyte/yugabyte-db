@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_COMMON_TRANSACTION_H
-#define YB_COMMON_TRANSACTION_H
+#pragma once
 
 #include <stdint.h>
 
@@ -165,7 +164,7 @@ class TransactionStatusManager {
 
   // Prepares metadata for provided protobuf. Either trying to extract it from pb, or fetch
   // from existing metadatas.
-  virtual Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) = 0;
+  virtual Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
@@ -326,14 +325,14 @@ struct TransactionMetadata {
 
   bool external_transaction = false;
 
+  static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
+  void ToPB(LWTransactionMetadataPB* dest) const;
   void ToPB(TransactionMetadataPB* dest) const;
 
+  void TransactionIdToPB(LWTransactionMetadataPB* dest) const;
   void TransactionIdToPB(TransactionMetadataPB* dest) const;
-
-  // Fill dest with full metadata even when isolation is non transactional.
-  void ForceToPB(TransactionMetadataPB* dest) const;
 
   std::string ToString() const {
     return Format(
@@ -342,6 +341,10 @@ struct TransactionMetadata {
         transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
         TransactionLocality_Name(locality), old_status_tablet);
   }
+
+ private:
+  template <class PB>
+  static Result<TransactionMetadata> DoFromPB(const PB& source);
 };
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);
@@ -363,4 +366,3 @@ YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 
 } // namespace yb
 
-#endif // YB_COMMON_TRANSACTION_H

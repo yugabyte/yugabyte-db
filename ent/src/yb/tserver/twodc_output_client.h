@@ -15,8 +15,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 
-#ifndef ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H
-#define ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H
+#pragma once
 
 namespace yb {
 
@@ -44,4 +43,3 @@ std::shared_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
 } // namespace tserver
 } // namespace yb
 
-#endif // ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H

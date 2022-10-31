@@ -12,8 +12,7 @@ import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
   editXClusterState,
-  queryLagMetricsForTable,
-  isCatchUpBootstrapRequired
+  queryLagMetricsForTable
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -28,7 +27,9 @@ import {
   TRANSITORY_STATES,
   XClusterConfigState,
   XClusterModalName,
-  XCLUSTER_CONFIG_REFETCH_INTERVAL_MS
+  XClusterTableStatus,
+  XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
 } from '../constants';
 import {
   MaxAcceptableLag,
@@ -44,7 +45,7 @@ import { ReplicationOverview } from './ReplicationOverview';
 import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
-import { YBBanner, YBBannerVariant } from '../../common/descriptors';
+import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
 import { api } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 
@@ -73,13 +74,13 @@ export function ReplicationDetails({
   const sourceUniverseQuery = useQuery(
     ['universe', xClusterConfigQuery.data?.sourceUniverseUUID],
     () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
-    { enabled: !!xClusterConfigQuery.data }
+    { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
   const targetUniverseQuery = useQuery(
-    ['universe', xClusterConfigQuery.data?.sourceUniverseUUID],
+    ['universe', xClusterConfigQuery.data?.targetUniverseUUID],
     () => api.fetchUniverse(xClusterConfigQuery.data?.targetUniverseUUID),
-    { enabled: !!xClusterConfigQuery.data }
+    { enabled: xClusterConfigQuery.data?.targetUniverseUUID !== undefined }
   );
 
   const xClusterConfigTableUUIDs = xClusterConfigQuery.data?.tables ?? [];
@@ -96,28 +97,6 @@ export function ReplicationDetails({
       enabled: !!sourceUniverseQuery.data
     }))
   ) as UseQueryResult<Metrics<'tserver_async_replication_lag_micros'>>[];
-
-  const countBootstrapRequiredTablesQuery = useQuery(
-    ['Xcluster', 'needBootstrap', xClusterConfigQuery.data?.tables, 'count'],
-    () =>
-      isCatchUpBootstrapRequired(
-        xClusterConfigQuery.data?.uuid,
-        xClusterConfigQuery.data?.tables
-      ).then((bootstrapTests) => {
-        let numTablesRequiringBootstrap = 0;
-        for (const bootstrapTest of bootstrapTests) {
-          // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-          // Until the backend supports multiple tableUUIDs per request, the response object
-          const tableUUID = Object.keys(bootstrapTest)[0];
-
-          if (bootstrapTest[tableUUID]) {
-            numTablesRequiringBootstrap += 1;
-          }
-        }
-        return numTablesRequiringBootstrap;
-      }),
-    { enabled: !!xClusterConfigQuery.data }
-  );
 
   const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
@@ -157,18 +136,22 @@ export function ReplicationDetails({
 
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric');
-    if (_.includes(TRANSITORY_STATES, xClusterConfig?.status)) {
-      queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+    if (_.includes(TRANSITORY_STATES, xClusterConfigQuery.data?.status)) {
+      queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
     }
+  }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
+
+  useInterval(() => {
+    queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (
     xClusterConfigQuery.isLoading ||
-    xClusterConfigQuery.isIdle ||
+    (xClusterConfigQuery.isIdle && !xClusterConfigQuery.data) ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle ||
+    (sourceUniverseQuery.isIdle && !sourceUniverseQuery.data) ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle
+    (targetUniverseQuery.isIdle && !targetUniverseQuery.data)
   ) {
     return <YBLoading />;
   }
@@ -203,7 +186,14 @@ export function ReplicationDetails({
   const xClusterConfig = xClusterConfigQuery.data;
   const sourceUniverse = sourceUniverseQuery.data;
   const targetUniverse = targetUniverseQuery.data;
-  const numTablesRequiringBootstrap = countBootstrapRequiredTablesQuery.data ?? 0;
+  const numTablesRequiringBootstrap = xClusterConfig.tableDetails.reduce(
+    (errorCount: number, xClusterTableDetails) => {
+      return xClusterTableDetails.status === XClusterTableStatus.ERROR
+        ? errorCount + 1
+        : errorCount;
+    },
+    0
+  );
   const enabledConfigActions = getEnabledConfigActions(xClusterConfig);
 
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
@@ -257,21 +247,12 @@ export function ReplicationDetails({
                       }}
                       disabled={!_.includes(enabledConfigActions, ReplicationAction.EDIT)}
                     >
-                      Edit Replication Configurations
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-pencil">
+                        Edit Replication Name
+                      </YBLabelWithIcon>
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
-                      onClick={() => {
-                        if (_.includes(enabledConfigActions, ReplicationAction.DELETE)) {
-                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
-                        }
-                      }}
-                      disabled={!_.includes(enabledConfigActions, ReplicationAction.DELETE)}
-                    >
-                      Delete Replication
-                    </MenuItem>
-                    <MenuItem
-                      eventKey="3"
                       onClick={() => {
                         if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
                           dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
@@ -279,21 +260,50 @@ export function ReplicationDetails({
                       }}
                       disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
                     >
-                      Restart Replication
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-refresh">
+                        Restart Replication
+                      </YBLabelWithIcon>
+                    </MenuItem>
+                    <MenuItem divider />
+                    <MenuItem
+                      eventKey="3"
+                      onClick={() => {
+                        if (_.includes(enabledConfigActions, ReplicationAction.DELETE)) {
+                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
+                        }
+                      }}
+                      disabled={!_.includes(enabledConfigActions, ReplicationAction.DELETE)}
+                    >
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-times">
+                        Delete Replication
+                      </YBLabelWithIcon>
                     </MenuItem>
                   </DropdownButton>
                 </ButtonGroup>
               </Row>
             </Col>
           </Row>
-          <div className="replication-info-banner-container">
+          <div className="replication-info-banners-container">
             {shouldShowConfigError && (
               <YBBanner variant={YBBannerVariant.DANGER}>
-                <b>Error!</b>
-                {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
-                  numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
-                } and replication restart is
+                <div className="replication-info-banner-content">
+                  <b>Error!</b>
+                  {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
+                    numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
+                  } and replication restart is
                 required.`}
+                  <YBButton
+                    className="restart-replication-button"
+                    btnIcon="fa fa-refresh"
+                    btnText="Restart Replication"
+                    onClick={() => {
+                      if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
+                        dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                      }
+                    }}
+                    disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
+                  />
+                </div>
               </YBBanner>
             )}
             {shouldShowTableLagWarning && (
@@ -355,7 +365,7 @@ export function ReplicationDetails({
                   )}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
-                  <ReplicationTables replication={xClusterConfig} />
+                  <ReplicationTables xClusterConfig={xClusterConfig} />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
                   <ReplicationContainer

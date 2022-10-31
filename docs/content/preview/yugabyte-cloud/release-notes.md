@@ -10,6 +10,12 @@ type: docs
 
 ## Releases
 
+### October 24, 2022
+
+**New Features**
+
+- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+
 ### October 17, 2022
 
 **New Features**
@@ -271,4 +277,5 @@ The following **AWS regions** are available:
 
 - If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

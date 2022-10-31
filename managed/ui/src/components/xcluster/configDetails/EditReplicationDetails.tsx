@@ -1,6 +1,5 @@
 import React from 'react';
 import * as Yup from 'yup';
-import { Col, Row } from 'react-bootstrap';
 import { Field } from 'formik';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
@@ -9,6 +8,7 @@ import { editXclusterName } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { XClusterConfig } from '../XClusterTypes';
 import { YBFormInput } from '../../common/forms/fields';
+import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 
 interface Props {
   visible: boolean;
@@ -16,7 +16,14 @@ interface Props {
   replication: XClusterConfig;
 }
 const validationSchema = Yup.object().shape({
-  name: Yup.string().required('Replication name is required')
+  name: Yup.string()
+    .required('Replication name is required')
+    .test(
+      'Should not contain illegal characters',
+      "The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '\"' NULL])",
+      (value) =>
+        value !== null && value !== undefined && !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(value)
+    )
 });
 export function EditReplicationDetails({ onHide, visible, replication }: Props) {
   const queryClient = useQueryClient();
@@ -44,7 +51,7 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
   return (
     <YBModalForm
       size="large"
-      title="Edit cluster replication"
+      title="Edit Replication Name"
       visible={visible}
       onHide={onHide}
       validationSchema={validationSchema}
@@ -64,16 +71,12 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
       showCancelButton
       render={(props: any) => {
         return (
-          <Row>
-            <Col lg={8}>
-              <Field
-                name="name"
-                placeholder="Replication name"
-                label="Replication Name"
-                component={YBFormInput}
-              />
-            </Col>
-          </Row>
+          <Field
+            name="name"
+            placeholder="Replication name"
+            label="Replication Name"
+            component={YBFormInput}
+          />
         );
       }}
     />

@@ -1269,11 +1269,13 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
-  public Deferred<RestoreSnapshotResponse> restoreSnapshot(UUID snapshotUUID,
-                                                           long restoreHybridTime) {
+  public Deferred<RestoreSnapshotScheduleResponse> restoreSnapshotSchedule(
+        UUID snapshotScheduleUUID,
+        long restoreTimeInMillis) {
     checkIsClosed();
-    RestoreSnapshotRequest request =
-        new RestoreSnapshotRequest(this.masterTable, snapshotUUID, restoreHybridTime);
+    RestoreSnapshotScheduleRequest request =
+        new RestoreSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID,
+                                            restoreTimeInMillis);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

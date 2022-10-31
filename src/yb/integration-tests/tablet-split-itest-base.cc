@@ -77,6 +77,8 @@ DECLARE_string(vmodule);
 DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 
 namespace yb {
 
@@ -413,7 +415,7 @@ TabletSplitITest::TabletSplitITest() = default;
 TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
-  EnableVerboseLoggingForModule("tablet_split_manager", 2);
+  ASSERT_OK(EnableVerboseLoggingForModule("tablet_split_manager", 2));
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
   FLAGS_TEST_validate_all_tablet_candidates = true;
@@ -428,6 +430,11 @@ void TabletSplitITest::SetUp() {
   // Split size threshold less than memstore size is not effective, because splits are triggered
   // based on flushed SST files size.
   FLAGS_db_write_buffer_size = 100_KB;
+  // Set scheduled full compaction frequency to 0 (disabled) and jitter factor
+  // to 0 (for relevant full compaction tests).
+  FLAGS_scheduled_full_compaction_frequency_hours = 0;
+  FLAGS_scheduled_full_compaction_jitter_factor_percentage = 0;
+
   TabletSplitITestBase<MiniCluster>::SetUp();
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util_->SetProxy(&client_->proxy_cache());
@@ -753,9 +760,10 @@ Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::
   }
   uint64_t min_file_size = std::numeric_limits<uint64_t>::max();
   for (const auto& peer : peers) {
-    min_file_size = std::min(
-        min_file_size,
-        peer->shared_tablet()->GetCurrentVersionSstFilesSize());
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      min_file_size = std::min(min_file_size, tablet->GetCurrentVersionSstFilesSize());
+    }
   }
   return min_file_size;
 }
@@ -795,7 +803,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
-    const auto shared_tablet = peer->shared_tablet();
+    const auto shared_tablet = VERIFY_RESULT(peer->shared_tablet_safe());
     const SchemaPtr schema = shared_tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
     auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));

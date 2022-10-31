@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
-#define YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
@@ -98,4 +97,3 @@ Result<docdb::KeyBytes> EncodedKey(
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H

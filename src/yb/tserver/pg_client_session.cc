@@ -170,7 +170,7 @@ Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status
                   __LINE__,
                   GetStatusStringSet(errors),
                   result.ErrorCodesSlice(),
-                  DupFileName::kFalse);
+                  /* file_name_len= */ size_t(0));
   }
 
   Status result =

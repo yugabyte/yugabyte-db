@@ -15,7 +15,7 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -29,14 +29,14 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<TransactionStatePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, TransactionStatePB* request) {
-  replicate->set_allocated_transaction_state(request);
+void RequestTraits<LWTransactionStatePB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWTransactionStatePB* request) {
+  replicate->ref_transaction_state(request);
 }
 
 template <>
-TransactionStatePB* RequestTraits<TransactionStatePB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWTransactionStatePB* RequestTraits<LWTransactionStatePB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_transaction_state();
 }
 
@@ -66,10 +66,10 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
     return transaction_participant->ProcessReplicated(data);
   } else {
     TransactionCoordinator::ReplicatedData data = {
-        leader_term,
-        *request(),
-        op_id(),
-        request()->has_external_commit_ht() ?
+        .leader_term = leader_term,
+        .state = *request(),
+        .op_id = op_id(),
+        .hybrid_time = request()->has_external_commit_ht() ?
             HybridTime(request()->external_commit_ht()) : hybrid_time()
     };
     return transaction_coordinator().ProcessReplicated(data);

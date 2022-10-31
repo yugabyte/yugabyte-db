@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_CLIENT_H
-#define YB_YQL_PGGATE_PG_CLIENT_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -37,7 +36,6 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -150,4 +148,3 @@ class PgClient {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_CLIENT_H

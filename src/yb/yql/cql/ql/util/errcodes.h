@@ -18,8 +18,7 @@
 //   Compilation and execution should continue after a warning is raised.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_ERRCODES_H_
-#define YB_YQL_CQL_QL_UTIL_ERRCODES_H_
+#pragma once
 
 #include "yb/util/status_ec.h"
 
@@ -163,4 +162,3 @@ typedef StatusErrorCodeImpl<QLErrorTag> QLError;
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_UTIL_ERRCODES_H_

@@ -323,6 +323,15 @@ function(add_executable name)
     add_dependencies(${name} latest_symlink)
   endif()
 
+  if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    # Link every executable with gperftools's tcmalloc static library.
+    # The other relevant library, libprofiler, will be linked by the libraries that need it.
+    #
+    # We need to ensure that all symbols from the tcmalloc library are retained. This is done
+    # differently depending on the OS.
+    target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+  endif()
+
   yb_process_pch(${name})
 endfunction()
 
@@ -361,7 +370,16 @@ macro(YB_SETUP_CLANG)
       # We get a directory like this:
       # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
       set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        set(CLANG_RUNTIME_LIB_DIR
+            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR
+                  "Failed to determine Clang runtime library directory inside of "
+                  "${CLANG_RUNTIME_LIB_DIR}/lib")
+        endif()
+      endif()
     else()
       message(FATAL_ERROR
               "Could not parse the output of 'clang -print-search-dirs': "

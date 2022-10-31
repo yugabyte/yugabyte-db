@@ -15,8 +15,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -63,6 +65,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public YBClientService ybService;
 
   private static final int POLL_TIMEOUT_SECONDS = 300;
+  private static final int PARTITION_SIZE_FOR_IS_BOOTSTRAP_REQUIRED_API = 8;
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
 
@@ -232,6 +235,24 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createXClusterConfigSetStatusForTablesTask(
+      Set<String> tableIds, XClusterTableConfig.Status desiredStatus) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigSetStatusForTables", executor);
+    XClusterConfigSetStatusForTables.Params setStatusForTablesParams =
+        new XClusterConfigSetStatusForTables.Params();
+    setStatusForTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
+    setStatusForTablesParams.xClusterConfig = taskParams().getXClusterConfig();
+    setStatusForTablesParams.tableIds = tableIds;
+    setStatusForTablesParams.desiredStatus = desiredStatus;
+
+    XClusterConfigSetStatusForTables task = createTask(XClusterConfigSetStatusForTables.class);
+    task.initialize(setStatusForTablesParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /**
    * It makes an RPC call to pause/enable the xCluster config and saves it in the Platform DB.
    *
@@ -258,14 +279,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createXClusterConfigModifyTablesTask(
-      Set<String> tableIdsToAdd, Set<String> tableIdsToRemove) {
+      Set<String> tables, XClusterConfigModifyTables.Params.Action action) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("XClusterConfigModifyTables", executor);
     XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
     modifyTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     modifyTablesParams.xClusterConfig = taskParams().getXClusterConfig();
-    modifyTablesParams.tableIdsToAdd = tableIdsToAdd;
-    modifyTablesParams.tableIdsToRemove = tableIdsToRemove;
+    modifyTablesParams.tables = tables;
+    modifyTablesParams.action = action;
 
     XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
     task.initialize(modifyTablesParams);
@@ -733,11 +754,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  private static boolean supportsMultipleTablesWithIsBootstrapRequired(Universe universe) {
+    // The minimum YBDB version that supports multiple tables with IsBootstrapRequired is
+    // 2.15.3.0-b64.
+    return Util.compareYbVersions(
+            "2.15.3.0-b63",
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true /* suppressFormatError */)
+        < 0;
+  }
+
   /**
    * It creates the required parameters to make IsBootstrapRequired API call and then makes the
    * call.
-   *
-   * <p>Currently, IsBootstrapRequired supports one table at a time.
    *
    * @param ybService The YBClientService object to get a yb client from
    * @param tableIds The table IDs of tables to check whether they need bootstrap
@@ -783,17 +812,38 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(sourceUniverseMasterAddresses, sourceUniverseCertificate)) {
-      // Check whether bootstrap is required.
-      List<IsBootstrapRequiredResponse> resps =
-          client.isBootstrapRequiredParallel(tableIdStreamIdMap);
-      for (IsBootstrapRequiredResponse resp : resps) {
-        if (resp.hasError()) {
-          throw new RuntimeException(
-              String.format(
-                  "IsBootstrapRequired RPC call with %s has errors in xCluster config %s: %s",
-                  xClusterConfig, tableIdStreamIdMap, resp.errorMessage()));
+      try {
+        int partitionSize =
+            supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
+                ? PARTITION_SIZE_FOR_IS_BOOTSTRAP_REQUIRED_API
+                : 1;
+        log.info("Partition size used for isBootstrapRequiredParallel is {}", partitionSize);
+        // Check whether bootstrap is required.
+        List<IsBootstrapRequiredResponse> resps =
+            client.isBootstrapRequiredParallel(tableIdStreamIdMap, partitionSize);
+        for (IsBootstrapRequiredResponse resp : resps) {
+          if (resp.hasError()) {
+            throw new RuntimeException(
+                String.format(
+                    "IsBootstrapRequired RPC call with %s has errors in xCluster config %s: %s",
+                    xClusterConfig, tableIdStreamIdMap, resp.errorMessage()));
+          }
+          isBootstrapRequiredMap.putAll(resp.getResults());
         }
-        isBootstrapRequiredMap.putAll(resp.getResults());
+      } catch (Exception e) {
+        if (e.getMessage().contains("invalid method name: IsBootstrapRequired")) {
+          // It means the current YBDB version of the source universe does not support the
+          // IsBootstrapRequired RPC call. Ignore the error.
+          log.warn(
+              "XClusterConfigTaskBase.isBootstrapRequired hit error because its corresponding "
+                  + "RPC call does not exist in the source universe {} (error is ignored) : {}",
+              sourceUniverse.universeUUID,
+              e.getMessage());
+          return isBootstrapRequiredMap;
+        } else {
+          log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+          throw e;
+        }
       }
       log.debug(
           "IsBootstrapRequired RPC call with {} returned {}",
@@ -897,6 +947,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           Set<String> requestedTableIdsToBootstrap,
           Universe sourceUniverse,
           Universe targetUniverse) {
+    log.debug(
+        "requestedTableIds are {} and requestedTableIdsToBootstrap are {}",
+        requestedTableIds,
+        requestedTableIdsToBootstrap);
     // Ensure at least one table exists to verify.
     if (requestedTableIds.isEmpty()) {
       throw new IllegalArgumentException("requestedTableIds cannot be empty");
@@ -985,7 +1039,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 }
               });
     }
-
+    log.debug("requestedTableInfoList is {}", requestedTableInfoList);
     return requestedTableInfoList;
   }
 

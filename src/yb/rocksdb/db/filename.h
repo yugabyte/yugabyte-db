@@ -23,8 +23,7 @@
 //
 // File names used by DB code
 
-#ifndef YB_ROCKSDB_DB_FILENAME_H
-#define YB_ROCKSDB_DB_FILENAME_H
+#pragma once
 
 #include <stdint.h>
 
@@ -186,4 +185,3 @@ extern Status SyncManifest(Env* env, const DBOptions* db_options,
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_DB_FILENAME_H

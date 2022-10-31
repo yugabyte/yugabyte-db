@@ -4,8 +4,7 @@
 // Tree node definitions for CREATE INDEX statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_INDEX_H_
-#define YB_YQL_CQL_QL_PTREE_PT_CREATE_INDEX_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 
@@ -152,4 +151,3 @@ class IdxPredicateState {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_CREATE_INDEX_H_

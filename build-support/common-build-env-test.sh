@@ -182,12 +182,14 @@ test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
 
 # Test cases where there is difference between architectures.
+clangN=clang15
 if [[ $arch == "x86_64" ]]; then
-  clangN=clang14
+  # clangA is the version used for ASAN.
   clangA=clang13
 else
-  clangN=clang12
-  clangA=clang12
+  # We don't really run ASAN on aarch64 as of 10/21/2022, but let's say we would use the same
+  # version.
+  clangA=$clangN
 fi
 
 test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      $clangN 0

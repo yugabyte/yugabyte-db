@@ -25,10 +25,9 @@
 using std::string;
 using std::vector;
 
-DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
-             "The minimum number of milliseconds a metric will be kept for after it is "
-             "no longer active. (Advanced option)");
-TAG_FLAG(metrics_retirement_age_ms, runtime);
+DEFINE_RUNTIME_int32(metrics_retirement_age_ms, 120 * 1000,
+    "The minimum number of milliseconds a metric will be kept for after it is "
+    "no longer active. (Advanced option)");
 TAG_FLAG(metrics_retirement_age_ms, advanced);
 
 // TODO: changed to empty string and add logic to get this from cluster_uuid in case empty.
@@ -382,8 +381,7 @@ void MetricEntity::RetireOldMetrics() {
               << "the retention interval";
       // This is the first time we've seen this metric as retirable.
       metric->retire_time_ = now;
-      metric->retire_time_.AddDelta(MonoDelta::FromMilliseconds(
-                                      FLAGS_metrics_retirement_age_ms));
+      metric->retire_time_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_metrics_retirement_age_ms));
       ++it;
       continue;
     }

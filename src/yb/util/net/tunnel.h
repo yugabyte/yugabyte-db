@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NET_TUNNEL_H
-#define YB_UTIL_NET_TUNNEL_H
+#pragma once
 
 #include <boost/asio/io_context.hpp>
 
@@ -45,4 +44,3 @@ class Tunnel {
 
 } // namespace yb
 
-#endif // YB_UTIL_NET_TUNNEL_H

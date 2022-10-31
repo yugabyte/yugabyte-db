@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_PGSQL_OPERATION_H
-#define YB_DOCDB_PGSQL_OPERATION_H
+#pragma once
 
 #include "yb/common/pgsql_protocol.pb.h"
 
@@ -165,7 +164,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status GetTupleId(QLValuePB *result) const override;
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
  private:
   // Execute a READ operator for a given scalar argument.
@@ -225,4 +224,3 @@ class PgsqlReadOperation : public DocExprExecutor {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_PGSQL_OPERATION_H

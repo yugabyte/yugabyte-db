@@ -13,8 +13,7 @@
 
 // No include guards here because this file is expected to be included multiple times.
 
-#ifndef YB_YQL_PGGATE_PG_TXN_MANAGER_H_
-#define YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+#pragma once
 
 #include <mutex>
 
@@ -25,7 +24,6 @@
 #include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/enums.h"
 
@@ -47,10 +45,7 @@ YB_DEFINE_ENUM(
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(PgClient* pg_client,
-               scoped_refptr<ClockBase> clock,
-               const tserver::TServerSharedObject* tserver_shared_object,
-               PgCallbacks pg_callbacks);
+  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, PgCallbacks pg_callbacks);
 
   virtual ~PgTxnManager();
 
@@ -102,7 +97,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   PgClient* client_;
   scoped_refptr<ClockBase> clock_;
-  const tserver::TServerSharedObject* const tserver_shared_object_;
 
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
@@ -136,4 +130,3 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
 }  // namespace pggate
 }  // namespace yb
-#endif // YB_YQL_PGGATE_PG_TXN_MANAGER_H_

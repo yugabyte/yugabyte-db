@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_ABSTRACT_TABLET_H
-#define YB_TABLET_ABSTRACT_TABLET_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -96,6 +95,7 @@ class AbstractTablet {
       PgsqlReadRequestResult* result,
       size_t* number_rows_read) = 0;
 
+  virtual Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) = 0;
   virtual Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) = 0;
 
   //-----------------------------------------------------------------------------------------------
@@ -132,4 +132,3 @@ class AbstractTablet {
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_ABSTRACT_TABLET_H

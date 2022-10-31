@@ -351,7 +351,7 @@ class CalculatorService: public CalculatorServiceIf {
       resp->mutable_repeated_messages()->push_back_ref(&*it);
     }
     for (const auto& msg : req->repeated_messages()) {
-      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      auto temp = CopySharedMessage(msg.ToGoogleProtobuf());
       resp->mutable_repeated_messages_copy()->emplace_back(*temp);
     }
 

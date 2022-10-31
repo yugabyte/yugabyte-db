@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
-#define YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -84,4 +83,3 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_

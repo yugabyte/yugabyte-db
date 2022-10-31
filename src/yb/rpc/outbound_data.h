@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_OUTBOUND_DATA_H
-#define YB_RPC_OUTBOUND_DATA_H
+#pragma once
 
 #include <float.h>
 #include <stdint.h>
@@ -138,4 +137,3 @@ class SingleBufferOutboundData : public OutboundData {
 }  // namespace rpc
 }  // namespace yb
 
-#endif // YB_RPC_OUTBOUND_DATA_H

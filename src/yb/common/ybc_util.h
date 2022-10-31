@@ -13,8 +13,7 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#ifndef YB_COMMON_YBC_UTIL_H
-#define YB_COMMON_YBC_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -85,8 +84,6 @@ extern int yb_xcluster_consistency_level;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOKValue;
-bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
@@ -185,4 +182,3 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 } // extern "C"
 #endif
 
-#endif  // YB_COMMON_YBC_UTIL_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_GATE_FWD_H
-#define YB_YQL_PGGATE_PG_GATE_FWD_H
+#pragma once
 
 #include <memory>
 
@@ -50,4 +49,3 @@ YB_STRONGLY_TYPED_BOOL(Commit);
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_GATE_FWD_H

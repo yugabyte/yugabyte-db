@@ -10,26 +10,22 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.NodeActionFormData;
 
 @Slf4j
 public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
@@ -54,6 +50,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     boolean hitException = false;
     Universe universe = null;
     boolean wasNodeMaster = false;
+    boolean wasNodeTserver = false;
 
     try {
       checkUniverseVersion();
@@ -77,10 +74,12 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+      List<NodeDetails> nodeList = Collections.singletonList(currentNode);
+      wasNodeTserver = currentNode.isTserver;
 
       preTaskActions();
       isBlacklistLeaders = isBlacklistLeaders && isLeaderBlacklistValidRF(currentNode.nodeName);
-      if (isBlacklistLeaders) {
+      if (isBlacklistLeaders && wasNodeTserver) {
         List<NodeDetails> tServerNodes = universe.getTServers();
         createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -94,35 +93,35 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
       if (instanceExists(taskParams())) {
 
-        // set leader blacklist and poll
-        if (isBlacklistLeaders) {
-          createModifyBlackListTask(
-                  Arrays.asList(currentNode), true /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        }
+        if (wasNodeTserver) {
+          // set leader blacklist and poll
+          if (isBlacklistLeaders) {
+            createModifyBlackListTask(nodeList, true /* isAdd */, true /* isLeaderBlacklist */)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
 
-        // Stop the tserver.
-        createTServerTaskForNode(currentNode, "stop")
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-        // remove leader blacklist
-        if (isBlacklistLeaders) {
-          createModifyBlackListTask(
-                  Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+          // Stop the tserver.
+          createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+          // remove leader blacklist
+          if (isBlacklistLeaders) {
+            createModifyBlackListTask(nodeList, false /* isAdd */, true /* isLeaderBlacklist */)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
 
         // Stop Yb-controller on this node.
         if (universe.isYbcEnabled()) {
-          createStopYbControllerTasks(Arrays.asList(currentNode))
+          createStopYbControllerTasks(nodeList)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
         // Stop the master process on this node.
         if (currentNode.isMaster) {
-          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+          createStopMasterTasks(nodeList)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           createWaitForMasterLeaderTask()
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -130,9 +129,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      // Update the per process state in YW DB.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      if (wasNodeTserver) {
+        // Update the per process state in YW DB.
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
       if (currentNode.isMaster) {
         createChangeConfigTask(
             currentNode,
@@ -173,7 +174,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
         // remove leader blacklist for current node if task failed and leader blacklist is not
         // removed
-        if (isBlacklistLeaders) {
+        if (isBlacklistLeaders && wasNodeTserver) {
           // Clear previous subtasks if any.
           getRunnableTask().reset();
           createModifyBlackListTask(
@@ -187,7 +188,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
         // must be live, must not currently be a master, and must be in the same
         // Availability Zone as the node that is about to have its master processes be
         // stopped.
-        if (wasNodeMaster) {
+        if (wasNodeMaster && currentNode.dedicatedTo == null) {
           NodeDetails otherNode = null;
           for (NodeDetails newNode : universe.getNodes()) {
             // Exclude the current node that is being stopped from consideration

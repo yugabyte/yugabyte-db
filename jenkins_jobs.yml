@@ -7,28 +7,28 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang14
+    compiler: clang15
     build_type: tsan
     release_artifact: false
 
   - os: centos7
-    compiler: clang14
+    compiler: clang15
     build_type: debug
     release_artifact: false
 
   - os: alma8
-    compiler: clang14
+    compiler: clang15
     build_type: release
     release_artifact: true
 
   - os: alma8
-    compiler: clang12
+    compiler: clang15
     build_type: release
     architecture: aarch64
     release_artifact: true
 
   - os: alma8
-    compiler: clang12
+    compiler: clang15
     build_type: debug
     architecture: aarch64
     release_artifact: false
@@ -49,6 +49,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu20.04
-    compiler: clang14
+    compiler: clang15
     build_type: debug
     release_artifact: false

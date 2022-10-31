@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
-#define YB_CONSENSUS_RETRYABLE_REQUESTS_H
+#pragma once
 
 #include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -50,15 +49,15 @@ class RetryableRequests {
       RestartSafeCoarseTimePoint entry_time = RestartSafeCoarseTimePoint());
 
   // Cleans expires replicated requests and returns min op id of running request.
-  yb::OpId CleanExpiredReplicatedAndGetMinOpId();
+  OpId CleanExpiredReplicatedAndGetMinOpId();
 
   // Mark appropriate request as replicated, i.e. move it from set of running requests to
   // replicated.
   void ReplicationFinished(
-      const ReplicateMsg& replicate_msg, const Status& status, int64_t leader_term);
+      const LWReplicateMsg& replicate_msg, const Status& status, int64_t leader_term);
 
   // Adds new replicated request that was loaded during tablet bootstrap.
-  void Bootstrap(const ReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time);
+  void Bootstrap(const LWReplicateMsg& replicate_msg, RestartSafeCoarseTimePoint entry_time);
 
   RestartSafeCoarseMonoClock& Clock();
 
@@ -79,4 +78,3 @@ class RetryableRequests {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_RETRYABLE_REQUESTS_H

@@ -133,7 +133,7 @@ Verify the code execution by looking for the changes inside the database as foll
 
 - Obtain the list of all the tables in the database by executing the following command:
 
-  ```shell
+  ```sql
   \dt
   ```
 

@@ -50,13 +50,15 @@ public class NodeConfig {
 
     PROMETHEUS_SPACE("Disk space in MB for prometheus"),
 
-    MOUNT_POINTS("Existence of mount points"),
+    MOUNT_POINTS_WRITABLE("Mount points are writable"),
 
     USER("Existence of user"),
 
     USER_GROUP("Existence of user group"),
 
     HOME_DIR_SPACE("Disk space in MB for home directory"),
+
+    HOME_DIR_EXISTS("Home directory exists"),
 
     RAM_SIZE("Total RAM size in MB"),
 
@@ -70,14 +72,86 @@ public class NodeConfig {
 
     PAM_LIMITS_WRITABLE("PAM limits writable"),
 
-    PORTS("Available ports"),
+    PYTHON_VERSION("Min python version"),
 
-    PYTHON_VERSION("Min python version");
+    MOUNT_POINTS_VOLUME("Disk space in MB for mount points"),
+
+    CHRONYD_RUNNING("Chronyd running"),
+
+    SSH_PORT("SSH port is open"),
+
+    SUDO_ACCESS("Sudo access available"),
+
+    OPENSSL("OpenSSL package is installed"),
+
+    POLICYCOREUTILS("Policycoreutils package is installed"),
+
+    RSYNC("Rsync package is installed"),
+
+    XXHASH("Xxhash package is installed"),
+
+    LIBATOMIC1("Libatomic1 package is installed"),
+
+    LIBNCURSES6("Libncurses6 package is installed"),
+
+    LIBATOMIC("Libatomic package is installed"),
+
+    AZCOPY("Azcopy binary is installed"),
+
+    GSUTIL("Gsutil binary is installed"),
+
+    S3CMD("S3cmd binary is installed"),
+
+    NODE_EXPORTER_RUNNING("Node exporter is running"),
+
+    NODE_EXPORTER_PORT("Node exporter is running on the correct port"),
+
+    SWAPPINESS("Swappiness of memory pages"),
+
+    ULIMIT_CORE("Maximum size of core files created"),
+
+    ULIMIT_OPEN_FILES("Maximum number of open file descriptors"),
+
+    ULIMIT_USER_PROCESSES("Maximum number of processes available to a single user"),
+
+    SYSTEMD_SUDOER_ENTRY("Systemd Sudoer entry"),
+
+    SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
+
+    MASTER_HTTP_PORT("Master http port is open"),
+
+    MASTER_RPC_PORT("Master rpc port is open"),
+
+    TSERVER_HTTP_PORT("TServer http port is open"),
+
+    TSERVER_RPC_PORT("TServer rpc port is open"),
+
+    YB_CONTROLLER_HTTP_PORT("YbController http port is open"),
+
+    YB_CONTROLLER_RPC_PORT("YbController rpc port is open"),
+
+    REDIS_SERVER_HTTP_PORT("Redis server http port is open"),
+
+    REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
+
+    YQL_SERVER_HTTP_PORT("YCQL server http port is open"),
+
+    YQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
+
+    YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
+
+    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open");
 
     private final String description;
 
     private Type(String description) {
       this.description = description;
     }
+  }
+
+  @Getter
+  public enum Operation {
+    PROVISION,
+    CONFIGURE
   }
 }

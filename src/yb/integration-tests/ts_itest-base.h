@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
+#pragma once
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
@@ -159,4 +158,3 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 }  // namespace tserver
 }  // namespace yb
 
-#endif /* YB_INTEGRATION_TESTS_TS_ITEST_BASE_H */

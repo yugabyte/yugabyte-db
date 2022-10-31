@@ -17,8 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_UTIL_STATISTICS_H
-#define YB_ROCKSDB_UTIL_STATISTICS_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -92,4 +91,3 @@ inline void SetTickerCount(Statistics* statistics, uint32_t ticker_type,
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_UTIL_STATISTICS_H

@@ -47,10 +47,12 @@
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -80,6 +82,12 @@ DECLARE_bool(file_expiration_ignore_value_ttl);
 DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
+DECLARE_int32(full_compaction_pool_max_queue_size);
+DECLARE_int32(full_compaction_pool_max_threads);
 
 namespace yb {
 
@@ -91,8 +99,6 @@ constexpr auto kWaitDelay = 10ms;
 constexpr auto kPayloadBytes = 8_KB;
 constexpr auto kMemStoreSize = 100_KB;
 constexpr auto kNumTablets = 3;
-
-
 
 class RocksDbListener : public rocksdb::EventListener {
  public:
@@ -159,6 +165,10 @@ class CompactionTest : public YBTest {
     ASSERT_OK(clock_->Init());
     rocksdb_listener_ = std::make_shared<RocksDbListener>();
 
+    // Disable scheduled compactions by default so we don't have surprise compactions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 0;
+
     // Start cluster.
     MiniClusterOptions opts;
     opts.num_tablet_servers = NumTabletServers();
@@ -188,13 +198,14 @@ class CompactionTest : public YBTest {
     YBTest::TearDown();
   }
 
-  void SetupWorkload(IsolationLevel isolation_level) {
+  void SetupWorkload(IsolationLevel isolation_level,
+      int num_tablets = kNumTablets) {
     workload_.reset(new TestWorkload(cluster_.get()));
     workload_->set_timeout_allowed(true);
     workload_->set_payload_bytes(kPayloadBytes);
     workload_->set_write_batch_size(1);
     workload_->set_num_write_threads(4);
-    workload_->set_num_tablets(kNumTablets);
+    workload_->set_num_tablets(num_tablets);
     workload_->set_transactional(isolation_level, transaction_pool_.get());
     workload_->set_ttl(ttl_to_use());
     workload_->set_table_ttl(table_ttl_to_use());
@@ -282,6 +293,9 @@ class CompactionTest : public YBTest {
       {table_info->id()}, false, kCompactionTimeoutSec, /* compaction */ true);
   }
 
+  bool CheckEachDbHasExactlyNumFiles(size_t num_files);
+  bool CheckEachDbHasAtLeastNumFiles(size_t num_files);
+
   void TestCompactionAfterTruncate();
   void TestCompactionWithoutFrontiers(
       const size_t num_without_frontiers,
@@ -357,6 +371,26 @@ void CompactionTest::TestCompactionWithoutFrontiers(
         return true;
       },
       60s, "Waiting until we see fewer SST files than were written initially ...", kWaitDelay));
+}
+
+bool CompactionTest::CheckEachDbHasExactlyNumFiles(size_t num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() != num_files) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactionTest::CheckEachDbHasAtLeastNumFiles(size_t num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() < num_files) {
+      return false;
+    }
+  }
+  return true;
 }
 
 TEST_F(CompactionTest, CompactionAfterTruncate) {
@@ -564,6 +598,356 @@ TEST_F(CompactionTest, MaxFileSizeIgnoredIfNoTableTTL) {
   }
 }
 
+namespace {
+  // Make the queue size twice as big as the number of tablets so that by default, we will
+  // not overfill the queue.
+  constexpr auto kQueueSize = kNumTablets * 2;
+  constexpr auto kPoolMaxThreads = 1;
+}  // namespace
+
+class ScheduledFullCompactionsTest : public CompactionTest {
+ public:
+  void SetUp() override {
+    // Before cluster setup, set the full compaction queue size to be greater than
+    // the number of tablets.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_queue_size) = kQueueSize;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_full_compaction_pool_max_threads)
+        = kPoolMaxThreads;
+
+    CompactionTest::SetUp();
+
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata) = false;
+    // Disable background compactions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  }
+
+ protected:
+  Status WaitForTotalNumCompactions(int num_compactions);
+
+  // Used to verify the metadata and next compaction times for all tablets in all tablet
+  // managers. Then runs the ScheduleFullCompactions() function in FullCompactionManager.
+  // Assumes jitter_factor is 0. expected_last_compact_lower_bound defaults to 0,
+  // meaning that the expected next compaction time is now. If any non-special value,
+  // this serves as the lower bound for when the last compaction time should be.
+  bool CheckNextFullCompactionTimesAndSchedule(
+      MonoDelta compaction_frequency,
+      HybridTime expected_last_compact_lower_bound = HybridTime(tablet::kNoLastFullCompactionTime));
+};
+
+bool ScheduledFullCompactionsTest::CheckNextFullCompactionTimesAndSchedule(
+    MonoDelta compaction_frequency,
+    HybridTime expected_last_compact_lower_bound) {
+  HybridTime now = clock_->Now();
+  for (int i = 0 ; i < NumTabletServers(); i++) {
+    auto ts_tablet_manager = cluster_->GetTabletManager(i);
+    auto compact_manager = ts_tablet_manager->full_compaction_manager();
+    for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+      if (!peer->shared_tablet()->IsEligibleForFullCompaction()) {
+        continue;
+      }
+      // Last full compaction time should be invalid (never compacted).
+      auto last_compact_time =
+          HybridTime(peer->shared_tablet()->metadata()->last_full_compaction_time());
+      auto next_compact_time = compact_manager->TEST_DetermineNextCompactTime(peer, now);
+      if (expected_last_compact_lower_bound.is_special()) {
+        // If the expected_last_compact_lower_bound is a special value, then it's expected that the
+        // last compaction time is 0 and we should compact now.
+        if (!last_compact_time.is_special() ||
+            next_compact_time != now) {
+          LOG(INFO) << "Expected no last compaction metadata, but got "
+              << last_compact_time.ToUint64() << " - expected next_compaction_time of "
+              << now.ToUint64() << ", got " << next_compact_time.ToUint64();
+          return false;
+        }
+      } else {
+        // If the expected_last_compact_lower_bound is any other value, then it's expected that the
+        // last compaction time should be greater than or equal to it and the next compaction time
+        // should be compaction_frequency from then.
+        auto expected_next_compact_time = last_compact_time.AddDelta(compaction_frequency);
+        if (last_compact_time < expected_last_compact_lower_bound ||
+            next_compact_time != expected_next_compact_time) {
+          LOG(INFO) << "Expected last compaction time to be greater than "
+              << expected_last_compact_lower_bound.ToUint64() << ", but got "
+              << last_compact_time.ToUint64() << " - expected next_compaction time of"
+              << expected_next_compact_time.ToUint64() << ", got "
+              << next_compact_time.ToUint64();
+          return false;
+        }
+      }
+    }
+    compact_manager->ScheduleFullCompactions();
+  }
+  return true;
+}
+
+Status ScheduledFullCompactionsTest::WaitForTotalNumCompactions(int num_compactions) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  RETURN_NOT_OK(LoggedWaitFor(
+    [this, &dbs, num_compactions] {
+        int num_compactions_completed = 0;
+        for (auto* db : dbs) {
+          if (rocksdb_listener_->GetNumCompactionsCompleted(db) > 0) {
+            num_compactions_completed++;
+          }
+        }
+        return num_compactions_completed == num_compactions;
+      }, 60s, Format("Waiting until exactly $0 total compactions finish...", num_compactions),
+    kWaitDelay * kTimeMultiplier));
+  return Status::OK();
+}
+
+TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
+  const int kNumFilesToWrite = 10;
+  const int32_t kCompactionFrequencyHours = 24;
+  const MonoDelta kCompactionFrequency = MonoDelta::FromHours(kCompactionFrequencyHours);
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    ASSERT_GE(db->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
+  }
+  // Change compaction frequency to enable the FullCompactionManager.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) =
+      kCompactionFrequencyHours;
+
+  HybridTime before_first_check = clock_->Now();
+  ASSERT_TRUE(CheckNextFullCompactionTimesAndSchedule(kCompactionFrequency));
+
+  // Wait until all compactions have finished, then verify they completed.
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  for (auto* db : dbs) {
+    ASSERT_EQ(db->GetCurrentVersionNumSSTFiles(), 1);
+  }
+
+  ASSERT_TRUE(CheckNextFullCompactionTimesAndSchedule(
+      kCompactionFrequency, before_first_check));
+
+  // Manually set the last compaction time for one tablet, and verify that only it gets scheduled.
+  auto ts_tablet_manager = cluster_->GetTabletManager(0);
+  auto compact_manager = ts_tablet_manager->full_compaction_manager();
+  tablet::TabletPeerPtr peer_with_early_compaction;
+  for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+    if (peer->shared_tablet()->GetCurrentVersionNumSSTFiles() != 0) {
+      peer_with_early_compaction = peer;
+      auto metadata = peer_with_early_compaction->shared_tablet()->metadata();
+      // Previous compaction time set to 30 days prior to now.
+      auto now = clock_->Now();
+      metadata->set_last_full_compaction_time(
+          now.AddDelta(kCompactionFrequency * -1).ToUint64());
+      ASSERT_OK(metadata->Flush());
+      // Next compaction time should be "now" after the reset
+      auto next_compact_time =
+          compact_manager->TEST_DetermineNextCompactTime(peer_with_early_compaction, now);
+      ASSERT_GE(next_compact_time, now);
+      break;
+    }
+  }
+  ASSERT_NE(peer_with_early_compaction, nullptr);
+
+  // Write more files, then schedule full compactions. Only the peer with the reset metadata
+  // should be scheduled.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_OK(LoggedWaitFor(
+      [this, &dbs] {
+          for (auto* db : dbs) {
+            if (rocksdb_listener_->GetNumCompactionsCompleted(db) == 1) {
+              return true;
+            }
+          }
+          return false;
+        }, 60s, "Waiting until at least one compaction finishes on one rocksdb...",
+      kWaitDelay * kTimeMultiplier));
+
+  // Verify that exactly one compaction was scheduled.
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 1);
+  for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+    auto num_ssts = peer->shared_tablet()->GetCurrentVersionNumSSTFiles();
+    if (num_ssts == 0) {
+      continue;
+    }
+    if (peer->tablet_id() == peer_with_early_compaction->tablet_id()) {
+      ASSERT_EQ(num_ssts, 1);
+    } else {
+      ASSERT_GE(num_ssts, kNumFilesToWrite + 1);
+    }
+  }
+}
+
+TEST_F(ScheduledFullCompactionsTest, WillWaitForPreviousToFinishBeforeScheduling) {
+  HybridTime now = clock_->Now();
+  const int kNumFilesToWrite = 10;
+  const int kCompactionFrequencySecs = 1;
+
+  // Disable background compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
+  auto ts_tablet_manager = cluster_->GetTabletManager(0);
+  auto compact_manager = ts_tablet_manager->full_compaction_manager();
+  auto ScheduleFullCompactionsEveryNSeconds =
+      [compact_manager](const int seconds){
+        compact_manager->TEST_DoScheduleFullCompactionsWithManualValues(
+          MonoDelta::FromSeconds(seconds), 0);
+      };
+
+  // Schedule full compactions using a manual number of seconds as the compaction
+  // frequency.
+  ScheduleFullCompactionsEveryNSeconds(kCompactionFrequencySecs);
+
+  // Compactions should get scheduled but NOT executed yet.
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kNumTablets);
+  SleepFor(MonoDelta::FromSeconds(kCompactionFrequencySecs));
+  ASSERT_TRUE(CheckEachDbHasAtLeastNumFiles(kNumFilesToWrite));
+  now = clock_->Now();
+  for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+    const auto last_compaction_time =
+        HybridTime(peer->shared_tablet()->metadata()->last_full_compaction_time());
+    ASSERT_TRUE(last_compaction_time.is_special());
+    ASSERT_EQ(compact_manager->TEST_DetermineNextCompactTime(peer, now), now);
+  }
+
+  // Try to schedule compactions again, with the originals still hanging.
+  // No new compactions should be scheduled.
+  ScheduleFullCompactionsEveryNSeconds(kCompactionFrequencySecs);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
+
+  // Turn off pause before compactions, wait for compactions to finish, and try again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
+
+  // Write more files, then wait for the compaction frequency amount of time.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  SleepFor(MonoDelta::FromSeconds(kCompactionFrequencySecs));
+
+  // Try to schedule compactions again; they should succeed.
+  ScheduleFullCompactionsEveryNSeconds(kCompactionFrequencySecs);
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
+}
+
+TEST_F(ScheduledFullCompactionsTest, OlderTabletsWillStillScheduleAndCreateMetadata) {
+  const int kNumFilesToWrite = 10;
+  const int kCompactionFrequencyHours = 24;
+  const MonoDelta kCompactionFrequency = MonoDelta::FromHours(kCompactionFrequencyHours);
+  // Prevent compaction tablet metadata from being written to mimic older tablets.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata) = true;
+
+  // Write some files and execute a full compaction.
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  ASSERT_OK(ExecuteManualCompaction());
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+
+  // Re-activate metadata writing so it will be written on the next compaction.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata) = false;
+  // Verify that the metadata hasn't been updated, but we still schedule a
+  // full compaction for now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) =
+      kCompactionFrequencyHours;
+  HybridTime before_first_check = clock_->Now();
+  ASSERT_TRUE(CheckNextFullCompactionTimesAndSchedule(kCompactionFrequency));
+
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+
+  // Check that we now have useable metadata (even though the original tablets had none),
+  // and that we schedule a compaction for the future.
+  ASSERT_TRUE(CheckNextFullCompactionTimesAndSchedule(kCompactionFrequency, before_first_check));
+}
+
+TEST_F(ScheduledFullCompactionsTest, OldestTabletsAreScheduledFirst) {
+  const int kNumFilesToWrite = 10;
+  // Turn on the compaction schedule feature.
+  const int kCompactionFrequencyHours = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) =
+      kCompactionFrequencyHours;
+
+  // Create a table with double the number of tablets as queue size + threads in pool.
+  const auto kThreadsPlusQueue = kPoolMaxThreads + kQueueSize;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, kThreadsPlusQueue * 2);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
+  auto ts_tablet_manager = cluster_->GetTabletManager(0);
+  auto compact_manager = ts_tablet_manager->full_compaction_manager();
+
+  // Modify the metadata for each tablet such that all tablets are eligible for compaction,
+  // but each has a different last_full_compaction_time.
+  // Half of tablets are given a significantly earlier last_full_compaction_time.
+  std::vector<tablet::TabletPeerPtr> to_be_compacted;
+  std::vector<tablet::TabletPeerPtr> not_to_be_compacted;
+  auto now = clock_->Now();
+  int i = 0;
+  for (auto& peer : ts_tablet_manager->GetTabletPeers()) {
+    if (!peer->shared_tablet()->IsEligibleForFullCompaction()) {
+      continue;
+    }
+    auto metadata = peer->shared_tablet()->metadata();
+    if (i % 2 == 0) {
+      // Set half of the last compaction times to a week ago (adjusted slightly).
+      metadata->set_last_full_compaction_time(
+        now.AddDelta(MonoDelta::FromDays(7) * -1)
+            .AddDelta(MonoDelta::FromHours(i)).ToUint64());
+      to_be_compacted.push_back(peer);
+    } else {
+      // The other half have compaction times of 2 days ago.
+      metadata->set_last_full_compaction_time(
+        now.AddDelta(MonoDelta::FromDays(2) * -1)
+            .AddDelta(MonoDelta::FromHours(i)).ToUint64());
+      not_to_be_compacted.push_back(peer);
+    }
+    ASSERT_OK(metadata->Flush());
+    i++;
+  }
+
+  // Force a pause before full compaction to hold compactions in queue.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+  // ScheduleFullCompactions() should execute fine, but will have only scheduled
+  // kThreadsPlusQueue compactions.
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kThreadsPlusQueue);
+
+  // Try to manually schedule one of the compactions. Should fail.
+  ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerFullCompactionIfNeeded(
+        tablet::FullCompactionReason::Scheduled));
+
+  // Let the compactions finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  // Let all of the threads finish.
+  ASSERT_TRUE(ts_tablet_manager->full_compaction_pool()->WaitFor(60s));
+  ASSERT_OK(WaitForTotalNumCompactions(kThreadsPlusQueue));
+
+  // Verify that the right tablets were compacted.
+  for (auto& peer : to_be_compacted) {
+    ASSERT_EQ(peer->shared_tablet()->GetCurrentVersionNumSSTFiles(), 1);
+  }
+  for (auto& peer : not_to_be_compacted) {
+    ASSERT_GE(peer->shared_tablet()->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
+  }
+
+  // Try scheduling compactions again. The rest should be scheduled (but not the
+  // tablets that already compacted).
+  rocksdb_listener_->Reset();
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kThreadsPlusQueue);
+  ASSERT_TRUE(ts_tablet_manager->full_compaction_pool()->WaitFor(60s));
+  ASSERT_OK(WaitForTotalNumCompactions(kThreadsPlusQueue));
+
+  for (auto& peer : not_to_be_compacted) {
+    ASSERT_EQ(peer->shared_tablet()->GetCurrentVersionNumSSTFiles(), 1);
+  }
+}
+
 class CompactionTestWithTTL : public CompactionTest {
  protected:
   int ttl_to_use() override {
@@ -653,8 +1037,6 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   void WriteRecordsAllExpire();
   void AssertNoFilesExpired();
   void AssertAllFilesExpired();
-  bool CheckEachDbHasExactlyNumFiles(size_t num_files);
-  bool CheckEachDbHasAtLeastNumFiles(size_t num_files);
   bool CheckAtLeastFileExpirationsPerDb(size_t num_expirations);
   int table_ttl_to_use() override {
     return kTableTTLSec;
@@ -730,26 +1112,6 @@ void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
   EXPECT_GT(size_after_manual_compaction, 0);
   EXPECT_GT(files_after_compaction, 0);
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
-}
-
-bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(size_t num_files) {
-  auto dbs = GetAllRocksDbs(cluster_.get(), false);
-  for (auto* db : dbs) {
-    if (db->GetCurrentVersionNumSSTFiles() != num_files) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(size_t num_files) {
-  auto dbs = GetAllRocksDbs(cluster_.get(), false);
-  for (auto* db : dbs) {
-    if (db->GetCurrentVersionNumSSTFiles() < num_files) {
-      return false;
-    }
-  }
-  return true;
 }
 
 bool CompactionTestWithFileExpiration::CheckAtLeastFileExpirationsPerDb(size_t num_expirations) {
@@ -1037,6 +1399,36 @@ TEST_F(CompactionTestWithFileExpiration, LargeFileDoesNotPreventExpiration) {
   ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
   // Verify that no files have been compacted other than the manual compaction and deletions.
   ASSERT_EQ(CountUnfilteredSSTFiles(), files_compacted_without_expiration);
+}
+
+TEST_F(CompactionTestWithFileExpiration, ScheduledFullCompactionsDisabled) {
+  const HybridTime now = clock_->Now();
+  const int kNumFilesToWrite = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 1_KB;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
+  auto ts_tablet_manager = cluster_->GetTabletManager(0);
+  auto compact_manager = ts_tablet_manager->full_compaction_manager();
+  // Change the full compaction frequency hours to enable scheduled full compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 30;
+  for (auto peer : ts_tablet_manager->GetTabletPeers()) {
+    // All tablets will either have a default TTL or have no data - either way, they are
+    // not eligible for full compaction. However, the "next compact time" should be ASAP.
+    auto next_compact_time = compact_manager->TEST_DetermineNextCompactTime(peer, now);
+    ASSERT_EQ(next_compact_time, now);
+    ASSERT_FALSE(peer->tablet()->IsEligibleForFullCompaction());
+  }
+  // Wake the BG compaction thread, no compactions should be scheduled.
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_TRUE(CheckEachDbHasAtLeastNumFiles(kNumFilesToWrite));
+
+  // Remove table TTL and try again.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 0));
+  compact_manager->ScheduleFullCompactions();
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+  ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
 }
 
 class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {

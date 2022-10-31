@@ -110,25 +110,26 @@ func (handler *PreflightCheckHandler) Result() *map[string]model.PreflightCheckV
 
 // Returns options for the preflight checks.
 func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []string {
-	options := make([]string, 3)
-	options[0] = preflightScriptPath
-	options[1] = "-t"
-	options[2] = "provision"
 	provider := handler.provider
 	instanceType := handler.instanceType
 	accessKey := handler.accessKey
+	options := make([]string, 3)
+	options[0] = preflightScriptPath
+	options[1] = "-t"
+
+	if accessKey.KeyInfo.SkipProvisioning {
+		options[2] = "configure"
+	} else {
+		options[2] = "provision"
+	}
+
 	if provider.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	//To-do: Should the api return a string instead of a list?
-	if data := provider.CustomHostCidrs; len(data) > 0 {
-		options = append(options, "--yb_home_dir", data[0])
-	} else {
-		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
-	}
+	options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
 
 	if data := provider.SshPort; data != 0 {
-		options = append(options, "--ports_to_check", fmt.Sprint(data))
+		options = append(options, "--ssh_port", fmt.Sprint(data))
 	}
 
 	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
@@ -148,7 +149,7 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	if accessKey.KeyInfo.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	// TODO more options.
+
 	return options
 }
 
@@ -221,7 +222,9 @@ func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationRespo
 				},
 			)
 		} else {
-			allValid = false
+			if v.Required {
+				allValid = false
+			}
 			data := []string{k, v.Value, v.Description, strconv.FormatBool(v.Required), "Failed"}
 			table.Rich(data, []tablewriter.Colors{
 				tablewriter.Colors{tablewriter.FgRedColor},

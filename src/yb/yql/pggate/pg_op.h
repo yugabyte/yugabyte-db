@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_OP_H
-#define YB_YQL_PGGATE_PG_OP_H
+#pragma once
 
 #include "yb/util/status.h"
 
@@ -187,4 +186,3 @@ bool PrepareNextRequest(PgsqlReadOp* read_op);
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_OP_H

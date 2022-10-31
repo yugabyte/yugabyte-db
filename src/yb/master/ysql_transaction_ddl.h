@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YSQL_TRANSACTION_DDL_H
-#define YB_MASTER_YSQL_TRANSACTION_DDL_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -68,4 +67,3 @@ class YsqlTransactionDdl {
 }  // namespace master
 }  // namespace yb
 
-#endif // YB_MASTER_YSQL_TRANSACTION_DDL_H

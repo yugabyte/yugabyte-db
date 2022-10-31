@@ -24,27 +24,34 @@ import {
 import {
   CreateXClusterConfigFormErrors,
   CreateXClusterConfigFormValues,
-  FormStep
+  CreateXClusterConfigFormWarnings
 } from './CreateConfigModal';
-import { SortOrder, YBTableRelationType } from '../constants';
+import { SortOrder } from '../constants';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import YBPagination from '../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../common/CollapsibleNote';
+import { YBTableRelationType } from '../../../redesign/helpers/constants';
 
-import { TableType, Universe } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, YBTable, XClusterTableType } from '../XClusterTypes';
+import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
 import { XClusterTableEligibility } from '../common/TableEligibilityPill';
 
 import styles from './SelectTablesStep.module.scss';
+import clsx from 'clsx';
+
+const TableTypeLabel: Record<XClusterTableType, string> = {
+  [TableType.YQL_TABLE_TYPE]: 'YCQL',
+  [TableType.PGSQL_TABLE_TYPE]: 'YSQL'
+} as const;
 
 const DEFAULT_TABLE_TYPE_OPTION = {
   value: TableType.PGSQL_TABLE_TYPE,
-  label: 'YSQL'
+  label: TableTypeLabel[TableType.PGSQL_TABLE_TYPE]
 } as const;
 
 const TABLE_TYPE_OPTIONS = [
   DEFAULT_TABLE_TYPE_OPTION,
-  { value: TableType.YQL_TABLE_TYPE, label: 'YCQL' }
+  { value: TableType.YQL_TABLE_TYPE, label: TableTypeLabel[TableType.YQL_TABLE_TYPE] }
 ] as const;
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -170,24 +177,24 @@ interface SelectTablesStepProps {
   formik: React.MutableRefObject<FormikProps<CreateXClusterConfigFormValues>>;
   sourceTables: YBTable[];
   currentUniverseUUID: string;
-  currentStep: FormStep;
-  setCurrentStep: (currentStep: FormStep) => void;
+  setTableUUIDs: (tableUUIDs: string[]) => void;
   tableType: XClusterTableType;
   setTableType: (tableType: XClusterTableType) => void;
   selectedKeyspaces: string[];
   setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
+  formWarnings: CreateXClusterConfigFormWarnings;
 }
 
 export const SelectTablesStep = ({
   formik,
   sourceTables,
   currentUniverseUUID,
-  currentStep,
-  setCurrentStep,
+  setTableUUIDs,
   tableType,
   setTableType,
   selectedKeyspaces,
-  setSelectedKeyspaces
+  setSelectedKeyspaces,
+  formWarnings
 }: SelectTablesStepProps) => {
   const [keyspaceSearchTerm, setKeyspaceSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -195,21 +202,10 @@ export const SelectTablesStep = ({
   const [sortField, setSortField] = useState<keyof KeyspaceRow>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
-  const { values, setFieldValue } = formik.current;
+  const { values } = formik.current;
 
   // Casting because FormikValues and FormikError have different types.
   const errors = formik.current.errors as FormikErrors<CreateXClusterConfigFormErrors>;
-  /**
-   * Wrapper around setFieldValue from formik.
-   * Ensure current step is set to Form.SELECT_TABLES when
-   * editing the selected tables.
-   */
-  const checkedSetFieldValue = (fieldName: string, fieldValue: any) => {
-    if (currentStep === FormStep.ENABLE_REPLICATION) {
-      setCurrentStep(FormStep.SELECT_TABLES);
-    }
-    setFieldValue(fieldName, fieldValue);
-  };
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
     ['universe', values.targetUniverse.value, 'tables'],
@@ -274,14 +270,11 @@ export const SelectTablesStep = ({
         }
       });
 
-      checkedSetFieldValue('tableUUIDs', [...values.tableUUIDs, ...tableUUIDsToAdd]);
+      setTableUUIDs([...values.tableUUIDs, ...tableUUIDsToAdd]);
     } else {
       const removedTables = new Set(rows.map((row) => row.tableUUID));
 
-      checkedSetFieldValue(
-        'tableUUIDs',
-        values.tableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
-      );
+      setTableUUIDs(values.tableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID)));
     }
   };
 
@@ -292,9 +285,9 @@ export const SelectTablesStep = ({
 
   const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
     if (isSelected) {
-      checkedSetFieldValue('tableUUIDs', [...values.tableUUIDs, row.tableUUID]);
+      setTableUUIDs([...values.tableUUIDs, row.tableUUID]);
     } else {
-      checkedSetFieldValue('tableUUIDs', [
+      setTableUUIDs([
         ...values['tableUUIDs'].filter((tableUUID: string) => tableUUID !== row.tableUUID)
       ]);
     }
@@ -355,7 +348,7 @@ export const SelectTablesStep = ({
     // Clear current item selection.
     // Form submission should only contain tables of the same type (YSQL or YCQL).
     setSelectedKeyspaces([]);
-    checkedSetFieldValue('tableUUIDs', []);
+    setTableUUIDs([]);
   };
 
   const tableUUIDsInUse = Object.fromEntries(
@@ -404,7 +397,7 @@ export const SelectTablesStep = ({
           styles={TABLE_TYPE_SELECT_STYLES}
           options={TABLE_TYPE_OPTIONS}
           onChange={handleTableTypeChange}
-          defaultValue={DEFAULT_TABLE_TYPE_OPTION}
+          value={{ value: tableType, label: TableTypeLabel[tableType] }}
         />
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
@@ -492,13 +485,27 @@ export const SelectTablesStep = ({
           {values.tableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
         </div>
       )}
-      {errors.tableUUIDs && (
-        <div className={styles.validationErrorContainer}>
-          <i className="fa fa-exclamation-triangle" aria-hidden="true" />
-          <div className={styles.errorMessage}>
-            <h5>{errors.tableUUIDs.title}</h5>
-            <p>{errors.tableUUIDs.body}</p>
-          </div>
+
+      {(errors.tableUUIDs || formWarnings.tableUUIDs) && (
+        <div className={styles.validationContainer}>
+          {errors.tableUUIDs && (
+            <div className={clsx(styles.validation, styles.error)}>
+              <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+              <div className={styles.message}>
+                <h5>{errors.tableUUIDs.title}</h5>
+                <p>{errors.tableUUIDs.body}</p>
+              </div>
+            </div>
+          )}
+          {formWarnings.tableUUIDs && (
+            <div className={clsx(styles.validation, styles.warning)}>
+              <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+              <div className={styles.message}>
+                <h5>{formWarnings.tableUUIDs.title}</h5>
+                <p>{formWarnings.tableUUIDs.body}</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />

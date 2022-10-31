@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_INTERNAL_H_
-#define YB_MASTER_SYS_CATALOG_INTERNAL_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 
@@ -91,4 +90,3 @@ std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_SYS_CATALOG_INTERNAL_H_

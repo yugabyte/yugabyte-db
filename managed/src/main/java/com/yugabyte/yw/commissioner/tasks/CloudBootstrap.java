@@ -41,7 +41,6 @@ public class CloudBootstrap extends CloudTaskBase {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();
       taskParams.airGapInstall = provider.airGapInstall;
-      taskParams.customHostCidrs = provider.customHostCidrs;
       taskParams.destVpcId = provider.destVpcId;
       taskParams.hostVpcId = provider.hostVpcId;
       taskParams.hostVpcRegion = provider.hostVpcRegion;
@@ -72,7 +71,6 @@ public class CloudBootstrap extends CloudTaskBase {
       // Custom CIDR to use for the VPC, if YB is creating it.
       // Default: chosen by YB.
       // Required: False.
-      // TODO: Remove. This is not used currently.
       public String vpcCidr;
 
       // Custom map from AZ name to Subnet ID for AWS.
@@ -166,8 +164,6 @@ public class CloudBootstrap extends CloudTaskBase {
 
     public String hostVpcId = null;
     public String hostVpcRegion = null;
-    public List<String> customHostCidrs = new ArrayList<>();
-    // TODO(bogdan): only used/needed for GCP.
     public String destVpcId = null;
 
     // Dictates whether or not NTP should be configured on newly provisioned nodes.

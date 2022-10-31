@@ -8,7 +8,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -210,6 +213,9 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     when(mockAppConfig.getDuration(eq(NodeAgentHandler.CLEANER_RETENTION_DURATION_PROPERTY)))
         .thenReturn(Duration.ofMinutes(10))
         .thenReturn(Duration.ofMillis(100));
+    doThrow(new RuntimeException("No connection"))
+        .when(nodeAgentClient)
+        .validateConnection(any(), anyBoolean());
     NodeAgentForm payload = new NodeAgentForm();
     payload.version = "2.12.0";
     payload.name = "node1";

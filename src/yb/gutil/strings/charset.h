@@ -15,8 +15,7 @@
 // under the License.
 //
 
-#ifndef STRINGS_CHARSET_H_
-#define STRINGS_CHARSET_H_
+#pragma once
 
 #include "yb/gutil/integral_types.h"
 
@@ -83,4 +82,3 @@ class CharSet {
 
 }  // namespace strings
 
-#endif  // STRINGS_CHARSET_H_

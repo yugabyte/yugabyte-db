@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_SCHEMA_H
-#define YB_COMMON_SCHEMA_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -907,9 +906,9 @@ class Schema {
     return Equals(other, ColumnSchema::CompareByDefault);
   }
 
-  // Return true if this schema has exactly the same set of columns and respective types, and
-  // equivalent properties as the source.  The source must be an equivalent subset of this object.
-  bool EquivalentForDataCopy(const Schema& source) const {
+  // Return true if this schema is a subset of the source. The set of columns and respective types
+  // should match exactly
+  bool IsSubsetOf(const Schema& source) const {
     if (this == &source) return true;
     if (this->num_key_columns_ != source.num_key_columns_) return false;
     if (!this->table_properties_.Equivalent(source.table_properties_)) return false;
@@ -921,6 +920,14 @@ class Schema {
     }
 
     return true;
+  }
+
+  // Return true if this schema has exactly the same set of columns and respective types, and
+  // equivalent properties as the source.  The source must be an equivalent of this object.
+  // With Packed columns, number of columns of the source and this object also need to match
+  // for equivalency
+  bool EquivalentForDataCopy(const Schema& source) const {
+    return (this->cols_.size() == source.cols_.size()) && IsSubsetOf(source);
   }
 
   // Return true if the key projection schemas have exactly the same set of
@@ -1247,4 +1254,3 @@ struct hash<yb::ColumnId> {
 };
 } // namespace std
 
-#endif  // YB_COMMON_SCHEMA_H

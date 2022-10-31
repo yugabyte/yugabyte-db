@@ -43,6 +43,7 @@ export default class NodeAction extends Component {
     });
   }
 
+  //Need to add caption to new actionTypes to paint in the UI
   static getCaption(actionType, dedicatedTo) {
     let caption = null;
     if (actionType === 'STOP') {
@@ -74,7 +75,7 @@ export default class NodeAction extends Component {
   }
 
   static processName(dedicatedTo) {
-    return (dedicatedTo.charAt(0).toUpperCase() + dedicatedTo.toLowerCase().slice(1));
+    return dedicatedTo.charAt(0).toUpperCase() + dedicatedTo.toLowerCase().slice(1);
   }
 
   getLabel(actionType, dedicatedTo) {
@@ -105,7 +106,6 @@ export default class NodeAction extends Component {
     } else if (actionType === 'DOWNLOAD_LOGS') {
       btnIcon = 'fa fa-download';
     }
-
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
   }
 
@@ -149,16 +149,25 @@ export default class NodeAction extends Component {
         disabled ||
         (actionType === 'STOP' && disableStop) ||
         (actionType === 'REMOVE' && disableRemove);
+
       if (actionType === 'QUERY') {
         if (!hideQueries) {
           return (
             <Fragment>
-              <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
-                disabled={disabled} onClick={this.handleLiveQueryClick}>
+              <MenuItem
+                key="live_queries_action_btn"
+                eventKey="live_queries_action_btn"
+                disabled={disabled}
+                onClick={this.handleLiveQueryClick}
+              >
                 {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
               </MenuItem>
-              <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
-                disabled={disabled} onClick={this.handleSlowQueryClick}>
+              <MenuItem
+                key="slow_queries_action_btn"
+                eventKey="slow_queries_action_btn"
+                disabled={disabled}
+                onClick={this.handleSlowQueryClick}
+              >
                 {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
               </MenuItem>
             </Fragment>
@@ -166,6 +175,7 @@ export default class NodeAction extends Component {
         }
         return null;
       }
+      if (!NodeAction.getCaption(actionType, currentRow.dedicatedTo)) return null;
       return (
         <MenuItem
           key={btnId}
@@ -181,16 +191,14 @@ export default class NodeAction extends Component {
     // Add action to download master/tserver logs.
     const btnId = _.uniqueId('node_action_btn_');
     actionButtons.push(
-      (
-        <MenuItem
-          key={btnId}
-          eventKey={btnId}
-          disabled={false}
-          onClick={() => downloadLogs(universeUUID, currentRow.name)}
-        >
-          {this.getLabel('DOWNLOAD_LOGS', currentRow.dedicatedTo)}
-        </MenuItem>
-      )
+      <MenuItem
+        key={btnId}
+        eventKey={btnId}
+        disabled={false}
+        onClick={() => downloadLogs(universeUUID, currentRow.name)}
+      >
+        {this.getLabel('DOWNLOAD_LOGS', currentRow.dedicatedTo)}
+      </MenuItem>
     );
 
     return (

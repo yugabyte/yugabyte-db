@@ -637,10 +637,32 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   ASSERT_OK(WaitFor(
       [&]() { return data_replicated_correctly(kNumRecords + 15); }, MonoDelta::FromSeconds(20),
       "IsDataReplicatedCorrectly"));
+
+  // 10. Re-enable Packed Columns and add a column and drop it so that schema stays the same but the
+  // schema_version is different on the Producer and Consumer
+  FLAGS_ysql_enable_packed_row = true;
+  {
+    string new_col = "dummy";
+    auto tbl = consumer_tables[0]->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tbl.table_name(), new_col));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tbl.table_name(), new_col));
+  }
+
+  // 11. Write some packed rows on producer and verify that those can be read from consumer
+  for (const auto& producer_table : producer_tables) {
+    WriteWorkload(kNumRecords + 15, kNumRecords + 20, &producer_cluster_, producer_table->name());
+  }
+
+  // 12. Verify that all the data can be read now.
+  ASSERT_OK(WaitFor(
+      [&]() { return data_replicated_correctly(kNumRecords + 20); }, MonoDelta::FromSeconds(20),
+      "IsDataReplicatedCorrectly"));
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
+  FLAGS_ysql_enable_packed_row = true;
   string new_column = "contact_name";
 
   constexpr auto kRecordBatch = 5;
@@ -2023,6 +2045,93 @@ TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
   ASSERT_TRUE(status.IsNotSupported());
   ASSERT_STR_CONTAINS(status.ToString(), "Replication is not supported for materialized view");
   LOG(INFO) << "Replication verification failed : " << status.ToString();
+}
+
+TEST_P(TwoDCYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
+  YB_SKIP_TEST_IN_TSAN();
+  FLAGS_ysql_enable_packed_row = true;
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+  // 1. Setup Replication, write some records and validate
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+
+  // 2. Perform some ALTERs to bump up the schema versions and cause mismatch before setting up
+  // replication
+  {
+    auto tbl = consumer_table->name();
+    for (size_t i = 0; i < 4; i++) {
+      auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+      ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+      if (i % 2 == 0) {
+        auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+        ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+      }
+    }
+  }
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table->id());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 3. Alter the table on the Consumer side by adding a column
+  {
+    string new_col = "new_column";
+    auto tbl = consumer_table->name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // 4. Verify single value inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteWorkload(51, 52, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 5. Verify batch inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteGenerateSeries(52, 100, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 6. Verify transactional inserts are replicated correctly and can be read
+  WriteTransactionalWorkload(101, 150, &producer_cluster_, producer_table->name());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 7. Alter the table on the producer side by adding the same column and insert some rows
+  // and verify
+  {
+    string new_col = "new_column";
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // 8. Verify single value inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteWorkload(151, 152, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 9. Verify batch inserts are replicated correctly and can be read
+  ASSERT_NO_FATALS(WriteGenerateSeries(152, 200, &producer_cluster_, producer_table->name()));
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  // 10. Verify transactional inserts are replicated correctly and can be read
+  WriteTransactionalWorkload(201, 250, &producer_cluster_, producer_table->name());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+  {
+    auto tbl = producer_table->name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(251,'Hello')", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  }
 }
 
 void PrepareChangeRequest(

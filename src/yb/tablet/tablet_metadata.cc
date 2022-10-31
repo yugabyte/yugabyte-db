@@ -66,7 +66,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -75,12 +75,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
-DEFINE_bool(enable_tablet_orphaned_block_deletion, true,
-            "Whether to enable deletion of orphaned blocks from disk. "
-            "Note: This is only exposed for debugging purposes!");
-TAG_FLAG(enable_tablet_orphaned_block_deletion, advanced);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
+DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
 using std::shared_ptr;
 using std::string;
@@ -318,6 +313,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
     snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
@@ -330,6 +326,7 @@ Status KvStoreInfo::MergeWithRestored(const KvStoreInfoPB& pb) {
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
   for (const auto& table_pb : pb.tables()) {
     const auto& table_id = table_pb.table_id();
     auto table_it = tables.find(table_id);
@@ -359,6 +356,7 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     pb->set_upper_bound_key(upper_bound_key);
   }
   pb->set_has_been_fully_compacted(has_been_fully_compacted);
+  pb->set_last_full_compaction_time(last_full_compaction_time);
 
   // Putting primary table first, then all other tables.
   pb->mutable_tables()->Reserve(narrow_cast<int>(tables.size() + 1));
@@ -1322,6 +1320,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   metadata->kv_store_.has_been_fully_compacted = false;
+  metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
@@ -1444,6 +1443,31 @@ SchemaVersion RaftGroupMetadata::schema_version(
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
   return table_info->schema_version;
+}
+
+Result<SchemaVersion> RaftGroupMetadata::schema_version(ColocationId colocation_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  auto colocation_it = kv_store_.colocation_to_table.find(colocation_id);
+  if (colocation_it == kv_store_.colocation_to_table.end()) {
+    return STATUS_FORMAT(NotFound, "Cannot find table info for colocation: $0", colocation_id);
+  }
+  return colocation_it->second->schema_version;
+}
+
+Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (cotable_id.IsNil()) {
+    // Return the parent table schema version
+    return schema_version();
+  }
+
+  auto res = GetTableInfo(cotable_id.ToHexString());
+  if (!res.ok()) {
+    return STATUS_FORMAT(
+        NotFound, "Cannot find table info for: $0, raft group id: $1", cotable_id, raft_group_id_);
+  }
+
+  return res->get()->schema_version;
 }
 
 const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) const {

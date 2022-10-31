@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_SNAPSHOT_TEST_UTIL_H
-#define YB_CLIENT_SNAPSHOT_TEST_UTIL_H
+#pragma once
 
 #include "yb/client/txn-test-base.h"
 #include "yb/common/snapshot.h"
@@ -120,4 +119,3 @@ class SnapshotTestUtil {
 } // namespace client
 } // namespace yb
 
-#endif  // YB_CLIENT_SNAPSHOT_TEST_UTIL_H

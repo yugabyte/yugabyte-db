@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_SERVER_BASE_H
-#define YB_SERVER_SERVER_BASE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -107,12 +106,6 @@ class RpcServerBase {
   const std::string get_hostname() const;
 
   virtual Status ReloadKeysAndCertificates() { return Status::OK(); }
-  virtual Status ReloadPgConfig() {
-    // TODO: This should never be called on master, so we should return a bad status here.
-    // Unfortunately master library depends on tserver library (#14034), so it gets all its flags
-    // including the pg flags. Just return OK for now so that everything looks consistent.
-    return Status::OK();
-  }
   virtual std::string GetCertificateDetails() { return ""; }
 
   virtual uint32_t GetAutoFlagConfigVersion() const { return 0; }
@@ -246,4 +239,3 @@ void TEST_Isolate(rpc::Messenger* messenger);
 } // namespace server
 } // namespace yb
 
-#endif /* YB_SERVER_SERVER_BASE_H */

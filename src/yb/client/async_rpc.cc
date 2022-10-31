@@ -72,11 +72,10 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
-DEFINE_int32(ybclient_print_trace_every_n, 0,
-             "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(ybclient_print_trace_every_n, 0,
+    "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(ybclient_print_trace_every_n, advanced);
-TAG_FLAG(ybclient_print_trace_every_n, runtime);
 
 DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be served if it's not "
             "a local request. The op response will be set to the redis error "

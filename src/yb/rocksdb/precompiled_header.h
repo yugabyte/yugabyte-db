@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_PRECOMPILED_HEADER_H
-#define ROCKSDB_PRECOMPILED_HEADER_H
+#pragma once
 
 // Only include standard / system / 3rd party header files here.
 
@@ -80,4 +79,3 @@
 #include <boost/functional/hash.hpp>
 #include <boost/variant.hpp>
 
-#endif // ROCKSDB_PRECOMPILED_HEADER_H

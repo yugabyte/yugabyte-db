@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_HEADER_MANAGER_IMPL_H
-#define YB_ENCRYPTION_HEADER_MANAGER_IMPL_H
+#pragma once
 
 #include <memory>
 
@@ -36,4 +35,3 @@ std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe
 } // namespace encryption
 } // namespace yb
 
-#endif // YB_ENCRYPTION_HEADER_MANAGER_IMPL_H

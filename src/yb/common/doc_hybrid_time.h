@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_DOC_HYBRID_TIME_H
-#define YB_COMMON_DOC_HYBRID_TIME_H
+#pragma once
 
 #include <string>
 
@@ -173,4 +172,3 @@ inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {
 
 }  // namespace yb
 
-#endif  // YB_COMMON_DOC_HYBRID_TIME_H

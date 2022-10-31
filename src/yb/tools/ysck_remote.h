@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_YSCK_REMOTE_H
-#define YB_TOOLS_YSCK_REMOTE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -123,4 +122,3 @@ class RemoteYsckMaster : public YsckMaster {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_YSCK_REMOTE_H

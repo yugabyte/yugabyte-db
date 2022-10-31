@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_DB_IMPL_READONLY_H
-#define ROCKSDB_DB_DB_IMPL_READONLY_H
 
 #pragma once
 
@@ -133,4 +131,3 @@ class DBImplReadOnly : public DBImpl {
 
 #endif  // !ROCKSDB_LITE
 
-#endif // ROCKSDB_DB_DB_IMPL_READONLY_H

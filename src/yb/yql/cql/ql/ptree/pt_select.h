@@ -15,8 +15,7 @@
 // Tree node definitions for SELECT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -122,7 +121,7 @@ using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
 // State variables for INDEX analysis.
-class SelectScanInfo : public MCBase {
+class SelectScanInfo : public MCBase, public AnalyzeStepState {
  public:
   // Public types.
   typedef MCSharedPtr<SelectScanInfo> SharedPtr;
@@ -130,6 +129,7 @@ class SelectScanInfo : public MCBase {
   // Constructor.
   explicit SelectScanInfo(MemoryContext *memctx,
                           size_t num_columns,
+                          MCList<PartitionKeyOp> *partition_key_ops,
                           MCVector<const PTExpr*> *scan_filtering_exprs,
                           MCMap<MCString, ColumnDesc> *scan_column_map);
 
@@ -506,4 +506,3 @@ class PTSelectStmt : public PTDmlStmt {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_SELECT_H_

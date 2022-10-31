@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_THREAD_H
-#define YB_UTIL_THREAD_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/syscall.h>
@@ -414,4 +413,3 @@ class CDSAttacher {
 
 } // namespace yb
 
-#endif /* YB_UTIL_THREAD_H */

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
-#define YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -68,4 +67,3 @@ class PgOperationBuffer {
 } // namespace pggate
 } // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_OPERATION_BUFFER_H_

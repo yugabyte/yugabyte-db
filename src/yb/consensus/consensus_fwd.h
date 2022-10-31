@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_FWD_H
-#define YB_CONSENSUS_CONSENSUS_FWD_H
+#pragma once
 
 #include <memory>
 #include <type_traits>
@@ -31,6 +30,7 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class LWReplicateMsgsHolder;
 class MultiRaftManager;
 class PeerProxyFactory;
 class PeerMessageQueue;
@@ -78,8 +78,8 @@ YB_DEFINE_ENUM(
 
 typedef int64_t ConsensusTerm;
 
-typedef std::shared_ptr<ReplicateMsg> ReplicateMsgPtr;
-typedef std::vector<ReplicateMsgPtr> ReplicateMsgs;
+using ReplicateMsgPtr = std::shared_ptr<LWReplicateMsg>;
+using ReplicateMsgs = std::vector<ReplicateMsgPtr>;
 
 YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 YB_STRONGLY_TYPED_BOOL(PreElection);
@@ -88,4 +88,3 @@ YB_STRONGLY_TYPED_BOOL(PreElection);
 
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_FWD_H
