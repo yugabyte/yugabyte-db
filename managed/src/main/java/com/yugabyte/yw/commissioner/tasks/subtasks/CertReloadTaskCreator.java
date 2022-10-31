@@ -10,7 +10,7 @@ import com.yugabyte.yw.commissioner.IUpgradeSubTask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeCertReloadTask.Params;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
