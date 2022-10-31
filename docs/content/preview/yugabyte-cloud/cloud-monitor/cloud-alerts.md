@@ -52,11 +52,11 @@ When the condition that caused the alert resolves, the notification dismisses au
 
 YugabyteDB monitors the health of your clusters, based on [cluster alert](#cluster-alerts) conditions, and displays the health as either Healthy, Needs Attention, or Unhealthy based criteria as shown in the following table.
 
-| Status | Criteria |
-| :----- | :------- |
-| Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) (Info) |
-| Needs Attention | [Node free storage](#fix-storage-alerts) (Warning or Severe)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) (Warning)<br/>[Memory Utilization](#fix-memory-alerts) (Warning or Severe)<br/>[YSQL Connections](#fix-ysql-connection-alerts) (Warning or Severe)<br/>[CPU Utilization](#fix-cpu-alerts) (Warning or Severe) |
-| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts) (Severe) |
+| Status | Alert | Level |
+| :----- | :---- | :---- |
+| Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Info |
+| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
+| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts) | Severe |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
 
