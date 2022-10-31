@@ -149,9 +149,9 @@ message TablePropertiesPB {
   optional bool retain_delete_markers = 9 [ default = false ];
   optional uint64 backfilling_timestamp = 10;
 
-  // Used to distinguish which algorithm should be used for partition key generation,
+  // Used to distinguish which algorithm should be used for partition key and bounds generation,
   // value == 0 stands for the default buggy algorithm for range partitioning case, see #12189.
-  optional uint32 partition_key_version = 11;
+  optional uint32 partitioning_version = 11;
 }
 
 message SchemaPB {

@@ -285,10 +285,10 @@ Status InitRangePartitionKey(
 
 template <class Col>
 Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
-    const Schema& schema, const Col& range_cols, bool lower_bound) {
-  size_t i = 0;
-  auto it = range_cols.begin();
-  auto num_range_key_columns = schema.num_range_key_columns();
+    const Schema& schema, const Col& range_cols, const bool lower_bound) {
+  size_t column_idx = 0;
+  auto range_cols_it = range_cols.begin();
+  const auto num_range_key_columns = schema.num_range_key_columns();
   std::vector<docdb::KeyEntryValue> result;
   for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
@@ -296,23 +296,34 @@ Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
     }
 
     const ColumnSchema& column_schema = VERIFY_RESULT(schema.column_by_id(col_id));
-    if (i >= static_cast<size_t>(range_cols.size()) ||
-        it->value().value_case() == QLValuePB::VALUE_NOT_SET) {
-      result.emplace_back(
-          lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
+
+    if (schema.table_properties().partitioning_version() > 0) {
+      if (column_idx < static_cast<size_t>(range_cols.size())) {
+        result.push_back(docdb::KeyEntryValue::FromQLValuePBForKey(
+            range_cols_it->value(), column_schema.sorting_type()));
+      } else {
+        result.emplace_back(
+            lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
+      }
     } else {
-      result.push_back(docdb::KeyEntryValue::FromQLValuePB(
-          it->value(), column_schema.sorting_type()));
+      if (column_idx >= static_cast<size_t>(range_cols.size()) ||
+          range_cols_it->value().value_case() == QLValuePB::VALUE_NOT_SET) {
+        result.emplace_back(
+            lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
+      } else {
+        result.push_back(docdb::KeyEntryValue::FromQLValuePB(
+            range_cols_it->value(), column_schema.sorting_type()));
+      }
     }
 
-    ++it;
-    if (++i == num_range_key_columns) {
+    ++range_cols_it;
+    if (++column_idx == num_range_key_columns) {
       break;
     }
+  }
 
-    if (!lower_bound) {
-      result.emplace_back(docdb::KeyEntryType::kHighest);
-    }
+  if (!lower_bound) {
+    result.emplace_back(docdb::KeyEntryType::kHighest);
   }
   return result;
 }
