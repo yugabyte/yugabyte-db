@@ -90,8 +90,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle,
-              provider.getK8sPodAddrTemplate());
+              newNamingStyle);
 
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
         PlacementInfo pi = cluster.placementInfo;

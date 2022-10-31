@@ -99,6 +99,9 @@ public class Util {
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
 
+  public static final String K8S_POD_FQDN_TEMPLATE =
+      "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
+
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
           .put("s", TimeUnit.SECONDS.toNanos(1))
