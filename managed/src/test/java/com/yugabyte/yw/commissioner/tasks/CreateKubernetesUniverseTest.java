@@ -70,6 +70,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private String ns, ns1, ns2, ns3;
   private Map<String, String> expectedNodeNameToIP;
 
+  private AvailabilityZone az1, az2, az3;
   private Map<String, String> config = new HashMap<>();
   private Map<String, String> config1 = new HashMap<>();
   private Map<String, String> config2 = new HashMap<>();
@@ -80,9 +81,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupUniverseMultiAZ(
       boolean setMasters, boolean enabledYEDIS, boolean setNamespace, boolean newNamingStyle) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
+    az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
+    az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -586,9 +587,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         true /* YEDIS/REDIS enabled */,
         false /* set namespace */,
         false /* new naming */);
-    config.put("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
-    defaultProvider.setConfig(config);
-    defaultProvider.save();
+    Map<String, String> azConfig =
+        ImmutableMap.of("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
+    az1.updateConfig(azConfig);
+    az2.updateConfig(azConfig);
+    az3.updateConfig(azConfig);
+
     setupCommon();
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();

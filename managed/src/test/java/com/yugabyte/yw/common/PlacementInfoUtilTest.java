@@ -1711,12 +1711,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
     String nodePrefix = "demo-universe";
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     // New naming style
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
     String masterAddressFormat =
         "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
     String expectedMasterAddresses =
@@ -1730,7 +1729,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old naming style
     masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
     masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
     expectedMasterAddresses =
         String.format(masterAddressFormat, nodePrefix, az1.code)
@@ -1752,11 +1751,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
     assertEquals(
         "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
         masterAddresses);
