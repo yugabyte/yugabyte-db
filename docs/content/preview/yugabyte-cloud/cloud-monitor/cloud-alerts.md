@@ -115,7 +115,7 @@ If fewer than 34% of nodes in a multi-node (that is, highly available) cluster a
 
 If more than 66% of nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
 
-For information on adding nodes, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+When cluster nodes go down, Yugabyte is notified automatically and will restore the nodes as quickly as possible.
 
 #### Fix memory alerts
 
