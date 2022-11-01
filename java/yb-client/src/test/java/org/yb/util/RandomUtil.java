@@ -19,10 +19,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Random;
 
-public class RandomNumberUtil {
-  private static final Logger LOG = LoggerFactory.getLogger(RandomNumberUtil.class);
+public class RandomUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(RandomUtil.class);
   private static Random randomGenerator;
 
   public static Random getRandomGenerator() {
@@ -51,4 +52,8 @@ public class RandomNumberUtil {
     return randomGenerator.nextInt(Integer.MAX_VALUE);
   }
 
+  public static <T> T getRandomElement(List<T> list) {
+    int i = randomGenerator.nextInt(list.size());
+    return list.get(i);
+  }
 }
