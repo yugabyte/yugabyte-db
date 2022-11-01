@@ -70,6 +70,27 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final int PG_OUTPUT_BUFFER_SIZE_BYTES = 1024;
 
   /**
+   * There are some test cases to verify that automatic query restarts are not happening
+   * if the query has started to return data to the client. The tests are based on relatively high
+   * probability of the fact, that the tablet that would initiate query restart is encountered
+   * later in the scan, so the scan would start emitting some rows. Combined with too long output
+   * row and too short output buffer cause buffer to flush, triggering the condition when the query
+   * should not restart automatically.
+   *
+   * However, probability drastically changes when request are sent in parallel. If there is a
+   * tablet that would require query restart, it responds immediately, and there is a high
+   * probability that it is received first, before any rows are emitted.
+   *
+   * Solution is to create significantly more tablets than the parallelism level, so there is a
+   * higher chance that the tablet that would initiate query restart is not in the first batch of
+   * requests.
+   *
+   * Default parallelism is 6, gives the probability of about 75%. Number of tablets may be
+   * increased or parallelism may be capped if tests that expect restart error fail too often.
+   */
+  private static final int NUM_TABLETS = 24;
+
+  /**
    * Size of long strings to provoke read restart errors. This should be comparable to
    * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} so as to force buffer flushes - thus preventing YSQL from
    * doing a transparent restart.
@@ -113,7 +134,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   public void setUp() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       LOG.info("Creating table test_rr");
-      stmt.execute("CREATE TABLE test_rr (id SERIAL PRIMARY KEY, t TEXT, i INT)");
+      stmt.execute(String.format("CREATE TABLE test_rr (id SERIAL PRIMARY KEY, t TEXT, i INT) " +
+                                 "SPLIT INTO %d TABLETS", NUM_TABLETS));
     }
   }
 

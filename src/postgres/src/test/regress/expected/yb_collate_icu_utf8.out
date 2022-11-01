@@ -110,8 +110,8 @@ SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" orde
 ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
 LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
                                                              ^
--- Repeat the test with expression pushdown enabled
-set yb_enable_expression_pushdown to true;
+-- Repeat the test with expression pushdown disabled
+set yb_enable_expression_pushdown to off;
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
              QUERY PLAN
 ------------------------------------
@@ -131,21 +131,21 @@ EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
-                QUERY PLAN
--------------------------------------------
+             QUERY PLAN
+------------------------------------
  Sort
    Sort Key: a
    ->  Seq Scan on collate_test3
-         Remote Filter: (b >= 'bbc'::text)
+         Filter: (b >= 'bbc'::text)
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
-                QUERY PLAN
--------------------------------------------
+             QUERY PLAN
+------------------------------------
  Sort
    Sort Key: a
    ->  Seq Scan on collate_test3
-         Remote Filter: (b >= 'BBC'::text)
+         Filter: (b >= 'BBC'::text)
 (4 rows)
 
 SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
@@ -177,30 +177,30 @@ SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
 (3 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
-                    QUERY PLAN
----------------------------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Sort
    Sort Key: a
    ->  Seq Scan on collate_test1
-         Remote Filter: ((b)::text >= 'bbc'::text)
+         Filter: ((b)::text >= 'bbc'::text)
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
-                      QUERY PLAN
--------------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Sort
    Sort Key: a
    ->  Seq Scan on collate_test1
-         Remote Filter: (b >= 'bbc'::text COLLATE "C")
+         Filter: (b >= 'bbc'::text COLLATE "C")
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
-                          QUERY PLAN
----------------------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Sort
    Sort Key: a
    ->  Seq Scan on collate_test1
-         Remote Filter: ((b)::text >= 'bbc'::text COLLATE "C")
+         Filter: ((b)::text >= 'bbc'::text COLLATE "C")
 (4 rows)
 
 EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
@@ -232,7 +232,7 @@ SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" orde
 ERROR:  collation mismatch between explicit collations "C" and "en-x-icu"
 LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
                                                              ^
-set yb_enable_expression_pushdown to false;
+set yb_enable_expression_pushdown to on;
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu"; -- fails
 ERROR:  collations are not supported by type integer

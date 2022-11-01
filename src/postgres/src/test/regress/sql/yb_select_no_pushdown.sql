@@ -1,5 +1,5 @@
--- Test expression pushdown in scans
-SET yb_enable_expression_pushdown to on;
+-- Test disabled expression pushdown in scans
+SET yb_enable_expression_pushdown to off;
 -- For environment independent output of timestamps
 SET timezone to 'UTC';
 
