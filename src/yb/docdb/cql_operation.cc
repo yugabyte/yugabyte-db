@@ -1646,7 +1646,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                   const QLResultSet* resultset,
                                                   const size_t row_count_limit,
                                                   const size_t num_rows_skipped,

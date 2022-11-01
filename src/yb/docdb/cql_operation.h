@@ -230,11 +230,11 @@ class QLReadOperation : public DocExprExecutor {
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
-                                           const QLResultSet* resultset,
-                                           const size_t row_count_limit,
-                                           const size_t num_rows_skipped,
-                                           const ReadHybridTime& read_time);
+  Status SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
+                                   const QLResultSet* resultset,
+                                   const size_t row_count_limit,
+                                   const size_t num_rows_skipped,
+                                   const ReadHybridTime& read_time);
 
   const QLReadRequestPB& request_;
   const TransactionOperationContext txn_op_context_;
