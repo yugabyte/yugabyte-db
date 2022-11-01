@@ -129,7 +129,7 @@ main {
       }
 
       code {
-		/*
+        /*
         &:not([class*=language]) {
           background-color: #f2f6ff !important;
           box-shadow: 0 0 1px 1px #cbdbff;
@@ -151,7 +151,7 @@ main {
 
       p {
         >code {
-		  /*
+          /*
           &:not([class*=language]) {
             background-color: #f2f6ff !important;
             box-shadow: 0 0 1px 1px #cbdbff;
@@ -174,10 +174,10 @@ main {
     }
 
     .admonition.note {
+      &::before {
+        background-size: 19px 20px;
+      }
 
-	  &:before{
-		background-size: 19px 20px;
-	  }
       code {
         //background-color: #fff !important;
         //box-shadow: 0 0 1px 0 #507ce1;

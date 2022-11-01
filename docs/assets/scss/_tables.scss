@@ -18,12 +18,8 @@ main {
         }
 
         &::-webkit-scrollbar-thumb {
-          background: #B7C3CB;
+          background: #b7c3cb;
           border-radius: 6px;
-        }
-
-        &::-webkit-scrollbar-thumb:hover {
-          //background: var(--theme-dark-color);
         }
       }
 

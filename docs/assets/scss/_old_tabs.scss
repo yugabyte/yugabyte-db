@@ -8,12 +8,14 @@
     li {
       width: calc(33.3% - 8px);
       margin: 0 !important;
-	  @media(max-width:1199px){
-		width: calc(50% - 8px);
-	  }
-	  @media(max-width:767px){
-		width: calc(100%);
-	  }
+
+      @media (max-width: 1199px) {
+        width: calc(50% - 8px);
+      }
+
+      @media (max-width: 767px) {
+        width: calc(100%);
+      }
 
       a.nav-link {
         padding: 16px 12px;
