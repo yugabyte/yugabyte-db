@@ -26,6 +26,7 @@
       width: 1080px;
       max-width: 100%;
       display: flex;
+	  min-height:100vh;
     }
   }
 
@@ -114,15 +115,34 @@
   }
 }
 
+@media (max-width: 1380px) and (min-width:1200px) {
+  .td-main {
+	.content-child {
+	  justify-content:flex-end;
+	  .td-sidebar-toc {
+		width: 25% !important;
+		padding: 50px 20px 0;
+	  }
+	  .td-sidebar-toc + main {
+		width: 75%;
+		max-width: 100%;
+	  }
+	}
+  }
+}
 @media (max-width: 1199px) {
   .td-main {
     .content-parent {
       max-width: calc(100% - 250px);
       justify-content: flex-end;
+      padding-left: 20px;
       padding-right: 20px;
+	  margin-left: 0;
 
       .content-child {
         max-width: 100%;
+		justify-content:center;
+
       }
 
       main {

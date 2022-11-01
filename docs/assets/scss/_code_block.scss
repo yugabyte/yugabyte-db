@@ -1,11 +1,7 @@
 main {
   .td-content {
-	.highlight{
-	  pre {
-		width: calc(100% + 20px);
-		padding-right: 20px !important;
-	  }
-	}
+	//.highlight {
+	//}
 	code {
 	  display: inline-block;
 	  vertical-align: middle;
@@ -29,6 +25,7 @@ main {
 	  }
 	}
 
+	td > code,
 	li > a > code,
 	li > code,
 	p > code {
@@ -90,10 +87,21 @@ main {
 	  overflow-y: auto;
 	  overflow-x: visible;
 	  min-height: 85px;
-	  //width: calc(100% + 20px);
-	  //padding-right: 20px !important;
 	  font-weight: 400;
 	  font-size: 13px;
+
+	  &::after {
+		content: "";
+		display: inline-block;
+		background: #f7fafc;
+		height: 37px;
+		position: absolute;
+		right: 1px;
+		width: 40px;
+		top: 6px;
+		z-index: 0;
+		border-radius: 5px;
+	  }
 
 	  &:has(code > span:only-child) {
 		margin-bottom: -35px;
@@ -105,8 +113,7 @@ main {
 		width: 100% !important;
 		line-height: inherit;
 		border-radius: 7px;
-		//padding: 4px 48px 4px 16px;
-		padding         :11px 47px 11px 15px;
+		padding: 11px 47px 11px 15px;
 		margin: 0;
 		border-width: 1px;
 		border-style: solid;
@@ -146,7 +153,7 @@ main {
 		height: 32px;
 		background-color: rgba(229, 237, 255, 0);
 		background-size: 15px;
-		right: 27px;
+		right: 3px;
 		top: 6.7px;
 		border-radius: 8px;
 		background-image: url(/icons/copy-icon.svg);
@@ -164,8 +171,8 @@ main {
 			box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.1);
 			border-radius: 8px;
 			position: absolute;
-			top: 90%;
-			left: -5px;
+			top: calc(100% + 4px);
+			left: 0;
 			z-index: 9999999;
 			width: 49px;
 			height: 36px;
@@ -181,7 +188,9 @@ main {
 
 		&:not(.unclicked):hover:before {
 		  content: "Copied";
-		  left: -6px;
+		  left: 0;
+		  width: 59px;
+		  height: 36px;
 		}
 
 		&:not(.unclicked)::after {
@@ -218,32 +227,22 @@ main {
 
 	  &:has(code:only-child) {
 		> code {
-		  padding: 11px 15px;
+		  //padding: 11px 15px;
 		}
 	  }
 	}
 
-	.highlight {
-	  pre {
-		&::after {
-		  content: "";
-		  display: inline-block;
-		  background: #f7fafc;
-		  height: 37px;
-		  position: absolute;
-		  right: 21px;
-		  width: 40px;
-		  top: 6px;
-		  z-index: 0;
-		  border-radius: 5px;
-		}
+	pre:has(.copy) {
+	  width: calc(100% + 20px);
+	  padding-right: 20px !important;
+	  max-width: none;
 
-		&:has(code > span:only-child) {
-		  &::after {
-			top: 11px;
-			height: 24px;
-		  }
-		}
+	  &::after {
+		right: 21px;
+	  }
+
+	  button.copy {
+		right: 27px;
 	  }
 	}
   }

@@ -15,12 +15,14 @@ rightNav:
   <ul class="tabs-name">
     <li>
       <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
+                <img src="/icons/cloud-icon.svg" alt="Icon">
+Use a cloud cluster
       </a>
     </li>
     <li class="active">
       <a href="../../quick-start/" class="nav-link">
-        Use a local cluster
+                <img src="/icons/server-iconsvg.svg" alt="Icon">
+Use a local cluster
       </a>
     </li>
   </ul>

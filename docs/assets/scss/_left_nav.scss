@@ -735,7 +735,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i::before {
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a.current + i::before {
   background: var(--theme-color) !important;
-}
+ }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul {
   padding-left: 0;
@@ -817,6 +817,8 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list > li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
   background: var(--theme-color) !important;
+  content:'' !important;
+
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > a,
