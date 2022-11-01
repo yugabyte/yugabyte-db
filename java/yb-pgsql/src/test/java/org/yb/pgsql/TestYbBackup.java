@@ -1458,7 +1458,7 @@ public class TestYbBackup extends BasePgSQLTest {
                    " '', 'SeqScan(tbl1)')");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("YB Seq Scan on tbl1"),
-                  new Row("  Filter: (k = 1)"));
+                  new Row("  Remote Filter: (k = 1)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),
@@ -1481,10 +1481,10 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("YB Seq Scan on tbl1"),
-                  new Row("  Filter: (k = 1)"));
+                  new Row("  Remote Filter: (k = 1)"));
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl2 WHERE tbl2.k = 3",
                   new Row("YB Seq Scan on tbl2"),
-                  new Row("  Filter: (k = 3)"));
+                  new Row("  Remote Filter: (k = 3)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),

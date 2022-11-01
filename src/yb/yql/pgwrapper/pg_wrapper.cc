@@ -106,6 +106,11 @@ TAG_FLAG(ysql_hba_conf, sensitive_info);
   BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
   TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
 
+#define DEFINE_RUNTIME_AUTO_PG_FLAG(type, name, flag_class, initial_val, target_val, description) \
+  BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
+                                           description); \
+  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
+
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
     "is provided, Postgres will determine one based on the environment");
@@ -131,7 +136,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
     "least the specified number of milliseconds. Zero prints all queries. -1 turns this feature "
     "off.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_expression_pushdown, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,

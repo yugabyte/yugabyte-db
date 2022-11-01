@@ -1326,9 +1326,9 @@ class PgMiniTestTxnHelperSerializable
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2, 3)"));
 
-    if (enable_expression_pushdown) {
-      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
-      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    if (!enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO false"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO false"));
     }
 
     ASSERT_OK(StartTxn(&conn));
@@ -1363,9 +1363,9 @@ class PgMiniTestTxnHelperSnapshot
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
-    if (enable_expression_pushdown) {
-      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
-      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    if (!enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO false"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO false"));
     }
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
@@ -1515,7 +1515,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
     for (size_t i = 0; i < thread_count; ++i) {
       thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
         auto thread_conn = ASSERT_RESULT(Connect());
-        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
         latch.CountDown();
         latch.Wait();
         for (size_t j = 0; j < increment_per_thread; ++j) {
