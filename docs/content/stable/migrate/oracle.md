@@ -52,15 +52,3 @@ Create a role and a database user, and provide the user with READ access to all 
    ```
 
    The `ybvoyager` user can now be used for migration.
-
-1. You'll need to provide the user and the source database details in the subsequent invocations of yb-voyager. For convenience, you can populate the information in the following environment variables:
-
-   ```sh
-   export SOURCE_DB_TYPE=oracle
-   export SOURCE_DB_HOST=localhost
-   export SOURCE_DB_PORT=1521
-   export SOURCE_DB_USER=ybvoyager
-   export SOURCE_DB_PASSWORD=password
-   export SOURCE_DB_NAME=source_db_name
-   export SOURCE_DB_SCHEMA=source_schema_name
-   ```

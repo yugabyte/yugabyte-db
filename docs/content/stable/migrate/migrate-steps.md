@@ -54,14 +54,6 @@ Prepare your source database by creating a new database user, and provide it wit
   </div>
 </div>
 
-{{< note title="Note" >}}
-
-- For PostgreSQL, yb-voyager supports migrating _all_ schemas of the source database. It does not support migrating _only a subset_ of the schemas.
-
-- For Oracle, you can migrate only one schema at a time.
-
-{{< /note >}}
-
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
 
 ## Prepare the target database
