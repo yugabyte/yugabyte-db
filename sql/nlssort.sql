@@ -12,7 +12,21 @@ SELECT getdatabaseencoding() <> 'UTF8' OR
 \set ECHO none
 SET client_min_messages = error;
 DROP DATABASE IF EXISTS regression_sort;
+
+-- For PG >= 15 explicitly set the locale provider libc when creating the
+-- database with SQL_ASCII encoding. Otherwise during installcheck the new
+-- database may use the ICU locale provider (from template0) which does not
+-- support this encoding.
+
+SELECT current_setting('server_version_num')::integer >= 150000
+       AS set_libc_locale_provider \gset
+
+\if :set_libc_locale_provider
+CREATE DATABASE regression_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C' LOCALE_PROVIDER='libc';
+\else
 CREATE DATABASE regression_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
+\endif
+
 \c regression_sort
 SET client_min_messages = error;
 
