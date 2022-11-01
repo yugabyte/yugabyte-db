@@ -50,7 +50,7 @@ When the condition that caused the alert resolves, the notification dismisses au
 
 ## Cluster health
 
-YugabyteDB monitors the health of your clusters, based on [cluster alert](#cluster-alerts) conditions, and displays the health as either Healthy, Needs Attention, or Unhealthy based criteria as shown in the following table.
+YugabyteDB monitors the health of your clusters based on [cluster alert](#cluster-alerts) conditions and displays the health as either Healthy, Needs Attention, or Unhealthy. The following table provides details on the criteria used to determine the cluster health.
 
 | Status | Alert | Level |
 | :----- | :---- | :---- |
@@ -105,13 +105,13 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix nodes reporting as down alerts
 
-YugabyteDB Managed sends a notification when the number of nodes down in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed sends a notification when the number of nodes that are down in a cluster exceeds the threshold, as follows:
 
 - Up to 34% of all nodes in the cluster are reporting as down (Info).
 - More than 34% of all nodes in the cluster are reporting as down (Warning).
 - More than 66% of all nodes in the cluster are reporting as down (Severe).
 
-If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests normally.
+If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests.
 
 If more than 66% of nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
 
@@ -126,7 +126,7 @@ YugabyteDB Managed sends a notification when memory use in the cluster exceeds t
 
 If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
 
-Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the `EXPLAIN` statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
 
 If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
