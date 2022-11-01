@@ -33,7 +33,8 @@ Status RunBackupCommand(
     const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args) {
   std::vector <std::string> args = {
-      "python3", GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
+      GetToolPath("../../../build-support", "run_in_build_python_venv.sh"),
+      GetToolPath("../../../managed/devops/bin", "yb_backup.py"),
       "--masters", master_addresses,
       "--ts_web_hosts_ports", tserver_http_addresses,
       "--remote_yb_admin_binary", GetToolPath("yb-admin"),

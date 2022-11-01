@@ -40,10 +40,11 @@ import org.slf4j.LoggerFactory;
 import org.apache.commons.io.FileUtils;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.SystemUtil;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -55,7 +56,7 @@ import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
@@ -887,8 +888,16 @@ public class TestYbBackup extends BasePgSQLTest {
       JSONObject json = new JSONObject(output);
       long expectedBackupSize = json.getLong("backup_size_in_bytes");
       long actualBackupSize = FileUtils.sizeOfDirectory(new File(json.getString("snapshot_url")));
+      LOG.info("Expected size = " + expectedBackupSize + "  ActualSize = " + actualBackupSize);
       long allowedDelta = 1 * 1024;     // 1 KB
-      assertLessThan(Math.abs(expectedBackupSize - actualBackupSize), allowedDelta);
+
+      // On MAC the expected size can be zero - not calculated.
+      // On MAC 'du -sb' does not work: '-b' is not supported.
+      // The issue on MAC is ignored for now because MacOS is not a production OS.
+      // https://github.com/yugabyte/yugabyte-db/issues/14724
+      if (SystemUtil.IS_LINUX) {
+        assertLessThan(Math.abs(expectedBackupSize - actualBackupSize), allowedDelta);
+      }
     }
   }
 

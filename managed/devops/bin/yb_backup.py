@@ -372,20 +372,26 @@ def compare_checksums_cmd(checksum_file1, checksum_file2, error_on_failure=False
 
 
 def get_db_name_cmd(dump_file):
-    return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
+    return r"sed -n 's/CREATE DATABASE\(.*\)WITH.*/\1/p' " + pipes.quote(dump_file)
 
 
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
-    return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
+    return r"sed -i -e $'{}' {}".format(reg_exp, pipes.quote(dump_file))
 
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
     return apply_sed_edit_reg_exp_cmd(
         dump_file,
-        "s|DATABASE {0}|DATABASE {1}|;"
-        "s|\\\\connect {0}|\\\\connect {1}|;"
-        "s|\\\\connect {2}|\\\\connect {1}|;"
-        "s|\\\\connect -reuse-previous=on \\\"dbname=\\x27{2}\\x27\\\"|\\\\connect {1}|".format(
+        # Replace in YSQLDump:
+        #     CREATE DATABASE old_name ...                     -> CREATE DATABASE new_name ...
+        #     ALTER DATABASE old_name ...                      -> ALTER DATABASE new_name ...
+        #     \connect old_name                                -> \connect new_name
+        #     \connect "old_name"                              -> \connect new_name
+        #     \connect -reuse-previous=on "dbname='old_name'"  -> \connect new_name
+        r's|DATABASE {0}|DATABASE {1}|;'
+        r's|\\\\connect {0}|\\\\connect {1}|;'
+        r's|\\\\connect {2}|\\\\connect {1}|;'
+        r's|\\\\connect -reuse-previous=on \\"dbname=\x27{2}\x27\\"|\\\\connect {1}|'.format(
                 old_name, new_name, old_name.replace('"', "")))
 
 
@@ -649,6 +655,9 @@ class NfsBackupStorage(AbstractBackupStorage):
         return ["rm", "-rf", pipes.quote(dest)]
 
     def backup_obj_size_cmd(self, backup_obj_location):
+        # On MAC 'du -sb' does not work: '-b' is not supported.
+        # It's possible to use another approach: size = 'du -sk'*1024.
+        # But it's not implemented because MAC is not the production platform now.
         return ["du", "-sb", backup_obj_location]
 
 
@@ -2225,9 +2234,9 @@ class YBBackup:
                 for data_dir in data_dirs:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                        ['find', data_dir,
-                         '!', '-readable', '-prune', '-o',
-                         '-name', TABLET_MASK,
+                        ['find', data_dir] +
+                        ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
+                        ['-name', TABLET_MASK,
                          '-and',
                          '-wholename', TABLET_DIR_GLOB.format(table_id),
                          '-print'],
@@ -2289,9 +2298,9 @@ class YBBackup:
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
         output = self.run_ssh_cmd(
-            ['find', data_dir,
-             '!', '-readable', '-prune', '-o',
-             '-name', snapshot_id, '-and',
+            ['find', data_dir] +
+            ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
+            ['-name', snapshot_id, '-and',
              '-wholename', SNAPSHOT_DIR_GLOB,
              '-print'],
             tserver_ip)

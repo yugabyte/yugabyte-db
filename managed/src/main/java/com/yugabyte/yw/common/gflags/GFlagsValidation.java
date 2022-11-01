@@ -64,44 +64,51 @@ public class GFlagsValidation {
     File file =
         new File(
             String.format("%s/%s/%s_flags.xml", releasesPath, version, serverType.toLowerCase()));
-    InputStream flagStream;
-    if (Files.exists(Paths.get(file.getAbsolutePath()))) {
-      flagStream = FileUtils.getInputStreamOrFail(file);
-    } else {
-      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
-      flagStream =
-          environment.resourceAsStream(
-              "gflags_metadata/" + majorVersion + "/" + serverType.toLowerCase() + ".xml");
-      if (flagStream == null) {
-        LOG.error("GFlags metadata file for " + majorVersion + " is not present");
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "GFlags metadata file for " + majorVersion + " is not present");
-      }
-    }
-    JacksonXmlModule xmlModule = new JacksonXmlModule();
-    xmlModule.setDefaultUseWrapper(false);
-    XmlMapper xmlMapper = new XmlMapper(xmlModule);
-    AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
-    if (mostUsedGFlags) {
-      InputStream inputStream =
-          environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
-      ObjectMapper mapper = new ObjectMapper();
-      MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
-      List<GFlagDetails> result = new ArrayList<>();
-      for (GFlagDetails flag : data.flags) {
-        if (serverType.equals(ServerType.MASTER.name())) {
-          if (freqUsedGFlags.masterGFlags.contains(flag.name)) {
-            result.add(flag);
-          }
-        } else {
-          if (freqUsedGFlags.tserverGFlags.contains(flag.name)) {
-            result.add(flag);
-          }
+    InputStream flagStream = null;
+    try {
+      if (Files.exists(Paths.get(file.getAbsolutePath()))) {
+        flagStream = FileUtils.getInputStreamOrFail(file);
+      } else {
+        String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+        flagStream =
+            environment.resourceAsStream(
+                "gflags_metadata/" + majorVersion + "/" + serverType.toLowerCase() + ".xml");
+        if (flagStream == null) {
+          LOG.error("GFlags metadata file for " + majorVersion + " is not present");
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "GFlags metadata file for " + majorVersion + " is not present");
         }
       }
-      return result;
+      JacksonXmlModule xmlModule = new JacksonXmlModule();
+      xmlModule.setDefaultUseWrapper(false);
+      XmlMapper xmlMapper = new XmlMapper(xmlModule);
+      AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
+      if (mostUsedGFlags) {
+        InputStream inputStream =
+            environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
+        ObjectMapper mapper = new ObjectMapper();
+        MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
+        List<GFlagDetails> result = new ArrayList<>();
+        for (GFlagDetails flag : data.flags) {
+          if (serverType.equals(ServerType.MASTER.name())) {
+            if (freqUsedGFlags.masterGFlags.contains(flag.name)) {
+              result.add(flag);
+            }
+          } else {
+            if (freqUsedGFlags.tserverGFlags.contains(flag.name)) {
+              result.add(flag);
+            }
+          }
+        }
+        return result;
+      }
+      return data.flags;
+    } finally {
+      if (flagStream != null) {
+        flagStream.close();
+      }
     }
-    return data.flags;
   }
 
   public void fetchGFlagFilesFromTarGZipInputStream(
