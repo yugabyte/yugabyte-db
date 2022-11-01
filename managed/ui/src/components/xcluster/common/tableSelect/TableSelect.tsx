@@ -8,41 +8,70 @@ import {
 } from 'react-bootstrap-table';
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
-import { FormikErrors, FormikProps } from 'formik';
+import clsx from 'clsx';
 
-import { fetchTablesInUniverse, fetchXClusterConfig } from '../../../actions/xClusterReplication';
-import { api } from '../../../redesign/helpers/api';
-import { YBControlledSelect, YBInputField } from '../../common/forms/fields';
-import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { hasSubstringMatch } from '../../queries/helpers/queriesHelper';
+import {
+  fetchTablesInUniverse,
+  fetchXClusterConfig
+} from '../../../../actions/xClusterReplication';
+import { api } from '../../../../redesign/helpers/api';
+import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
+import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
+import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
   getSharedXClusterConfigs,
   tableSort
-} from '../ReplicationUtils';
+} from '../../ReplicationUtils';
 import {
-  CreateXClusterConfigFormErrors,
-  CreateXClusterConfigFormValues,
-  CreateXClusterConfigFormWarnings
-} from './CreateConfigModal';
-import { SortOrder } from '../constants';
+  SortOrder,
+  XClusterConfigAction,
+  XClusterTableIneligibleStatuses,
+  YBTableRelationType
+} from '../../constants';
+import YBPagination from '../../../tables/YBPagination/YBPagination';
+import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
-import YBPagination from '../../tables/YBPagination/YBPagination';
-import { CollapsibleNote } from '../common/CollapsibleNote';
-import { YBTableRelationType } from '../../../redesign/helpers/constants';
+import { XClusterTableEligibility } from '../../constants';
+import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
 
-import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
-import { XClusterTableEligibility } from '../common/TableEligibilityPill';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
+import {
+  EligibilityDetails,
+  KeyspaceItem,
+  KeyspaceRow,
+  ReplicationItems,
+  XClusterTableCandidate
+} from '../..';
 
-import styles from './SelectTablesStep.module.scss';
-import clsx from 'clsx';
+import styles from './TableSelect.module.scss';
 
-const TableTypeLabel: Record<XClusterTableType, string> = {
-  [TableType.YQL_TABLE_TYPE]: 'YCQL',
-  [TableType.PGSQL_TABLE_TYPE]: 'YSQL'
-} as const;
+interface CommonTableSelectProps {
+  sourceUniverseUUID: string;
+  targetUniverseUUID: string;
+  selectedTableUUIDs: string[];
+  setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  isTableSelectionValidated: boolean;
+  setIsTableSelectionValidated: (isTableSelectionValidated: boolean) => void;
+  isFixedTableType: boolean;
+  tableType: XClusterTableType;
+  setTableType: (tableType: XClusterTableType) => void;
+  selectedKeyspaces: string[];
+  setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
+  selectionError: { title?: string; body?: string } | undefined;
+  selectionWarning: { title: string; body: string } | undefined;
+}
+
+type TableSelectProps =
+  | (CommonTableSelectProps & {
+      configAction: typeof XClusterConfigAction.CREATE;
+    })
+  | (CommonTableSelectProps & {
+      configAction: typeof XClusterConfigAction.ADD_TABLE | typeof XClusterConfigAction.RESTART;
+      xClusterConfigUUID: string;
+    });
 
 const DEFAULT_TABLE_TYPE_OPTION = {
   value: TableType.PGSQL_TABLE_TYPE,
@@ -68,12 +97,15 @@ const TABLE_TYPE_SELECT_STYLES = {
   })
 };
 
-const FORM_INSTRUCTION = 'Select the tables you want to replicate';
 const TABLE_DESCRIPTOR = 'List of keyspaces and tables in the source universe';
 
 const NOTE_CONTENT = (
   <p>
     <b>Note!</b>
+    <p>
+      Tables in an xCluster configuration must all be of the same type (YCQL or YSQL). Please create
+      a separate xCluster configuration if you wish to replicate tables of a different type.
+    </p>
     <p>
       Index tables are not shown. Replication for these tables will automatically be set up if the
       main table is selected.
@@ -136,91 +168,47 @@ const NOTE_EXPAND_CONTENT = (
 );
 
 /**
- * This type stores details of a table's eligibility for xCluster replication.
+ * Input component for selecting tables for xCluster configuration.
+ * The state of selected tables and keyspaces is controlled externally.
  */
-export type EligibilityDetails =
-  | {
-      state: XClusterTableEligibility.ELIGIBLE;
-    }
-  | { state: XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string }
-  | { state: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
-
-/**
- * YBTable with an EligibilityDetail field
- */
-export interface XClusterTable extends YBTable {
-  eligibilityDetails: EligibilityDetails;
-}
-
-/**
- * Holds list of tables for a keyspace and provides extra metadata.
- */
-interface KeyspaceItem {
-  eligibleTables: number;
-  sizeBytes: number;
-  tables: XClusterTable[];
-}
-
-export interface KeyspaceRow extends KeyspaceItem {
-  keyspace: string;
-}
-
-/**
- * Structure for organizing tables by table type first and keyspace/database name second.
- */
-type ReplicationItems = Record<
-  XClusterTableType,
-  { keyspaces: Record<string, KeyspaceItem>; tableCount: number }
->;
-
-interface SelectTablesStepProps {
-  formik: React.MutableRefObject<FormikProps<CreateXClusterConfigFormValues>>;
-  sourceTables: YBTable[];
-  currentUniverseUUID: string;
-  setTableUUIDs: (tableUUIDs: string[]) => void;
-  tableType: XClusterTableType;
-  setTableType: (tableType: XClusterTableType) => void;
-  selectedKeyspaces: string[];
-  setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
-  formWarnings: CreateXClusterConfigFormWarnings;
-}
-
-export const SelectTablesStep = ({
-  formik,
-  sourceTables,
-  currentUniverseUUID,
-  setTableUUIDs,
-  tableType,
-  setTableType,
-  selectedKeyspaces,
-  setSelectedKeyspaces,
-  formWarnings
-}: SelectTablesStepProps) => {
+export const TableSelect = (props: TableSelectProps) => {
+  const {
+    sourceUniverseUUID,
+    targetUniverseUUID,
+    selectedTableUUIDs,
+    setSelectedTableUUIDs,
+    isTableSelectionValidated,
+    setIsTableSelectionValidated,
+    tableType,
+    isFixedTableType,
+    setTableType,
+    selectedKeyspaces,
+    setSelectedKeyspaces,
+    selectionError,
+    selectionWarning
+  } = props;
   const [keyspaceSearchTerm, setKeyspaceSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof KeyspaceRow>('keyspace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
-  const { values } = formik.current;
-
-  // Casting because FormikValues and FormikError have different types.
-  const errors = formik.current.errors as FormikErrors<CreateXClusterConfigFormErrors>;
+  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
+    ['universe', sourceUniverseUUID, 'tables'],
+    () => fetchTablesInUniverse(sourceUniverseUUID).then((response) => response.data)
+  );
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', values.targetUniverse.value, 'tables'],
-    () => fetchTablesInUniverse(values.targetUniverse.value.universeUUID).then((res) => res.data),
-    {
-      enabled: !!values?.targetUniverse?.value
-    }
+    ['universe', targetUniverseUUID, 'tables'],
+    () => fetchTablesInUniverse(targetUniverseUUID).then((response) => response.data)
   );
 
-  const sourceUniverseQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
-    api.fetchUniverse(currentUniverseUUID)
+  const sourceUniverseQuery = useQuery<Universe>(['universe', sourceUniverseUUID], () =>
+    api.fetchUniverse(sourceUniverseUUID)
   );
 
-  const targetUniverseQuery = useQuery<Universe>(['universe', values.targetUniverse.value], () =>
-    api.fetchUniverse(values.targetUniverse.value.universeUUID)
+  const targetUniverseQuery = useQuery<Universe>(['universe', targetUniverseUUID], () =>
+    api.fetchUniverse(targetUniverseUUID)
   );
 
   const sharedXClusterConfigUUIDs =
@@ -228,8 +216,6 @@ export const SelectTablesStep = ({
       ? getSharedXClusterConfigs(sourceUniverseQuery.data, targetUniverseQuery.data)
       : [];
 
-  // The unsafe cast is needed due to issue with useQueries typing
-  // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   /**
    * Queries for shared xCluster config UUIDs
    */
@@ -238,9 +224,13 @@ export const SelectTablesStep = ({
       queryKey: ['Xcluster', UUID],
       queryFn: () => fetchXClusterConfig(UUID)
     }))
+    // The unsafe cast is needed due to an issue with useQueries typing
+    // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   ) as UseQueryResult<XClusterConfig>[];
 
   if (
+    sourceUniverseTablesQuery.isLoading ||
+    sourceUniverseTablesQuery.isIdle ||
     targetUniverseTablesQuery.isLoading ||
     targetUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
@@ -252,43 +242,55 @@ export const SelectTablesStep = ({
   }
 
   if (
+    sourceUniverseTablesQuery.isError ||
     targetUniverseTablesQuery.isError ||
     sourceUniverseQuery.isError ||
     targetUniverseQuery.isError
   ) {
     return <YBErrorIndicator />;
   }
+  /**
+   * Wrapper around setFieldValue from formik.
+   * Reset `isTableSelectionValidated` to false if changing
+   * a validated table selection.
+   */
+  const setTableUUIDs = (tableUUIDs: string[]) => {
+    if (isTableSelectionValidated) {
+      setIsTableSelectionValidated(false);
+    }
+    setSelectedTableUUIDs(tableUUIDs);
+  };
 
-  const toggleTableGroup = (isSelected: boolean, rows: XClusterTable[]) => {
+  const toggleTableGroup = (isSelected: boolean, rows: XClusterTableCandidate[]) => {
     if (isSelected) {
       const tableUUIDsToAdd: string[] = [];
-      const currentSelectedTables = new Set(values.tableUUIDs);
+      const currentSelectedTableUUIDs = new Set(selectedTableUUIDs);
 
       rows.forEach((row) => {
-        if (!currentSelectedTables.has(row.tableUUID)) {
+        if (!currentSelectedTableUUIDs.has(row.tableUUID)) {
           tableUUIDsToAdd.push(row.tableUUID);
         }
       });
 
-      setTableUUIDs([...values.tableUUIDs, ...tableUUIDsToAdd]);
+      setTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
     } else {
       const removedTables = new Set(rows.map((row) => row.tableUUID));
 
-      setTableUUIDs(values.tableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID)));
+      setTableUUIDs(selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID)));
     }
   };
 
-  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTable[]) => {
+  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTableCandidate[]) => {
     toggleTableGroup(isSelected, rows);
     return true;
   };
 
-  const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
+  const handleTableSelect = (row: XClusterTableCandidate, isSelected: boolean) => {
     if (isSelected) {
-      setTableUUIDs([...values.tableUUIDs, row.tableUUID]);
+      setTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
     } else {
       setTableUUIDs([
-        ...values['tableUUIDs'].filter((tableUUID: string) => tableUUID !== row.tableUUID)
+        ...selectedTableUUIDs.filter((tableUUID: string) => tableUUID !== row.tableUUID)
       ]);
     }
   };
@@ -314,10 +316,10 @@ export const SelectTablesStep = ({
   };
 
   const handleAllKeyspaceSelect = (isSelected: boolean, rows: KeyspaceRow[]) => {
-    const underlyingTables = rows.reduce((table: XClusterTable[], row) => {
+    const underlyingTables = rows.reduce((table: XClusterTableCandidate[], row) => {
       return table.concat(
         row.tables.filter(
-          (table) => table.eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE
+          (table) => table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED
         )
       );
     }, []);
@@ -336,41 +338,49 @@ export const SelectTablesStep = ({
     toggleTableGroup(
       isSelected,
       row.tables.filter(
-        (table) => table.eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE
+        (table) => table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED
       )
     );
   };
 
   // Casting workaround: https://github.com/JedWatson/react-select/issues/2902
   const handleTableTypeChange = (option: ValueType<typeof TABLE_TYPE_OPTIONS[number]>) => {
-    setTableType((option as typeof TABLE_TYPE_OPTIONS[number])?.value);
+    if (!isFixedTableType) {
+      setTableType((option as typeof TABLE_TYPE_OPTIONS[number])?.value);
 
-    // Clear current item selection.
-    // Form submission should only contain tables of the same type (YSQL or YCQL).
-    setSelectedKeyspaces([]);
-    setTableUUIDs([]);
+      // Clear current item selection.
+      // Form submission should only contain tables of the same type (YSQL or YCQL).
+      setSelectedKeyspaces([]);
+      setTableUUIDs([]);
+    }
   };
 
-  const tableUUIDsInUse = Object.fromEntries(
-    sharedXClusterConfigUUIDs.map((xClusterConfigUUID) => [xClusterConfigUUID, new Set<string>()])
-  );
+  const sharedXClusterConfigs: XClusterConfig[] = [];
   for (const xClusterConfigQuery of sharedXClusterConfigQueries) {
-    if (xClusterConfigQuery.isLoading) {
+    if (xClusterConfigQuery.isLoading || xClusterConfigQuery.isIdle) {
       return <YBLoading />;
     }
-    if (xClusterConfigQuery.isError || xClusterConfigQuery.data === undefined) {
+    if (xClusterConfigQuery.isError) {
       return <YBErrorIndicator />;
     }
-    tableUUIDsInUse[xClusterConfigQuery.data.name] = new Set<string>(
-      xClusterConfigQuery.data.tables
-    );
+    sharedXClusterConfigs.push(xClusterConfigQuery.data);
   }
 
-  const replicationItems = getReplicationItemsFromTables(
-    sourceTables,
-    targetUniverseTablesQuery.data,
-    tableUUIDsInUse
-  );
+  const replicationItems =
+    props.configAction === XClusterConfigAction.ADD_TABLE ||
+    props.configAction === XClusterConfigAction.RESTART
+      ? getReplicationItemsFromTables(
+          sourceUniverseTablesQuery.data,
+          targetUniverseTablesQuery.data,
+          sharedXClusterConfigs,
+          props.xClusterConfigUUID
+        )
+      : getReplicationItemsFromTables(
+          sourceUniverseTablesQuery.data,
+          targetUniverseTablesQuery.data,
+          sharedXClusterConfigs
+        );
+
   const bootstrapTableData = Object.entries(replicationItems[tableType].keyspaces)
     .filter(([keyspace, _]) => hasSubstringMatch(keyspace, keyspaceSearchTerm))
     .map(([keyspace, keyspaceItem]) => ({ keyspace, ...keyspaceItem }));
@@ -390,7 +400,6 @@ export const SelectTablesStep = ({
 
   return (
     <>
-      <div className={styles.formInstruction}>2. {FORM_INSTRUCTION}</div>
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
         <Select
@@ -398,10 +407,11 @@ export const SelectTablesStep = ({
           options={TABLE_TYPE_OPTIONS}
           onChange={handleTableTypeChange}
           value={{ value: tableType, label: TableTypeLabel[tableType] }}
+          isOptionDisabled={(option) => isFixedTableType && option.value !== tableType}
         />
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search.."
+          placeHolder="Search for keyspace.."
           onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
         />
       </div>
@@ -418,7 +428,7 @@ export const SelectTablesStep = ({
           expandComponent={(row: KeyspaceRow) => (
             <ExpandedTableSelect
               row={row}
-              selectedTableUUIDs={values.tableUUIDs}
+              selectedTableUUIDs={selectedTableUUIDs}
               minPageSize={TABLE_MIN_PAGE_SIZE}
               tableType={tableType}
               handleTableSelect={handleTableSelect}
@@ -482,27 +492,27 @@ export const SelectTablesStep = ({
         </div>
       ) : (
         <div>
-          {values.tableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
+          {selectedTableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
         </div>
       )}
 
-      {(errors.tableUUIDs || formWarnings.tableUUIDs) && (
+      {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
-          {errors.tableUUIDs && (
+          {selectionError && (
             <div className={clsx(styles.validation, styles.error)}>
               <i className="fa fa-exclamation-triangle" aria-hidden="true" />
               <div className={styles.message}>
-                <h5>{errors.tableUUIDs.title}</h5>
-                <p>{errors.tableUUIDs.body}</p>
+                <h5>{selectionError.title}</h5>
+                <p>{selectionError.body}</p>
               </div>
             </div>
           )}
-          {formWarnings.tableUUIDs && (
+          {selectionWarning && (
             <div className={clsx(styles.validation, styles.warning)}>
               <i className="fa fa-exclamation-triangle" aria-hidden="true" />
               <div className={styles.message}>
-                <h5>{formWarnings.tableUUIDs.title}</h5>
-                <p>{formWarnings.tableUUIDs.body}</p>
+                <h5>{selectionWarning.title}</h5>
+                <p>{selectionWarning.body}</p>
               </div>
             </div>
           )}
@@ -530,23 +540,25 @@ const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComp
 
 /**
  * Group tables by {@link TableType} and then by keyspace/database name.
- * - A YSQL keyspace (DBs) is not selectable if it contains any 'invalid' table.
- * - Since we provide table-level selection for YCQL, we filter out invalid YCQL
- *   tables from the options.
  */
 function getReplicationItemsFromTables(
   sourceTables: YBTable[],
   targetUniverseTables: YBTable[],
-  tableUUIDsInUse: { [xClusteConfigUUID: string]: Set<string> }
+  sharedXClusterConfigs: XClusterConfig[],
+  currentXClusterConfigUUID?: string
 ): ReplicationItems {
   return sourceTables.reduce(
     (items: ReplicationItems, sourceTable) => {
-      const tableEligibility = getXClusterTableEligibility(
+      const tableEligibility = getXClusterTableEligibilityDetails(
         sourceTable,
         targetUniverseTables,
-        tableUUIDsInUse
+        sharedXClusterConfigs,
+        currentXClusterConfigUUID
       );
-      const xClusterTable: XClusterTable = { eligibilityDetails: tableEligibility, ...sourceTable };
+      const xClusterTable: XClusterTableCandidate = {
+        eligibilityDetails: tableEligibility,
+        ...sourceTable
+      };
       const { tableType, keySpace: keyspace, sizeBytes, eligibilityDetails } = xClusterTable;
 
       // We only support `PGSQL_TABLE_TYPE` and `YQL_TABLE_TYPE` for now.
@@ -557,15 +569,22 @@ function getReplicationItemsFromTables(
         (tableType === TableType.PGSQL_TABLE_TYPE || tableType === TableType.YQL_TABLE_TYPE)
       ) {
         items[tableType].keyspaces[keyspace] = items[tableType].keyspaces[keyspace] ?? {
-          eligibleTables: 0,
+          tableEligibilityCount: {
+            ineligible: 0,
+            eligibleInCurrentConfig: 0
+          },
           sizeBytes: 0,
           tables: []
         };
         items[tableType].keyspaces[keyspace].sizeBytes += sizeBytes;
         items[tableType].keyspaces[keyspace].tables.push(xClusterTable);
         items[tableType].tableCount += 1;
-        if (eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE) {
-          items[tableType].keyspaces[keyspace].eligibleTables += 1;
+        if (XClusterTableIneligibleStatuses.includes(eligibilityDetails.status)) {
+          items[tableType].keyspaces[keyspace].tableEligibilityCount.ineligible += 1;
+        } else if (
+          eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG
+        ) {
+          items[tableType].keyspaces[keyspace].tableEligibilityCount.eligibleInCurrentConfig += 1;
         }
       }
       return items;
@@ -595,36 +614,42 @@ const getTableIdentifier = (table: YBTable): string =>
  * A table is eligible for replication if all of the following holds true:
  * - there exists another table with same keyspace, table name, and schema name
  *   in target universe
- * - the table is NOT part of an existing xCluster config between the same universes
+ * - the table is NOT part of another existing xCluster config between the same universes
  *   in the same direction
  */
-function getXClusterTableEligibility(
+function getXClusterTableEligibilityDetails(
   sourceTable: YBTable,
   targetUniverseTables: YBTable[],
-  tableUUIDsInUse: { [xClusteConfigUUID: string]: Set<string> }
+  sharedXClusterConfigs: XClusterConfig[],
+  currentXClusterConfigUUID?: string
 ): EligibilityDetails {
   const targetUniverseTableIds = new Set(
     targetUniverseTables.map((table) => getTableIdentifier(table))
   );
   if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-    return { state: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+    return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
   }
 
-  for (const [xClusterConfigName, tableUUIDs] of Object.entries(tableUUIDsInUse)) {
-    if (tableUUIDs.has(adaptTableUUID(sourceTable.tableUUID))) {
+  for (const xClusterConfig of sharedXClusterConfigs) {
+    const xClusterConfigTables = new Set(xClusterConfig.tables);
+    if (xClusterConfigTables.has(adaptTableUUID(sourceTable.tableUUID))) {
       return {
-        state: XClusterTableEligibility.INELIGIBLE_IN_USE,
-        xClusterConfigName: xClusterConfigName
+        status:
+          xClusterConfig.uuid === currentXClusterConfigUUID
+            ? XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG
+            : XClusterTableEligibility.INELIGIBLE_IN_USE,
+        xClusterConfigName: xClusterConfig.name
       };
     }
   }
 
-  return { state: XClusterTableEligibility.ELIGIBLE };
+  return { status: XClusterTableEligibility.ELIGIBLE_UNUSED };
 }
 
 /**
- * - YSQL keyspaces are unselectable if they contain at least one ineligible table.
- * - YCQL keyspaces are unselectable if they contain no eligible table.
+ * - YSQL keyspaces are unselectable if they contain at least one ineligible table or
+ *   no unused eligible table.
+ * - YCQL keyspaces are unselectable if they contain no unused eligible table.
  */
 function getUnselectableKeyspaces(
   keyspaceItems: Record<string, KeyspaceItem>,
@@ -632,9 +657,22 @@ function getUnselectableKeyspaces(
 ): string[] {
   return Object.entries(keyspaceItems)
     .filter(([_, keyspaceItem]) => {
-      return tableType === TableType.PGSQL_TABLE_TYPE
-        ? keyspaceItem.eligibleTables < keyspaceItem.tables.length
-        : keyspaceItem.eligibleTables === 0;
+      switch (tableType) {
+        case TableType.PGSQL_TABLE_TYPE:
+          return (
+            keyspaceItem.tableEligibilityCount.ineligible > 0 ||
+            keyspaceItem.tableEligibilityCount.eligibleInCurrentConfig ===
+              keyspaceItem.tables.length
+          );
+        case TableType.YQL_TABLE_TYPE:
+          return (
+            keyspaceItem.tableEligibilityCount.ineligible +
+              keyspaceItem.tableEligibilityCount.eligibleInCurrentConfig ===
+            keyspaceItem.tables.length
+          );
+        default:
+          return assertUnreachableCase(tableType);
+      }
     })
     .map(([keyspace, _]) => keyspace);
 }
