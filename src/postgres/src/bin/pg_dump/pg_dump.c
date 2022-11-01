@@ -336,8 +336,10 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
-static char *getYbSplitClause(Archive *fout, TableInfo *tbinfo);
+static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
+static Oid getDatabaseOid(Archive *fout);
+static PGresult* queryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 
 int
 main(int argc, char **argv)
@@ -783,7 +785,7 @@ main(int argc, char **argv)
 	 * DEPRECATED: Custom YB-Master host/port to use.
 	 */
 	if (dopt.master_hosts)
-		write_msg(NULL, "WARNING: ignoring the deprecated argument --masters (-m)\n");
+		pg_log_info("WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -2178,8 +2180,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	int			rows_this_statement = 0;
 
 	appendPQExpBuffer(q, "DECLARE _pg_dump_cursor CURSOR FOR "
-					  "SELECT %s * FROM ONLY %s",
-					  (tdinfo->oids && tbinfo->hasoids) ? "oid, ": "",
+					  "SELECT * FROM ONLY %s",
 					  fmtQualifiedDumpable(tbinfo));
 	if (tdinfo->filtercond)
 		appendPQExpBuffer(q, " %s", tdinfo->filtercond);
@@ -6398,12 +6399,13 @@ getTables(Archive *fout, int *numTables)
 						  "tc.relfrozenxid AS tfrozenxid, "
 						  "tc.relminmxid AS tminmxid, "
 						  "c.relpersistence, c.relispopulated, "
-						  "c.relreplident, c.relpages, am.amname, "
+						  "c.relreplident, c.relpages, am.amname, ",
 						  acl_subquery->data,
 						  racl_subquery->data,
 						  initacl_subquery->data,
 						  initracl_subquery->data,
-						  username_subquery);
+						  username_subquery,
+						  relhasoids);
 
 		appendPQExpBuffer(query,
 						  "CASE WHEN c.relkind = 'f' THEN "
@@ -7129,7 +7131,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	PQExpBuffer init_racl_subquery = createPQExpBuffer();
 
 	buildACLQueries(acl_subquery, racl_subquery, init_acl_subquery,
-					init_racl_subquery, "tg.grpacl", "tg.grpowner", "'g'",
+					init_racl_subquery, "tg.grpacl", "tg.grpowner", "pip.initprivs", "'g'",
 					fout->dopt->binary_upgrade);
 
 	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
@@ -16085,7 +16087,7 @@ createDummyViewAsClause(Archive *fout, const TableInfo *tbinfo)
  *    write the declaration of one user-defined tablegroup
  */
 static void
-dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
+dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 {
 	DumpOptions *dopt = fout->dopt;
 
@@ -16117,23 +16119,22 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 		ArchiveEntry(fout,
 					 tginfo->dobj.catId,	/* catalog ID */
 					 tginfo->dobj.dumpId,	/* dump ID */
-					 tginfo->dobj.name,		/* Name */
-					 NULL,  				/* Namespace */
-					 tginfo->grptablespace,	/* Tablespace */
-					 tginfo->grpowner,		/* Owner */
-					 false,					/* with oids */
-					 "TABLEGROUP",			/* Desc */
-					 SECTION_PRE_DATA,		/* Section */
-					 q->data,				/* Create */
-					 delq->data,			/* Del */
-					 NULL,					/* Copy */
-					 NULL,					/* Deps */
-					 0,						/* # Deps */
-					 NULL,					/* Dumper */
-					 NULL);					/* Dumper Arg */
+					 ARCHIVE_OPTS(.tag = tginfo->dobj.name, /* Name */
+								  .namespace = NULL, /* Namespace */
+								  .tablespace = tginfo->grptablespace,	/* Tablespace */
+								  .owner = tginfo->grpowner,		/* Owner */
+								  .description = "TABLEGROUP",		/* Desc */
+								  .section = SECTION_PRE_DATA,		/* Section */
+								  .createStmt = q->data,			/* Create */
+								  .dropStmt = delq->data,			/* Del */
+								  .copyStmt = NULL,					/* Copy */
+								  .deps = NULL,						/* Deps */
+								  .nDeps = 0,						/* # Deps */
+								  .dumpFn = NULL,					/* Dumper */
+								  .dumpArg = NULL));				/* Dumper Arg */
 
 	if (tginfo->grpacl && (tginfo->dobj.dump & DUMP_COMPONENT_ACL))
-		dumpACL(fout, tginfo->dobj.catId, tginfo->dobj.dumpId, "LARGE OBJECT",
+		dumpACL(fout, tginfo->dobj.dumpId, InvalidDumpId, "LARGE OBJECT",
 				tginfo->dobj.name,
 				NULL, /* subname */
 				NULL, /* Namespace */
@@ -16557,8 +16558,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			{
 				TablegroupInfo *tablegroup = findTablegroupByOid(yb_properties->tablegroup_oid);
 				if (tablegroup == NULL)
-					exit_horribly(NULL, "could not find tablegroup definition with OID %u\n",
-						yb_properties->tablegroup_oid);
+					fatal("could not find tablegroup definition with OID %u\n",
+						  yb_properties->tablegroup_oid);
 				appendPQExpBuffer(q, "\nTABLEGROUP %s", tablegroup->dobj.name);
 			}
 		}
@@ -17554,12 +17555,11 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 				OidIsValid(yb_table_properties->tablegroup_oid) &&
 				yb_index_properties->tablegroup_oid != yb_table_properties->tablegroup_oid)
 			{
-				exit_horribly(NULL,
-							  "table %s and its constraint %s have mismatching tablegroups!\n"
-							  "This case cannot currently be handled, see issue "
-							  "https://github.com/yugabyte/yugabyte-db/issues/11600\n",
-							  tbinfo->dobj.name,
-							  coninfo->dobj.name);
+				fatal("table %s and its constraint %s have mismatching tablegroups!\n"
+					  "This case cannot currently be handled, see issue "
+					  "https://github.com/yugabyte/yugabyte-db/issues/11600\n",
+					  tbinfo->dobj.name,
+					  coninfo->dobj.name);
 			}
 
 			YbAppendReloptions2(q, false /* newline_before*/,
@@ -19624,10 +19624,10 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		int	i_colocation_id = PQfnumber(res, "colocation_id");
 
 		if (i_colocation_id == -1)
-			exit_horribly(NULL, "cannot create a dump with YSQL metadata included, "
-								"please run YSQL upgrade first.\n"
-								"DETAILS: yb_table_properties system function definition "
-								"is out of date.\n");
+			fatal("cannot create a dump with YSQL metadata included, "
+				  "please run YSQL upgrade first.\n"
+				  "DETAILS: yb_table_properties system function definition "
+				  "is out of date.\n");
 
 		properties->num_tablets = atoi(PQgetvalue(res, 0, i_num_tablets));
 		properties->num_hash_key_columns = atoi(PQgetvalue(res, 0, i_num_hash_key_columns));
@@ -19641,8 +19641,8 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		destroyPQExpBuffer(query);
 
 		if (properties->is_colocated && !OidIsValid(properties->colocation_id))
-			exit_horribly(NULL, "colocation ID is not defined for a colocated table \"%s\"\n",
-						  relname);
+			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
+				  relname);
 	}
 
 
@@ -19694,7 +19694,7 @@ isDatabaseColocated(Archive *fout)
  * The table is identified by the Relation OID.
  */
 static char *
-getYbSplitClause(Archive *fout, TableInfo *tbinfo)
+getYbSplitClause(Archive *fout, const TableInfo *tbinfo)
 {
 	PQExpBuffer query = createPQExpBuffer();
 
@@ -19745,16 +19745,16 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 						  "UPDATE pg_extension SET extconfig = ARRAY[");
 		/* Shouldn't happen. */
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
-			exit_horribly(NULL, "error parsing OIDs of configuration relations "
-						  "of extension with OID %u\n", extinfo->dobj.catId.oid);
+			fatal("error parsing OIDs of configuration relations "
+				  "of extension with OID %u\n", extinfo->dobj.catId.oid);
 
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
 			tblinfo = findTableByOid(tbloid);
 			if (!tblinfo)
-				exit_horribly(NULL, "configuration relation with OID %u of extension with OID %u "
-							  "not found\n", tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
+				fatal("configuration relation with OID %u of extension with OID %u not found\n",
+					  tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
 			if (j)
 				appendPQExpBuffer(update_query, ",");
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
@@ -19769,20 +19769,19 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		ArchiveEntry(fout,
 					 extinfo->dobj.catId, /* catalog ID */
 					 extinfo->dobj.dumpId, /* dump ID */
-					 extinfo->dobj.name, /* Name */
-					 NULL, /* Namespace */
-					 NULL, /* Tablespace */
-					 "", /* Owner */
-					 false, /* with oids */
-					 "EXTENSION", /* Desc */
-					 SECTION_POST_DATA, /* Section */
-					 update_query->data, /* Create */
-					 "", /* Del */
-					 NULL, /* Copy */
-					 NULL, /* Deps */
-					 0,	/* # Deps */
-					 NULL, /* Dumper */
-					 NULL); /* Dumper Arg */
+					 ARCHIVE_OPTS(.tag = extinfo->dobj.name, /* Name */
+								  .namespace = NULL, /* Namespace */
+								  .tablespace = NULL, /* Tablespace */
+								  .owner = "", /* Owner */
+								  .description = "EXTENSION", /* Desc */
+								  .section = SECTION_POST_DATA, /* Section */
+								  .createStmt = update_query->data, /* Create */
+								  .dropStmt = "", /* Del */
+								  .copyStmt = NULL, /* Copy */
+								  .deps = NULL, /* Deps */
+								  .nDeps = 0,	/* # Deps */
+								  .dumpFn = NULL, /* Dumper */
+								  .dumpArg = NULL)); /* Dumper Arg */
 
 		resetPQExpBuffer(update_query);
 		if (extconfigarray)

@@ -146,10 +146,10 @@ static const int dbObjectTypePriority[] =
 	PRIO_PUBLICATION,			/* DO_PUBLICATION */
 	PRIO_PUBLICATION_REL,		/* DO_PUBLICATION_REL */
 	PRIO_SUBSCRIPTION,			/* DO_SUBSCRIPTION */
-	PRIO_TABLEGROUP				/* DO_SUBSCRIPTION */
+	PRIO_TABLEGROUP				/* DO_TABLEGROUP */
 };
 
-StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_SUBSCRIPTION + 1),
+StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_TABLEGROUP + 1),
 				 "array length mismatch");
 
 static DumpId preDataBoundId;
@@ -1342,6 +1342,7 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			snprintf(buf, bufsize,
 					"TABLEGROUP %s  (ID %d OID %u)",
 					obj->name, obj->dumpId, obj->catId.oid);
+			return;
 		case DO_TABLE_ATTACH:
 			snprintf(buf, bufsize,
 					 "TABLE ATTACH %s  (ID %d)",

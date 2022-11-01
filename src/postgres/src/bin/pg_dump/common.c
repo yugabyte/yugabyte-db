@@ -171,8 +171,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	pg_log_info("reading user-defined access methods");
 	getAccessMethods(fout, &numAccessMethods);
 
-	if (g_verbose)
-		write_msg(NULL, "reading user-defined tablegroups\n");
+	pg_log_info("reading user-defined tablegroups\n");
 	tblgrpinfo = getTablegroups(fout, &numTablegroups);
 	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
 
