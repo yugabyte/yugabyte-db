@@ -32,7 +32,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   void SkipRow() override;
 
-  Result<bool> HasNext() const override;
+  Result<bool> HasNext() override;
 
   std::string ToString() const override;
 
