@@ -2810,6 +2810,35 @@ master_lsm_rocksdb_compaction_time:
         "rocksdb_compaction_times_micros.avg": "Avg"
       ticksuffix: "&nbsp;\u00B5s"
 
+table_write_latency:
+  metric: "ql_write_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_write_rps:
+  metric: "ql_write_latency_count"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency_count": "Write"
+
 table_read_latency:
   metric: "ql_read_latency.avg"
   function: "rate|avg"
