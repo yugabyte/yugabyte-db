@@ -52,12 +52,6 @@ void
 _PG_init(void)
 {
 
-#if PG_VERSION_NUM < 90600
-
-	RequestAddinLWLocks(1);
-
-#endif
-
 #if PG_VERSION_NUM >= 150000
 
 	prev_shmem_request_hook = shmem_request_hook;

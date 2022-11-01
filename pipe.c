@@ -20,7 +20,7 @@
 #include "builtins.h"
 
 /*
- * @ Pavel Stehule 2006-2018
+ * @ Pavel Stehule 2006-2022
  */
 
 #ifndef _GetCurrentTimestamp
@@ -236,37 +236,14 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
 		if (!found)
 		{
-
-#if PG_VERSION_NUM >= 90600
-
 			sh_mem->tranche_id = LWLockNewTrancheId();
 			LWLockInitialize(&sh_mem->shmem_lock, sh_mem->tranche_id);
 
 			{
 
-#if PG_VERSION_NUM >= 100000
-
 				LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
-
-#else
-
-				static LWLockTranche tranche;
-
-				tranche.name = "orafce";
-				tranche.array_base = &sh_mem->shmem_lock;
-				tranche.array_stride = sizeof(LWLock);
-				LWLockRegisterTranche(sh_mem->tranche_id, &tranche);
-
-#endif
-
 				shmem_lockid = &sh_mem->shmem_lock;
 			}
-
-#else
-
-			shmem_lockid = sh_mem->shmem_lockid = LWLockAssign();
-
-#endif
 
 			sh_mem->size = size - sh_memory_size;
 			ora_sinit(sh_mem->data, size, true);
@@ -294,32 +271,8 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		}
 		else
 		{
-
-#if PG_VERSION_NUM >= 90600
-
-
-#if PG_VERSION_NUM >= 100000
-
 			LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
-
-#else
-
-			static LWLockTranche tranche;
-
-			tranche.name = "orafce";
-			tranche.array_base = &sh_mem->shmem_lock;
-			tranche.array_stride = sizeof(LWLock);
-			LWLockRegisterTranche(sh_mem->tranche_id, &tranche);
-
-#endif
-
 			shmem_lockid = &sh_mem->shmem_lock;
-
-#else
-
-			shmem_lockid = sh_mem->shmem_lockid;
-
-#endif
 
 			pipes = sh_mem->pipes;
 			ora_sinit(sh_mem->data, sh_mem->size, false);

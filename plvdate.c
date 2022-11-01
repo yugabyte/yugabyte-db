@@ -6,7 +6,7 @@
   with n days (n > 10000), can be slow (on my P4 31ms).
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2022
 
   This module is under BSD Licence
 */

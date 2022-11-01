@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2018
+  PostgreSQL implementation author: Pavel Stehule, 2006-2022
 
   This module is under BSD Licence
 
@@ -20,12 +20,6 @@
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
-
-#if PG_VERSION_NUM < 100000
-
-#include "utils/bytea.h"
-
-#endif
 
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"

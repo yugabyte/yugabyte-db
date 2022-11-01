@@ -104,11 +104,7 @@ purge_shared_alert_mem()
 {
 	int		i;
 
-#if PG_VERSION_NUM >= 90600
-
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
-
-#endif
 
 	for (i = 0; i < MAX_LOCKS; i++)
 	{
@@ -117,15 +113,7 @@ purge_shared_alert_mem()
 		if (locks[i].sid == NOT_USED)
 			continue;
 
-#if PG_VERSION_NUM < 90600
-
-		proc = BackendPidGetProc(locks[i].pid);
-
-#else
-
 		proc = BackendPidGetProcWithLock(locks[i].pid);
-
-#endif
 
 		if (proc == NULL)
 		{
@@ -146,12 +134,7 @@ purge_shared_alert_mem()
 		}
 	}
 
-#if PG_VERSION_NUM >= 90600
-
 	LWLockRelease(ProcArrayLock);
-
-#endif
-
 }
 
 /*
