@@ -2,15 +2,16 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package main
+package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 // Common (general setup operations)

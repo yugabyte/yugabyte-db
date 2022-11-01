@@ -1,4 +1,4 @@
-package main
+package cmd
 
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}
 
