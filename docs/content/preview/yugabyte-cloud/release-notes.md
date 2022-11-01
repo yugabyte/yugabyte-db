@@ -14,7 +14,7 @@ type: docs
 
 **New Features**
 
-- Support for assigning preferred regions in replicate by region clusters. The preferred region handles all read and write requests from clients. Designating one region as preferred can reduce the number of network hops needed to process requests. A preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Support for assigning preferred regions in [replicate across regions](../cloud-basics/create-clusters/create-clusters-multisync/) clusters. The preferred region handles all read and write requests from clients. Designating one region as preferred can reduce the number of network hops needed to process requests. A preferred region can be assigned during cluster creation, and set or changed after cluster creation.
 
 ### October 24, 2022
 
