@@ -1,5 +1,5 @@
--- Test expression pushdown in scans
-SET yb_enable_expression_pushdown to on;
+-- Test disabled expression pushdown in scans
+SET yb_enable_expression_pushdown to off;
 -- For environment independent output of timestamps
 SET timezone to 'UTC';
 CREATE TABLE pushdown_test(k int primary key, i1 int, t1 text, ts1 timestamp, ts2 timestamp with time zone, r1 numrange, a1 int[]);
@@ -10,28 +10,28 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1;
         QUERY PLAN
 ---------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (i1 = 1)
+   Filter: (i1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE t1 LIKE 'val%';
-              QUERY PLAN
----------------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (t1 ~~ 'val%'::text)
+   Filter: (t1 ~~ 'val%'::text)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 < '2021-11-11 11:11:12';
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
+                                QUERY PLAN
+---------------------------------------------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (ts1 < 'Thu Nov 11 11:11:12 2021'::timestamp without time zone)
+   Filter: (ts1 < 'Thu Nov 11 11:11:12 2021'::timestamp without time zone)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
-                                    QUERY PLAN
------------------------------------------------------------------------------------
+                                 QUERY PLAN
+----------------------------------------------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (ts2 < 'Thu Nov 11 11:11:10 2021 UTC'::timestamp with time zone)
+   Filter: (ts2 < 'Thu Nov 11 11:11:10 2021 UTC'::timestamp with time zone)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1;
@@ -61,10 +61,10 @@ SELECT * FROM pushdown_test WHERE ts2 < '2021-11-11 11:11:10Z';
 
 -- Simple function on one column
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE isfinite(ts1);
-           QUERY PLAN
---------------------------------
+        QUERY PLAN
+---------------------------
  Seq Scan on pushdown_test
-   Remote Filter: isfinite(ts1)
+   Filter: isfinite(ts1)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE isfinite(ts1);
@@ -75,10 +75,10 @@ SELECT * FROM pushdown_test WHERE isfinite(ts1);
 
 -- Simple function on multiple columns
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
-                  QUERY PLAN
------------------------------------------------
+               QUERY PLAN
+----------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: ("left"(t1, i1) = 'v'::text)
+   Filter: ("left"(t1, i1) = 'v'::text)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
@@ -89,10 +89,10 @@ SELECT * FROM pushdown_test WHERE left(t1, i1) = 'v';
 
 -- Functions safe for pushdown (yb_safe_funcs_for_pushdown.c)
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
-                                                 QUERY PLAN
-------------------------------------------------------------------------------------------------------------
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: ((i1)::double precision < ('10'::double precision + (random() * '90'::double precision)))
+   Filter: ((i1)::double precision < ('10'::double precision + (random() * '90'::double precision)))
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
@@ -103,17 +103,17 @@ SELECT * FROM pushdown_test WHERE i1 < 10 + random() * 90;
 
 -- Null test
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NULL;
-           QUERY PLAN
---------------------------------
+        QUERY PLAN
+---------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (ts1 IS NULL)
+   Filter: (ts1 IS NULL)
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
-             QUERY PLAN
-------------------------------------
+         QUERY PLAN
+-----------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (ts1 IS NOT NULL)
+   Filter: (ts1 IS NOT NULL)
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE ts1 IS NULL;
@@ -130,10 +130,10 @@ SELECT * FROM pushdown_test WHERE ts1 IS NOT NULL;
 
 -- Boolean expression
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
-                                                        QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------
+                                                     QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: ((i1 = 1) OR ((NOT isfinite(ts1)) AND (ts2 > 'Mon Jan 01 08:01:01 2001 UTC'::timestamp with time zone)))
+   Filter: ((i1 = 1) OR ((NOT isfinite(ts1)) AND (ts2 > 'Mon Jan 01 08:01:01 2001 UTC'::timestamp with time zone)))
 (2 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01-01 01:01:01-7'::timestamptz;
@@ -144,10 +144,10 @@ SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01
 
 -- Case expression
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
-                                                                                                           QUERY PLAN
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pushdown_test
-   Remote Filter: CASE WHEN ((i1 % 2) = 0) THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN ((i1 % 2) = 1) THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
+   Filter: CASE WHEN ((i1 % 2) = 0) THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN ((i1 % 2) = 1) THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
 (2 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE i1 % 2 WHEN 0 THEN ts1 < '2021-11-12' WHEN 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
@@ -174,11 +174,10 @@ EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test WHERE i1 = 1;
            QUERY PLAN
 ---------------------------------
- Finalize Aggregate
+ Aggregate
    ->  Seq Scan on pushdown_test
-         Remote Filter: (i1 = 1)
-         Partial Aggregate: true
-(4 rows)
+         Filter: (i1 = 1)
+(3 rows)
 
 SELECT count(*) FROM pushdown_test;
  count
@@ -198,7 +197,7 @@ EXPLAIN (COSTS FALSE) EXECUTE s(1);
         QUERY PLAN
 ---------------------------
  Seq Scan on pushdown_test
-   Remote Filter: (i1 = 1)
+   Filter: (i1 = 1)
 (2 rows)
 
 EXECUTE s(1);
@@ -216,7 +215,7 @@ EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE 
 --------------------------------------------------------------
  Nested Loop
    ->  Seq Scan on pushdown_lookup l
-         Remote Filter: (tag = 'foo'::text)
+         Filter: (tag = 'foo'::text)
    ->  Index Scan using pushdown_test_pkey on pushdown_test t
          Index Cond: (k = l.k)
 (5 rows)
@@ -256,7 +255,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE i1 = 1 AND t1 = 'value1'
 ----------------------------------------------------
  Index Scan using pushdown_test_i1 on pushdown_test
    Index Cond: (i1 = 1)
-   Remote Filter: (t1 = 'value1'::text)
+   Filter: (t1 = 'value1'::text)
 (3 rows)
 
 SELECT * FROM pushdown_test WHERE i1 = 1;
@@ -364,10 +363,10 @@ CREATE TABLE pushdown_collation(k int primary key, v text COLLATE "ucs_basic");
 INSERT INTO pushdown_collation VALUES (1, 'foo');
 -- Do not pushdown operation on column with collation other than C
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_collation WHERE v = 'foo';
-             QUERY PLAN
-------------------------------------
+           QUERY PLAN
+--------------------------------
  Seq Scan on pushdown_collation
-   Remote Filter: (v = 'foo'::text)
+   Filter: (v = 'foo'::text)
 (2 rows)
 
 SELECT * FROM pushdown_collation WHERE v = 'foo';
@@ -396,7 +395,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
-   Remote Filter: ((k2 / 10) = 0)
+   Filter: ((k2 / 10) = 0)
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
@@ -404,17 +403,16 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
-   Remote Filter: (k2 = v1)
+   Filter: (k2 = v1)
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                                                QUERY PLAN
+----------------------------------------------------------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
-   Remote Filter: (k2 = v1)
-   Filter: CASE (v2 % 2) WHEN 0 THEN (v3 < 0) WHEN 1 THEN (v3 > 0) ELSE NULL::boolean END
-(4 rows)
+   Filter: ((k2 = v1) AND CASE (v2 % 2) WHEN 0 THEN (v3 < 0) WHEN 1 THEN (v3 > 0) ELSE NULL::boolean END)
+(3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1;
                               QUERY PLAN
@@ -428,7 +426,7 @@ EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
 -----------------------------------------------------------------------
  Index Only Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Filter: (v2 > v1)
+   Filter: (v2 > v1)
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
@@ -436,7 +434,7 @@ EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Index Filter: (v2 > v1)
+   Filter: (v2 > v1)
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
@@ -444,7 +442,7 @@ EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Filter: (v2 = (v3 + v4))
+   Filter: (v2 = (v3 + v4))
 (3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
@@ -452,19 +450,16 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND 
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Index Filter: (v2 > v1)
-   Remote Filter: (v3 > v2)
-(4 rows)
+   Filter: ((v2 > v1) AND (v3 > v2))
+(3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Index Filter: (v2 > v1)
-   Remote Filter: (v3 > v2)
-   Filter: CASE (v3 % 2) WHEN 0 THEN (v4 < 0) WHEN 1 THEN (v4 > 0) ELSE NULL::boolean END
-(5 rows)
+   Filter: ((v2 > v1) AND (v3 > v2) AND CASE (v3 % 2) WHEN 0 THEN (v4 < 0) WHEN 1 THEN (v4 > 0) ELSE NULL::boolean END)
+(3 rows)
 
 SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
  k1 | k2 | v1 | v2 | v3 | v4 |  v5
@@ -543,7 +538,7 @@ EXPLAIN (COSTS FALSE) EXECUTE pk_param(0);
 --------------------------------------------------------
  Index Scan using pushdown_index_pkey on pushdown_index
    Index Cond: (k1 = 1)
-   Remote Filter: (k2 = (v1 + 0))
+   Filter: (k2 = (v1 + 0))
 (3 rows)
 
 EXECUTE pk_param(0);
@@ -560,9 +555,8 @@ EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
 ------------------------------------------------------------------
  Index Scan using pushdown_index_v1_v2_v3v4_idx on pushdown_index
    Index Cond: (v1 = 1)
-   Remote Index Filter: (v2 > (v1 + 0))
-   Remote Filter: (v3 > (v2 + 0))
-(4 rows)
+   Filter: ((v2 > (v1 + 0)) AND (v3 > (v2 + 0)))
+(3 rows)
 
 EXECUTE si_param(0, 0);
  k1 | k2 | v1 | v2 | v3 | v4 |  v5
@@ -578,7 +572,7 @@ EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE '
 --------------------------------------------------------------------------------
  Index Scan using pg_class_relname_nsp_index on pg_class
    Index Cond: ((relname >= 'pushdown'::name) AND (relname < 'pushdowo'::name))
-   Remote Index Filter: (relname ~~ 'pushdown_c%'::text)
+   Filter: (relname ~~ 'pushdown_c%'::text)
 (3 rows)
 
 SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
@@ -598,7 +592,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33'
 --------------------------------------------------------
  Index Scan using pushdown_range_pkey on pushdown_range
    Index Cond: (k1 = ANY ('{11,17,33,42,87}'::text[]))
-   Remote Filter: ((v1 = 17) OR (v2 = 87))
+   Filter: ((v1 = 17) OR (v2 = 87))
 (3 rows)
 
 SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
@@ -612,7 +606,7 @@ EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDE
                        QUERY PLAN
 --------------------------------------------------------
  Index Scan using pushdown_range_pkey on pushdown_range
-   Remote Filter: ((v1 > 5) AND (v2 < 33))
+   Filter: ((v1 > 5) AND (v2 < 33))
 (2 rows)
 
 SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
@@ -660,11 +654,11 @@ EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a 
    Sort Key: t1.a
    ->  Nested Loop Left Join
          ->  Seq Scan on tlateral1 t1
-               Remote Filter: (b = 0)
+               Filter: (b = 0)
          ->  Hash Join
                Hash Cond: ((t2.a = t3.b) AND ((t2.c)::text = (t3.c)::text))
                ->  Seq Scan on tlateral1 t2
-                     Remote Filter: (t1.a = a)
+                     Filter: (t1.a = a)
                ->  Hash
                      ->  Seq Scan on tlateral2 t3
 (11 rows)
@@ -692,13 +686,13 @@ INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
 CREATE TABLE tsub(k int primary key, v1 int, v2 int);
 INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
 EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
-            QUERY PLAN
------------------------------------
+         QUERY PLAN
+----------------------------
  Seq Scan on tmaster
-   Remote Filter: (v1 = $0)
+   Filter: (v1 = $0)
    InitPlan 1 (returns $0)
      ->  Seq Scan on tsub
-           Remote Filter: (v2 = 3)
+           Filter: (v2 = 3)
 (5 rows)
 
 SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
@@ -723,7 +717,7 @@ EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.
    SubPlan 1
      ->  Index Scan using tidxrescan2_pkey on tidxrescan2 t2  (cost=0.00..4.12 rows=1 width=4)
            Index Cond: (k1 = t1.k2)
-           Remote Filter: (v1 = t1.v1)
+           Filter: (v1 = t1.v1)
 (6 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
@@ -748,7 +742,7 @@ EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.
    SubPlan 1
      ->  Index Only Scan using tidxrescan3_k1_v1_idx on tidxrescan3 t2  (cost=0.00..5.18 rows=10 width=4)
            Index Cond: (k1 = t1.k2)
-           Remote Filter: (v1 = t1.v1)
+           Filter: (v1 = t1.v1)
 (6 rows)
 
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;

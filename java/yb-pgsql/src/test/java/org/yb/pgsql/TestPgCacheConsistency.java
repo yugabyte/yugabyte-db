@@ -433,7 +433,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
           statement2,
           "EXPLAIN (COSTS OFF) SELECT u FROM test_table WHERE u = 1",
           new Row("Seq Scan on test_table"),
-          new Row("  Filter: (u = 1)")
+          new Row("  Remote Filter: (u = 1)")
       );
     }
   }

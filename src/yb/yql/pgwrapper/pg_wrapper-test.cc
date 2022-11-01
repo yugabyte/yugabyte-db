@@ -359,25 +359,36 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 }
 
 class PgWrapperFlagsTest : public PgWrapperTest {
- public:
-  void ValidateDefaultGucValue(const string& guc_name, const string& expected_value) {
-    const auto result = ASSERT_RESULT(RunPsqlCommand(
-        Format("SELECT boot_val FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
-        TuplesOnly::kTrue));
+  void ValidateGucValue(
+      const string& gflag_name, const string& expected_value, bool check_default_value) {
+    const string pg_flag_prefix = "ysql_";
+    ASSERT_TRUE(gflag_name.starts_with(pg_flag_prefix))
+        << "Flag " << gflag_name << " does not start with prefix " << pg_flag_prefix;
 
-    ASSERT_EQ(expected_value, result)
-        << "Pg guc variable '" << guc_name << "' default value '" << result
-        << "' does not match the gFlag default value '" << expected_value << "'";
+    auto guc_name = gflag_name.substr(pg_flag_prefix.length());
+    boost::to_lower(guc_name);
+
+    string normalized_expected_value = expected_value;
+    if (boost::iequals(normalized_expected_value, "true")) {
+      normalized_expected_value = "on";
+    } else if (boost::iequals(normalized_expected_value, "false")) {
+      normalized_expected_value = "off";
+    }
+
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format(
+            "SELECT $0 FROM pg_settings WHERE LOWER(name)='$1'",
+            check_default_value ? "boot_val" : "reset_val", guc_name),
+        normalized_expected_value, true /* tuples_only */));
   }
 
-  void ValidateCurrentGucValue(const string& guc_name, const string& expected_value) {
-    const auto result = ASSERT_RESULT(RunPsqlCommand(
-        Format("SELECT reset_val FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
-        TuplesOnly::kTrue));
+ public:
+  void ValidateDefaultGucValue(const string& gflag_name, const string& expected_value) {
+    ValidateGucValue(gflag_name, expected_value, true /* check_default_value */);
+  }
 
-    ASSERT_EQ(expected_value, result)
-        << "Pg guc variable '" << guc_name << "' current value is '" << result
-        << "' but is expected to be '" << expected_value << "'";
+  void ValidateCurrentGucValue(const string& gflag_name, const string& expected_value) {
+    ValidateGucValue(gflag_name, expected_value, false /* check_default_value */);
   }
 
   void ValidateGucIsRuntime(const string& guc_name, const bool runtime_expected) {
@@ -421,16 +432,12 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagDefaults)) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
 
-  const string pg_flag_prefix = "ysql_";
   for (const CommandLineFlagInfo& flag : flags) {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (!tags.contains(FlagTag::kPg)) {
       continue;
     }
-
-    ASSERT_TRUE(flag.name.starts_with(pg_flag_prefix))
-        << "Flag " << flag.name << " does not start with prefix " << pg_flag_prefix;
 
     auto expected_val = flag.default_value;
 
@@ -447,16 +454,7 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagDefaults)) {
       continue;
     }
 
-    if (boost::iequals(expected_val, "true")) {
-      expected_val = "on";
-    } else if (boost::iequals(expected_val, "false")) {
-      expected_val = "off";
-    }
-
-    auto guc_name = flag.name.substr(pg_flag_prefix.length());
-    boost::to_lower(guc_name);
-
-    ValidateDefaultGucValue(guc_name, expected_val);
+    ASSERT_NO_FATALS(ValidateDefaultGucValue(flag.name, expected_val));
   }
 }
 
@@ -482,9 +480,9 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
   }
 
   // Verify runtime flag is actually updated
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("log_min_duration_statement", "-1"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "-1"));
   ASSERT_OK(SetFlagOnAllTServers("ysql_log_min_duration_statement", "47"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("log_min_duration_statement", "47"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "47"));
 
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
@@ -496,15 +494,62 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     PgWrapperFlagsTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.emplace_back("--ysql_max_connections=42");
     options->extra_tserver_flags.emplace_back("--ysql_log_min_duration_statement=13");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown=false");
   }
 };
 
-TEST_F_EX(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestGFlagOverrides),
-          PgWrapperOverrideFlagsTest) {
-  ValidateCurrentGucValue("max_connections", "42");
-  ValidateCurrentGucValue("log_min_duration_statement", "13");
-  ValidateCurrentGucValue("yb_enable_expression_pushdown", "on");
+TEST_F_EX(
+    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestGFlagOverrides), PgWrapperOverrideFlagsTest) {
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "42"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "13"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
+}
+
+class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
+ public:
+  void CheckAutoFlagValues(bool expect_target_value) {
+    auto auto_flags = GetAllAutoFlagsDescription();
+
+    for (const auto& flag : auto_flags) {
+      std::unordered_set<FlagTag> tags;
+      GetFlagTags(flag->name, &tags);
+      if (!tags.contains(FlagTag::kPg)) {
+        continue;
+      }
+
+      auto expected_val = flag->target_val;
+      if (!expect_target_value) {
+        expected_val = flag->initial_val;
+      }
+
+      ValidateCurrentGucValue(flag->name, expected_val);
+    }
+  }
+};
+
+TEST_F_EX(
+    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnNewCluster), PgWrapperAutoFlagsTest) {
+  // New clusters should start with Target value
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
+
+  ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
+}
+
+class PgWrapperAutoFlagsDisabledTest : public PgWrapperAutoFlagsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperFlagsTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.emplace_back("--disable_auto_flags_management");
+  }
+};
+
+TEST_F_EX(
+    PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestAutoFlagOnOldCluster),
+    PgWrapperAutoFlagsDisabledTest) {
+  // Old clusters that have upgraded to new version should have Initial value
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
+
+  ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }
 
 }  // namespace pgwrapper
