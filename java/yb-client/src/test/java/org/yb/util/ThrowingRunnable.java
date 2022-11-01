@@ -17,5 +17,5 @@ package org.yb.util;
  */
 @FunctionalInterface
 public interface ThrowingRunnable {
-  public abstract void run() throws Exception;
+  public void run() throws Exception;
 }
