@@ -371,7 +371,7 @@ class ReplicaState {
   void UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
       const CoarseTimeLease& lease, const PhysicalComponentLease& ht_lease);
 
-  void SetMajorityReplicatedLeaseExpirationUnlocked(
+  Status SetMajorityReplicatedLeaseExpirationUnlocked(
       const MajorityReplicatedData& majority_replicated_data,
       EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags);
 
