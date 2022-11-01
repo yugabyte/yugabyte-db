@@ -1,4 +1,4 @@
-module yba-installer
+module github.com/yugabyte/yugabyte-db/managed/yba-installer
 
 go 1.18
 

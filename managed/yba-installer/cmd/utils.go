@@ -2,7 +2,7 @@
 * Copyright (c) YugaByte, Inc.
  */
 
-package main
+package cmd
 
 import (
 	"archive/tar"
@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -24,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func ExecuteBashCommand(command string, args []string) (o string, e error) {
@@ -42,7 +43,7 @@ func ExecuteBashCommand(command string, args []string) (o string, e error) {
 		LogDebug(command + " " + strings.Join(args, " ") + " successfully executed.")
 	} else {
 		LogDebug(command + " " + strings.Join(args, " ") + " failed with error " + err.Error() +
-						 "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
+			"\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
 	}
 
 	return execOut.String(), err
@@ -151,7 +152,7 @@ func GetInstallRoot() string {
 
 func GetInstallVersionDir() string {
 
-	return GetInstallRoot() + "/yba_installer-" + GetVersion()
+	return GetInstallRoot() + "/yba_installer-" + version
 }
 
 func GetCurrentUser() string {
@@ -170,7 +171,7 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 	return b, nil
 }
 
-//GenerateRandomStringURLSafe is used to generate the PlatformAppSecret.
+// GenerateRandomStringURLSafe is used to generate the PlatformAppSecret.
 func GenerateRandomStringURLSafe(n int) string {
 
 	b, _ := GenerateRandomBytes(n)
