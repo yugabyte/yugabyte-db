@@ -53,7 +53,7 @@ DATA = orafce--3.26.sql\
 		orafce--3.22--3.23.sql\
 		orafce--3.23--3.24.sql\
 		orafce--3.24--3.25.sql\
-		prafce--3.25--3.26.sql
+		orafce--3.25--3.26.sql
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 

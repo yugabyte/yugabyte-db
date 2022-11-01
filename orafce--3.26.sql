@@ -343,21 +343,15 @@ CREATE OR REPLACE FUNCTION oracle.remainder(numeric, numeric)
 RETURNS numeric AS 'MODULE_PATHNAME','orafce_reminder_numeric'
 LANGUAGE C IMMUTABLE;
 
-DO $$
-BEGIN
-  IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 90600) THEN
-    EXECUTE $_$ALTER FUNCTION oracle.mod(smallint, smallint) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(int, int) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(bigint, bigint) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(numeric, numeric) PARALLEL SAFE$_$;
+ALTER FUNCTION oracle.mod(smallint, smallint) PARALLEL SAFE;
+ALTER FUNCTION oracle.mod(int, int) PARALLEL SAFE;
+ALTER FUNCTION oracle.mod(bigint, bigint) PARALLEL SAFE;
+ALTER FUNCTION oracle.mod(numeric, numeric) PARALLEL SAFE;
 
-    EXECUTE $_$ALTER FUNCTION oracle.remainder(smallint, smallint) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.remainder(int, int) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.remainder(bigint, bigint) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.remainder(numeric, numeric) PARALLEL SAFE$_$;
-  END IF;
-END;
-$$;
+ALTER FUNCTION oracle.remainder(smallint, smallint) PARALLEL SAFE;
+ALTER FUNCTION oracle.remainder(int, int) PARALLEL SAFE;
+ALTER FUNCTION oracle.remainder(bigint, bigint) PARALLEL SAFE;
+ALTER FUNCTION oracle.remainder(numeric, numeric) PARALLEL SAFE;
 
 --can't overwrite PostgreSQL DATE data type!!!
 
