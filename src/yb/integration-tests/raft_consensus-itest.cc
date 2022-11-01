@@ -241,6 +241,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       results->clear();
       ASSERT_NO_FATALS(ScanReplica(replica_proxy, results));
       if (results->size() == expected_count) {
+        LOG(INFO) << "Get rows " << *results;
         return;
       }
       SleepFor(MonoDelta::FromMilliseconds(10));
@@ -418,7 +419,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   // Writes 'num_writes' operations to the current leader. Each of the operations
   // has a payload of around `size_bytes`. Causes a gtest failure on error.
-  void WriteOpsToLeader(int num_writes, size_t size_bytes);
+  void WriteOpsToLeader(int num_writes, size_t size_bytes, bool accept_failure = false);
 
   // Check for and restart any TS that have crashed.
   // Returns the number of servers restarted.
@@ -726,7 +727,7 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters * 2);
 }
 
-void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes) {
+void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes, bool accept_failure) {
   TServerDetails* leader = nullptr;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
 
@@ -744,9 +745,12 @@ void RaftConsensusITest::WriteOpsToLeader(int num_writes, size_t size_bytes) {
     req.set_tablet_id(tablet_id_);
     AddTestRowInsert(key, key, test_payload, &req);
     key++;
-    ASSERT_OK(leader->tserver_proxy->Write(req, &resp, &rpc));
 
-    ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+    auto s = leader->tserver_proxy->Write(req, &resp, &rpc);
+    if (!accept_failure) {
+      ASSERT_OK(s);
+      ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+    }
   }
 }
 
@@ -3577,6 +3581,75 @@ TEST_F(RaftConsensusITest, CatchupAfterLeaderRestarted) {
   ASSERT_OK(paused_ts->Resume());
 
   ASSERT_OK(WaitForServersToAgree(60s, tablet_servers_, tablet_id_, kNumOps));
+}
+
+// Test old leader ts-1 has operations not majority replicated and crashed.
+// ts-2 becomes the new leader, but before NO_OP replicated on ts-3, it serves a read,
+// and advanced the safe time lower bound.
+// ts-1 becomes the leader again and replicated its pending operations with
+// lower hybrid time to ts-1. ts-2 should be able to accept those operations.
+TEST_F(RaftConsensusITest, GetSafeTimeBeforeNoOpReplicated) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 1));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto other_follower_idx = (leader_idx + 2) % 3;
+
+  const auto leader = cluster_->tablet_server(leader_idx);
+
+  // Pause one follower and write one more row.
+  const auto follower = cluster_->tablet_server(follower_idx);
+  follower->Shutdown();
+  ASSERT_OK(cluster_->WaitForTSToCrash(follower));
+  // Write two rows: (0, 0, "0") (1, 1, "0").
+  ASSERT_NO_FATALS(WriteOpsToLeader(/* num_writes = */ 2, /* size_bytes = */ 1));
+  std::vector<string> results;
+  ASSERT_NO_FATALS(WaitForRowCount(
+      tablet_servers_[leader->uuid()]->tserver_proxy.get(), 2, &results));
+
+  // Reject update consensus requests on other_follower.
+  const auto other_follower = cluster_->tablet_server(other_follower_idx);
+  ASSERT_OK(
+      cluster_->SetFlag(other_follower, "TEST_follower_reject_update_consensus_requests", "true"));
+
+  // Update (0, 0, "0") => (0, 0, "00") on leader, but not commited.
+  ASSERT_NO_FATALS(
+      WriteOpsToLeader(/* num_writes = */ 1, /* size_bytes = */ 2, /* accept_failure = */ true));
+
+  SleepFor(2s * kTimeMultiplier);
+
+  other_follower->Shutdown();
+  ASSERT_OK(cluster_->WaitForTSToCrash(other_follower));
+
+  // Shutdown leader and then start the other two followers.
+  leader->Shutdown();
+  ASSERT_OK(cluster_->WaitForTSToCrash(leader));
+  ASSERT_OK(follower->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+                              {std::make_pair("enable_leader_failure_detection", "false")}));
+  ASSERT_OK(cluster_->WaitForTabletsRunning(follower, kTimeout));
+
+  // Discard the last op to avoid NoOp replicated to follower.
+  ASSERT_OK(other_follower->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {std::make_pair("TEST_leader_skip_no_op", "true")}));
+
+  // Wait rows: (0, 0, "0") (1, 1, "0") replicated on follower.
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      3, tablet_servers_[follower->uuid()].get(), tablet_id_, kTimeout));
+
+  ASSERT_OK(other_follower->Pause());
+  ASSERT_OK(leader->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(leader, kTimeout));
+
+  ASSERT_OK(WaitUntilLeader(tablet_servers_[leader->uuid()].get(), tablet_id_, kTimeout));
+
+  ASSERT_OK(other_follower->Resume());
+
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 5));
 }
 
 }  // namespace tserver
