@@ -28,7 +28,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.RandomNumberUtil;
+import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
 
 @RunWith(value=YBTestRunner.class)
@@ -99,7 +99,7 @@ public class TestKeyspace extends BaseCQLTest {
   // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
   // beginning of the test.
   private static String getRandomKeyspaceName() {
-    return "test_keyspace_" + RandomNumberUtil.randomNonNegNumber();
+    return "test_keyspace_" + RandomUtil.randomNonNegNumber();
   }
 
   @Test
@@ -432,7 +432,7 @@ public class TestKeyspace extends BaseCQLTest {
 
     // Table1 name: "a" . "b.c"
     // Table2 name: "a.b" . "c"
-    final long randomId = RandomNumberUtil.randomNonNegNumber();
+    final long randomId = RandomUtil.randomNonNegNumber();
     final String keyspaceName1 = "a" + randomId;
     final String keyspaceName2 = "a" + randomId + ".b";
     final String longTableName1 = "\"" + keyspaceName1 + "\"." + "\"b.c\""; // Table1.
