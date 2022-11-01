@@ -1351,7 +1351,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
   return row_count;
 }
 
-Status PgsqlReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                      size_t fetched_rows,
                                                      const size_t row_count_limit,
                                                      const bool scan_time_exceeded,
