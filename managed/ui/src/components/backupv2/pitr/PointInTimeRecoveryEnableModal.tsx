@@ -19,7 +19,7 @@ import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BACKUP_API_TYPES } from '../common/IBackup';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { createPITRConfig } from '../common/PitrAPI';
 import './PointInTimeRecoveryEnableModal.scss';
 
@@ -30,8 +30,8 @@ interface PointInTimeRecoveryEnableModalProps {
 }
 
 const PITR_SUPPORTED_APIS = [
-  TABLE_TYPE_MAP[BACKUP_API_TYPES.YSQL],
-  TABLE_TYPE_MAP[BACKUP_API_TYPES.YCQL]
+  TableTypeLabel[BACKUP_API_TYPES.YSQL],
+  TableTypeLabel[BACKUP_API_TYPES.YCQL]
 ];
 
 interface Form_Values {
@@ -41,7 +41,7 @@ interface Form_Values {
 }
 
 const initialValues: Form_Values = {
-  api_type: { value: BACKUP_API_TYPES.YSQL, label: TABLE_TYPE_MAP[BACKUP_API_TYPES.YSQL] },
+  api_type: { value: BACKUP_API_TYPES.YSQL, label: TableTypeLabel[BACKUP_API_TYPES.YSQL] },
   database: null,
   retention_interval: 7
 };
