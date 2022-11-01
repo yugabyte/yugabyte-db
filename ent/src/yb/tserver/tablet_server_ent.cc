@@ -52,8 +52,6 @@ DEFINE_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
-DECLARE_int32(svc_queue_length_default);
-
 DECLARE_string(cert_node_filename);
 
 namespace yb {
