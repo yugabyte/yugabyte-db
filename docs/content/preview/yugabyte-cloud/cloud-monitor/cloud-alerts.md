@@ -68,6 +68,8 @@ Cluster health is updated every three minutes.
 
 Alerts can trigger for issues with a particular cluster, or for billing issues.
 
+Alerts can have two severity levels: Warning or Severe.
+
 ### Cluster alerts
 
 When you receive a cluster alert, the first step is to review the chart for the metric over time to evaluate trends and monitor your progress. The following charts are available:
@@ -75,12 +77,13 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | Alert | Chart |
 | :--- | :--- |
 | Node Free Storage | Disk Usage |
-| Nodes Down | Cluster **Nodes** tab |
 | Memory Use | Memory Usage |
 | Cluster Queues Overflow | RPC Queue Size |
 | Compaction Overload | Compaction |
 | YSQL Connections | YSQL Operations/Sec |
 | CPU Utilization | CPU Usage |
+
+For a nodes down alert, go to the cluster **Nodes** tab to see which nodes are down.
 
 You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
@@ -107,11 +110,10 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 YugabyteDB Managed sends a notification when the number of nodes that are down in a cluster exceeds the threshold, as follows:
 
-- Up to 34% of all nodes in the cluster are reporting as down (Info).
 - More than 34% of all nodes in the cluster are reporting as down (Warning).
 - More than 66% of all nodes in the cluster are reporting as down (Severe).
 
-If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests.
+If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests, and the status is reported in the [cluster health](#cluster-health).
 
 If more than 66% of nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
 
@@ -128,7 +130,7 @@ If your cluster experiences frequent spikes in memory use, consider optimizing y
 
 Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the `EXPLAIN` statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
 
-If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
@@ -185,7 +187,7 @@ Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-quer
 
 High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
-If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 ### Billing alerts
 
