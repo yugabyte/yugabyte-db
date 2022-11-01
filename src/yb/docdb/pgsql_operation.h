@@ -205,13 +205,14 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
-                                           size_t fetched_rows,
-                                           const size_t row_count_limit,
-                                           const bool scan_time_exceeded,
-                                           const Schema& schema,
-                                           const ReadHybridTime& read_time,
-                                           bool *has_paging_state);
+  Status SetPagingStateIfNecessary(
+      YQLRowwiseIteratorIf* iter,
+      size_t fetched_rows,
+      const size_t row_count_limit,
+      const bool scan_time_exceeded,
+      const Schema& schema,
+      const ReadHybridTime& read_time,
+      bool* has_paging_state);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
