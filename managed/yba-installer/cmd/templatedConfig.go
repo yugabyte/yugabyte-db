@@ -2,26 +2,27 @@
 * Copyright (c) YugaByte, Inc.
  */
 
-package main
+package cmd
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	yaml2 "github.com/goccy/go-yaml"
-	"github.com/xeipuuv/gojsonschema"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sigs.k8s.io/yaml"
 	"strings"
 	"text/template"
+
+	yaml2 "github.com/goccy/go-yaml"
+	"github.com/xeipuuv/gojsonschema"
+	"sigs.k8s.io/yaml"
 )
 
-//PlatformAppSecret is special cased because it is not configurable by the user.
+// PlatformAppSecret is special cased because it is not configurable by the user.
 var platformAppSecret string = GenerateRandomStringURLSafe(64)
 
-//CorsOrigin is special cased because it is not configurable by the user.
+// CorsOrigin is special cased because it is not configurable by the user.
 var corsOrigin string = GenerateCORSOrigin()
 
 // RandomDbPassword is applied to the templated configuration file if not already
@@ -314,8 +315,8 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
 }
 
-//GenerateTemplatedConfiguration creates the templated configuration files for
-//all Yugabyte Anywhere services.
+// GenerateTemplatedConfiguration creates the templated configuration files for
+// all Yugabyte Anywhere services.
 func GenerateTemplatedConfiguration(services ...string) {
 
 	inputYmlName := "yba-installer-input.yml"
