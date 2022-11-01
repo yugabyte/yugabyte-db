@@ -20,6 +20,8 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBDaemon;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.*;
@@ -34,6 +36,7 @@ public final class YBBackupUtil {
   private static String masterAddresses;
   private static String tsWebHostsAndPorts;
   private static InetSocketAddress postgresContactPoint;
+  private static boolean verboseMode = false;
 
   public static void setPostgresContactPoint(InetSocketAddress contactPoint) {
     postgresContactPoint = contactPoint;
@@ -53,6 +56,11 @@ public final class YBBackupUtil {
       hostsAndPorts += (hostsAndPorts.isEmpty() ? "" : ",") + tserver.getWebHostAndPort();
     }
     setTSWebAddresses(hostsAndPorts);
+  }
+
+  // Use it to get more detailed log from the backup script for debugging.
+  public static void enableVerboseMode() {
+    verboseMode = true;
   }
 
   public static String runProcess(List<String> args, int timeoutSeconds) throws Exception {
@@ -101,9 +109,11 @@ public final class YBBackupUtil {
     final String ysqlDumpPath = TestUtils.findBinary("../postgres/bin/ysql_dump");
     final String ysqlShellPath = TestUtils.findBinary("../postgres/bin/ysqlsh");
     final String ybBackupPath = TestUtils.findBinary("../../../managed/devops/bin/yb_backup.py");
+    final String pythonVenvWrapperPath =
+        TestUtils.findBinary("../../../build-support/run_in_build_python_venv.sh");
 
     List<String> processCommand = new ArrayList<String>(Arrays.asList(
-        ybBackupPath,
+        pythonVenvWrapperPath, ybBackupPath,
         "--masters", masterAddresses,
         "--remote_yb_admin_binary=" + ybAdminPath,
         "--remote_ysql_dump_binary=" + ysqlDumpPath,
@@ -123,10 +133,12 @@ public final class YBBackupUtil {
       processCommand.add("--ts_web_hosts_ports=" + tsWebHostsAndPorts);
     }
 
+    if (verboseMode) {
+      processCommand.add("--verbose");
+    }
+
     if (!SystemUtil.IS_LINUX) {
       processCommand.add("--mac");
-      // Temporary flag to get more detailed log while the tests are failing on MAC: issue #4924.
-      processCommand.add("--verbose");
     }
 
     processCommand.addAll(args);

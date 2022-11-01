@@ -159,7 +159,7 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
     <a class="section-link icon-offset" href="rust/cloud-ysql-rust/">
       <div class="head">
         <div class="icon">
-          <i class="icon-scala"></i>
+          <i class="fa-brands fa-rust"></i>
         </div>
         <div class="title">Rust</div>
       </div>

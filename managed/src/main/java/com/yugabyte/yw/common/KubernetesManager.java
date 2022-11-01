@@ -75,6 +75,65 @@ public abstract class KubernetesManager {
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, universePrefix, namespace, response);
   }
+  // Log a diff before applying helm upgrade.
+  public void diff(Map<String, String> config, String inputYamlFilePath) {
+    List<String> diffCommandList =
+        ImmutableList.of("kubectl", "diff", "--server-side=false", "-f ", inputYamlFilePath);
+    ShellResponse response = execCommand(config, diffCommandList);
+    if (response != null && !response.isSuccess()) {
+      LOG.error("kubectl diff failed with response %s", response.toString());
+    }
+  }
+
+  public String helmTemplate(
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      String overridesFile) {
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    Path tempOutputFile;
+    try {
+      tempOutputFile = Files.createTempFile("helm-template", ".output");
+    } catch (Exception ex) {
+      LOG.error("Failed to create a tempfile");
+      return null;
+    }
+    String tempOutputPath = tempOutputFile.toAbsolutePath().toString();
+    List<String> templateCommandList =
+        ImmutableList.of(
+            "helm",
+            "template",
+            helmReleaseName,
+            helmPackagePath,
+            "-f",
+            overridesFile,
+            "--namespace",
+            namespace,
+            "--timeout",
+            getTimeout(),
+            "--is-upgrade",
+            "--no-hooks",
+            "--skip-crds",
+            " > ",
+            tempOutputPath);
+
+    ShellResponse response = execCommand(config, templateCommandList);
+    if (response != null && !response.isSuccess()) {
+      try {
+        String templateOutput = Files.readAllLines(tempOutputFile).get(0);
+        LOG.error("Output from the template command %s", templateOutput);
+      } catch (Exception ex) {
+        LOG.error("Got exception in reading template output %s", ex.getMessage());
+      }
+
+      return null;
+    }
+
+    // Success case return the output file path.
+    return tempOutputPath;
+  }
 
   public void helmUpgrade(
       String ybSoftwareVersion,
@@ -84,6 +143,16 @@ public abstract class KubernetesManager {
       String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+
+    // Capture the diff what is going to be upgraded.
+    String helmTemplatePath =
+        helmTemplate(ybSoftwareVersion, config, universePrefix, namespace, overridesFile);
+    if (helmTemplatePath != null) {
+      diff(config, helmTemplatePath);
+    } else {
+      LOG.error("Error in helm template generation");
+    }
+
     List<String> commandList =
         ImmutableList.of(
             "helm",
