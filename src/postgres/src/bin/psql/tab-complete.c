@@ -3663,8 +3663,8 @@ psql_completion(const char *text, int start, int end)
 	else if (TailMatches("OWNER", "TO"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
-/* OWNER  - complete with available roles */
-	else if (TailMatches1("OWNER"))
+/* Yugabyte - OWNER  - complete with available roles */
+	else if (TailMatches("OWNER"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
 /* ORDER BY */
