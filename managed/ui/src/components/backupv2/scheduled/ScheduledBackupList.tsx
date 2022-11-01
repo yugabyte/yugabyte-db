@@ -22,7 +22,7 @@ import {
   editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
@@ -244,7 +244,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           <span className="schedule-name">{schedule.scheduleName}</span>
           <StatusBadge
             statusType={Badge_Types.DELETED}
-            customLabel={TABLE_TYPE_MAP[schedule.backupInfo.backupType ?? '-']}
+            customLabel={TableTypeLabel[schedule.backupInfo.backupType ?? '-']}
           />
           <YBToggle
             name="Enabled"

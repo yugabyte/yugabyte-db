@@ -6,6 +6,7 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   ReplicationStatus,
+  XClusterTableEligibility,
   XClusterTableStatus
 } from './constants';
 
@@ -43,6 +44,54 @@ export interface XClusterTableDetails {
 }
 
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
+//------------------------------------------------------------------------------------
+// Table Selection Types
+
+/**
+ * This type stores details of a table's eligibility for xCluster replication.
+ */
+export type EligibilityDetails =
+  | {
+      status: typeof XClusterTableEligibility.ELIGIBLE_UNUSED;
+    }
+  | {
+      status: typeof XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG;
+      xClusterConfigName: string;
+    }
+  | { status: typeof XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string }
+  | { status: typeof XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+
+/**
+ * YBTable with an EligibilityDetail field
+ */
+export interface XClusterTableCandidate extends YBTable {
+  eligibilityDetails: EligibilityDetails;
+}
+
+/**
+ * Holds list of tables for a keyspace and provides extra metadata.
+ */
+export interface KeyspaceItem {
+  tableEligibilityCount: {
+    ineligible: number;
+    eligibleInCurrentConfig: number;
+  };
+  sizeBytes: number;
+  tables: XClusterTableCandidate[];
+}
+
+export interface KeyspaceRow extends KeyspaceItem {
+  keyspace: string;
+}
+
+/**
+ * Structure for organizing tables by table type first and keyspace/database name second.
+ */
+export type ReplicationItems = Record<
+  XClusterTableType,
+  { keyspaces: Record<string, KeyspaceItem>; tableCount: number }
+>;
+//------------------------------------------------------------------------------------
 
 // TODO: Move the metric types to dtos.ts or another more appropriate file.
 
