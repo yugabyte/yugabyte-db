@@ -93,4 +93,6 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
-![Backups - YSQL](/images/yp/backups.png)<br>
+![Backups](/images/yp/backups-list.png)<br>
+
+By clicking on a specific universe included in the list, you can access the backup details and trigger a restore.

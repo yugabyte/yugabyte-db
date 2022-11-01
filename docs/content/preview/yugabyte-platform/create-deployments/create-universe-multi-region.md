@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: create-universe-multi-region
     parent: create-deployments
-    weight: 30
+    weight: 20
 type: docs
 ---
 
@@ -15,9 +15,13 @@ YugabyteDB Anywhere allows you to create a universe spanning multiple geographic
 
 For example, you can deploy a universe across Oregon (US-West) and South Carolina (US-East). Once deployed, you can connect to each node and perform a variety of tasks.
 
-## Create the universe
+## Prerequisites
 
-Before creating a universe, you need to configure a cloud provider, such as [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GCP). When done, use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
+Before you can start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+
+## Create a universe
+
+After you have configured a cloud provider, such as, for example [Google Cloud Provider](../../configure-yugabyte-platform/set-up-cloud-provider/gcp/) (GCP), you can use the YugabyteDB Anywhere UI to navigate to **Universes**, click **Create Universe**, and enter the following sample values:
 
 - In the **Name** field, enter **helloworld2**.
 
@@ -50,6 +54,8 @@ Before creating a universe, you need to configure a cloud provider, such as [Goo
   ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe3.png)
 
 - Click **Create**.
+
+Note that all YugabyteDB universes created using YugabyteDB Anywhere have the YB Controller automatically installed on their nodes. The YB Controller works in the background to speed up backup and restore of universes.
 
 ## Examine the universe
 
