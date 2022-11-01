@@ -25,6 +25,8 @@ Yugabyte follows the [semantic versioning (semver)](https://semver.org) conventi
 
 Examples are included in the relevant sections below.
 
+## LTS and STS releases
+
 ## Stable releases
 
 Releases within stable release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added since the last stable release. A stable release series is based on the preceding preview release series. For example, the v2.6 stable release series was based on the v2.5 preview release series. **The current stable version is {{< yb-version version="stable" format="">}}**.

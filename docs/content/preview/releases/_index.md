@@ -15,31 +15,36 @@ menu:
 type: indexpage
 showRightNav: true
 ---
-{{< tip title="Versioning" >}}
-As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and YugabyteDB Anywhere releases. For details, see [Release versioning](versioning/).
-{{< /tip >}}
 
 ## Current supported releases
 
 The supported release series include:
 
 * [Stable](versioning/#stable-releases): Supported for production deployments.
+* [LTS and STS](versioning/#lts-and-sts-releases): Supported for production deployments.
 * [Preview](versioning/#preview-releases): Supported for development and testing only.
 
-For details about the differences between the stable and preview release series, see [Release versioning](versioning/).
+For details about the differences between the release series, see [Release versioning](versioning/).
 
 ### Release support policy
 
-Support for YugabyteDB stable release series includes:
+The type of YugabyteDB release series you are running determines its support timelines.
 
-* **Maintenance support:** For at least 1 year from the date of the first minor release, Yugabyte will provide Updates for such release.
+**LTS (long-term support)** release series receive maintenance updates for at least 18 months (545 days) from the first release date of the minor release.
+
+**STS (short-term support)** release series receive maintenance updates for at least 8 months (240 days) from the first release date of the minor release.
+
+**Stable** release series receive maintenance updates for at least 12 months (365 days) from the first release date of the minor release.
+
+The following applies to **LTS, STS, and stable** release series:
+
 * **Extended support:** Following the maintenance support period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   * Updates and Upgrades will not be made to the minor release.
   * Yugabyte will direct Customers to existing Updates and workarounds applicable to the reported case.
   * Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
 * **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
 
-For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
+The information in this section is a summary for convenience only. For complete details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
 
 ### Release support timelines
 
