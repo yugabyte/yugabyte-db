@@ -51,5 +51,4 @@ Create a role and a database user, and provide the user with READ access to all 
    GRANT SELECT_CATALOG_ROLE TO ybvoyager;
    ```
 
-   The `ybvoyager` user can now be used for migration.
-
+   The `ybvoyager` user can now be used for migration. Note that you can migrate only one schema at a time.

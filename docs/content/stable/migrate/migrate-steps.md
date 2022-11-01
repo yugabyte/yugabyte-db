@@ -62,43 +62,28 @@ Prepare your target YugabyteDB cluster by creating a database, and a user for yo
 
 ### Create the target database
 
-1. Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
 
-   ```sql
-   CREATE DATABASE target_db_name;
-   ```
-
-1. Capture the database name in an environment variable.
-
-   ```sh
-   export TARGET_DB_NAME=target_db_name
-   ```
+```sql
+CREATE DATABASE target_db_name;
+```
 
 ### Create a user
 
-1. Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
+Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
 
-   - For a local YugabyteDB cluster or YugabyteDB Anywhere versions below 2.13.1 or 2.12.4, create a user and role with the superuser privileges using the following command:
+- For a local YugabyteDB cluster or YugabyteDB Anywhere versions below 2.13.1 or 2.12.4, create a user and role with the superuser privileges using the following command:
 
      ```sql
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-   - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with [`yb_superuser`](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+- For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with [`yb_superuser`](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
      GRANT yb_superuser TO ybvoyager;
      ```
-
-1. Capture the user and database details in environment variables.
-
-   ```sh
-   export TARGET_DB_HOST=127.0.0.1
-   export TARGET_DB_PORT=5433
-   export TARGET_DB_USER=ybvoyager
-   export TARGET_DB_PASSWORD=password
-   ```
 
 If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../yb-voyager-cli/#ssl-connectivity).
 
@@ -124,8 +109,6 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), yb-voyager can extract and convert the source database schema to an equivalent PostgreSQL schema.
-
 <!-- To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../yb-voyager/yb-voyager-cli/#data-modeling). -->
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
@@ -140,36 +123,30 @@ MySQL supports two or more indexes to have the same name in the same database, p
 An example invocation of the command is as follows:
 
 ```sh
-yb-voyager export schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME}
+yb-voyager export schema --export-dir <EXPORT_DIR_NAME> \
+        --source-db-type <SOURCE_DB_TYPE> \
+        --source-db-host <SOURCE_DB_HOST> \
+        --source-db-user <SOURCE_DB_USER> \
+        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-name <SOURCE_DB_NAME>
 ```
 
-<!-- ```sh
-yb-voyager export schema --export-dir /path/to/yb/export/dir
-        --source-db-type postgresql #or mysql
-        --source-db-host localhost
-        --source-db-password password
-        --source-db-name dbname
-        --source-db-user username
-``` -->
+Refer to [export schema](../yb-voyager-cli/#export-schema) for details about the arguments.
 
 {{< note title="Note" >}}
-The `source-db-schema` argument is only used for Oracle migrations. Use this argument only when migrating from Oracle for the [export schema](#export-schema), [analyze schema](#analyze-schema), and [export data](#export-data) steps.
+Currently, the `source-db-schema` argument is required for PostgreSQL and Oracle migrations, and not applicable for MySQL.
+For PostgreSQL, `source-db-schema` can take one or more schema names separated by comma, and for Oracle, `source-db-schema` can take only one schema name.
 {{< /note >}}
 
 An example invocation of the command for Oracle is as follows:
 
 ```sh
-yb-voyager export schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-schema ${SOURCE_DB_SCHEMA}
+yb-voyager export schema --export-dir <EXPORT_DIR> \
+        --source-db-type <SOURCE_DB_TYPE> \
+        --source-db-host <SOURCE_DB_HOST> \
+        --source-db-user <SOURCE_DB_USER> \
+        --source-db-password <SOURCE_DB_PASSWORD> \
+        --source-db-schema <SOURCE_DB_SCHEMA>
 ```
 
 #### Analyze schema
@@ -179,39 +156,12 @@ The schema exported in the previous step may not yet be suitable for importing i
 The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
 
 ```sh
-yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --output-format txt
+yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-<!-- ```sh
-yb-voyager analyze-schema --export-dir /path/to/yb/export/dir \
-        --source-db-type postgresql \ # or mysql
-        --source-db-host localhost \
-        --source-db-user username \
-        --source-db-password password \
-        --source-db-name dbname \
-        --output-format txt
-``` -->
+Refer to [analyze schema](../yb-voyager-cli/#analyze-schema) for details about the arguments.
 
-The `--output-format` can be `html`, `txt`, `json`, or `xml`. The above command generates a report file under the `EXPORT_DIR/reports/` directory.
-
-An example invocation of the command for Oracle is as follows:
-
-```sh
-yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --source-db-schema ${SOURCE_DB_SCHEMA} \
-        --output-format txt
-```
+The above command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 #### Manually edit the schema
 
@@ -234,34 +184,19 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 Dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:
 
 ```sh
-yb-voyager export data --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
+yb-voyager export data --export-dir <EXPORT_DIR> --source-db-name <SOURCE_DB_NAME>
 ```
 
-<!-- ```sh
-yb-voyager export data --export-dir /path/to/yb/export/dir \
-        --source-db-type postgresql \ #or mysql
-        --source-db-host localhost \
-        --source-db-user username \
-        --source-db-password password \
-        --source-db-name dbname
-``` -->
-
-An example invocation of the command for Oracle is as follows:
+Note that the `source-db-schema` argument is required additionally for PostgreSQL and Oracle, and is _not_ for MySQL.
+An example invocation of the command with the `source-db-schema` argument is as follows:
 
 ```sh
-yb-voyager export data --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --source-db-schema ${SOURCE_DB_SCHEMA}
+yb-voyager export data --export-dir <EXPORT_DIR> \
+        --source-db-name <SOURCE_DB_NAME>
+        --source-db-schema <SOURCE_DB_SCHEMA>
 ```
+
+Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -270,37 +205,31 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 Import the schema using the `yb-voyager import schema` command as follows:
 
 ```sh
-yb-voyager import schema --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD} \
-        --target-db-name ${TARGET_DB_NAME}
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-name <TARGET_DB_NAME>
 ```
 
-<!-- ```sh
-yb-voyager import schema --export-dir /path/to/yb/export/dir \
-        --target-db-host localhost \
-        --target-db-password password \
-        --target-db-name dbname \
-        --target-db-user username
-``` -->
+Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
 
 For Oracle, `yb-voyager` imports the source database into the `public` schema of the target database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
 
 ```sh
-yb-voyager import schema --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD} \
-        --target-db-name ${TARGET_DB_NAME} \
-        --target-db-user ${TARGET_DB_USER}
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-user <TARGET_DB_USER>
 ```
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
-{{< note title="Note" >}}
+{{< note title="Importing indexes and triggers" >}}
 
-To speed up data import, the `yb-voyager import schema` command doesn't import indexes. The indexes are created by the `yb-voyager import data` command in the next step.
+Indexes and triggers are imported when you run the `import schema` command with the `--post-import-data` flag. You should run this command only when the entire data import is complete.
 
 {{< /note >}}
 
@@ -309,37 +238,31 @@ To speed up data import, the `yb-voyager import schema` command doesn't import i
 After you have successfully exported the source data and imported the schema in the target database, you can import the data using the `yb-voyager import data` command:
 
 ```sh
-yb-voyager import data --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD} \
-        --target-db-name ${TARGET_DB_NAME} \
-        --target-db-schema ${TARGET_DB_SCHEMA}
+yb-voyager import data --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA>
 ```
 
-<!-- ```sh
-yb-voyager import data --export-dir /path/to/yb/export/dir \
-        --target-db-host localhost \
-        --target-db-user username \
-        --target-db-password password \
-        --target-db-name dbname \
-        --target-db-schema schemaName
-``` -->
+Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
 
-yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ , each of which contains at most `--batch-size` number of records. By default, the `--batch-size` is 100,000 records. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ . yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
-By default, the `yb-voyager import data` command creates one database connection to each of the nodes of the target YugabyteDB cluster. You can increase the number of connections by specifying the total connection count, using the `--parallel-jobs` argument with the `import data` command. The command distributes the connections equally to all the nodes of the cluster.
+By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
 
 ```sh
-yb-voyager import data --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD} \
-        --target-db-name ${TARGET_DB_NAME} \
-        --target-db-schema ${TARGET_DB_SCHEMA} \
-        --parallel-jobs 100 \
-        --batch-size 250000
+yb-voyager import data --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --parallel-jobs <NUMBER_OF_JOBS>
 ```
+
+The recommended value for the `--parallel-jobs` is C/2 where C is the number of cores in the cluster.
 
 {{< tip title="Importing large datasets" >}}
 
@@ -357,34 +280,31 @@ Run the `yb-voyager import data status --export-dir ${EXPORT_DIR}` command to ge
 
 If all your data files are in CSV format and you have already created a schema in your target YugabyteDB, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
 
-<!-- ```sh
-yb-voyager import data file --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-port ${TARGET_DB_PORT} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD:-''} \
-        --target-db-name ${TARGET_DB_NAME} \
-        –-data-dir “/path/to/files/dir/” \
-        --file-table-map “filename1:table1,filename2:table2” \
-        --delimiter “|” \
-        –-has-header \
-``` -->
+```sh
+yb-voyager import data file --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \
+        --target-db-name <TARGET_DB_NAME> \
+        –-data-dir </path/to/files/dir/> \
+        --file-table-map <filename1:table1,filename2:table2> \
+        --delimiter <DELIMITER> \
+        –-has-header
+```
+
+Refer to [import data file](../yb-voyager-cli/#import-data-file) for details about the arguments.
+
+### Import schema post import data
+
+Import indexes and triggers using the `import schema` command with the `--post-import-data` flag as follows:
 
 ```sh
-yb-voyager import data file --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD} \
-        --target-db-name ${TARGET_DB_NAME} \
-        –-data-dir "/path/to/files/dir/" \
-        --file-table-map "filename1:table1,filename2:table2" \
-        --delimiter "|" \
-        –-has-header
+yb-voyager import schema --post-import-data
 ```
 
 ### Finalize DDL
 
-The `yb-voyager import data` command automatically creates indexes after it successfully loads the data in the [import data](#import-data) phase. The command creates the indexes listed in the schema.
+The `yb-voyager import schema` command creates the indexes and triggers after it successfully loads the data in the [import data](#import-data) phase.
 
 ### Verify migration
 
