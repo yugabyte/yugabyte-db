@@ -3020,3 +3020,36 @@ table_block_cache_hit_miss:
       alias:
         "rocksdb_block_cache_hit": "Hit"
         "rocksdb_block_cache_miss": "Miss"
+
+tablet_splitting_stats:
+  metric: ""
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "ts_split_op_added|ts_split_op_apply|ts_split_compaction_added|ts_post_split_compaction_added"
+  group_by: saved_name
+  panel_group: "RocksDB"
+  layout:
+    title: "Tablet Splitting Operations"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_split_op_added": "Add"
+        "ts_split_op_apply": "Apply"
+        "ts_split_compaction_added": "Compaction"
+        "ts_post_split_compaction_added": "Compaction"
+
+automatic_split_manager_time:
+  metric: "automatic_split_manager_time"
+  function: "rate|avg"
+  range: true
+  panel_group: "RocksDB"
+  layout:
+    "title": "Automatic Split"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "automatic_split_manager_time": "Split"
+      ticksuffix: "&nbsp;ms"

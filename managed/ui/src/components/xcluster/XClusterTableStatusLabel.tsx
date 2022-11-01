@@ -89,9 +89,9 @@ export const XClusterTableStatusLabel = ({
     case XClusterTableStatus.RUNNING:
       if (
         tableLagQuery.isLoading ||
-        (tableLagQuery.isIdle && tableLagQuery.data === undefined) ||
+        tableLagQuery.isIdle ||
         maxAcceptableLagQuery.isLoading ||
-        (maxAcceptableLagQuery.isIdle && maxAcceptableLagQuery.data === undefined)
+        maxAcceptableLagQuery.isIdle
       ) {
         return <YBLoadingCircleIcon />;
       }

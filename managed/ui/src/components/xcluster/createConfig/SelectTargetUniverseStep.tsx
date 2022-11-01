@@ -58,11 +58,11 @@ export const SelectTargetUniverseStep = ({
     fetchUniversesList().then((res) => res.data)
   );
 
-  if (universeListQuery.isLoading) {
+  if (universeListQuery.isLoading || universeListQuery.isIdle) {
     return <YBLoading />;
   }
 
-  if (universeListQuery.isError || universeListQuery.data === undefined) {
+  if (universeListQuery.isError) {
     return <YBErrorIndicator />;
   }
 

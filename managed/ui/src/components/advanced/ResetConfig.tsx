@@ -9,7 +9,7 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { YBModalForm } from '../common/forms';
 import { YBFormInput } from '../common/forms/fields';
 
-interface DeleteConfigData {
+interface ResetConfigData {
   configData: RunTimeConfigData;
   onHide: () => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
@@ -19,7 +19,7 @@ interface DeleteConfigData {
   customerUUID?: string;
 }
 
-export const DeleteConfig: FC<DeleteConfigData> = ({
+export const ResetConfig: FC<ResetConfigData> = ({
   configData,
   onHide,
   deleteRunTimeConfig,
@@ -51,11 +51,11 @@ export const DeleteConfig: FC<DeleteConfigData> = ({
   return (
     <YBModalForm
       size="large"
-      title={t('admin.advanced.globalConfig.ModelDeleteConfigTitle')}
+      title={t('admin.advanced.globalConfig.ModelResetConfigTitle')}
       visible={true}
       onHide={onHide}
       onFormSubmit={handleSubmit}
-      submitLabel="Delete"
+      submitLabel="Reset"
       showCancelButton
       render={() => {
         return (

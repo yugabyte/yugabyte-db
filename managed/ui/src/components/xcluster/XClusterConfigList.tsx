@@ -61,10 +61,10 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     });
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
-  if (universeQuery.isLoading) {
+  if (universeQuery.isLoading || universeQuery.isIdle) {
     return <YBLoading />;
   }
-  if (universeQuery.isError || universeQuery.data === undefined) {
+  if (universeQuery.isError) {
     return <YBErrorIndicator />;
   }
 
