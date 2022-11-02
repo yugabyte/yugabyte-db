@@ -1510,11 +1510,14 @@ TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
                                       kUniverseId, &resp));
+
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());
   auto txn_id = txn.second->id();
   ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   FLAGS_TEST_disable_apply_committed_transactions = false;
   ASSERT_OK(WaitForTransactionCleanedUp(consumer_client(), txn_id));
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -1531,6 +1534,10 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
   auto consumer_table = tables[1];
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                      kUniverseId, &resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());

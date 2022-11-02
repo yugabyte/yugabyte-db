@@ -1082,9 +1082,20 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   // fetch it from the client and populate the tablet metadata.
   auto* client = client_future().get();
   master::GetNamespaceInfoResponsePB resp;
+  auto db_type = YQL_DATABASE_CQL;
+  switch (tablet()->metadata()->table_type()) {
+    case PGSQL_TABLE_TYPE:
+      db_type = YQL_DATABASE_PGSQL;
+      break;
+    case REDIS_TABLE_TYPE:
+      db_type = YQL_DATABASE_REDIS;
+      break;
+    default:
+      db_type = YQL_DATABASE_CQL;
+  }
+
   RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
-                                         tablet()->metadata()->namespace_name(),
-                                         boost::none /* database_type */, &resp));
+                                         tablet()->metadata()->namespace_name(), db_type, &resp));
   namespace_id = resp.namespace_().id();
   if (namespace_id.empty()) {
     return STATUS(IllegalState, Format("Could not get namespace id for $0",

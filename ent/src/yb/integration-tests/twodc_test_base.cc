@@ -647,5 +647,23 @@ Status TwoDCTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_uui
   }, MonoDelta::FromSeconds(kRpcTimeout), "Waiting for universe to delete");
 }
 
+Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id) {
+  for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto safe_time =
+              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          if (!safe_time) {
+            return false;
+          }
+          CHECK(safe_time->is_valid());
+          return true;
+        }, safe_time_propagation_timeout_,
+        Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
+    }
+
+    return Status::OK();
+  }
+
 } // namespace enterprise
 } // namespace yb
