@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.CascadeType;
@@ -327,6 +328,18 @@ public class Provider extends Model {
     return find.byId(providerUuid);
   }
 
+  public static Optional<Provider> maybeGet(UUID providerUUID) {
+    // Find the Provider.
+    Provider provider = find.byId(providerUUID);
+    if (provider == null) {
+      LOG.trace("Cannot find provider {}", providerUUID);
+      return Optional.empty();
+    }
+
+    // Return the provider object.
+    return Optional.of(provider);
+  }
+
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
@@ -362,7 +375,6 @@ public class Provider extends Model {
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
-    this.save();
   }
 
   // Used for GCP providers to pass down region information. Currently maps regions to

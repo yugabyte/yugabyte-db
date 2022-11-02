@@ -357,6 +357,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Map<String, String> universeConfig = new HashMap<>();
     universeConfig.put(Universe.HELM2_LEGACY, "helm");
     universe.setConfig(universeConfig);
+    universe.save();
 
     String url =
         "/api/customers/"
@@ -595,6 +596,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Map<String, String> universeConfig = new HashMap<>();
     universeConfig.put(Universe.HELM2_LEGACY, "helm");
     universe.setConfig(universeConfig);
+    universe.save();
 
     String url =
         "/api/customers/"
