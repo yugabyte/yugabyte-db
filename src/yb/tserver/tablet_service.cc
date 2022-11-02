@@ -1074,7 +1074,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     auto namespace_name = tablet.peer->tablet_metadata()->namespace_name();
     auto namespace_id_result = tablet.peer->GetNamespaceId();
     if (!namespace_id_result.ok()) {
-      state->CompleteWithStatus(namespace_id_result.status());
+      state->CompleteWithStatus(STATUS(TryAgain, namespace_id_result.status().message()));
       return;
     }
     auto commit_ht = HybridTime(req->state().commit_hybrid_time());
@@ -1082,7 +1082,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
         server_->tablet_manager()->server()->XClusterSafeTimeCaughtUpToCommitHt(
             *namespace_id_result, commit_ht);
     if (!tablet_caught_up_result.ok()) {
-      state->CompleteWithStatus(tablet_caught_up_result.status());
+      state->CompleteWithStatus(STATUS(TryAgain, tablet_caught_up_result.status().message()));
       return;
     }
     if (!*tablet_caught_up_result) {
@@ -1104,7 +1104,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   } else {
     auto* coordinator = tablet.tablet->transaction_coordinator();
     if (coordinator) {
-      coordinator->Handle(std::move(state), tablet.leader_term, req->is_external());
+      coordinator->Handle(std::move(state), tablet.leader_term);
     } else {
       state->CompleteWithStatus(STATUS_FORMAT(
           InvalidArgument, "Does not have transaction coordinator to process $0",

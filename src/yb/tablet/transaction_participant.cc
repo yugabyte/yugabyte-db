@@ -217,6 +217,10 @@ class TransactionParticipant::Impl
       return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
+    if (metadata.external_transaction && metadata.status_tablet.empty()) {
+      return STATUS(InvalidArgument, Format("For external transaction $0, status tablet is empty",
+                                            metadata.transaction_id));
+    }
     transactions_.insert(std::make_shared<RunningTransaction>(
         metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
     TransactionsModifiedUnlocked(&min_running_notifier);
@@ -312,13 +316,11 @@ class TransactionParticipant::Impl
 
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
-      bool external_transaction) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(
-        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-        external_transaction);
+        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -339,7 +341,8 @@ class TransactionParticipant::Impl
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFind(*request.id, *request.reason, request.flags);
+    auto lock_and_iterator = LockAndFind(
+        *request.id, *request.reason, request.flags);
     if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
@@ -638,8 +641,7 @@ class TransactionParticipant::Impl
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
       auto lock_and_iterator = LockAndFind(
-          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-          data.is_external);
+          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -662,10 +664,11 @@ class TransactionParticipant::Impl
         CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
         }));
-
-        LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
-            << "Apply transaction before last safe time " << data.transaction_id
-            << ": " << data.log_ht << " vs " << last_safe_time_;
+        if (!lock_and_iterator.transaction().external_transaction()) {
+          LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
+              << "Apply transaction before last safe time " << data.transaction_id
+              << ": " << data.log_ht << " vs " << last_safe_time_;
+        }
       }
     }
 
@@ -1263,11 +1266,16 @@ class TransactionParticipant::Impl
       while (!remove_queue_.empty()) {
         auto& front = remove_queue_.front();
         auto it = transactions_.find(front.id);
-        if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
-          // It is regular case, since the coordinator returns ABORTED for already applied
-          // transaction. But this particular tablet could not yet apply it, so
-          // it would add such transaction to remove queue.
-          // And it is the main reason why we are waiting for safe time, before removing intents.
+        if (it == transactions_.end() ||
+            (**it).local_commit_time().is_valid() ||
+            (**it).external_transaction()) {
+          // A couple possibilities:
+          // 1. This is an xcluster transaction so we want to skip the remove path for ABORTED
+          // transactions.
+          // 2. Since the coordinator returns ABORTED for already applied transaction. But this
+          // particular tablet could not yet apply it, so it would add such transaction to remove
+          // queue. And it is the main reason why we are waiting for safe time, before removing
+          // intents.
           VLOG_WITH_PREFIX(4) << "Evicting txn from remove queue, w/o removing intents: "
                               << front.ToString();
           remove_queue_.pop_front();
@@ -1348,15 +1356,15 @@ class TransactionParticipant::Impl
   };
 
   LockAndFindResult LockAndFind(
-      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags,
-      bool external_transaction = false) {
+      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     loader_.WaitLoaded(id);
     bool recently_removed;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if (!external_transaction && (**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (!(**it).external_transaction() &&
+            (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
@@ -1553,7 +1561,7 @@ class TransactionParticipant::Impl
       .log_ht = data.hybrid_time,
       .sealed = data.sealed,
       .status_tablet = data.state.tablets().front().ToBuffer(),
-      .is_external = data.state.has_external_commit_ht()
+      .is_external = data.state.has_external_hybrid_time()
     };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
@@ -1611,6 +1619,9 @@ class TransactionParticipant::Impl
     TransactionStatusResolver* resolver = nullptr;
     for (;;) {
       auto& txn = **index.begin();
+      if (txn.external_transaction()) {
+        break;
+      }
       if (txn.abort_check_ht() > now) {
         break;
       }
@@ -1783,9 +1794,8 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
-    bool external_transaction) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, external_transaction);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
 }
 
 void TransactionParticipant::BatchReplicated(

@@ -68,6 +68,7 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 struct FlushStatus;
 using FlushCallback = boost::function<void(FlushStatus*)>;
 using CommitCallback = boost::function<void(const Status&)>;
+using CreateCallback = boost::function<void(const Status&)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;

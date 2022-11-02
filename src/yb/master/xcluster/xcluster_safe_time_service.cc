@@ -264,8 +264,13 @@ XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
         GetNewSafeTime(previous_safe_time_map, kSystemNamespaceId, *sys_namespace_it);
   }
 
-  for (auto [namespace_id, safe_time] : namespace_safe_time) {
+  for (auto[namespace_id, safe_time] : namespace_safe_time) {
     if (namespace_id == kSystemNamespaceId) {
+      continue;
+    }
+
+    if (safe_time.is_special()) {
+      new_safe_time_map[namespace_id] = safe_time;
       continue;
     }
 
