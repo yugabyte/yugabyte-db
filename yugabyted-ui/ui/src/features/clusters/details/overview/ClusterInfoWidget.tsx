@@ -119,7 +119,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
       return t('clusters.atRest')
     }
     if (encryptionInTransit) {
-      t('clusters.inTransit')
+      return t('clusters.inTransit')
     }
     return t('clusters.none')
   }

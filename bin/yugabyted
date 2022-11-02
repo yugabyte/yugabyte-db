@@ -1079,14 +1079,14 @@ class ControlScript(object):
                 self.configs.saved_data.get("data_dir")),
         }
 
-        if self.configs.temp_data.get("ui"):
-            yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-                [
-                    "-database_host={}".format(bind_ip)
-                ]
-            self.processes["yugabyted-ui"] = ProcessManager(
-                "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-                self.configs.saved_data.get("data_dir"))
+        # if self.configs.temp_data.get("ui"):
+        #     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
+        #         [
+        #             "-database_host={}".format(bind_ip)
+        #         ]
+        #     self.processes["yugabyted-ui"] = ProcessManager(
+        #         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
+        #         self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -1187,6 +1187,22 @@ class ControlScript(object):
                             self.update_tserver_master_addrs()
                         process.start()
                         should_callhome = True
+
+
+            if is_first_run:
+                if self.configs.temp_data.get("ui"):
+                    yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
+                        [
+                            "-database_host={}".format(bind_ip)
+                        ]
+                    if self.configs.saved_data.get("secure"):
+                        yugabyted_ui_cmd.extend(["-secure=true",
+                            "-database_password={}".format(
+                            self.configs.saved_data.get("database_password"))])
+
+                    self.processes["yugabyted-ui"] = ProcessManager(
+                        "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
+                        self.configs.saved_data.get("data_dir"))
 
             if self.configs.temp_data.get("ui"):
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
