@@ -20,7 +20,6 @@ showRightNav: true
 
 The supported release series include:
 
-* [Stable](versioning/#stable-releases): Supported for production deployments.
 * [LTS and STS](versioning/#lts-and-sts-releases): Supported for production deployments.
 * [Preview](versioning/#preview-releases): Supported for development and testing only.
 
@@ -34,9 +33,7 @@ The type of YugabyteDB release series you are running determines its support tim
 
 **STS (short-term support)** release series receive maintenance updates for at least 8 months (240 days) from the first release date of the minor release.
 
-**Stable** release series receive maintenance updates for at least 12 months (365 days) from the first release date of the minor release.
-
-The following applies to **LTS, STS, and stable** release series:
+LTS and STS release series are both subject to the following support and EOL timeframes:
 
 * **Extended support:** Following the maintenance support period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   * Updates and Upgrades will not be made to the minor release.
@@ -50,6 +47,7 @@ The information in this section is a summary for convenience only. For complete 
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.16]() | not yet released | (18 months post-release) | (24 months post-release) |
 | [v2.15](release-notes/v2.15/) ![PREVIEW](/images/releases/preview.png) | June 27, 2022 | n/a | n/a |
 | [v2.14](release-notes/v2.14/) ![CURRENT STABLE](/images/releases/current-stable.png) | July 14, 2022 | July 14, 2023 | January 14, 2024 |
 | [v2.12](release-notes/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
