@@ -5,7 +5,7 @@
 --
 -- should fail
 select pg_current_xact_id();
-ERROR:  cannot execute pg_current_xact_id() during recovery
+ERROR:  Yugabyte does not support xid
 select length(pg_current_snapshot()::text) >= 4;
  ?column? 
 ----------

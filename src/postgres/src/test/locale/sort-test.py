@@ -14,5 +14,5 @@ infile.close()
 for i in range(0, len(list)):
    list[i] = list[i][:-1] # chop!
 
-list.sort(locale.strcoll)
-print(string.join(list, '\n'))
+list.sort(key=locale.strxfrm)
+print('\n'.join(list))

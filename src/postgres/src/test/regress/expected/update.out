@@ -172,14 +172,14 @@ EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE update_test t
   SET (a, b) = (SELECT b, a FROM update_test s WHERE s.a = t.a)
   WHERE CURRENT_USER = SESSION_USER;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Update on public.update_test t
    ->  Result
-         Output: $1, $2, t.c, (SubPlan 1 (returns $1,$2)), t.ctid
+         Output: $1, $2, (SubPlan 1 (returns $1,$2)), t.ctid
          One-Time Filter: (CURRENT_USER = SESSION_USER)
          ->  Seq Scan on public.update_test t
-               Output: t.c, t.a, t.ctid
+               Output: t.a, t.ctid
          SubPlan 1 (returns $1,$2)
            ->  Seq Scan on public.update_test s
                  Output: s.b, s.a
@@ -228,6 +228,27 @@ INSERT INTO upsert_test VALUES (1, 'Bat'), (3, 'Zot') ON CONFLICT(a)
  1 | Foo, Correlated, Excluded
  3 | Zoo, Correlated, Excluded
 (2 rows)
+
+-- ON CONFLICT using system attributes in RETURNING, testing both the
+-- inserting and updating paths. See bug report at:
+-- https://www.postgresql.org/message-id/73436355-6432-49B1-92ED-1FE4F7E7E100%40finefun.com.au
+INSERT INTO upsert_test VALUES (2, 'Beeble') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b || ', Excluded', a from upsert_test i WHERE i.a = excluded.a)
+  RETURNING tableoid::regclass, xmin = pg_current_xact_id()::xid AS xmin_correct, xmax = 0 AS xmax_correct;
+  tableoid   | xmin_correct | xmax_correct 
+-------------+--------------+--------------
+ upsert_test | t            | t
+(1 row)
+
+-- currently xmax is set after a conflict - that's probably not good,
+-- but it seems worthwhile to have to be explicit if that changes.
+INSERT INTO upsert_test VALUES (2, 'Brox') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b || ', Excluded', a from upsert_test i WHERE i.a = excluded.a)
+  RETURNING tableoid::regclass, xmin = pg_current_xact_id()::xid AS xmin_correct, xmax = pg_current_xact_id()::xid AS xmax_correct;
+  tableoid   | xmin_correct | xmax_correct 
+-------------+--------------+--------------
+ upsert_test | t            | t
+(1 row)
 
 DROP TABLE update_test;
 DROP TABLE upsert_test;
@@ -318,31 +339,32 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO 
 
 -- The order of subplans should be in bound order
 EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
-             QUERY PLAN              
--------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Update on range_parted
-   Update on part_a_1_a_10
-   Update on part_a_10_a_20
-   Update on part_b_1_b_10
-   Update on part_c_1_100
-   Update on part_d_1_15
-   Update on part_d_15_20
-   Update on part_b_20_b_30
-   ->  Seq Scan on part_a_1_a_10
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_a_10_a_20
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_b_1_b_10
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_c_1_100
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_d_1_15
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_d_15_20
-         Filter: (c > '97'::numeric)
-   ->  Seq Scan on part_b_20_b_30
-         Filter: (c > '97'::numeric)
-(22 rows)
+   Update on part_a_1_a_10 range_parted_1
+   Update on part_a_10_a_20 range_parted_2
+   Update on part_b_1_b_10 range_parted_3
+   Update on part_c_1_100 range_parted_4
+   Update on part_d_1_15 range_parted_5
+   Update on part_d_15_20 range_parted_6
+   Update on part_b_20_b_30 range_parted_7
+   ->  Append
+         ->  Seq Scan on part_a_1_a_10 range_parted_1
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_a_10_a_20 range_parted_2
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_b_1_b_10 range_parted_3
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_c_1_100 range_parted_4
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_d_1_15 range_parted_5
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_d_15_20 range_parted_6
+               Filter: (c > '97'::numeric)
+         ->  Seq Scan on part_b_20_b_30 range_parted_7
+               Filter: (c > '97'::numeric)
+(23 rows)
 
 -- fail, row movement happens only within the partition subtree.
 UPDATE part_c_100_200 set c = c - 20, d = c WHERE c = 105;
@@ -351,8 +373,8 @@ DETAIL:  Failing row contains (105, 85, null, b, 15).
 -- fail, no partition key update, so no attempt to move tuple,
 -- but "a = 'a'" violates partition constraint enforced by root partition)
 UPDATE part_b_10_b_20 set a = 'a';
-ERROR:  new row for relation "part_c_1_100" violates partition constraint
-DETAIL:  Failing row contains (null, 1, 96, 12, a).
+ERROR:  new row for relation "part_b_10_b_20" violates partition constraint
+DETAIL:  Failing row contains (null, 96, a, 12, 1).
 -- ok, partition key update, no constraint violation
 UPDATE range_parted set d = d - 10 WHERE d > 10;
 -- ok, no partition key update, no constraint violation
@@ -382,8 +404,8 @@ UPDATE part_b_10_b_20 set c = c + 20 returning c, b, a;
 
 -- fail, row movement happens only within the partition subtree.
 UPDATE part_b_10_b_20 set b = b - 6 WHERE c > 116 returning *;
-ERROR:  new row for relation "part_d_1_15" violates partition constraint
-DETAIL:  Failing row contains (2, 117, 2, b, 7).
+ERROR:  new row for relation "part_b_10_b_20" violates partition constraint
+DETAIL:  Failing row contains (2, 117, b, 7, 2).
 -- ok, row movement, with subset of rows moved into different partition.
 UPDATE range_parted set b = b - 6 WHERE c > 116 returning a, b + c;
  a | ?column? 
@@ -804,6 +826,59 @@ DETAIL:  Failing row contains (a, 10).
 -- ok
 UPDATE list_default set a = 'x' WHERE a = 'd';
 DROP TABLE list_parted;
+-- Test retrieval of system columns with non-consistent partition row types.
+-- This is only partially supported, as seen in the results.
+create table utrtest (a int, b text) partition by list (a);
+create table utr1 (a int check (a in (1)), q text, b text);
+create table utr2 (a int check (a in (2)), b text);
+alter table utr1 drop column q;
+alter table utrtest attach partition utr1 for values in (1);
+alter table utrtest attach partition utr2 for values in (2);
+insert into utrtest values (1, 'foo')
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;
+ a |  b  | tableoid | xmin_ok 
+---+-----+----------+---------
+ 1 | foo | utr1     | t
+(1 row)
+
+insert into utrtest values (2, 'bar')
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;  -- fails
+ERROR:  cannot retrieve a system column in this context
+insert into utrtest values (2, 'bar')
+  returning *, tableoid::regclass;
+ a |  b  | tableoid 
+---+-----+----------
+ 2 | bar | utr2
+(1 row)
+
+update utrtest set b = b || b from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;
+ a |   b    | x | tableoid | xmin_ok 
+---+--------+---+----------+---------
+ 1 | foofoo | 1 | utr1     | t
+ 2 | barbar | 2 | utr2     | t
+(2 rows)
+
+update utrtest set a = 3 - a from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;  -- fails
+ERROR:  cannot retrieve a system column in this context
+update utrtest set a = 3 - a from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass;
+ a |   b    | x | tableoid 
+---+--------+---+----------
+ 2 | foofoo | 1 | utr2
+ 1 | barbar | 2 | utr1
+(2 rows)
+
+delete from utrtest
+  returning *, tableoid::regclass, xmax = pg_current_xact_id()::xid as xmax_ok;
+ a |   b    | tableoid | xmax_ok 
+---+--------+----------+---------
+ 1 | barbar | utr1     | t
+ 2 | foofoo | utr2     | t
+(2 rows)
+
+drop table utrtest;
 --------------
 -- Some more update-partition-key test scenarios below. This time use list
 -- partitions.
@@ -824,8 +899,8 @@ INSERT into sub_parted VALUES (1,2,10);
 -- Test partition constraint violation when intermediate ancestor is used and
 -- constraint is inherited from upper root.
 UPDATE sub_parted set a = 2 WHERE c = 10;
-ERROR:  new row for relation "sub_part2" violates partition constraint
-DETAIL:  Failing row contains (2, 10, 2).
+ERROR:  new row for relation "sub_parted" violates partition constraint
+DETAIL:  Failing row contains (2, 2, 10).
 -- Test update-partition-key, where the unpruned partitions do not have their
 -- partition keys updated.
 SELECT tableoid::regclass::text, * FROM list_parted WHERE a = 2 ORDER BY 1;

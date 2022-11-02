@@ -2040,6 +2040,12 @@ order by a, b, c;
    |   |  
 (11 rows)
 
+select (select grouping(v1)) from (values ((select 1))) v(v1) group by v1;
+ grouping 
+----------
+        0
+(1 row)
+
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);

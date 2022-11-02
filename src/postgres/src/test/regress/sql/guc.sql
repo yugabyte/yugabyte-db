@@ -311,7 +311,6 @@ reset check_function_bodies;
 set default_with_oids to f;
 -- Should not allow to set it to true.
 set default_with_oids to t;
-
 -- test SET unrecognized parameter
 SET foo = false;  -- no such setting
 

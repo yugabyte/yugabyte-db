@@ -62,9 +62,6 @@ static void run_permutation(TestSpec *testspec, int nsteps,
 #define STEP_NONBLOCK	0x1		/* return as soon as cmd waits for a lock */
 #define STEP_RETRY		0x2		/* this is a retry of a previously-waiting cmd */
 
-/* This is YB specific logic. See usage for description */
-#define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
-
 static int	try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 							   int nwaiting, int flags);
 static bool try_complete_step(TestSpec *testspec, PermutationStep *pstep,
@@ -77,6 +74,9 @@ static bool step_has_blocker(PermutationStep *pstep);
 static void printResultSet(PGresult *res);
 static void isotesterNoticeProcessor(void *arg, const char *message);
 static void blackholeNoticeProcessor(void *arg, const char *message);
+
+/* This is YB specific logic. See usage for description */
+#define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
 
 static void
 disconnect_atexit(void)
