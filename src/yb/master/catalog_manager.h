@@ -181,7 +181,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // pb. The caller is then responsible for performing the ChangeMetadataOperation.
   Status CreateYsqlSysTable(
       const CreateTableRequestPB* req, CreateTableResponsePB* resp,
-      tablet::ChangeMetadataRequestPB* change_meta_req = nullptr);
+      tablet::ChangeMetadataRequestPB* change_meta_req = nullptr,
+      SysCatalogWriter* writer = nullptr);
 
   Status ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
