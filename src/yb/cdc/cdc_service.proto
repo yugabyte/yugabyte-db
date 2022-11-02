@@ -220,7 +220,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
-    COMMITTED = 6;
+    TRANSACTION_COMMITTED = 6;
+    TRANSACTION_CREATED = 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;

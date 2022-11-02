@@ -264,17 +264,34 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     return AddRecord(process_record_info, record, write_request->mutable_write_batch());
   }
 
+  Status ProcessCreateRecord(
+      const std::string& status_tablet, const cdc::CDCRecordPB& record) override {
+    SCHECK_EQ(record.operation(), cdc::CDCRecordPB::TRANSACTION_CREATED, IllegalState,
+              Format("Invalid operation type $0", record.operation()));
+    transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
+        .transaction_id = VERIFY_RESULT(
+            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+        .status_tablet = status_tablet,
+        .operation_type = client::ExternalTransactionMetadata::OperationType::CREATE,
+        .hybrid_time = record.time(),
+        .involved_tablet_ids = {}
+    });
+    return Status::OK();
+  }
+
   Status ProcessCommitRecord(
       const std::string& status_tablet,
       const std::vector<std::string>& involved_target_tablet_ids,
       const cdc::CDCRecordPB& record) override {
-    DCHECK(record.operation() == cdc::CDCRecordPB::COMMITTED);
+    SCHECK_EQ(record.operation(), cdc::CDCRecordPB::TRANSACTION_COMMITTED, IllegalState,
+              Format("Invalid operation type $0", record.operation()));
     transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
-      .transaction_id = VERIFY_RESULT(
-          FullyDecodeTransactionId(record.transaction_state().transaction_id())),
-      .status_tablet = status_tablet,
-      .commit_ht = record.time(),
-      .involved_tablet_ids = involved_target_tablet_ids
+        .transaction_id = VERIFY_RESULT(
+            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+        .status_tablet = status_tablet,
+        .operation_type = client::ExternalTransactionMetadata::OperationType::COMMIT,
+        .hybrid_time = record.time(),
+        .involved_tablet_ids = involved_target_tablet_ids
     });
     return Status::OK();
   }

@@ -70,10 +70,6 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     FLAGS_enable_load_balancing = false;
     FLAGS_enable_replicate_transaction_status_table = true;
 
-    FLAGS_xcluster_safe_time_update_interval_secs = 1;
-    safe_time_propagation_timeout_ =
-        FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
-
     TwoDCTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
@@ -203,7 +199,6 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
   }
 
  protected:
-  MonoDelta safe_time_propagation_timeout_;
   YBTableName producer_table_name_;
   YBTableName consumer_table_name_;
   std::shared_ptr<YBTable> producer_table_;
@@ -286,9 +281,6 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 
     // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
-    FLAGS_xcluster_safe_time_update_interval_secs = 1;
-    safe_time_propagation_timeout_ =
-        FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
     FLAGS_ysql_yb_xcluster_consistency_level = "database";
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_enable_replicate_transaction_status_table = true;
@@ -455,21 +447,7 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 
   virtual Status PostReplicationSetup() {
     // Wait till we have a valid safe time on all tservers.
-    for (auto& tserver : consumer_cluster()->mini_tablet_servers()) {
-      RETURN_NOT_OK(WaitFor(
-          [&]() -> Result<bool> {
-            auto safe_time = tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
-            if (!safe_time) {
-              return false;
-            }
-            CHECK(safe_time->is_valid());
-            return true;
-          },
-          safe_time_propagation_timeout_,
-          Format("Wait for safe_time of namespace $0 to be valid", namespace_id_)));
-    }
-
-    return OK();
+    return WaitForValidSafeTimeOnAllTServers(namespace_id_);
   }
 
   Status WaitForRowCount(
@@ -584,7 +562,6 @@ class XClusterConsistencyTest : public TwoDCTestBase {
   }
 
  protected:
-  MonoDelta safe_time_propagation_timeout_;
   std::vector<string> stream_ids_;
   std::shared_ptr<client::YBTable> producer_table1_, producer_table2_, producer_tran_table_;
   std::shared_ptr<client::YBTable> consumer_table1_, consumer_table2_;
