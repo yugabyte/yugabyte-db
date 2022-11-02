@@ -168,6 +168,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -184,6 +185,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -199,6 +201,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     backupTableParams.customerUUID = defaultCustomer.uuid;
@@ -219,6 +222,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -234,6 +238,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -252,6 +257,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -275,6 +281,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "{\"snapshot_url\": \"/tmp/backup\", \"backup_size_in_bytes\": 340}";
     shellResponse.code = 0;
@@ -290,6 +297,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "false");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
     TaskInfo taskInfo = submitTask(null, new ArrayList<>());
     verify(mockTableManager, times(0)).createBackup(any());
     assertEquals(Success, taskInfo.getTaskState());
