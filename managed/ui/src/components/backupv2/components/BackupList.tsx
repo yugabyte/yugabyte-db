@@ -295,7 +295,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     );
   };
 
-  const backups: IBackup[] = backupsList?.data.entities;
+  const backups: IBackup[] = backupsList?.data.entities.map((b: IBackup) => {
+    return { ...b, backupUUID: b.commonBackupInfo.backupUUID };
+  });
 
   if (!isFilterApplied() && backups?.length === 0) {
     return allowTakingBackup ? (
