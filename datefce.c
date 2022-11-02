@@ -512,13 +512,13 @@ _ora_date_round(DateADT day, int f)
 				else if (iy1 <= (day1) && day >= iy1 - 3)
 				{
 					DateADT cmp = iy1 - (iy1 < day1?0:1);
-					int d = J2DAY(day1);
+					int d2 = J2DAY(day1);
 					/* some exceptions */
-					if ((day >= cmp - 2) && (!(d == 3 && overl)))
+					if ((day >= cmp - 2) && (!(d2 == 3 && overl)))
 					{
 						/* if year don't starts in thursday */
-						if ((d < 4 && J2DAY(day) != 5 && !isSaturday)
-							||(d == 2 && isSaturday && overl))
+						if ((d2 < 4 && J2DAY(day) != 5 && !isSaturday)
+							||(d2 == 2 && isSaturday && overl))
 						{
 							result = iy2;
 						}
