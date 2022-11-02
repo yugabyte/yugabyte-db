@@ -361,16 +361,13 @@ public class BackupsController extends AuthenticatedController {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot create incremental backup schedules on non-ybc universes.");
       }
-      BackupUtil.validateBackupFrequency(taskParams.incrementalBackupFrequency);
-      long schedulingFrequency = taskParams.schedulingFrequency;
-      if (!StringUtils.isEmpty(taskParams.cronExpression)) {
-        schedulingFrequency = BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
-      }
-      if (schedulingFrequency <= taskParams.incrementalBackupFrequency) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Incremental backup frequency should be lower than full backup frequency.");
-      }
+      // Validate Incremental backup schedule frequency
+      long schedulingFrequency =
+          (StringUtils.isEmpty(taskParams.cronExpression))
+              ? taskParams.schedulingFrequency
+              : BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
+      BackupUtil.validateIncrementalScheduleFrequency(
+          taskParams.incrementalBackupFrequency, schedulingFrequency);
     }
     Schedule schedule =
         Schedule.create(
