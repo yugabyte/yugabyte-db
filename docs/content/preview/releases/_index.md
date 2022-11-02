@@ -57,21 +57,17 @@ The information in this section is a summary for convenience only. For complete 
 
 ### Releases at end of life (EOL) {#eol-releases}
 
-The following releases are no longer supported:
+The following stable releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.13](release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
-| [v2.11](release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
-| [v2.9](release-notes/v2.9/) | August 31, 2021 | n/a | n/a |
-| [v2.7](release-notes/v2.7/) | May 5, 2021 | n/a | n/a |
-| [v2.5](release-notes/v2.5/) | November 12, 2020 | n/a | n/a |
 | [v2.4](release-notes/v2.4/) | January 22, 2021 | January 22, 2022 | July 21, 2022 |
-| [v2.3](release-notes/v2.3/) | September 08, 2020 | n/a | n/a |
 | [v2.2](release-notes/v2.2/) | July 15, 2020 | July 15, 2021 | January 15, 2022 |
 | [v2.1](release-notes/v2.1/) | February 25, 2020 | February 25, 2021 | August 08, 2021 |
 | [v2.0](release-notes/v2.0/) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
 | [v1.3](release-notes/v1.3/) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
+
+All non-current preview releases are unsupported.
 
 {{<note title="Archived docs available">}}
 Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
@@ -85,7 +81,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.16 (stable) | Late 2022 |
+| v2.16 (STS) | Late 2022 |
 | v2.17 | Late 2022 |
 
 ## Recommended release series for projects
