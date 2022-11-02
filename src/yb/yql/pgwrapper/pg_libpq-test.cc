@@ -451,6 +451,66 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
   std::this_thread::sleep_for(30s);
 }
 
+// Concurrently insert records followed by deletes to tables with a foreign key relationship with
+// on-delete cascade. https://github.com/yugabyte/yugabyte-db/issues/14471
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWithForeignKey)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  const auto num_iterations = 50;
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));
+  ASSERT_OK(conn1.Execute(
+      "CREATE TABLE IF NOT EXISTS t2 (i int, j int REFERENCES t1(a) ON DELETE CASCADE)"));
+
+  for (int i = 0; i < num_iterations; ++i) {
+    // Insert 50 rows in t1.
+    for (int count = 0; count < 50; count++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)", count, count + 1));
+    }
+
+    std::atomic<bool> stop = false;
+    std::atomic<int> values_in_t1 = 50;
+
+    // Insert rows in t2 on a separate thread.
+    std::thread insertion_thread([&conn2, &stop, &values_in_t1] {
+      int value_to_insert = 0;
+      while (!stop && value_to_insert < values_in_t1) {
+        ASSERT_OK(conn2.ExecuteFormat(
+            "INSERT INTO t2 VALUES ($0, $1)", value_to_insert, value_to_insert + 1));
+        value_to_insert++;
+      }
+
+      // Verify insert prevention due to FK constraints.
+      Status s = conn2.Execute("INSERT INTO t2 VALUES (999, 999)");
+      ASSERT_FALSE(s.ok());
+      ASSERT_EQ(PgsqlError(s), YBPgErrorCode::YB_PG_FOREIGN_KEY_VIOLATION);
+      ASSERT_STR_CONTAINS(s.ToString(), "violates foreign key constraint");
+    });
+
+    // Insert 50 more values in t1.
+    for (int j = 50; j < 100; ++j) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1));
+      values_in_t1++;
+    }
+
+    // Verify for CASCADE behaviour.
+    ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
+
+    stop = true;
+    insertion_thread.join();
+
+    // Verify t1 has 99 i.e. (100 - 1) rows.
+    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    ASSERT_EQ(curr_rows, 99);
+
+    // Reset the tables for next iteration.
+    ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
+    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    ASSERT_EQ(curr_rows, 0);
+  }
+}
+
 Result<int64_t> ReadSumBalance(
     PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
