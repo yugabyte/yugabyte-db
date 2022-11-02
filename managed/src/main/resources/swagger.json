@@ -3528,6 +3528,16 @@
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
         },
+        "incrementalBackupFrequency" : {
+          "description" : "Frequency of incremental backup schedule",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "incrementalBackupFrequencyTimeUnit" : {
+          "description" : "TimeUnit for incremental Backup Schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [ "Active", "Paused", "Stopped" ],
