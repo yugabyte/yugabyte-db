@@ -514,9 +514,10 @@ TAG_FLAG(TEST_delay_sys_catalog_reload_secs, runtime);
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
-DEFINE_bool(batch_ysql_system_tables_metadata, false,
-            "Whether change metadata operation for ysql system tables during "
-            "a create database is performed one by one or batched together");
+DEFINE_bool(
+    batch_ysql_system_tables_metadata, true,
+    "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
+    "create database is performed one by one or batched together");
 TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
 
 DEFINE_test_flag(bool, pause_split_child_registration,
@@ -3114,7 +3115,7 @@ Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
 
 Status CatalogManager::CreateYsqlSysTable(
     const CreateTableRequestPB* req, CreateTableResponsePB* resp,
-    tablet::ChangeMetadataRequestPB* change_meta_req) {
+    tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
   LOG(INFO) << "CreateYsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -3195,11 +3196,17 @@ Status CatalogManager::CreateYsqlSysTable(
   {
     auto tablet_lock = sys_catalog_tablet->LockForWrite();
     tablet_lock.mutable_data()->pb.add_table_ids(table->id());
+    Status s;
+    if (!writer) {
+      s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);
+    } else {
+      s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet);
+    }
 
-    Status s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
-        "An error occurred while inserting to sys-tablets: "), resp);
+      return AbortTableCreation(
+          table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+          resp);
     }
     table->set_is_system();
     table->AddTablet(sys_catalog_tablet.get());
@@ -3208,12 +3215,18 @@ Status CatalogManager::CreateYsqlSysTable(
   TRACE("Inserted new table info into CatalogManager maps");
 
   // Update the on-disk table state to "running".
-  // TODO(Sanket) : Can batch upserts for all ysql system tables together.
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
-  Status s = sys_catalog_->Upsert(leader_ready_term(), table);
+
+  Status s;
+  if (!writer) {
+    s = sys_catalog_->Upsert(leader_ready_term(), table);
+  } else {
+    s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, table);
+  }
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
-      "An error occurred while inserting to sys-tablets: "), resp);
+    return AbortTableCreation(
+        table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+        resp);
   }
   TRACE("Wrote table to system table");
 
@@ -3333,6 +3346,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   vector<TableId> target_table_ids;
   tablet::ChangeMetadataRequestPB change_meta_req;
   bool batching = false;
+  auto writer = sys_catalog_->NewWriter(leader_ready_term());
   for (const auto& table : tables) {
     CreateTableRequestPB table_req;
     CreateTableResponsePB table_resp;
@@ -3381,7 +3395,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       s = CreateYsqlSysTable(&table_req, &table_resp, nullptr);
       batching = false;
     } else {
-      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req);
+      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req, writer.get());
       batching = true;
     }
     if (!s.ok()) {
@@ -3397,6 +3411,8 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     // Sync change metadata requests for the entire batch.
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+    // Sync sys catalog table upserts for the entire batch.
+    RETURN_NOT_OK(sys_catalog_->SyncWrite(writer.get()));
   }
 
   RETURN_NOT_OK(
