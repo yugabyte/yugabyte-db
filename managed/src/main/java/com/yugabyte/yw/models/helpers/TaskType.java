@@ -88,6 +88,8 @@ public enum TaskType {
 
   TlsToggle("upgrade.TlsToggle"),
 
+  NodeCertReloadTask("subtasks.NodeCertReloadTask"),
+
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   SystemdUpgrade("upgrade.SystemdUpgrade"),
