@@ -217,4 +217,4 @@ To run the application and insert a new row, execute the following steps.
 
 ## Next steps
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB

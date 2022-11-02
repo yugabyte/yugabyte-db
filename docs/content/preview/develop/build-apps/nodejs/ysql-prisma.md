@@ -13,12 +13,6 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PostgreSQL driver
-    </a>
-  </li>
-  <li >
     <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize

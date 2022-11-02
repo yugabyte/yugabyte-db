@@ -28,13 +28,13 @@ type: docs
   </li>
 </ul>
 
-The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL which can be used to connect with YugabyteDB YSQL API. Because YugabyteDB YSQL API has is fully compatible with PostgreSQL node-postgres (pg) driver, it allows Node.js programmers to connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
+The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL. The YSQL API is fully compatible with the PostgreSQL node-postgres (pg) driver, so you can connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
 
-## Quick start
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build a Node.js Application](../../../../develop/build-apps/nodejs/ysql-pg).
+Learn how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
-## Install the driver dependency and async utility
+### Install the driver dependency and async utility
 
 The PostgreSQL Node.js driver is available as a Node module, and you can install the driver using the following command:
 
@@ -47,10 +47,6 @@ To install the async utility, run the following command:
 ```sh
 $ npm install --save async
 ```
-
-## Fundamentals
-
-Learn how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
 ### Connect to YugabyteDB database
 
@@ -142,7 +138,7 @@ client
 
 To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../develop/build-apps/go/ysql-pgx/#ca-certificate).
+Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 The node-postgres driver allows you to avoid including the parameters like `sslcert`, `sslkey`, `sslrootcert`, or `sslmode` in the connection string. You can pass the object which includes `connectionString` and `ssl` object which has various fields including the following:
 
@@ -171,6 +167,71 @@ var client = new Client({
 | require (default) | Supported |
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported |
+
+By default, the driver supports the `require` SSL mode, in which a root CA certificate isn't required to be configured. This enables SSL communication between the Node.js client and YugabyteDB servers.
+
+```js
+const config = {
+  user: ' ',
+  database: ' ',
+  host: ' ',
+  password: ' ',
+  port: 5433,
+  // this object will be passed to the TLSSocket constructor
+  ssl: {
+    rejectUnauthorized: false,
+  },
+}
+```
+
+To enable `verify-ca` SSL mode, you need to provide the path to the root CA certificate. You also need to set the `rejectUnauthorized` property to `true` to require root certificate chain validation.
+
+```js
+const config = {
+  user: ' ',
+  database: ' ',
+  host: ' ',
+  password: ' ',
+  port: 5433,
+  // this object will be passed to the TLSSocket constructor
+  ssl: {
+    rejectUnauthorized: true,
+    ca: fs.readFileSync('~/.postgresql/root.crt').toString(),
+  },
+}
+```
+
+In this mode, the driver throws an exception if the server certificate presents as a self-signed certificate:
+
+```output
+There was an error self signed certificate in certificate chain Error: self signed certificate in certificate chain
+```
+
+To enable `verify-full` mode, you need to provide the path to the Root CA certificate, as well as the server name:
+
+```js
+const config = {
+  user: ' ',
+  database: ' ',
+  host: ' ',
+  password: ' ',
+  port: 5433,
+  // this object will be passed to the TLSSocket constructor
+  ssl: {
+    rejectUnauthorized: true,
+    ca: fs.readFileSync('/Users/my-user/.postgresql/root.crt').toString(),
+    servername: 'yugabyte-cloud/my-instance'
+  },
+}
+```
+
+The following is another way of passing the connection string for connecting to a YugabyteDB cluster with SSL enabled.
+
+```js
+const connectionString = "postgresql://user:password@localhost:port/database?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+const client = new Client(connectionString);
+client.connect()
+```
 
 ## Transaction and isolation levels
 

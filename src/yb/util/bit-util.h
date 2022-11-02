@@ -42,8 +42,7 @@
 // limitations under the License.
 
 
-#ifndef YB_UTIL_BIT_UTIL_H
-#define YB_UTIL_BIT_UTIL_H
+#pragma once
 
 #include <stdint.h>
 #include "yb/gutil/port.h"
@@ -65,4 +64,3 @@ class BitUtil {
 
 } // namespace yb
 
-#endif // YB_UTIL_BIT_UTIL_H

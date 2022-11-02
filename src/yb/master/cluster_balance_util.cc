@@ -20,6 +20,9 @@
 
 #include "yb/util/atomic.h"
 
+using std::string;
+using std::vector;
+
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
 DECLARE_int32(leader_balance_threshold);

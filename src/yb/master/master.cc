@@ -94,6 +94,7 @@ METRIC_DEFINE_entity(cluster);
 using namespace std::literals;
 using std::min;
 using std::vector;
+using std::string;
 
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
@@ -292,7 +293,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
-          master_tablet_server_.get() /* tablet_server */,
+          *master_tablet_server_,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
           &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 

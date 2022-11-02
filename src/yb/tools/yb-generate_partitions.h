@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
-#define YB_TOOLS_YB_GENERATE_PARTITIONS_H
+#pragma once
 
 #include <functional>
 #include <locale>
@@ -47,7 +46,7 @@ typedef std::map<std::string, master::TabletLocationsPB> TabletMap;
 class YBPartitionGenerator {
  public:
   explicit YBPartitionGenerator(const client::YBTableName& table_name,
-                                const vector<std::string>& master_addresses);
+                                const std::vector<std::string>& master_addresses);
   ~YBPartitionGenerator();
 
   Status Init();
@@ -80,4 +79,3 @@ class YBPartitionGenerator {
 
 } // namespace tools
 } // namespace yb
-#endif // YB_TOOLS_YB_GENERATE_PARTITIONS_H

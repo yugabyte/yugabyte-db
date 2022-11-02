@@ -21,8 +21,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
-#define YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
+#pragma once
 
 #include <string.h>
 
@@ -205,8 +204,7 @@ class WritableFileWriter {
 };
 
 extern Status NewWritableFile(Env* env, const std::string& fname,
-                              unique_ptr<WritableFile>* result,
+                              std::unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_FILE_READER_WRITER_H

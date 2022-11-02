@@ -13,7 +13,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -546,8 +546,8 @@ public class PlacementInfoUtil {
     taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
     ConfigureNodesMode mode;
-    // If no placement info, and if this is the first primary or readonly cluster create attempt,
-    // choose a new placement.
+    // If no placement info, and if this is the first primary or readonly/addon cluster create
+    // attempt, choose a new placement.
     if (cluster.placementInfo == null
         && clusterOpType.equals(UniverseConfigureTaskParams.ClusterOperationType.CREATE)) {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));

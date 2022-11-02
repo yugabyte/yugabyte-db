@@ -79,7 +79,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override {
     Fail();
     return STATUS(Expired, "");
   }

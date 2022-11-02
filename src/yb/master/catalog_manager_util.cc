@@ -22,6 +22,9 @@
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 
+using std::string;
+using std::vector;
+
 DEFINE_double(balancer_load_max_standard_deviation, 2.0,
     "The standard deviation among the tserver load, above which that distribution "
     "is considered not balanced.");

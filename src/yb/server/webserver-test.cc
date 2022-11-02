@@ -53,6 +53,7 @@
 #include "yb/util/zlib.h"
 
 using std::string;
+using std::vector;
 using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);

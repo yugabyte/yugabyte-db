@@ -120,6 +120,9 @@
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/compare_util.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 using namespace std::literals;
 
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
@@ -128,15 +131,13 @@ DEFINE_bool(flush_rocksdb_on_shutdown, true,
 DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
-DEFINE_bool(use_priority_thread_pool_for_flushes, false,
-            "When true priority thread pool will be used for flushes, otherwise "
-            "Env thread pool with Priority::HIGH will be used.");
-TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
+DEFINE_RUNTIME_bool(use_priority_thread_pool_for_flushes, false,
+    "When true priority thread pool will be used for flushes, otherwise "
+    "Env thread pool with Priority::HIGH will be used.");
 
-DEFINE_bool(use_priority_thread_pool_for_compactions, true,
-            "When true priority thread pool will be used for compactions, otherwise "
-            "Env thread pool with Priority::LOW will be used.");
-TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
+DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
+    "When true priority thread pool will be used for compactions, otherwise "
+    "Env thread pool with Priority::LOW will be used.");
 
 DEFINE_int32(compaction_priority_start_bound, 10,
              "Compaction task of DB that has number of SST files less than specified will have "

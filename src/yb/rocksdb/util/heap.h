@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_HEAP_H
-#define YB_ROCKSDB_UTIL_HEAP_H
 
 #pragma once
 
@@ -147,4 +145,3 @@ class BinaryHeap {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_HEAP_H

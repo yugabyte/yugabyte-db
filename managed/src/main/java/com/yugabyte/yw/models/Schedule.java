@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -51,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -367,6 +369,10 @@ public class Schedule extends Model {
     return find.query().where().idEq(scheduleUUID).findOne();
   }
 
+  public static Optional<Schedule> maybeGet(UUID scheduleUUID) {
+    return Optional.ofNullable(get(scheduleUUID));
+  }
+
   public static Schedule getOrBadRequest(UUID scheduleUUID) {
     Schedule schedule = get(scheduleUUID);
     if (schedule == null) {
@@ -522,7 +528,6 @@ public class Schedule extends Model {
             .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount)
-            .nextExpectedTask(nextScheduleTaskTime)
             .backlogStatus(schedule.backlogStatus);
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
@@ -541,6 +546,21 @@ public class Schedule extends Model {
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
+        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
+          Backup latestSuccessfulIncrementalBackup =
+              ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
+                  schedule.customerUUID, schedule.scheduleUUID);
+          if (latestSuccessfulIncrementalBackup != null) {
+            Date incrementalBackupExpectedTaskTime =
+                new Date(
+                    latestSuccessfulIncrementalBackup.getCreateTime().getTime()
+                        + params.incrementalBackupFrequency);
+            if (nextScheduleTaskTime != null
+                && nextScheduleTaskTime.after(incrementalBackupExpectedTaskTime)) {
+              nextScheduleTaskTime = incrementalBackupExpectedTaskTime;
+            }
+          }
+        }
       } else if (Util.canConvertJsonNode(scheduleTaskParams, MultiTableBackup.Params.class)) {
         MultiTableBackup.Params params =
             mapper.convertValue(scheduleTaskParams, MultiTableBackup.Params.class);
@@ -554,6 +574,7 @@ public class Schedule extends Model {
     } else {
       builder.taskParams(scheduleTaskParams);
     }
+    builder.nextExpectedTask(nextScheduleTaskTime);
     return builder.build();
   }
 

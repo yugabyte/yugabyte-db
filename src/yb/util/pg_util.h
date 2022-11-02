@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PG_UTIL_H
-#define YB_UTIL_PG_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -24,4 +23,3 @@ std::string PgDeriveSocketDir(const HostPort& host_port);
 
 } // namespace yb
 
-#endif // YB_UTIL_PG_UTIL_H

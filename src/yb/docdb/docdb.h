@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_H_
-#define YB_DOCDB_DOCDB_H_
+#pragma once
 
 #include <cstdint>
 #include <ostream>
@@ -38,6 +37,7 @@
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
+#include "yb/util/memory/arena_list.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -108,7 +108,7 @@ struct PrepareDocWriteOperationResult {
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
+    const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     const IsolationLevel isolation_level,
     const OperationKind operation_kind,
@@ -130,7 +130,7 @@ Status AssembleDocWriteBatch(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocDB& doc_db,
-    KeyValueWriteBatchPB* write_batch,
+    LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
     HybridTime* restart_read_ht,
@@ -158,7 +158,7 @@ class ExternalTxnIntentsState {
 // Adds external pair to write batch.
 // Returns true if add was skipped because pair is a regular (non external) record.
 bool AddExternalPairToWriteBatch(
-    const KeyValuePairPB& kv_pair,
+    const LWKeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
@@ -171,7 +171,7 @@ bool AddExternalPairToWriteBatch(
 //
 // Returns true if batch contains regular entries.
 bool PrepareExternalWriteBatch(
-    const docdb::KeyValueWriteBatchPB& put_batch,
+    const LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
@@ -204,7 +204,7 @@ typedef boost::function<
     Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
 Status EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
+    const ArenaList<docdb::LWKeyValuePairPB>& kv_pairs,
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
 Status EnumerateIntents(
@@ -318,4 +318,3 @@ void CombineExternalIntents(
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_H_

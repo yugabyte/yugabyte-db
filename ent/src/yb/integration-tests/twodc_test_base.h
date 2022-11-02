@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H
+#pragma once
 
 #include <string>
+
+#include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/client/transaction_manager.h"
 
@@ -154,6 +155,8 @@ class TwoDCTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
 
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
@@ -181,7 +184,7 @@ class TwoDCTestBase : public YBTest {
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -242,4 +245,3 @@ class TwoDCTestBase : public YBTest {
 } // namespace enterprise
 } // namespace yb
 
-#endif // ENT_SRC_YB_INTEGRATION_TESTS_TWODC_TEST_BASE_H

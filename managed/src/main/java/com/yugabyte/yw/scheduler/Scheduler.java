@@ -30,7 +30,6 @@ import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -38,6 +37,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
@@ -214,22 +214,14 @@ public class Scheduler {
   }
 
   private UUID fetchBaseBackupUUIDIfIncrementalBackupRequired(Schedule schedule) {
-    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    long incrementalBackupFrequency = params.incrementalBackupFrequency;
-    ScheduleTask scheduleTask =
-        ScheduleTask.getLastSuccessfulTask(schedule.getScheduleUUID()).orElse(null);
-    if (scheduleTask == null) {
-      return null;
-    }
     Backup backup =
-        Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
-            .stream()
-            .filter(bkp -> bkp.state.equals(BackupState.Completed))
-            .findFirst()
-            .orElse(null);
+        ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
+            schedule.getCustomerUUID(), schedule.getScheduleUUID());
     if (backup == null) {
       return null;
     }
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    long incrementalBackupFrequency = params.incrementalBackupFrequency;
     Date todaysDate = new Date();
     Date expectedTaskExecutionTime =
         new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);
@@ -269,24 +261,32 @@ public class Scheduler {
       UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
     List<Backup> backupsToDelete = new ArrayList<Backup>();
     int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
-        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
+        totalBackupsCount =
+            Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.maybeGet(scheduleUUID).orElse(null);
+    if (schedule != null && schedule.getTaskParams().has("minNumBackupsToRetain")) {
       minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
-
+    backupsToDelete.addAll(
+        expiredBackups
+            .stream()
+            .filter(backup -> !backup.state.equals(BackupState.Completed))
+            .collect(Collectors.toList()));
+    expiredBackups.removeIf(backup -> !backup.state.equals(BackupState.Completed));
     int numBackupsToDelete =
         Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
-    Collections.sort(
-        expiredBackups,
-        new Comparator<Backup>() {
-          @Override
-          public int compare(Backup b1, Backup b2) {
-            return b1.getCreateTime().compareTo(b2.getCreateTime());
-          }
-        });
-    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
-      backupsToDelete.add(expiredBackups.get(i));
+    if (numBackupsToDelete > 0) {
+      Collections.sort(
+          expiredBackups,
+          new Comparator<Backup>() {
+            @Override
+            public int compare(Backup b1, Backup b2) {
+              return b1.getCreateTime().compareTo(b2.getCreateTime());
+            }
+          });
+      for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+        backupsToDelete.add(expiredBackups.get(i));
+      }
     }
     return backupsToDelete;
   }

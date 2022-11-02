@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_PERMISSIONS_MANAGER_H
-#define YB_MASTER_PERMISSIONS_MANAGER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -134,7 +133,7 @@ class PermissionsManager final {
   // Find all the roles for which 'role' is a member of the list 'member_of'.
   std::vector<std::string> DirectMemberOf(const RoleName& role) REQUIRES_SHARED(mutex_);
 
-  void TraverseRole(const string& role_name, std::unordered_set<RoleName>* granted_roles)
+  void TraverseRole(const std::string& role_name, std::unordered_set<RoleName>* granted_roles)
       REQUIRES_SHARED(mutex_);
 
   // Build the recursive map of roles (recursive_granted_roles_). If r1 is granted to r2, and r2
@@ -202,4 +201,3 @@ class PermissionsManager final {
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_PERMISSIONS_MANAGER_H

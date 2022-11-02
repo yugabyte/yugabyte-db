@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_RPC_UTIL_H
-#define YB_RPC_RPC_UTIL_H
+#pragma once
 
 #include <memory>
 
@@ -30,4 +29,3 @@ Slice GetGlobalSkipBuffer();
 }  // namespace rpc
 }  // namespace yb
 
-#endif  // YB_RPC_RPC_UTIL_H

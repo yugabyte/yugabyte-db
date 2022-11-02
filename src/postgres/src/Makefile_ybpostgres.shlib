@@ -397,8 +397,11 @@ $(shlib): $(call expand_subsys,$(OBJS)) | $(SHLIB_PREREQS)
 else
 DLL_DEFFILE = lib$(NAME)dll.def
 
+# It is important to not include $(LIBS) here, because it may contain libtcmalloc.a, which we are
+# not allowed to link into a shared library. All other libraries should already be included in
+# $(SHLIB_LINK).
 $(shlib): $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) | $(SHLIB_PREREQS)
-	$(CC) $(CFLAGS)  -shared -static-libgcc -o $@  $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) $(LIBS) -Wl,--out-implib=$(stlib)
+	$(CC) $(CFLAGS)  -shared -static-libgcc -o $@  $(call expand_subsys,$(OBJS)) $(DLL_DEFFILE) $(LDFLAGS) $(LDFLAGS_SL) $(SHLIB_LINK) -Wl,--out-implib=$(stlib)
 endif
 
 endif # PORTNAME == cygwin

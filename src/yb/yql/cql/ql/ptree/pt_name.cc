@@ -23,6 +23,8 @@
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+using std::string;
+
 namespace yb {
 namespace ql {
 

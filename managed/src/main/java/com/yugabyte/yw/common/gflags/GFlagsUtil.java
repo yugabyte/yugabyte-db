@@ -8,7 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
@@ -192,7 +192,7 @@ public class GFlagsUtil {
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
-    } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.name())) {
+    } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -348,9 +348,7 @@ public class GFlagsUtil {
       gflags.put(
           PSQL_PROXY_BIND_ADDRESS,
           String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(
-          PSQL_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
+      gflags.put(PSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put(YSQL_ENABLE_AUTH, "true");
         gflags.put(YSQL_HBA_CONF_CSV, "local all yugabyte trust");
@@ -380,9 +378,7 @@ public class GFlagsUtil {
       gflags.put(
           CSQL_PROXY_BIND_ADDRESS,
           String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(
-          CSQL_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
+      gflags.put(CSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "true");
       } else {

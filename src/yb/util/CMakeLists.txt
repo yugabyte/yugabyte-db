@@ -174,6 +174,7 @@ set(UTIL_SRCS
   file_system_posix.cc
   flag_tags.cc
   flags.cc
+  flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
   init.cc
@@ -290,12 +291,9 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-  message("Adding tcmalloc as a dependency of yb_util")
-  list(APPEND UTIL_LIBS tcmalloc)
-else()
-  message("Not adding tcmalloc as a dependency of yb_util")
-endif()
+# We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
+# as a static library directy into each executable, to ensure that it is initialized earlier than
+# any shared library.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
@@ -353,6 +351,7 @@ ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
 ADD_YB_TEST(flag_tags-test)
 ADD_YB_TEST(flags-test)
+ADD_YB_TEST(flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)

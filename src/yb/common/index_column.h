@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_INDEX_COLUMN_H
-#define YB_COMMON_INDEX_COLUMN_H
+#pragma once
 
 #include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
@@ -36,4 +35,3 @@ struct IndexColumn {
 
 } // namespace yb
 
-#endif // YB_COMMON_INDEX_COLUMN_H

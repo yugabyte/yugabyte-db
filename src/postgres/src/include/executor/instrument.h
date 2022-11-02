@@ -41,6 +41,14 @@ typedef enum InstrumentOption
 	INSTRUMENT_ALL = PG_INT32_MAX
 } InstrumentOption;
 
+/*
+ * YugabyteDB RPC statistics
+ */
+typedef struct YbPgRpcStats {
+	double  count;			/* # of RPCs */
+	double	wait_time;		/* RPC wait time (ns) */
+} YbPgRpcStats;
+
 typedef struct Instrumentation
 {
 	/* Parameters set at node creation: */
@@ -53,6 +61,8 @@ typedef struct Instrumentation
 	double		firsttuple;		/* Time for first tuple of this cycle */
 	double		tuplecount;		/* Tuples emitted so far this cycle */
 	BufferUsage bufusage_start; /* Buffer usage at start */
+	YbPgRpcStats yb_read_rpcs;	/* Index read RPC stats */
+	YbPgRpcStats yb_tbl_read_rpcs;	/* Table row fetch RPC stats */
 	/* Accumulated statistics across all completed cycles: */
 	double		startup;		/* Total startup time (in seconds) */
 	double		total;			/* Total total time (in seconds) */

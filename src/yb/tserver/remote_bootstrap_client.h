@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
+#pragma once
 
 #include <atomic>
 #include <string>
@@ -245,4 +244,3 @@ class RemoteBootstrapClient {
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H

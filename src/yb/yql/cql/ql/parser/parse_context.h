@@ -15,8 +15,7 @@
 // Entry point for the parsing process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PARSER_PARSE_CONTEXT_H_
-#define YB_YQL_CQL_QL_PARSER_PARSE_CONTEXT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/parser/location.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
@@ -111,4 +110,3 @@ class ParseContext : public ProcessContext {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PARSER_PARSE_CONTEXT_H_

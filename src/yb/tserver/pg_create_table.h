@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_CREATE_TABLE_H
-#define YB_TSERVER_PG_CREATE_TABLE_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
@@ -64,4 +63,3 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_PG_CREATE_TABLE_H

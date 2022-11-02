@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_BACKOFF_WAITER_H
-#define YB_UTIL_BACKOFF_WAITER_H
+#pragma once
 
 #include <chrono>
 #include <thread>
@@ -158,4 +157,3 @@ Status LoggedWaitFor(
 
 } // namespace yb
 
-#endif // YB_UTIL_BACKOFF_WAITER_H

@@ -89,8 +89,10 @@ GenericServiceImpl::~GenericServiceImpl() {
 void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
                                  SetFlagResponsePB* resp,
                                  rpc::RpcContext rpc) {
+  using flags_internal::SetFlagForce;
+  using flags_internal::SetFlagResult;
   LOG(INFO) << rpc.requestor_string() << " changing flag via RPC: " << req->flag();
-  const auto res = ::yb::SetFlag(
+  const auto res = ::yb::flags_internal::SetFlag(
       req->flag(), req->value(), SetFlagForce(req->force()), resp->mutable_old_value(),
       resp->mutable_msg());
 
@@ -106,9 +108,6 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
       break;
     case SetFlagResult::NOT_SAFE:
       resp->set_result(SetFlagResponsePB::NOT_SAFE);
-      break;
-    case SetFlagResult::PG_SET_FAILED:
-      resp->set_result(SetFlagResponsePB::PG_SET_FAILED);
       break;
     default:
       FATAL_INVALID_ENUM_VALUE(SetFlagResult, res);

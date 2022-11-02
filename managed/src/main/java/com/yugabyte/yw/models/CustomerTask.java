@@ -6,9 +6,11 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.logging.LogUtil;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -31,6 +33,7 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.data.validation.Constraints;
 
 @Entity
@@ -115,6 +118,9 @@ public class CustomerTask extends Model {
     @EnumValue("Reboot")
     Reboot,
 
+    @EnumValue("Hard Reboot")
+    HardReboot,
+
     @EnumValue("Edit")
     Edit,
 
@@ -187,8 +193,8 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
-    @EnumValue("RestoreSnapshot")
-    RestoreSnapshot,
+    @EnumValue("RestoreSnapshotSchedule")
+    RestoreSnapshotSchedule,
 
     @Deprecated
     @EnumValue("SetEncryptionKey")
@@ -282,6 +288,7 @@ public class CustomerTask extends Model {
         case Release:
           return completed ? "Released " : "Releasing ";
         case Reboot:
+        case HardReboot:
           return completed ? "Rebooted " : "Rebooting ";
         case Remove:
           return completed ? "Removed " : "Removing ";
@@ -334,8 +341,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored " : "Restoring ";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
-        case RestoreSnapshot:
-          return completed ? "Restored Snapshot" : "Restoring Snapshot";
+        case RestoreSnapshotSchedule:
+          return completed ? "Restored Snapshot Schedule" : "Restoring Snapshot Schedule";
         case Restart:
           return completed ? "Restarted " : "Restarting ";
         case Backup:
@@ -533,6 +540,17 @@ public class CustomerTask extends Model {
     return customTypeName;
   }
 
+  @Column
+  @ApiModelProperty(
+      value = "Correlation id",
+      accessMode = READ_ONLY,
+      example = "3e6ac43a-15d9-46c0-831c-460775ce87ad")
+  private String correlationId;
+
+  public String getCorrelationId() {
+    return correlationId;
+  }
+
   public void markAsCompleted() {
     markAsCompleted(new Date());
   }
@@ -565,6 +583,8 @@ public class CustomerTask extends Model {
     th.targetName = targetName;
     th.createTime = new Date();
     th.customTypeName = customTypeName;
+    String correlationId = (String) MDC.get(LogUtil.CORRELATION_ID);
+    if (!Strings.isNullOrEmpty(correlationId)) th.correlationId = correlationId;
     th.save();
     return th;
   }

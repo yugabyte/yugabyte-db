@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SESSION_H_
-#define YB_YQL_PGGATE_PG_SESSION_H_
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -117,10 +116,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(PgClient* pg_client,
-            const string& database_name,
+            const std::string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
-            const tserver::TServerSharedObject* tserver_shared_object,
             const YBCPgCallbacks& pg_callbacks);
   virtual ~PgSession();
 
@@ -254,7 +252,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return connected_database_.c_str();
   }
 
-  const string& connected_database() const {
+  const std::string& connected_database() const {
     return connected_database_;
   }
   void set_connected_database(const std::string& database) {
@@ -265,7 +263,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   // Generate a new random and unique rowid. It is a v4 UUID.
-  string GenerateNewRowid() {
+  std::string GenerateNewRowid() {
     return GenerateObjectId(true /* binary_id */);
   }
 
@@ -279,22 +277,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
-
-  // Return the local tserver's global catalog version stored in shared memory or an error if the
-  // shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedCatalogVersion();
-
-  // Return the local tserver's per-db catalog version stored in shared memory or an error if the
-  // shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
-
-  // Return the tserver catalog version info that can be used to translate a database oid to the
-  // index of its slot in the shared memory array db_catalog_versions_.
-  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
-
-  // Return the local tserver's postgres authentication key stored in shared memory or an error if
-  // the shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedAuthKey();
 
   using YbctidReader =
       LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
@@ -311,7 +293,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -328,6 +310,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool HasWriteOperationsInDdlMode() const;
 
   Result<bool> CheckIfPitrActive();
+
+  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
   Result<PerformFuture> FlushOperations(
@@ -368,7 +352,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Execution status.
   Status status_;
-  string errmsg_;
+  std::string errmsg_;
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
@@ -382,7 +366,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
-  const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
@@ -391,4 +374,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_SESSION_H_

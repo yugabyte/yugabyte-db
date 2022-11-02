@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_DOCDB_UTIL_H
-#define YB_DOCDB_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -35,7 +34,7 @@ namespace docdb {
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
     const int pg_data_type,
-    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
     DatumMessagePB* cdc_datum_message = NULL);
 
@@ -180,7 +179,8 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
-  void DocDBDebugDumpToConsole();
+  void DocDBDebugDumpToConsole(
+      const SchemaPackingStorage& schema_packing_storage = SchemaPackingStorage());
 
   Status FlushRocksDbAndWait();
 
@@ -254,4 +254,3 @@ class DocDBRocksDBUtil {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOCDB_UTIL_H

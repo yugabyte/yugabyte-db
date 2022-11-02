@@ -18,8 +18,7 @@
 //
 // Utilities to be used for RPC services.
 
-#ifndef YB_UTIL_SERVICE_UTIL_H_
-#define YB_UTIL_SERVICE_UTIL_H_
+#pragma once
 
 #include "yb/rpc/rpc_context.h"
 
@@ -92,4 +91,3 @@ void SetupErrorAndRespond(ErrType* error,
 } // namespace yb
 
 
-#endif  // YB_UTIL_SERVICE_UTIL_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_HEADER_MANAGER_H
-#define YB_ENCRYPTION_HEADER_MANAGER_H
+#pragma once
 
 #include <memory>
 
@@ -54,4 +53,3 @@ class HeaderManager {
 } // namespace encryption
 } // namespace yb
 
-#endif // YB_ENCRYPTION_HEADER_MANAGER_H

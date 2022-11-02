@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
-#define YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
+#pragma once
 
 #include <condition_variable>
 #include <string>
@@ -205,11 +204,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   int64_t SpaceUsed();
 
-  size_t ReplicateMsgSize() {
-    return consensus_round() && consensus_round()->replicate_msg()
-               ? consensus_round()->replicate_msg()->ByteSizeLong()
-               : 0;
-  }
+  size_t ReplicateMsgSize();
 
  private:
   friend class RefCountedThreadSafe<OperationDriver>;
@@ -292,4 +287,3 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_OPERATIONS_OPERATION_DRIVER_H

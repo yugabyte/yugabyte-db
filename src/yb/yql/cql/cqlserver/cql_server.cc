@@ -40,9 +40,8 @@ DEFINE_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
-DEFINE_int32(cql_nodelist_refresh_interval_secs, 300,
-             "Interval after which a node list refresh event should be sent to all CQL clients.");
-TAG_FLAG(cql_nodelist_refresh_interval_secs, runtime);
+DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
+    "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
 DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");

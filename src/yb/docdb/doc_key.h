@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_KEY_H_
-#define YB_DOCDB_DOC_KEY_H_
+#pragma once
 
 #include <ostream>
 #include <vector>
@@ -885,4 +884,3 @@ class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_KEY_H_

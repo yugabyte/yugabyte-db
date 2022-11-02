@@ -57,8 +57,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_INLINESKIPLIST_H
-#define YB_ROCKSDB_DB_INLINESKIPLIST_H
 
 #pragma once
 
@@ -681,4 +679,3 @@ bool InlineSkipList<Comparator>::Contains(const char* key) const {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_DB_INLINESKIPLIST_H

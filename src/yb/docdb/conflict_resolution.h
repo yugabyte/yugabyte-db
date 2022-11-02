@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CONFLICT_RESOLUTION_H
-#define YB_DOCDB_CONFLICT_RESOLUTION_H
+#pragma once
 
 #include <boost/function.hpp>
 
@@ -59,7 +58,7 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 //              Else, we proceed with pessimistic locking and use the wait_queue to block and
 //              unblock transactions with conflicts.
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const KeyValueWriteBatchPB& write_batch,
+                                   const LWKeyValueWriteBatchPB& write_batch,
                                    HybridTime resolution_ht,
                                    HybridTime read_time,
                                    const DocDB& doc_db,
@@ -111,4 +110,3 @@ std::string DebugIntentKeyToString(Slice intent_key);
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_CONFLICT_RESOLUTION_H

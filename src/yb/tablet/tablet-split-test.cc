@@ -52,7 +52,7 @@ class TabletSplitTest : public YBTabletTest {
     FLAGS_db_write_buffer_size = 1_MB;
     FLAGS_rocksdb_level0_file_num_compaction_trigger = -1;
     YBTabletTest::SetUp();
-    writer_.reset(new LocalTabletWriter(tablet().get()));
+    writer_.reset(new LocalTabletWriter(tablet()));
   }
 
  protected:

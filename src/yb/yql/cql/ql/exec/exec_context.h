@@ -17,8 +17,7 @@
 // executed.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
-#define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
+#pragma once
 
 #include <string>
 
@@ -197,9 +196,9 @@ class QueryPagingState {
   }
 
   // Debug logging.
-  string DebugString() const {
-    return (string("\nQueryPB = {\n") + query_pb_.DebugString() + string ("\n};") +
-            string("\nCounterPB = {\n") + counter_pb_.DebugString() + string("\n};"));
+  std::string DebugString() const {
+    return (std::string("\nQueryPB = {\n") + query_pb_.DebugString() + std::string ("\n};") +
+            std::string("\nCounterPB = {\n") + counter_pb_.DebugString() + std::string("\n};"));
   }
 
   // Access to internal protobuf.
@@ -564,4 +563,3 @@ class ExecContext : public ProcessContextBase {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_

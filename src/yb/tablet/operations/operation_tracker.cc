@@ -109,6 +109,7 @@ METRIC_DEFINE_gauge_uint64(tablet, change_auto_flags_config_operations_inflight,
 using namespace std::literals;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 
 namespace yb {
 namespace tablet {
@@ -159,8 +160,9 @@ Status OperationTracker::Add(OperationDriver* driver) {
 
     // May be nullptr due to TabletPeer::SetPropagatedSafeTime.
     auto* operation = driver->operation();
+
     // May be nullptr in unit tests even when operation is not nullptr.
-    auto* tablet = operation ? operation->tablet() : nullptr;
+    TabletPtr tablet = operation ? operation->tablet_nullable() : nullptr;
 
     string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "

@@ -81,10 +81,12 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 ### Limitations
 
-#### Transactional semantics [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976)
+#### Transactional semantics 
 
 - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
 - Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards, are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
+
+This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976).
 
 #### Bootstrapping sink clusters
 
@@ -102,11 +104,6 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 - Currently, certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two clusters, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
 - In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
-
-#### Scalability
-
-- When setting up replication, tables should be added in batches, until [#10611](https://github.com/yugabyte/yugabyte-db/issues/10611) is resolved.
-- When bootstrapping sink clusters, tables should be added in batches, until [#10065](https://github.com/yugabyte/yugabyte-db/issues/10065) is resolved.
 
 #### Kubernetes
 
@@ -131,9 +128,13 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 ## Transactional guarantees
 
+<!--
+
 ### Atomicity of transactions
 
 This implies one can never read a partial result of a transaction on the sink cluster.
+
+-->
 
 ### Not globally ordered
 

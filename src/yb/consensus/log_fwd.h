@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LOG_FWD_H
-#define YB_CONSENSUS_LOG_FWD_H
+#pragma once
 
 #include <vector>
 
@@ -26,7 +25,6 @@ namespace log {
 class Log;
 class LogAnchorRegistry;
 using LogPtr = scoped_refptr<Log>;
-class LogEntryBatch;
 class LogEntryBatchPB;
 class LogEntryPB;
 class LogIndex;
@@ -50,4 +48,3 @@ using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
 }  // namespace log
 }  // namespace yb
 
-#endif  // YB_CONSENSUS_LOG_FWD_H

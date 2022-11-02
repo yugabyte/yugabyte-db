@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_HANDLE_H
-#define YB_CLIENT_TABLE_HANDLE_H
+#pragma once
 
 #include <unordered_map>
 
@@ -112,11 +111,11 @@ class TableHandle {
   void AddCondition(QLConditionPB *const condition, const QLOperator op) const;
 
   QLMapValuePB* AddMapColumnValue(
-      QLWriteRequestPB* req, const int32_t& column_id, const string& entry_key,
-      const string& entry_value) const;
+      QLWriteRequestPB* req, const int32_t& column_id, const std::string& entry_key,
+      const std::string& entry_value) const;
 
   void AddMapEntryToColumn(
-      QLMapValuePB* map_value_pb, const string& entry_key, const string& entry_value) const;
+      QLMapValuePB* map_value_pb, const std::string& entry_key, const std::string& entry_value) const;
 
   void AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const;
 
@@ -142,9 +141,9 @@ class TableHandle {
 
   std::vector<std::string> AllColumnNames() const;
 
-  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const string& column_name) const;
+  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const std::string& column_name) const;
   QLValuePB* PrepareCondition(
-      QLConditionPB* const condition, const string& column_name, const QLOperator op) const;
+      QLConditionPB* const condition, const std::string& column_name, const QLOperator op) const;
 
  private:
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
@@ -315,4 +314,3 @@ FilterEqualImpl<T> FilterEqual(const T& t, std::string column = "key") {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_TABLE_HANDLE_H

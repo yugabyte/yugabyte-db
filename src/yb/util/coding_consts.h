@@ -21,8 +21,7 @@
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef YB_UTIL_CODING_CONSTS_H
-#define YB_UTIL_CODING_CONSTS_H
+#pragma once
 
 
 
@@ -34,4 +33,3 @@ constexpr const unsigned int kMaxVarint64Length = 10;
 
 }  // namespace yb
 
-#endif  // YB_UTIL_CODING_CONSTS_H

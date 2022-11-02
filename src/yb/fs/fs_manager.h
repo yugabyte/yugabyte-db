@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_FS_FS_MANAGER_H
-#define YB_FS_FS_MANAGER_H
+#pragma once
 
 #include <iosfwd>
 #include <memory>
@@ -187,7 +186,7 @@ class FsManager {
   static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
   void SetTabletPathByDataPath(const std::string& tablet_id, const std::string& path);
-  Result<std::string> GetTabletPath(const string& tablet_id) const;
+  Result<std::string> GetTabletPath(const std::string& tablet_id) const;
   bool LookupTablet(const std::string& tablet_id);
 
   // Return the path for a specific Raft group's superblock.
@@ -326,4 +325,3 @@ class FsManager {
 
 } // namespace yb
 
-#endif  // YB_FS_FS_MANAGER_H

@@ -51,6 +51,8 @@ message ProducerSchemaPB {
   // The upcoming Producer schema for ingest.  If present, Consumer needs ALTER for compatibility.
   uint32 pending_schema_version = 2;
   SchemaPB pending_schema = 3;
+  // The last Consumer schema version that was EquivalentForDataCopy with this Producer
+  uint32 last_compatible_consumer_schema_version = 4;
 }
 
 message StreamEntryPB {
@@ -70,10 +72,16 @@ message ProducerEntryPB {
   bool disable_stream = 4; // [default = false] implicit in proto3
 }
 
+enum XClusterRole {
+  ACTIVE = 0;
+  STANDBY = 1;
+}
+
 message ConsumerRegistryPB {
   // Map from producer universe uuid to metadata for that producer.
   map<string, ProducerEntryPB> producer_map = 1;
   // Enable the replication of the txn status table for ordered and atomic multi shard transaction
   // support.
   bool enable_replicate_transaction_status_table = 2;
+  XClusterRole role = 3;
 }

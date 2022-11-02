@@ -102,6 +102,18 @@ auto GetColumnValue(const Col& col) {
   return ResultType();
 }
 
+namespace {
+
+LWQLValuePB CopyValue(const LWQLValuePB& source) {
+  return LWQLValuePB(&source.arena(), source);
+}
+
+QLValuePB CopyValue(const QLValuePB& source) {
+  return QLValuePB(source);
+}
+
+} // namespace
+
 template <class Cond>
 void QLScanRange::Init(const Cond& condition) {
   // If there is no range column, return.
@@ -288,8 +300,8 @@ void QLScanRange::Init(const Cond& condition) {
               size_t num_cols = col_ids.size();
               auto options_itr = options.begin();
 
-              auto lower = *options.begin();
-              auto upper = *options.begin();
+              auto lower = CopyValue(*options.begin());
+              auto upper = CopyValue(*options.begin());
 
               while(options_itr != options.end()) {
                 DCHECK(options_itr->has_tuple_value());

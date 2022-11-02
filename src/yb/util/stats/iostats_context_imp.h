@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H
-#define YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H
+#pragma once
 
 #include "yb/util/stats/iostats_context.h"
 #include "yb/util/stats/perf_step_timer.h"
@@ -70,4 +69,3 @@
 
 #endif  // IOS_CROSS_COMPILE
 
-#endif // YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H

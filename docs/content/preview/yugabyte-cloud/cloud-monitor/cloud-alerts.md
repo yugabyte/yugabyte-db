@@ -21,13 +21,9 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 ## Features
 
 - YugabyteDB Managed sends email notifications to all account members.
-
 - When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
-
 - When an alert triggers, a notification displays on the **Notifications** page. After the alert condition resolves, the notification dismisses automatically.
-
 - Alerts are enabled for all clusters in your account.
-
 - Alerts can have two severity levels: Warning or Severe.
 
 ## Configure alerts
@@ -66,6 +62,8 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | Node Free Storage | Disk Usage |
 | Cluster Queues Overflow | RPC Queue Size |
 | Compaction Overload | Compaction |
+| Memory Use | Memory Usage |
+| YSQL Connections | YSQL Operations/Sec |
 
 You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
@@ -108,7 +106,6 @@ If CPU use is continuously higher than 80%, your workload may also exceed the ca
 YugabyteDB Managed sends the following database overload alert:
 
 - Cluster queues overflow and/or compaction overload.
-<!-- Cluster exceeds 200 simultaneous YSQL connections.-->
 
 This alert triggers if any one of the following conditions occurs:
 
@@ -127,14 +124,46 @@ If your cluster generates this alert, you may need to rate limit your queries. L
 
 If your cluster generates this alert but isn't under a very large workload, contact {{% support-cloud %}}.
 
+#### Fix memory alerts
+
+YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
+
+- Memory use exceeds 75% (Warning).
+- Memory use exceeds 90% (Severe).
+
+If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
+
+Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+
+If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
+
+#### Fix YSQL connection alerts
+
+YugabyteDB Managed clusters support [10 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+
+- YSQL connections exceeds 60% of the limit (Warning).
+- YSQL connections exceeds 95% of the limit (Severe).
+
+If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
+
+If connections are opened but never closed, your application will eventually exceed the connection limit.
+
+You may need to implement some form of connection pooling.
+
+If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
+
+To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
 ### Billing alerts
 
 Billing alerts trigger for the following events:
 
 | Alert | Response |
 | :--- | :--- |
-| Credit card expiring within 3 months | Add a new credit card. |
 | Invoice payment failure | Check with your card issuer to ensure that your card is still valid and has not exceeded its limit. Alternatively, you can add another credit card to your billing profile. |
-| Credit point usage exceeds the 50%, 75%, and 90% limit | Add a credit card to your billing profile, or contact {{% support-cloud %}}. |
+| Credit usage exceeds the 50%, 75%, and 90% limit | Add a credit card to your billing profile, or contact {{% support-cloud %}}. |
+| Credit card expiring within 3 months | Add a new credit card. |
 
 For information on adding credit cards and managing your billing profile, refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).

@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
-#define YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
 
 #pragma once
 #include <string>
@@ -347,7 +345,7 @@ class StackableDB : public DB {
   }
 
   virtual Status GetUpdatesSince(
-      SequenceNumber seq_number, unique_ptr<TransactionLogIterator>* iter,
+      SequenceNumber seq_number, std::unique_ptr<TransactionLogIterator>* iter,
       const TransactionLogIterator::ReadOptions& read_options) override {
     return db_->GetUpdatesSince(seq_number, iter, read_options);
   }
@@ -362,4 +360,3 @@ class StackableDB : public DB {
 
 } //  namespace rocksdb
 
-#endif // YB_ROCKSDB_UTILITIES_STACKABLE_DB_H

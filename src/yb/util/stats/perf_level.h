@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATS_PERF_LEVEL_H
-#define YB_UTIL_STATS_PERF_LEVEL_H
+#pragma once
 
 
 namespace yb {
@@ -42,4 +41,3 @@ PerfLevel GetPerfLevel();
 
 }  // namespace yb
 
-#endif  // YB_UTIL_STATS_PERF_LEVEL_H

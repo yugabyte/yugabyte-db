@@ -1729,7 +1729,7 @@ public class TestPgPushdown extends BasePgSQLTest {
           query,
           AGGREGATE_PUSHDOWNS_METRIC,
           1 /* queryMetricDelta */,
-          1 /* singleShardTxnMetricDelta */,
+          0 /* singleShardTxnMetricDelta */,
           1 /* txnMetricDelta */,
           true /* validStmt */
       );

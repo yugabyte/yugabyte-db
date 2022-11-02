@@ -21,8 +21,7 @@
 // consistent hashing libraries. New code which does not explicitly desire this
 // behavior should use the generic hashing routines in hash.h.
 
-#ifndef YB_GUTIL_HASH_JENKINS_H
-#define YB_GUTIL_HASH_JENKINS_H
+#pragma once
 
 #include <stddef.h>
 #include "yb/gutil/integral_types.h"
@@ -51,4 +50,3 @@ uint64 Hash64StringWithSeed(const char *s, size_t len, uint64 c);
 // Hash32StringWithSeed. It is used primarily as a performance metric.
 uint32 Hash32StringWithSeedReferenceImplementation(const char *s, size_t len, uint32 c);
 
-#endif  // YB_GUTIL_HASH_JENKINS_H

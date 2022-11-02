@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_COMPONENT_H
-#define YB_TABLET_TABLET_COMPONENT_H
+#pragma once
 
 #include <mutex>
 
@@ -76,4 +75,3 @@ class TabletComponent {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TABLET_COMPONENT_H

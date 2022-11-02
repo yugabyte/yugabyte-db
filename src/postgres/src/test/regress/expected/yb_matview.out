@@ -349,3 +349,37 @@ SELECT * FROM mv;
 ERROR:  relation "mv" does not exist
 LINE 1: SELECT * FROM mv;
                       ^
+-- Tablegroup materialized view
+CREATE DATABASE testdb;
+\c testdb;
+CREATE TABLEGROUP test_tg;
+CREATE TABLE test_t (col int) TABLEGROUP test_tg;
+CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_t;
+SELECT * FROM mv;
+ col
+-----
+(0 rows)
+
+INSERT INTO test_t VALUES (1);
+REFRESH MATERIALIZED VIEW mv;
+SELECT * FROM mv;
+ col
+-----
+   1
+(1 row)
+
+INSERT INTO test_t VALUES (2);
+CREATE UNIQUE INDEX ON mv(col);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+SELECT * FROM mv ORDER BY col;
+ col
+-----
+   1
+   2
+(2 rows)
+
+DROP MATERIALIZED VIEW mv;
+SELECT * FROM mv;
+ERROR:  relation "mv" does not exist
+LINE 1: SELECT * FROM mv;
+                      ^

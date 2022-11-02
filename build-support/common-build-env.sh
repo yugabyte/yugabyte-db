@@ -175,23 +175,13 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc5
-  gcc6
-  gcc7
-  gcc8
-  gcc9
-  gcc10
   gcc11
   gcc12
   clang
-  clang7
-  clang8
-  clang9
-  clang10
-  clang11
   clang12
   clang13
   clang14
+  clang15
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -348,7 +338,7 @@ decide_whether_to_use_linuxbrew() {
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
               "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]]; then
+              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -499,15 +489,10 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
-          YB_COMPILER_TYPE=clang14
-        else
-          YB_COMPILER_TYPE=clang13
-        fi
+      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
+        YB_COMPILER_TYPE=clang13
       else
-        # https://github.com/yugabyte/yugabyte-db/issues/12603
-        YB_COMPILER_TYPE=clang12
+        YB_COMPILER_TYPE=clang15
       fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
@@ -1232,16 +1217,8 @@ download_toolchain() {
           -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
     # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
     # thirdparty archives that are built for Linuxbrew.
-    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
     linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
-  else
-    for file_name_part in linuxbrew toolchain; do
-      local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
-      if [[ -f $url_file_path ]]; then
-        toolchain_urls+=( "$(<"$url_file_path")" )
-        break
-      fi
-    done
   fi
 
   if [[ -n ${linuxbrew_url:-} ]]; then
@@ -2409,14 +2386,14 @@ lint_java_code() {
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrAArch64\.class\)' \
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanitizersOrAArch64, " \
+            "YBTestRunnerNonSanOrAArch64Mac, " \
             "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi

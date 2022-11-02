@@ -40,6 +40,8 @@
 
 #include "yb/docdb/transaction_dump.h"
 
+#include "yb/gutil/stl_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -505,21 +507,25 @@ class TransactionState {
     }
   }
 
-  Status AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
-    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
-      // We could ignore this request, because it will be re-send if required.
-      LOG_WITH_PREFIX(DFATAL)
-          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
-          << ", request: " << state.ShortDebugString();
-      return Status::OK();
-    }
-
-    if (state.tablets_size() != 1) {
+  Status AppliedInOneOfInvolvedTablets(const LWTransactionStatePB& state) {
+    if (state.tablets().size() != 1) {
       return STATUS_FORMAT(
           InvalidArgument, "Expected exactly one tablet in $0: $1", __func__, state);
     }
 
-    auto it = involved_tablets_.find(state.tablets(0));
+    return AppliedInOneOfInvolvedTablets(state.tablets().front());
+  }
+
+  Status AppliedInOneOfInvolvedTablets(const Slice& tablet_id) {
+    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
+      // We could ignore this request, because it will be re-sent if required.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
+          << ", tablet: " << tablet_id.ToBuffer();
+      return Status::OK();
+    }
+
+    auto it = involved_tablets_.find(std::string_view(tablet_id));
     if (it == involved_tablets_.end()) {
       // This can happen when transaction coordinator retried apply to post-split tablets,
       // transaction coordinator moved to new status tablet leader and here new transaction
@@ -528,13 +534,13 @@ class TransactionState {
       // It is safe to just log warning and ignore, because new transaction coordinator is sending
       // again apply requests to all involved tablet it knows and will be retrying for ones that
       // will reply have been already split.
-      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << state.tablets(0);
+      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << tablet_id;
       return Status::OK();
     }
     if (!it->second.all_intents_applied) {
       --tablets_with_not_applied_intents_;
       it->second.all_intents_applied = true;
-      VLOG_WITH_PREFIX(4) << "Applied to " << state.tablets(0) << ", left not applied: "
+      VLOG_WITH_PREFIX(4) << "Applied to " << tablet_id << ", left not applied: "
                           << tablets_with_not_applied_intents_;
       if (tablets_with_not_applied_intents_ == 0) {
         SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
@@ -657,11 +663,11 @@ class TransactionState {
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
-    TransactionStatePB state;
-    state.set_transaction_id(id_.data(), id_.size());
-    state.set_status(status);
+    auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
+    state->dup_transaction_id(id_.AsSlice());
+    state->set_status(status);
 
-    auto request = context_.coordinator_context().CreateUpdateTransaction(&state);
+    auto request = context_.coordinator_context().CreateUpdateTransaction(std::move(state));
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
@@ -721,13 +727,14 @@ class TransactionState {
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
     is_external_ = data.state.has_external_commit_ht();
     // TODO(savepoints) Savepoints with sealed transactions is not yet tested
-    aborted_ = data.state.aborted();
+    data.state.aborted().ToGoogleProtobuf(&aborted_);
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
     involved_tablets_.reserve(data.state.tablets().size());
-    for (int idx = 0; idx != data.state.tablets().size(); ++idx) {
-      auto tablet_batches = data.state.tablet_batches(idx);
+    auto batches_it = data.state.tablet_batches().begin();
+    for (const auto& tablet : data.state.tablets()) {
+      auto tablet_batches = *batches_it++;
       LOG_IF_WITH_PREFIX(DFATAL, tablet_batches == 0)
           << "Tablet without batches: " << data.state.ShortDebugString();
       ++tablets_with_not_replicated_batches_;
@@ -736,7 +743,7 @@ class TransactionState {
         .all_batches_replicated = false,
         .all_intents_applied = false
       };
-      involved_tablets_.emplace(data.state.tablets(idx), state);
+      involved_tablets_.emplace(tablet.ToBuffer(), state);
     }
 
     first_entry_raft_index_ = data.op_id.index;
@@ -758,7 +765,7 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
-    aborted_ = data.state.aborted();
+    data.state.aborted().ToGoogleProtobuf(&aborted_);
     is_external_ = data.state.has_external_commit_ht();
 
     involved_tablets_.reserve(data.state.tablets().size());
@@ -768,7 +775,7 @@ class TransactionState {
         .all_batches_replicated = true,
         .all_intents_applied = false
       };
-      involved_tablets_.emplace(tablet, state);
+      involved_tablets_.emplace(tablet.ToBuffer(), state);
     }
 
     status_ = TransactionStatus::COMMITTED;
@@ -815,8 +822,9 @@ class TransactionState {
     // TODO(savepoints) -- consider swapping instead of copying here.
     // Asynchronous heartbeats don't include aborted sub-txn set (and hence the set is empty), so
     // avoid updating in those cases.
-    if (!data.state.aborted().set().empty())
-      aborted_ = data.state.aborted();
+    if (!data.state.aborted().set().empty()) {
+      data.state.aborted().ToGoogleProtobuf(&aborted_);
+    }
 
     return Status::OK();
   }
@@ -896,7 +904,8 @@ class TransactionState {
   };
 
   // Tablets participating in this transaction.
-  std::unordered_map<TabletId, InvolvedTabletState> involved_tablets_;
+  std::unordered_map<
+      TabletId, InvolvedTabletState, StringHash, std::equal_to<void>> involved_tablets_;
   // Number of tablets that have not yet replicated all batches.
   size_t tablets_with_not_replicated_batches_ = 0;
   // Number of tablets that have not yet applied intents.
@@ -1489,10 +1498,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                     } else {
                       // Tablet has been deleted (not split), so we should mark it as applied to
                       // be able to cleanup the transaction.
-                      TransactionStatePB transaction_state;
-                      transaction_state.add_tablets(action.tablet);
                       WARN_NOT_OK(
-                          state.AppliedInOneOfInvolvedTablets(transaction_state),
+                          state.AppliedInOneOfInvolvedTablets(action.tablet),
                           "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
                     }
                   });
@@ -1546,7 +1553,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   Status HandleTransactionNotFound(const TransactionId& id,
-                                   const TransactionStatePB& state,
+                                   const LWTransactionStatePB& state,
                                    bool is_external) {
     if (!is_external &&
         state.status() != TransactionStatus::CREATED &&

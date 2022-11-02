@@ -24,8 +24,10 @@
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/auto_flags_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
+using std::vector;
 
 DEFINE_int32(
     limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),
@@ -49,7 +51,6 @@ bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
   return true;
 }
 
-__attribute__((unused))
 DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClass);
 
 }  // namespace
@@ -183,8 +184,8 @@ Status PromoteAutoFlags(
 
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
-  auto operation =
-      std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /*tablet*/, &new_config);
+  auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
+  *operation->AllocateRequest() = new_config;
   CountDownLatch latch(1);
   operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
@@ -192,7 +193,7 @@ Status PromoteAutoFlags(
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
             << ", promote_non_runtime: " << promote_non_runtime_flags << ", force: " << force;
 
-  catalog_manager->SubmitToSysCatalog(std::move(operation));
+  RETURN_NOT_OK(catalog_manager->SubmitToSysCatalog(std::move(operation)));
 
   latch.Wait();
 

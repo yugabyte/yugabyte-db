@@ -9,97 +9,114 @@ import {
 } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
 import {
-  ReplicationAction,
+  MetricName,
+  MetricTraceName,
+  XClusterConfigAction,
   ReplicationStatus,
   REPLICATION_LAG_ALERT_NAME,
   SortOrder
 } from './constants';
 import { api } from '../../redesign/helpers/api';
+import { assertUnreachableCase } from '../../utils/ErrorUtils';
 
 import { XClusterConfig } from './XClusterTypes';
-import { Universe } from '../../redesign/helpers/dtos';
+import { Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
-export const GetConfiguredThreshold = ({
-  currentUniverseUUID
-}: {
-  currentUniverseUUID: string;
-}) => {
-  const configurationFilter = {
+const COMMITTED_LAG_METRIC_TRACE_NAME =
+  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
+
+// TODO: Rename, refactor and pull into separate file
+export const MaxAcceptableLag = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
+  const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: currentUniverseUUID
   };
-  const { data: metricsData, isFetching } = useQuery(
-    ['getConfiguredThreshold', configurationFilter],
-    () => getAlertConfigurations(configurationFilter)
+  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+    getAlertConfigurations(alertConfigFilter)
   );
-  if (isFetching) {
+
+  if (maxAcceptableLagQuery.isLoading || maxAcceptableLagQuery.isIdle) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
-
-  if (!metricsData) {
-    return <span>0</span>;
+  if (maxAcceptableLagQuery.isError || maxAcceptableLagQuery.data.length === 0) {
+    return <span>-</span>;
   }
-  const maxAcceptableLag = metricsData?.[0]?.thresholds?.SEVERE.threshold;
+
+  const maxAcceptableLag = Math.min(
+    ...maxAcceptableLagQuery.data.map(
+      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+    )
+  );
   return <span>{formatLagMetric(maxAcceptableLag)}</span>;
 };
 
-export const GetCurrentLag = ({
+// TODO: Rename, refactor and pull into separate file
+export const CurrentReplicationLag = ({
   replicationUUID,
   sourceUniverseUUID
 }: {
   replicationUUID: string;
   sourceUniverseUUID: string;
 }) => {
-  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
-    ['universe', sourceUniverseUUID],
-    () => api.fetchUniverse(sourceUniverseUUID)
+  const currentUniverseQuery = useQuery(['universe', sourceUniverseUUID], () =>
+    api.fetchUniverse(sourceUniverseUUID)
   );
-  const nodePrefix = universeInfo?.universeDetails.nodePrefix;
-
-  const { data: metricsData, isFetching } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, 'metric'],
-    () => queryLagMetricsForUniverse(nodePrefix, replicationUUID),
+  const universeLagQuery = useQuery(
+    [
+      'xcluster-metric',
+      replicationUUID,
+      currentUniverseQuery.data?.universeDetails.nodePrefix,
+      'metric'
+    ],
+    () =>
+      queryLagMetricsForUniverse(
+        currentUniverseQuery.data?.universeDetails.nodePrefix,
+        replicationUUID
+      ),
     {
-      enabled: !currentUniverseLoading
+      enabled: !!currentUniverseQuery.data
     }
   );
-  const configurationFilter = {
+
+  const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: sourceUniverseUUID
   };
-  const { data: configuredThreshold, isLoading: threshholdLoading } = useQuery(
-    ['getConfiguredThreshold', configurationFilter],
-    () => getAlertConfigurations(configurationFilter)
+  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+    getAlertConfigurations(alertConfigFilter)
   );
-
-  if (isFetching || currentUniverseLoading || threshholdLoading) {
-    return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
-  }
 
   if (
-    !metricsData?.data.tserver_async_replication_lag_micros ||
-    !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)
+    currentUniverseQuery.isLoading ||
+    currentUniverseQuery.isIdle ||
+    universeLagQuery.isLoading ||
+    universeLagQuery.isIdle ||
+    maxAcceptableLagQuery.isLoading ||
+    maxAcceptableLagQuery.isIdle
   ) {
+    return <i className="fa fa-spinner fa-spin yb-spinner" />;
+  }
+
+  if (currentUniverseQuery.error || universeLagQuery.isError || maxAcceptableLagQuery.isError) {
     return <span>-</span>;
   }
-  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
-  const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
-  const committedLagName = metricAliases['async_replication_committed_lag_micros'];
-
-  const latestLag = Math.max(
-    ...metricsData.data.tserver_async_replication_lag_micros.data
-      .filter((d: any) => d.name === committedLagName)
-      .map((a: any) => {
-        return a.y.slice(-1);
-      })
+  const maxAcceptableLag = Math.min(
+    ...maxAcceptableLagQuery.data.map(
+      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+    )
   );
+
+  const metric = universeLagQuery.data.tserver_async_replication_lag_micros;
+  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
+  const trace = metric.data.find((trace) => (trace.name = traceAlias));
+  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
   const formattedLag = formatLagMetric(latestLag);
-  const isReplicationUnhealthy = latestLag > maxAcceptableLag;
+  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
 
   return (
     <span
@@ -108,73 +125,76 @@ export const GetCurrentLag = ({
       }`}
     >
       {isReplicationUnhealthy && <i className="fa fa-exclamation-triangle" aria-hidden="true" />}
-      {formattedLag ?? '-'}
+      {formattedLag}
     </span>
   );
 };
 
-export const GetCurrentLagForTable = ({
-  replicationUUID,
+// TODO: Rename, refactor and pull into separate file
+export const CurrentTableReplicationLag = ({
   tableUUID,
-  enabled,
+  queryEnabled,
   nodePrefix,
   sourceUniverseUUID
 }: {
-  replicationUUID: string;
   tableUUID: string;
-  enabled?: boolean;
+  queryEnabled: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string;
 }) => {
-  const { data: metricsData, isFetching } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, tableUUID, 'metric'],
+  const tableLagQuery = useQuery(
+    ['xcluster-metric', nodePrefix, tableUUID, 'metric'],
     () => queryLagMetricsForTable(tableUUID, nodePrefix),
     {
-      enabled
+      enabled: queryEnabled
     }
   );
 
-  const configurationFilter = {
+  const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: sourceUniverseUUID
   };
-  const { data: configuredThreshold, isLoading: thresholdLoading } = useQuery(
-    ['getConfiguredThreshold', configurationFilter],
-    () => getAlertConfigurations(configurationFilter)
+  const maxAcceptableLagQuery = useQuery(
+    ['alert', 'configurations', alertConfigFilter],
+    () => getAlertConfigurations(alertConfigFilter),
+    {
+      enabled: queryEnabled
+    }
   );
 
-  if (isFetching || thresholdLoading) {
-    return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
+  if (
+    tableLagQuery.isLoading ||
+    tableLagQuery.isIdle ||
+    maxAcceptableLagQuery.isLoading ||
+    maxAcceptableLagQuery.isIdle
+  ) {
+    return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
 
-  if (
-    !metricsData?.data.tserver_async_replication_lag_micros ||
-    !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)
-  ) {
+  if (tableLagQuery.isError || maxAcceptableLagQuery.isError) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
-
-  const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
-  const committedLagName = metricAliases['async_replication_committed_lag_micros'];
-
-  const latestLag = Math.max(
-    ...metricsData.data.tserver_async_replication_lag_micros.data
-      .filter((d: any) => d.name === committedLagName)
-      .map((a: any) => {
-        return a.y.slice(-1);
-      })
+  const maxAcceptableLag = Math.min(
+    ...maxAcceptableLagQuery.data.map(
+      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+    )
   );
+  const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
+  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
+  const trace = metric.data.find((trace) => trace.name === traceAlias);
+  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
   const formattedLag = formatLagMetric(latestLag);
+  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
 
   return (
     <span
       className={`replication-lag-value ${
-        maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
+        isReplicationUnhealthy ? 'above-threshold' : 'below-threshold'
       }`}
     >
-      {formattedLag ?? '-'}
+      {isReplicationUnhealthy && <i className="fa fa-exclamation-triangle" aria-hidden="true" />}
+      {formattedLag}
     </span>
   );
 };
@@ -209,28 +229,44 @@ export const formatBytes = function (sizeInBytes: any) {
   }
 };
 
+/**
+ * Wraps parseFloat and lets undefined and number type values pass through.
+ */
+export const parseFloatIfDefined = (input: string | number | undefined) => {
+  if (typeof input === 'number' || input === undefined) {
+    return input;
+  }
+  return parseFloat(input);
+};
+
 export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 };
 
-export const getEnabledConfigActions = (replication: XClusterConfig): ReplicationAction[] => {
+export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
+  return universeList.find((universes) => universes.universeUUID === uuid);
+};
+
+export const getEnabledConfigActions = (replication: XClusterConfig): XClusterConfigAction[] => {
   switch (replication.status) {
     case ReplicationStatus.INITIALIZED:
     case ReplicationStatus.UPDATING:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
     case ReplicationStatus.RUNNING:
       return [
-        replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
-        ReplicationAction.DELETE,
-        ReplicationAction.EDIT,
-        ReplicationAction.ADD_TABLE,
-        ReplicationAction.RESTART
+        replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+        XClusterConfigAction.DELETE,
+        XClusterConfigAction.EDIT,
+        XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.RESTART
       ];
     case ReplicationStatus.FAILED:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
     case ReplicationStatus.DELETED_UNIVERSE:
     case ReplicationStatus.DELETION_FAILED:
-      return [ReplicationAction.DELETE];
+      return [XClusterConfigAction.DELETE];
+    default:
+      return assertUnreachableCase(replication.status);
   }
 };
 
@@ -273,3 +309,19 @@ export const tableSort = <RowType,>(
   return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
 };
 
+// TODO:
+// Investigate whether we can store table type as a property of xCluster config.
+// This will help reduce complexity and avoid filtering through all source universe tables.
+// JIRA: https://yugabyte.atlassian.net/browse/PLAT-6095
+/**
+ * - Return the `tableType` of any table in an xCluster config.
+ *   - The underlying assumption is that tables within an xCluster config should all have the same `tableType`.
+ * - Returns undefined if no source universe tables exist in the xCluster config (Error/Unexpected case)
+ */
+export const getXClusterConfigTableType = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[]
+) =>
+  sourceUniverseTables.find((table) =>
+    xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
+  )?.tableType;

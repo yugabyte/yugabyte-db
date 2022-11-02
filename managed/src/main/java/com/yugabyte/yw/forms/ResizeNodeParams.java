@@ -33,9 +33,14 @@ import play.api.Play;
 public class ResizeNodeParams extends UpgradeTaskParams {
 
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws);
+      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
 
   private boolean forceResizeNode;
+
+  @Override
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
 
   @Override
   public void verifyParams(Universe universe) {
@@ -135,7 +140,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     // Check valid provider.
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP, It is: "
+      return "Smart resizing is only supported for AWS / GCP / K8S, It is: "
           + currentUserIntent.providerType.toString();
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {

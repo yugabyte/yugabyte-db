@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_RESTORATION_STATE_H
-#define YB_MASTER_RESTORATION_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -42,6 +41,7 @@ struct TabletRestoreOperation {
   bool sys_catalog_restore_needed;
   bool is_tablet_part_of_snapshot;
   std::optional<int64_t> db_oid;
+  SnapshotScheduleId schedule_id;
 };
 
 using TabletRestoreOperations = std::vector<TabletRestoreOperation>;
@@ -155,4 +155,3 @@ class RestorationState : public StateWithTablets {
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_RESTORATION_STATE_H

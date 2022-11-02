@@ -4,6 +4,6 @@ type YbApiEnum string
 
 // List of YbApiEnum
 const (
-	YBAPIENUM_YSQL YbApiEnum = "YSQL"
-	YBAPIENUM_YCQL YbApiEnum = "YCQL"
+    YBAPIENUM_YSQL YbApiEnum = "YSQL"
+    YBAPIENUM_YCQL YbApiEnum = "YCQL"
 )

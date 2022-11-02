@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_ERROR_H
-#define YB_CLIENT_ERROR_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -54,4 +53,3 @@ class YBError {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_ERROR_H

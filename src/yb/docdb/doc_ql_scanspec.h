@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_QL_SCANSPEC_H
-#define YB_DOCDB_DOC_QL_SCANSPEC_H
+#pragma once
 
 #include <functional>
 
@@ -164,4 +163,3 @@ class DocQLScanSpec : public QLScanSpec {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOC_QL_SCANSPEC_H

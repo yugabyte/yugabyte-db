@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TEST_UTIL_H
-#define YB_MASTER_MASTER_TEST_UTIL_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 #include "yb/master/master_client.fwd.h"
@@ -57,4 +56,3 @@ void CreateTabletForTesting(MiniMaster* mini_master,
 } // namespace master
 } // namespace yb
 
-#endif /* YB_MASTER_MASTER_TEST_UTIL_H */

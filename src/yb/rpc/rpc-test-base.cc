@@ -29,6 +29,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+
 using namespace std::chrono_literals;
 
 DEFINE_test_flag(bool, pause_calculator_echo_request, false,
@@ -349,7 +351,7 @@ class CalculatorService: public CalculatorServiceIf {
       resp->mutable_repeated_messages()->push_back_ref(&*it);
     }
     for (const auto& msg : req->repeated_messages()) {
-      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      auto temp = CopySharedMessage(msg.ToGoogleProtobuf());
       resp->mutable_repeated_messages_copy()->emplace_back(*temp);
     }
 

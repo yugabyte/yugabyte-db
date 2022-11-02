@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RESTORE_UTIL_H
-#define YB_TABLET_RESTORE_UTIL_H
+#pragma once
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
@@ -152,4 +151,3 @@ void WriteToRocksDB(
 
 } // namespace yb
 
-#endif // YB_TABLET_RESTORE_UTIL_H

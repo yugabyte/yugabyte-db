@@ -38,6 +38,10 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
+using std::string;
+using std::ostream;
+using std::vector;
+
 namespace yb {
 namespace ql {
 
@@ -281,7 +285,7 @@ Status PTTableProperty::Analyze(SemContext *sem_context) {
     // Some table properties are not supported in ALTER TABLE.
     if (iterator->second == KVProperty::kNumTablets) {
       return sem_context->Error(this,
-                                "Changing the number of tablets is not supported yet",
+                                "Changing the number of tablets is not supported",
                                 ErrorCode::FEATURE_NOT_SUPPORTED);
     }
 

@@ -43,7 +43,6 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/pg_types.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
@@ -93,7 +92,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -115,26 +114,11 @@
 
 using namespace std::literals;  // NOLINT
 
-DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
-             "The default size for batches of scan results");
-TAG_FLAG(scanner_default_batch_size_bytes, advanced);
-TAG_FLAG(scanner_default_batch_size_bytes, runtime);
+DEPRECATE_FLAG(int32, scanner_default_batch_size_bytes, "10_2022");
 
-DEFINE_int32(scanner_max_batch_size_bytes, 8 * 1024 * 1024,
-             "The maximum batch size that a client may request for "
-             "scan results.");
-TAG_FLAG(scanner_max_batch_size_bytes, advanced);
-TAG_FLAG(scanner_max_batch_size_bytes, runtime);
+DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
-DEFINE_int32(scanner_batch_size_rows, 100,
-             "The number of rows to batch for servicing scan requests.");
-TAG_FLAG(scanner_batch_size_rows, advanced);
-TAG_FLAG(scanner_batch_size_rows, runtime);
-
-// Fault injection flags.
-DEFINE_test_flag(int32, scanner_inject_latency_on_each_batch_ms, 0,
-                 "If set, the scanner will pause the specified number of milliesconds "
-                 "before reading each batch of data on the tablet server.");
+DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
 DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
@@ -145,36 +129,33 @@ DEFINE_int32(num_concurrent_backfills_allowed, -1,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
-              "For Non-Txn tables, it is impossible to know at the tservers "
-              "whether or not an 'old transaction' is still active. To avoid "
-              "having such old transactions, we assume a bound on the duration "
-              "of such transactions (during the backfill process) and wait "
-              "it out. This flag denotes a conservative upper bound on the "
-              "duration of such user enforced transactions.");
+DEFINE_RUNTIME_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
+    "For Non-Txn tables, it is impossible to know at the tservers "
+    "whether or not an 'old transaction' is still active. To avoid "
+    "having such old transactions, we assume a bound on the duration "
+    "of such transactions (during the backfill process) and wait "
+    "it out. This flag denotes a conservative upper bound on the "
+    "duration of such user enforced transactions.");
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
-TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
-             "Operations that are received by the tserver, and have decided how "
-             "the indexes need to be updated (based on the IndexPermission), will "
-             "not be added to the list of current transactions until they are "
-             "replicated/applied. This delay allows for the GetSafeTime method "
-             "to wait for such operations to be replicated/applied. Ideally, this "
-             "value should be set to be something larger than the raft-heartbeat-interval "
-             "but can be as high as the client_rpc_timeout if we want to be more conservative.");
+DEFINE_RUNTIME_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
+    "Operations that are received by the tserver, and have decided how "
+    "the indexes need to be updated (based on the IndexPermission), will "
+    "not be added to the list of current transactions until they are "
+    "replicated/applied. This delay allows for the GetSafeTime method "
+    "to wait for such operations to be replicated/applied. Ideally, this "
+    "value should be set to be something larger than the raft-heartbeat-interval "
+    "but can be as high as the client_rpc_timeout if we want to be more conservative.");
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
-TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
-DEFINE_int32(index_backfill_wait_for_old_txns_ms, 0,
-             "Index backfill needs to wait for transactions that started before the "
-             "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
-             "backfilling the index. This is the max time that the GetSafeTime call will "
-             "wait for, before it resorts to attempt aborting old transactions. This is "
-             "necessary to guard against the pathological active transaction that never "
-             "commits from blocking the index backfill forever.");
+DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
+    "Index backfill needs to wait for transactions that started before the "
+    "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
+    "backfilling the index. This is the max time that the GetSafeTime call will "
+    "wait for, before it resorts to attempt aborting old transactions. This is "
+    "necessary to guard against the pathological active transaction that never "
+    "commits from blocking the index backfill forever.");
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
-TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");
@@ -491,7 +472,8 @@ void TabletServiceAdminImpl::BackfillDone(
   }
 
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.peer->tablet(), tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -528,7 +510,7 @@ void TabletServiceAdminImpl::GetSafeTime(
     // transaction" is still active. To avoid having such old transactions, we assume a
     // bound on the length of such transactions (during the backfill process) and wait it
     // out.
-    if (!tablet.peer->tablet()->transaction_participant()) {
+    if (!tablet.tablet->transaction_participant()) {
       min_hybrid_time = min_hybrid_time.AddMilliseconds(
           FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms);
       VLOG(2) << "GetSafeTime called on a user enforced transaction tablet "
@@ -540,7 +522,7 @@ void TabletServiceAdminImpl::GetSafeTime(
       SleepFor(MonoDelta::FromMilliseconds(
           FLAGS_index_backfill_additional_delay_before_backfilling_ms));
 
-      auto txn_particpant = tablet.peer->tablet()->transaction_participant();
+      auto txn_particpant = tablet.tablet->transaction_participant();
       auto wait_until = CoarseMonoClock::Now() + FLAGS_index_backfill_wait_for_old_txns_ms * 1ms;
       HybridTime min_running_ht;
       for (;;) {
@@ -566,7 +548,7 @@ void TabletServiceAdminImpl::GetSafeTime(
     }
   }
 
-  auto safe_time = tablet.peer->tablet()->SafeTime(
+  auto safe_time = tablet.tablet->SafeTime(
       tablet::RequireLease::kTrue, min_hybrid_time, deadline);
   if (!safe_time.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), safe_time.status(), &context);
@@ -633,7 +615,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   const HybridTime read_at(req->read_at_hybrid_time());
   DVLOG(1) << "Waiting for safe time to be past " << read_at;
   const auto safe_time =
-      tablet.peer->tablet()->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
+      tablet.tablet->SafeTime(tablet::RequireLease::kFalse, read_at, deadline);
   DVLOG(1) << "Got safe time " << safe_time.ToString();
   if (!safe_time.ok()) {
     LOG(ERROR) << "Could not get a good enough safe time " << safe_time.ToString();
@@ -658,7 +640,7 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   bool all_at_backfill = true;
   bool all_past_backfill = true;
-  bool is_pg_table = tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE;
+  bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
   const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map(
     req->indexed_table_id());
   std::vector<IndexInfo> indexes_to_backfill;
@@ -733,7 +715,7 @@ void TabletServiceAdminImpl::BackfillIndex(
           &context);
       return;
     }
-    backfill_status = tablet.peer->tablet()->BackfillIndexesForYsql(
+    backfill_status = tablet.tablet->BackfillIndexesForYsql(
         indexes_to_backfill,
         req->start_key(),
         deadline,
@@ -750,8 +732,8 @@ void TabletServiceAdminImpl::BackfillIndex(
       }
       DCHECK_EQ(failed_indexes.size(), 1) << "We don't support batching in YSQL yet";
     }
-  } else if (tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE) {
-    backfill_status = tablet.peer->tablet()->BackfillIndexes(
+  } else if (tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE) {
+    backfill_status = tablet.tablet->BackfillIndexes(
         indexes_to_backfill,
         req->start_key(),
         deadline,
@@ -881,12 +863,12 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
   ScopedRWOperationPause pause_writes;
-  if ((tablet.peer->tablet()->table_type() == TableType::YQL_TABLE_TYPE &&
+  if ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
        !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
-      tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
+      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
-    pause_writes = tablet.peer->tablet()->PauseWritePermits(context.GetClientDeadline());
+    pause_writes = tablet.tablet->PauseWritePermits(context.GetClientDeadline());
     if (!pause_writes.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(),
@@ -897,10 +879,10 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
 
     // After write operation is paused, active transactions will be aborted for YSQL transactions.
-    if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE &&
+    if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
         req->should_abort_active_txns()) {
       DCHECK(req->has_transaction_id());
-      if (tablet.peer->tablet()->transaction_participant() == nullptr) {
+      if (tablet.tablet->transaction_participant() == nullptr) {
         auto status = STATUS(
             IllegalState, "Transaction participant is null for tablet " + req->tablet_id());
         LOG(ERROR) << status;
@@ -921,7 +903,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       // There could be a chance where a transaction does not appear by transaction_participant
       // but has already begun replicating through Raft. Such transactions might succeed rather
       // than get aborted. This race codnition is dismissable for this intermediate solution.
-      Status status = tablet.peer->tablet()->transaction_participant()->StopActiveTxnsPriorTo(
+      Status status = tablet.tablet->transaction_participant()->StopActiveTxnsPriorTo(
             max_cutoff, deadline, &txn_id);
       if (!status.ok() || PREDICT_FALSE(FLAGS_TEST_fail_alter_schema_after_abort_transactions)) {
         auto status = STATUS(TryAgain, "Transaction abort failed for tablet " + req->tablet_id());
@@ -935,7 +917,8 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.peer->tablet(), tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1076,7 +1059,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet.get(), &req->state());
+  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
+  state->AllocateRequest()->CopyFrom(req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
@@ -1173,7 +1157,7 @@ void TabletServiceImpl::GetTransactionStatusAtParticipant(
 
   PerformAtLeader(req, resp, &context,
       [req, resp, &context](const LeaderTabletPeer& tablet_peer) -> Status {
-    auto* transaction_participant = tablet_peer.peer->tablet()->transaction_participant();
+    auto* transaction_participant = tablet_peer.tablet->transaction_participant();
     if (!transaction_participant) {
       return STATUS_FORMAT(
           InvalidArgument, "No transaction participant at tablet $0",
@@ -1202,7 +1186,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
 
   server::ClockPtr clock(server_->Clock());
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
-  tablet.peer->tablet()->transaction_coordinator()->Abort(
+  tablet.tablet->transaction_coordinator()->Abort(
       req->transaction_id(),
       tablet.leader_term,
       [resp, context_ptr, clock, peer = tablet.peer](Result<TransactionStatusResult> result) {
@@ -1271,7 +1255,7 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
     return Status::OK();
   }
 
-  auto* participant = tablet.peer->tablet()->transaction_participant();
+  auto* participant = tablet.tablet->transaction_participant();
   if (!participant) {
     return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
   }
@@ -1283,7 +1267,7 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
 
   auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
-      tablet.peer->tablet());
+      tablet.tablet);
   auto* request = query->operation().AllocateRequest();
   metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
 
@@ -1312,7 +1296,7 @@ void TabletServiceImpl::UpdateTransactionWaitingForStatus(
     return;
   }
 
-  tablet.peer->tablet()->transaction_coordinator()->ProcessWaitForReport(
+  tablet.tablet->transaction_coordinator()->ProcessWaitForReport(
       *req, resp, MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 }
 
@@ -1328,7 +1312,7 @@ void TabletServiceImpl::ProbeTransactionDeadlock(
     return;
   }
 
-  tablet.peer->tablet()->transaction_coordinator()->ProcessProbe(
+  tablet.tablet->transaction_coordinator()->ProcessProbe(
       *req, resp, MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 }
 
@@ -1345,7 +1329,8 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
     return;
   }
 
-  auto operation = std::make_unique<TruncateOperation>(tablet.peer->tablet(), &req->truncate());
+  auto operation = std::make_unique<TruncateOperation>(tablet.tablet);
+  operation->AllocateRequest()->CopyFrom(req->truncate());
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1678,9 +1663,9 @@ void TabletServiceAdminImpl::SplitTablet(
   }
 
   auto operation = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.peer->tablet(), server_->tablet_manager(), req);
+      leader_tablet_peer.tablet, server_->tablet_manager());
   *operation->AllocateRequest() = *req;
-  operation->mutable_request()->set_split_parent_leader_uuid(
+  operation->mutable_request()->dup_split_parent_leader_uuid(
       leader_tablet_peer.peer->permanent_uuid());
 
   operation->set_completion_callback(
@@ -1766,7 +1751,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  if (tablet.peer->tablet()->metadata()->hidden()) {
+  if (tablet.tablet->metadata()->hidden()) {
     auto status = STATUS(NotFound, "Tablet not found", req->tablet_id());
     SetupErrorAndRespond(
         resp->mutable_error(), status, TabletServerErrorPB::TABLET_NOT_FOUND, &context);
@@ -1814,7 +1799,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
                         req->redis_write_batch_size() != 0 ||
                         req->pgsql_write_batch_size() != 0 ||
                         (req->has_external_hybrid_time() && !EmptyWriteBatch(req->write_batch()));
-  if (!has_operations && tablet.peer->tablet()->table_type() != TableType::REDIS_TABLE_TYPE) {
+  if (!has_operations && tablet.tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
     MakeRpcOperationCompletionCallback<WriteResponsePB>(
@@ -1823,52 +1808,19 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   // For postgres requests check that the syscatalog version matches.
-  if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
-    uint64_t last_breaking_catalog_version = 0; // unset.
-    uint32_t last_db_oid = kPgInvalidOid; // unset.
+  if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    CatalogVersionChecker catalog_version_checker(*server_);
     for (const auto& pg_req : req->pgsql_write_batch()) {
-      bool invalidated = false;
-      if (pg_req.has_ysql_catalog_version()) {
-        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
-        CHECK(!pg_req.has_ysql_db_catalog_version());
-        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
-        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
-        if (last_breaking_catalog_version == 0) {
-          // Initialize last breaking version if not yet set.
-          server_->get_ysql_catalog_version(nullptr /* current_version */,
-                                            &last_breaking_catalog_version);
-        }
-        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      } else if (pg_req.has_ysql_db_catalog_version()) {
-        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
-        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
-        if (last_db_oid == kPgInvalidOid) {
-          last_db_oid = pg_req.ysql_db_oid();
-          server_->get_ysql_db_catalog_version(
-              pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
-        } else {
-          // All the db oids should be identical because they all belong to a single request.
-          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
-        }
-        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
-          invalidated = true;
-        }
-      }
-      if (invalidated) {
-        SetupErrorAndRespond(resp->mutable_error(),
-            STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
-                                       "transaction has been invalidated."),
-            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-        return;
+      auto status = catalog_version_checker(pg_req);
+      if (!status.ok()) {
+        SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
       }
     }
   }
 
   auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
-      tablet.peer->tablet(), resp);
+      tablet.tablet, resp);
   query->set_client_request(*req);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
@@ -1908,7 +1860,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 
 void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
     std::shared_ptr<tablet::TabletPeer> tablet_peer,
-    consensus::ConsensusResponsePB* resp) {
+    consensus::LWConsensusResponsePB* resp) {
   auto tablet = tablet_peer->shared_tablet();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
@@ -1953,8 +1905,11 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
       }
       auto consensus = *consensus_res;
 
+      // TODO(lw_uc) effective update for multiraft.
+      auto temp_resp = rpc::MakeSharedMessage<consensus::LWConsensusResponsePB>();
       Status s = consensus->Update(
-        consensus_req, consensus_resp, context.GetClientDeadline());
+         rpc::CopySharedMessage(*consensus_req),
+         temp_resp.get(), context.GetClientDeadline());
       if (PREDICT_FALSE(!s.ok())) {
         // Clear the response first, since a partially-filled response could
         // result in confusing a caller, or in having missing required fields
@@ -1964,13 +1919,14 @@ void ConsensusServiceImpl::MultiRaftUpdateConsensus(
         continue;
       }
 
-      CompleteUpdateConsensusResponse(tablet_peer, consensus_resp);
+      CompleteUpdateConsensusResponse(tablet_peer, temp_resp.get());
+      temp_resp->ToGoogleProtobuf(consensus_resp);
     }
     context.RespondSuccess();
 }
 
-void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
-                                           ConsensusResponsePB* resp,
+void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB* req,
+                                           consensus::LWConsensusResponsePB* resp,
                                            rpc::RpcContext context) {
   DVLOG(3) << "Received Consensus Update RPC: " << req->ShortDebugString();
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
@@ -1988,7 +1944,8 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   // gives us a const request, but we need to be able to move messages out of the request for
   // efficiency.
   Status s = consensus->Update(
-      const_cast<ConsensusRequestPB*>(req), resp, context.GetClientDeadline());
+      rpc::SharedField(context.shared_params(), const_cast<consensus::LWConsensusRequestPB*>(req)),
+      resp, context.GetClientDeadline());
   if (PREDICT_FALSE(!s.ok())) {
     // Clear the response first, since a partially-filled response could
     // result in confusing a caller, or in having missing required fields
@@ -2388,6 +2345,9 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
 namespace {
 
 Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) {
+  auto scoped_read_operation = tablet->CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(scoped_read_operation);
+
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
   auto client_schema = schema->CopyWithoutColumnIds();
   auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
@@ -2435,7 +2395,7 @@ void TabletServiceImpl::ImportData(const ImportDataRequestPB* req,
   auto peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
       server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
 
-  auto status = peer.tablet_peer->tablet()->ImportData(req->source_dir());
+  auto status = peer.tablet->ImportData(req->source_dir());
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
@@ -2465,23 +2425,6 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
     SetupErrorAndRespond(resp->mutable_error(), s, &context);
     return;
   }
-  context.RespondSuccess();
-}
-
-void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
-                                        TakeTransactionResponsePB* resp,
-                                        rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool().Take(
-      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()),
-      context.GetClientDeadline());
-  auto metadata = transaction->Release();
-  if (!metadata.ok()) {
-    LOG(INFO) << "Take failed: " << metadata.status();
-    context.RespondFailure(metadata.status());
-    return;
-  }
-  metadata->ForceToPB(resp->mutable_metadata());
-  VLOG(2) << "Taken metadata: " << metadata->ToString();
   context.RespondSuccess();
 }
 

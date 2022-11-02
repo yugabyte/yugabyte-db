@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_SNAPSHOT_COORDINATOR_H
-#define YB_TABLET_SNAPSHOT_COORDINATOR_H
+#pragma once
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -46,4 +45,3 @@ class SnapshotCoordinator {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_SNAPSHOT_COORDINATOR_H

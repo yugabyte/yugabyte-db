@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
-#define YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -169,4 +168,3 @@ class RocksDBPatcher {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_CLIENT_H_
-#define YB_CLIENT_CLIENT_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -238,13 +237,13 @@ class YBClient {
   Status WaitForCreateTableToFinish(const YBTableName& table_name,
                                             const CoarseTimePoint& deadline);
 
-  Status WaitForCreateTableToFinish(const string& table_id);
-  Status WaitForCreateTableToFinish(const string& table_id,
+  Status WaitForCreateTableToFinish(const std::string& table_id);
+  Status WaitForCreateTableToFinish(const std::string& table_id,
                                             const CoarseTimePoint& deadline);
 
   // Wait for delete table to finish.
-  Status WaitForDeleteTableToFinish(const string& table_id);
-  Status WaitForDeleteTableToFinish(const string& table_id,
+  Status WaitForDeleteTableToFinish(const std::string& table_id);
+  Status WaitForDeleteTableToFinish(const std::string& table_id,
                                     const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
@@ -284,11 +283,11 @@ class YBClient {
                              bool is_compaction);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
-  std::unique_ptr<YBTableAlterer> NewTableAlterer(const string id);
+  std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   Status IsAlterTableInProgress(const YBTableName& table_name,
-                                        const string& table_id,
+                                        const std::string& table_id,
                                         bool *alter_in_progress);
 
   Status GetTableSchema(const YBTableName& table_name,
@@ -386,7 +385,7 @@ class YBClient {
                                              const std::string& namespace_id,
                                              bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const string& namespace_name,
+  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
                                           const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
@@ -406,8 +405,8 @@ class YBClient {
                                        const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<vector<master::NamespaceIdentifierPB>> ListNamespaces(
+  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
+  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
@@ -434,7 +433,8 @@ class YBClient {
   // Result value is set only on success.
   Result<bool> TablegroupExists(const std::string& namespace_name,
                                 const std::string& tablegroup_id);
-  Result<vector<master::TablegroupIdentifierPB>> ListTablegroups(const std::string& namespace_name);
+  Result<std::vector<master::TablegroupIdentifierPB>> ListTablegroups(
+      const std::string& namespace_name);
 
   // Authentication and Authorization
   // Create a new role.
@@ -453,13 +453,13 @@ class YBClient {
   // Delete a role.
   Status DeleteRole(const std::string& role_name, const std::string& current_role_name);
 
-  Status SetRedisPasswords(const vector<string>& passwords);
+  Status SetRedisPasswords(const std::vector<std::string>& passwords);
   // Fetches the password from the local cache, or from the master if the local cached value
   // is too old.
-  Status GetRedisPasswords(vector<string>* passwords);
+  Status GetRedisPasswords(std::vector<std::string>* passwords);
 
-  Status SetRedisConfig(const string& key, const vector<string>& values);
-  Status GetRedisConfig(const string& key, vector<string>* values);
+  Status SetRedisConfig(const std::string& key, const std::vector<std::string>& values);
+  Status GetRedisConfig(const std::string& key, std::vector<std::string>* values);
 
   // Grants a role to another role, or revokes a role from another role.
   Status GrantRevokeRole(GrantRevokeStatementType statement_type,
@@ -500,7 +500,7 @@ class YBClient {
                        CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  Status DeleteCDCStream(const vector<CDCStreamId>& streams,
+  Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
                                  bool force_delete = false,
                                  bool ignore_errors = false,
                                  master::DeleteCDCStreamResponsePB* resp = nullptr);
@@ -515,11 +515,11 @@ class YBClient {
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      std::vector<pair<std::string, std::string>>* db_stream_info);
+      std::vector<std::pair<std::string, std::string>>* db_stream_info);
 
   void GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      const std::shared_ptr<std::vector<pair<std::string, std::string>>>& db_stream_info,
+      const std::shared_ptr<std::vector<std::pair<std::string, std::string>>>& db_stream_info,
       const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
@@ -543,14 +543,15 @@ class YBClient {
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const string& producer_id,
+  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
                                                const TableId& table_id,
                                                const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
-  Result<bool> UpdateConsumerOnProducerMetadata(const string& producer_id,
-                                                const TableId& table_id,
-                                                const tablet::ChangeMetadataRequestPB& meta_info);
+  Status UpdateConsumerOnProducerMetadata(const std::string& producer_id,
+                                          const TableId& table_id,
+                                          const tablet::ChangeMetadataRequestPB& meta_info,
+                                          master::UpdateConsumerOnProducerMetadataResponsePB *resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -590,7 +591,7 @@ class YBClient {
 
   Result<cdc::CompositeAttsMap> GetPgCompositeAttsMap(const NamespaceName& ns_name);
 
-  Result<pair<Schema, uint32_t>> GetTableSchemaFromSysCatalog(
+  Result<std::pair<Schema, uint32_t>> GetTableSchemaFromSysCatalog(
       const TableId& table_id, const uint64_t read_time);
 
   // List all running tablets' uuids for this table.
@@ -829,6 +830,7 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
+  FRIEND_TEST(MasterFailoverTest, TestFailoverAfterNamespaceCreated);
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
@@ -849,4 +851,3 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
-#endif  // YB_CLIENT_CLIENT_H_

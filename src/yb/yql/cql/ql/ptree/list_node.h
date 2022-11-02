@@ -20,8 +20,7 @@
 // which is verified during Analyze step.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
-#define YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
+#pragma once
 
 #include "yb/util/math_util.h"
 #include "yb/util/memory/arena.h"
@@ -187,4 +186,3 @@ class PTListNode : public TreeListNode<> {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_LIST_NODE_H_

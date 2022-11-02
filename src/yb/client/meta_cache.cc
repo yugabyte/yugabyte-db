@@ -86,6 +86,7 @@
 
 using std::map;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;
@@ -501,6 +502,11 @@ void RemoteTablet::GetRemoteTabletServers(
                 LOG_WITH_PREFIX(ERROR)
                     << "Received error from GetTabletStatus: "
                     << (!status.ok() ? status : StatusFromPB(resp.error().status()));
+                continue;
+              }
+              if (resp.tablet_status().is_hidden()) {
+                // Should continue here because otherwise failed state will be cleared.
+                VLOG_WITH_PREFIX(3) << "Tablet is hidden";
                 continue;
               }
 

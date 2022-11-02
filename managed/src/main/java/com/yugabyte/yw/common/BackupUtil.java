@@ -14,9 +14,13 @@ import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -24,8 +28,11 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.BackupResp;
-import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.CommonBackupInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -36,6 +43,8 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -61,7 +70,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
+import org.yb.client.SnapshotInfo;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 
@@ -107,15 +118,44 @@ public class BackupUtil {
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
   }
 
-  public static TableType getTableType(String tableType) {
-    switch (tableType) {
-      case "YSQL":
-        return TableType.PGSQL_TABLE_TYPE;
-      case "YCQL":
-        return TableType.YQL_TABLE_TYPE;
-      default:
-        throw new IllegalArgumentException("Unexpected table type " + tableType);
+  public enum ApiType {
+    YSQL("YSQL"),
+    YCQL("YCQL");
+
+    private final String value;
+
+    ApiType(String value) {
+      this.value = value;
     }
+
+    public String toString() {
+      return this.value;
+    }
+  }
+
+  public static BiMap<ApiType, TableType> API_TYPE_TO_TABLE_TYPE_MAP = HashBiMap.create();
+
+  static {
+    API_TYPE_TO_TABLE_TYPE_MAP.put(ApiType.YSQL, TableType.PGSQL_TABLE_TYPE);
+    API_TYPE_TO_TABLE_TYPE_MAP.put(ApiType.YCQL, TableType.YQL_TABLE_TYPE);
+  }
+
+  public static String getKeyspaceName(ApiType apiType, String keyspaceName) {
+    return apiType.toString().toLowerCase() + "." + keyspaceName;
+  }
+
+  public static boolean allSnapshotsSuccessful(List<SnapshotInfo> snapshotInfoList) {
+    return !snapshotInfoList.stream().anyMatch(info -> info.getState().equals(State.FAILED));
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Universe universe, PitrConfig pitrConfig, double value) {
+    return MetricService.buildMetricTemplate(
+            metric, universe, MetricService.DEFAULT_METRIC_EXPIRY_SEC)
+        .setKeyLabel(KnownAlertLabels.PITR_CONFIG_UUID, pitrConfig.getUuid().toString())
+        .setLabel(KnownAlertLabels.TABLE_TYPE.labelName(), pitrConfig.getTableType().toString())
+        .setLabel(KnownAlertLabels.NAMESPACE_NAME.labelName(), pitrConfig.getDbName())
+        .setValue(value);
   }
 
   /**
@@ -256,6 +296,7 @@ public class BackupUtil {
                   b -> {
                     return KeyspaceTablesList.builder()
                         .keyspace(b.getKeyspace())
+                        .allTables(b.allTables)
                         .tablesList(b.getTableNames())
                         .backupSizeInBytes(b.backupSizeInBytes)
                         .defaultLocation(b.storageLocation)

@@ -41,13 +41,14 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
 
 DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
                  "When set, it pauses load of cluster config during sys catalog load.");
-TAG_FLAG(TEST_slow_cluster_config_load_secs, runtime);
 
 namespace yb {
 namespace master {

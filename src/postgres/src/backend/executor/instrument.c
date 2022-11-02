@@ -227,3 +227,18 @@ BufferUsageAccumDiff(BufferUsage *dst,
 	INSTR_TIME_ACCUM_DIFF(dst->blk_write_time,
 						  add->blk_write_time, sub->blk_write_time);
 }
+
+/* Initialize a pre-allocated RPC stats structure. */
+void
+YbPgRpcStatsInit(YbPgRpcStats *stats)
+{
+	memset(stats, 0, sizeof(YbPgRpcStats));
+}
+
+/* dst += add */
+void
+YbPgRpcStatsAdd(YbPgRpcStats *dst, const YbPgRpcStats *add)
+{
+	dst->count += add->count;
+	dst->wait_time += add->wait_time;
+}

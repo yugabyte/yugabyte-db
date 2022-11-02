@@ -20,7 +20,7 @@ export const getTabContent = (
 ) => {
   let tabData: any = <YBLoading />;
   if (graph.error?.data) {
-    return <YBErrorIndicator customErrorMessage="Error receiving response from Graph Server"/>;
+    return <YBErrorIndicator customErrorMessage="Error receiving response from Graph Server" />;
   }
 
   if (
@@ -45,18 +45,21 @@ export const getTabContent = (
         .map(function (metricKey: string, idx: number) {
           let uniqueOperations: any = new Set();
           const metric = metrics[type][metricKey];
-          if (metricMeasure === MetricMeasure.OUTLIER && isNonEmptyObject(metric)) {
+          if ((metricMeasure === MetricMeasure.OUTLIER || type === MetricTypes.OUTLIER_TABLES)
+            && isNonEmptyObject(metric)) {
             metric.data.forEach((metricItem: any) => {
               uniqueOperations.add(metricItem.name);
             });
           }
-          uniqueOperations = Array.from(uniqueOperations);
+          uniqueOperations = Array.from(uniqueOperations)?.sort();
+
           return isNonEmptyObject(metric) && !metric?.error ? (
             <MetricsPanel
               currentUser={currentUser}
               metricKey={metricKey}
               key={`metric-${metricKey}-${idx}`}
               metric={metric}
+              metricType={type}
               className={'metrics-panel-container'}
               containerWidth={null}
               prometheusQueryEnabled={prometheusQueryEnabled}

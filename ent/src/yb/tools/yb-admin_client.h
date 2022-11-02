@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
-#define ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H
+#pragma once
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -73,7 +72,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
                                         const std::vector<client::YBTableName>& tables);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
-  Status SetPreferredZones(const std::vector<string>& preferred_zones);
+  Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
 
   Status RotateUniverseKey(const std::string& key_path);
 
@@ -127,7 +126,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                            const std::string& new_universe_name);
 
-  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid);
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
+
+  Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
@@ -135,7 +136,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const string& target_time);
+                                 const std::string& target_time);
 
   Status SetupNSUniverseReplication(const std::string& producer_uuid,
                                     const std::vector<std::string>& producer_addresses,
@@ -176,4 +177,3 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 }  // namespace tools
 }  // namespace yb
 
-#endif // ENT_SRC_YB_TOOLS_YB_ADMIN_CLIENT_H

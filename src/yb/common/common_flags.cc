@@ -39,9 +39,7 @@ DEFINE_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
 
 DEFINE_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
@@ -50,9 +48,7 @@ DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_bool(disable_hybrid_scan, false,
-            "If true, hybrid scan will be disabled");
-TAG_FLAG(disable_hybrid_scan, runtime);
+DEFINE_RUNTIME_bool(disable_hybrid_scan, false, "If true, hybrid scan will be disabled");
 
 DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
@@ -61,7 +57,6 @@ TAG_FLAG(enable_deadlock_detection, evolving);
 DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
             "If true, use pessimistic locking behavior in conflict resolution.");
 TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
 
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
@@ -104,12 +99,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(yb_num_shards_per_tserver, value));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ysql_num_shards_per_tserver, value));
   }
 }
 

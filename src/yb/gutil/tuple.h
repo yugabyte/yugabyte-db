@@ -41,8 +41,7 @@
 //   DispatchToMethod(&foo, &Foo::SomeMeth, MakeTuple(1, 2, 3));
 //   // foo->SomeMeth(1, 2, 3);
 
-#ifndef BASE_TUPLE_H__
-#define BASE_TUPLE_H__
+#pragma once
 
 #include "yb/gutil/bind_helpers.h"
 
@@ -1303,4 +1302,3 @@ inline void DispatchToMethod(ObjT* obj, Method method,
                  &out->e);
 }
 
-#endif  // BASE_TUPLE_H__

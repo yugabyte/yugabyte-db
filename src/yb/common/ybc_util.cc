@@ -203,12 +203,6 @@ YBPgErrorCode FetchErrorCode(YBCStatus s) {
 
 extern "C" {
 
-YBCStatus YBCStatusOKValue = nullptr;
-
-bool YBCStatusIsOK(YBCStatus s) {
-  return StatusWrapper(s)->IsOk();
-}
-
 bool YBCStatusIsNotFound(YBCStatus s) {
   return StatusWrapper(s)->IsNotFound();
 }
@@ -271,10 +265,6 @@ const char* BuildYBStatusMessage(YBCStatus status, GetUniqueConstraintNameFn get
 
 bool YBCIsRestartReadError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kReadRestartRequired);
-}
-
-YBCStatus YBCInitGFlags(const char* argv0) {
-  return ToYBCStatus(yb::InitGFlags(argv0));
 }
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode) {

@@ -36,7 +36,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/packed_row.h"
@@ -1275,6 +1275,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       RETURN_NOT_OK(EvalCondition(
         index->where_predicate_spec()->where_expr().condition(), existing_row,
         &index_pred_existing_row));
+    } else {
+      VLOG(3) << "No where predicate for index " << index->table_id();
     }
 
     if (is_row_deleted) {
@@ -1456,6 +1458,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     RETURN_NOT_OK(expr_executor->EvalCondition(
       index->where_predicate_spec()->where_expr().condition(), new_row,
       &new_row_satisfies_idx_pred));
+    VLOG(2) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
     if (index_pred_new_row) {
       *index_pred_new_row = new_row_satisfies_idx_pred;
     }
@@ -1468,6 +1471,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
           index->table_id();
       update_this_index = true;
     }
+  } else {
+    VLOG(3) << "No where predicate for index " << index->table_id();
   }
 
   if (index_has_write_permission &&
@@ -1701,22 +1706,22 @@ Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* it
   return Status::OK();
 }
 
-Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   std::vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
-  auto pair = out->mutable_read_pairs()->Add();
+  auto* pair = out->add_read_pairs();
   if (hashed_components.empty()) {
     // Empty hashed components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
+    pair->dup_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
   } else {
     DocKey doc_key(request_.hash_code(), hashed_components);
-    pair->set_key(doc_key.Encode().ToStringBuffer());
+    pair->dup_key(doc_key.Encode().AsSlice());
   }
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+  pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
   // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
   // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
   out->set_wait_policy(WAIT_ERROR);

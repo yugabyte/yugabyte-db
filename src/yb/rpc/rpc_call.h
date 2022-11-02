@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_RPC_CALL_H
-#define YB_RPC_RPC_CALL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -54,4 +53,3 @@ class RpcCall : public OutboundData {
 }  // namespace rpc
 }  // namespace yb
 
-#endif // YB_RPC_RPC_CALL_H

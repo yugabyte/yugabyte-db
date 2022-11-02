@@ -65,17 +65,18 @@
 
 using namespace std::literals;
 
-DEFINE_bool(redis_allow_reads_from_followers, false,
-            "If true, the read will be served from the closest replica in the same AZ, which can "
-            "be a follower.");
+DEFINE_RUNTIME_bool(redis_allow_reads_from_followers, false,
+    "If true, the read will be served from the closest replica in the same AZ, which can "
+    "be a follower.");
 TAG_FLAG(redis_allow_reads_from_followers, evolving);
-TAG_FLAG(redis_allow_reads_from_followers, runtime);
 
 namespace yb {
 namespace client {
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 namespace {
 

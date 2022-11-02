@@ -30,8 +30,7 @@
 // under the License.
 //
 // Macros for dealing with memory alignment.
-#ifndef YB_UTIL_ALIGNMENT_H
-#define YB_UTIL_ALIGNMENT_H
+#pragma once
 
 #include <cstddef>
 
@@ -81,4 +80,3 @@ T align_up(T ptr, typename AlignmentTraits<T>::value_type alignment_bytes) {
 
 } // namespace yb
 
-#endif // YB_UTIL_ALIGNMENT_H

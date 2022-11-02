@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
-#define YB_TABLET_TABLET_RETENTION_POLICY_H_
+#pragma once
 
 #include "yb/docdb/docdb_compaction_context.h"
 
@@ -95,4 +94,3 @@ class HistoryCutoffPropagationDisabler {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TABLET_RETENTION_POLICY_H_

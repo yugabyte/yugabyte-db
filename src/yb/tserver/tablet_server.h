@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVER_H_
-#define YB_TSERVER_TABLET_SERVER_H_
+#pragma once
 
 #include <future>
 #include <memory>
@@ -362,4 +361,3 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
 } // namespace tserver
 } // namespace yb
-#endif // YB_TSERVER_TABLET_SERVER_H_

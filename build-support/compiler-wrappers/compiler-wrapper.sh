@@ -290,6 +290,8 @@ linking=false
 use_lld=false
 lld_linking=false
 
+num_times_tcmalloc_linked=0
+
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
   case "$1" in
@@ -305,6 +307,10 @@ while [[ $# -gt 0 ]]; do
       is_output_arg=true
     ;;
     *.c|*.cc|*.h|*.o|*.a|*.so|*.dylib)
+      if [[ $1 == */libtcmalloc.a ]]; then
+        (( num_times_tcmalloc_linked+=1 ))
+      fi
+
       # Do not include arguments that look like compiler options into the list of input files,
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
@@ -342,7 +348,7 @@ while [[ $# -gt 0 ]]; do
       use_lld=true
     ;;
   esac
-  if ! "$is_output_arg"; then
+  if [[ ${is_output_arg} == "false" ]]; then
     compiler_args_no_output+=( "$1" )
   fi
   shift
@@ -355,6 +361,15 @@ else
   linking=true
 fi
 
+if [[ ${linking} == "true" &&
+      ${output_file} =~ .*[.](so|dylib).* &&
+      ${num_times_tcmalloc_linked} -gt 0 ]]; then
+  fatal "Error linking ${output_file}." \
+        "The tcmalloc static library cannot be linked into shared libraries. This can result in" \
+        "subtle runtime errors, because we also link libtcmalloc.a into each executable, and we" \
+        "will end up with two copies of tcmalloc loaded. Command line: ${compiler_args[*]}"
+fi
+
 if [[ $linking == "true" && $use_lld == "true" ]]; then
   lld_linking=true
 fi
@@ -365,6 +380,10 @@ if [[ $YB_COMPILER_TYPE == clang* && $output_file == "jsonpath_gram.o" ]]; then
   compiler_args+=( -Wno-error=implicit-fallthrough )
 fi
 
+if [[ ${num_times_tcmalloc_linked} -gt 1 ]]; then
+  fatal "libtcmalloc.a static library linked multiple times (${num_times_tcmalloc_linked} times)." \
+        "This could lead to subtle bugs. Command line: ${compiler_args[*]}."
+fi
 # -------------------------------------------------------------------------------------------------
 # Remote build
 
@@ -573,7 +592,7 @@ run_compiler_and_save_stderr() {
 # -------------------------------------------------------------------------------------------------
 # Local build
 
-if [[ $output_file =~ libyb_pgbackend*  ]]; then
+if [[ $output_file == libyb_pgbackend* || $output_file == postgres ]]; then
   # We record the linker command used for the libyb_pgbackend library so we can use it when
   # producing the LTO build for yb-tserver.
   echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"

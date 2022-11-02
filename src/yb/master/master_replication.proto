@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/cdc/cdc_consumer.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
@@ -237,6 +238,14 @@ message AlterUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message ChangeXClusterRoleRequestPB {
+  optional cdc.XClusterRole role = 1;
+}
+
+message ChangeXClusterRoleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message SetUniverseReplicationEnabledRequestPB {
   optional string producer_id = 1;
   optional bool is_enabled = 2;
@@ -347,6 +356,9 @@ message UpdateConsumerOnProducerMetadataRequestPB {
 message UpdateConsumerOnProducerMetadataResponsePB {
   optional MasterErrorPB error = 1;
   optional bool should_wait = 2 [default = true];
+
+  // The last Consumer schema version that was EquivalentForDataCopy with the Producer
+  optional uint32 last_compatible_consumer_schema_version = 3;
 }
 
 message GetXClusterEstimatedDataLossRequestPB {}
@@ -428,6 +440,8 @@ service MasterReplication {
       returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
       returns (SetupNSUniverseReplicationResponsePB);
+  rpc ChangeXClusterRole(ChangeXClusterRoleRequestPB)
+      returns (ChangeXClusterRoleResponsePB);
 
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_VARINT_H
-#define YB_UTIL_VARINT_H
+#pragma once
 
 #include <openssl/ossl_typ.h>
 
@@ -195,4 +194,3 @@ std::ostream& operator<<(std::ostream& os, const VarInt& v);
 } // namespace yb
 
 
-#endif // YB_UTIL_VARINT_H

@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_CDC_CDC_PRODUCER_H
-#define ENT_SRC_YB_CDC_CDC_PRODUCER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -86,21 +85,20 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index = nullptr,
     const CoarseTimePoint deadline = CoarseTimePoint::max());
 
-using UpdateOnSplitOpFunc = std::function<Status(std::shared_ptr<yb::consensus::ReplicateMsg>)>;
+using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 
 Status GetChangesForXCluster(const std::string& stream_id,
-                                     const std::string& tablet_id,
-                                     const OpId& op_id,
-                                     const StreamMetadata& record,
-                                     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                     const client::YBSessionPtr& session,
-                                     UpdateOnSplitOpFunc update_on_split_op_func,
-                                     const std::shared_ptr<MemTracker>& mem_tracker,
-                                     consensus::ReplicateMsgsHolder* msgs_holder,
-                                     GetChangesResponsePB* resp,
-                                     int64_t* last_readable_opid_index = nullptr,
-                                     const CoarseTimePoint deadline = CoarseTimePoint::max());
+                             const std::string& tablet_id,
+                             const OpId& op_id,
+                             const StreamMetadata& record,
+                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                             const client::YBSessionPtr& session,
+                             UpdateOnSplitOpFunc update_on_split_op_func,
+                             const std::shared_ptr<MemTracker>& mem_tracker,
+                             consensus::ReplicateMsgsHolder* msgs_holder,
+                             GetChangesResponsePB* resp,
+                             int64_t* last_readable_opid_index = nullptr,
+                             const CoarseTimePoint deadline = CoarseTimePoint::max());
 }  // namespace cdc
 }  // namespace yb
 
-#endif /* ENT_SRC_YB_CDC_CDC_PRODUCER_H */

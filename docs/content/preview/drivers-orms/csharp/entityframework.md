@@ -150,4 +150,4 @@ Deleting the blog
 
 ## Next steps
 
-Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB

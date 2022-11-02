@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_CONSENSUS_META_H_
-#define YB_CONSENSUS_CONSENSUS_META_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -235,4 +234,3 @@ void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest);
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_CONSENSUS_META_H_

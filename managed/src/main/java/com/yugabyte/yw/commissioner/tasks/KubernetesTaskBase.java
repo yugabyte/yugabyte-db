@@ -456,7 +456,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             universeOverrides,
             azOverrides,
             isReadOnlyCluster,
-            podName);
+            podName,
+            null);
 
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
@@ -831,7 +832,41 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null, /* universeOverrides */
         null, /* azOverrides */
         isReadOnlyCluster,
+        null,
         null);
+  }
+
+  public void createSingleKubernetesExecutorTaskForServerType(
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize) {
+    createSingleKubernetesExecutorTaskForServerType(
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        false);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
@@ -848,9 +883,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
       boolean isReadOnlyCluster,
-      String podName) {
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors) {
     SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
+        getTaskExecutor()
+            .createSubTaskGroup(commandType.getSubTaskGroupName(), executor, ignoreErrors);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -898,6 +936,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.podName = podName;
+    params.newDiskSize = newDiskSize;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

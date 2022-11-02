@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
-#define YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -60,9 +59,6 @@ class RunningTransaction;
 
 typedef std::shared_ptr<RunningTransaction> RunningTransactionPtr;
 
-YB_DEFINE_ENUM(RemoveReason,
-               (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived));
-
 class RunningTransactionContext {
  public:
   RunningTransactionContext(TransactionParticipantContext* participant_context,
@@ -106,4 +102,3 @@ class RunningTransactionContext {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H

@@ -48,7 +48,8 @@ public class RebootUniverse extends UpgradeTaskBase {
           LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->
-                  createRebootTasks(nodez).setSubTaskGroupType(getTaskSubGroupType()),
+                  createRebootTasks(nodez, false /* isHardReboot */)
+                      .setSubTaskGroupType(getTaskSubGroupType()),
               nodes,
               UpgradeContext.builder()
                   .reconfigureMaster(false)

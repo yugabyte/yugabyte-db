@@ -26,6 +26,8 @@
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+using std::string;
+
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(master_enable_metrics_snapshotter);
 DECLARE_bool(tserver_enable_metrics_snapshotter);

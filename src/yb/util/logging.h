@@ -41,8 +41,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_UTIL_LOGGING_H
-#define YB_UTIL_LOGGING_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -338,7 +337,7 @@ void DisableCoreDumps();
 // trace). This is based on the --fatal_details_path_prefix flag and the
 // YB_FATAL_DETAILS_PATH_PREFIX environment variable. If neither of those are set, the result is
 // based on the FATAL log path.
-string GetFatalDetailsPathPrefix();
+std::string GetFatalDetailsPathPrefix();
 
 // Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
 // printing the failure stack trace into a separate file.
@@ -355,4 +354,3 @@ class LogFatalHandlerSink : public google::LogSink {
 
 } // namespace yb
 
-#endif // YB_UTIL_LOGGING_H

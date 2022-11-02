@@ -48,7 +48,17 @@ find_or_download_thirdparty
 
 THIRDPARTY_BUILD_TYPE=uninstrumented
 
-PROTOC_BIN="$YB_THIRDPARTY_DIR/installed/$THIRDPARTY_BUILD_TYPE/bin/protoc"
+thirdparty_installed_dir_from_cmake_cache=$(
+  grep --max-count=1 "YB_THIRDPARTY_INSTALLED_DIR:STRING=" "${BUILD_ROOT}/CMakeCache.txt"
+)
+
+if [[ -n ${thirdparty_installed_dir_from_cmake_cache} ]]; then
+  thirdparty_installed_dir=${thirdparty_installed_dir_from_cmake_cache#*:STRING=}
+else
+  thirdparty_installed_dir="$YB_THIRDPARTY_DIR/installed/$THIRDPARTY_BUILD_TYPE"
+fi
+PROTOC_BIN=${thirdparty_installed_dir}/${THIRDPARTY_BUILD_TYPE}/bin/protoc
+
 if [[ ! -f $PROTOC_BIN ]]; then
   if which protoc > /dev/null; then
     PROTOC_BIN=$( which protoc )

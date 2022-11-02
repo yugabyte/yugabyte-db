@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_IF_H
-#define YB_MASTER_CATALOG_MANAGER_IF_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -161,7 +160,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserCreatedTable(const TableInfo& table) const = 0;
 
-  virtual Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) = 0;
+  virtual Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) = 0;
 
   virtual Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const = 0;
 
@@ -273,4 +272,3 @@ bool IsYcqlTable(const TableInfo& table);
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_CATALOG_MANAGER_IF_H

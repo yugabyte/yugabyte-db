@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_MINMAX_H
-#define YB_UTIL_MINMAX_H
+#pragma once
 
 template<class T>
 struct MinMaxTracker {
@@ -37,4 +36,3 @@ struct MinMaxTracker {
   T max = T();
 };
 
-#endif // YB_UTIL_MINMAX_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
-#define YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
+#pragma once
 
 #include <string>
 #include <atomic>
@@ -116,6 +115,8 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
     debug_dump_ = value;
   }
 
+  static bool is_hybrid_scan_enabled();
+
  private:
   template <class T>
   Status DoInit(const T& spec);
@@ -126,34 +127,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Result<bool> InitScanChoices(
       const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key);
-
-  // Get the non-key column values of a QL row.
-  Status GetValues(const Schema& projection, vector<SubDocument>* values);
-
-  // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on
-  // the hybrid time of subdoc_key. If valid, it is added to the values vector and is_null is set
-  // to false. Otherwise, is_null is set to true.
-  Status ProcessValues(const Value& value, const SubDocKey& subdoc_key,
-                               vector<PrimitiveValue>* values,
-                               bool *is_null) const;
-
-  // Figures out whether the current sub_doc_key with the given top_level_value is a valid column
-  // that has not expired. Sets column_found to true if this is a valid column, false otherwise.
-  Status FindValidColumn(bool* column_found) const;
-
-  // Figures out whether we have a valid column present indicating the existence of the row.
-  // Sets column_found to true if a valid column is found, false otherwise.
-  Status ProcessColumnsForHasNext(bool* column_found) const;
-
-  // Verifies whether or not the column pointed to by subdoc_key is deleted by the current
-  // row_delete_marker_key_.
-  bool IsDeletedByRowDeletion(const SubDocKey& subdoc_key) const;
-
-  // Given a subdoc_key pointing to a column and its associated value, determine whether or not
-  // the column is valid based on TTL expiry, row level delete markers and column delete markers
-  Status CheckColumnValidity(const SubDocKey& subdoc_key,
-                                     const Value& value,
-                                     bool* is_valid) const;
 
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
@@ -234,5 +207,3 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_ROWWISE_ITERATOR_H_

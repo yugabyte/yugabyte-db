@@ -25,6 +25,8 @@
 
 #include "yb/rocksdb/table/table_builder.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 AdaptiveTableFactory::AdaptiveTableFactory(

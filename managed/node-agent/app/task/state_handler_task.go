@@ -35,6 +35,7 @@ func (handler *stateHandlerTask) Process(ctx context.Context) (any, error) {
 	result, err := stateQueryHandler.Handle(ctx)
 	if err != nil {
 		util.FileLogger().Errorf("Error in getting node agent state. Error: %s", err)
+		return nil, err
 	}
 	ptr := result.(*string)
 	util.FileLogger().Infof("Agent State is - %s", *ptr)

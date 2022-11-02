@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_JSON_UTIL_H
-#define YB_COMMON_JSON_UTIL_H
+#pragma once
 
 #include <rapidjson/document.h>
 
@@ -49,4 +48,3 @@ void AddMember(
 } // namespace common
 } // namespace yb
 
-#endif // YB_COMMON_JSON_UTIL_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FILE_SYSTEM_H
-#define YB_UTIL_FILE_SYSTEM_H
+#pragma once
 
 #include <string>
 
@@ -440,4 +439,3 @@ class WritableFileWrapper : public WritableFile {
 
 } // namespace rocksdb
 
-#endif  // YB_UTIL_FILE_SYSTEM_H

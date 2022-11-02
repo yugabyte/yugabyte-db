@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
-#define YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
+#pragma once
 
 #include <future>
 
@@ -61,4 +60,3 @@ class TransactionParticipantContext {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H

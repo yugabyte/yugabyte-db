@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
-#define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
+#pragma once
 
 #include <chrono>
 #include <shared_mutex>
@@ -190,4 +189,3 @@ class ScopedLeaderSharedLock {
 }  // namespace master
 }  // namespace yb
 
-#endif  // YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H

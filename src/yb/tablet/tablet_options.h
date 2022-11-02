@@ -13,6 +13,8 @@
 #ifndef YB_TABLET_TABLET_OPTIONS_H
 #define YB_TABLET_TABLET_OPTIONS_H
 
+#pragma once
+
 #include <future>
 #include <memory>
 #include <vector>
@@ -83,10 +85,11 @@ struct TabletInitData {
   TransactionManagerProvider transaction_manager_provider;
   LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
-  ThreadPool* post_split_compaction_pool;
+  ThreadPool* full_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 
 } // namespace tablet
 } // namespace yb
-#endif // YB_TABLET_TABLET_OPTIONS_H
+
+#endif /* YB_TABLET_TABLET_OPTIONS_H */

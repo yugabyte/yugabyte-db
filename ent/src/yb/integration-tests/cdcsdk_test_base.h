@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
+#pragma once
 
 #include <string>
 
@@ -145,7 +144,7 @@ class CDCSDKTestBase : public YBTest {
       const std::string& enum_suffix = "",
       const std::string& schema_name = "public",
       uint32_t num_cols = 2,
-      const std::vector<string>& optional_cols_name = {});
+      const std::vector<std::string>& optional_cols_name = {});
 
   Status AddColumn(
       Cluster* cluster,
@@ -199,4 +198,3 @@ class CDCSDKTestBase : public YBTest {
 } // namespace cdc
 } // namespace yb
 
-#endif  // ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
