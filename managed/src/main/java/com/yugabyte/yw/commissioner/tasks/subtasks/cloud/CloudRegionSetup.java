@@ -103,6 +103,7 @@ public class CloudRegionSetup extends CloudTaskBase {
             arch = Architecture.aarch64.name();
           }
           region.setArchitecture(Architecture.valueOf(arch));
+          region.update();
         } catch (IllegalArgumentException e) {
           log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
         }

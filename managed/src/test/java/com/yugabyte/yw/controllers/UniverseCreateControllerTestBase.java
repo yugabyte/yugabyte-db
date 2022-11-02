@@ -585,6 +585,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     az1.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns1"));
+    az1.save();
     InstanceType i =
         InstanceType.upsert(p.uuid, "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
 

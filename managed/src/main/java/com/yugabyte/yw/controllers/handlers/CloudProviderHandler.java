@@ -364,6 +364,7 @@ public class CloudProviderHandler {
       region.save();
     } else {
       zone.updateConfig(config);
+      zone.save();
     }
     return hasKubeConfig;
   }
@@ -840,6 +841,7 @@ public class CloudProviderHandler {
           INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
     }
     provider.updateHostedZone(hostedZoneId, hostedZoneData.asText());
+    provider.save();
   }
 
   public void refreshPricing(UUID customerUUID, Provider provider) {

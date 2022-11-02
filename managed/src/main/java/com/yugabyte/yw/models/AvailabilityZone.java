@@ -92,7 +92,6 @@ public class AvailabilityZone extends Model {
     Map<String, String> config = getUnmaskedConfig();
     config.putAll(configMap);
     setConfig(config);
-    save();
   }
 
   @JsonIgnore
