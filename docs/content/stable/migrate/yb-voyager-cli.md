@@ -276,11 +276,13 @@ Default: false; change to true if the CSV file contains column names as a header
 
 Comma-separated string options for CSV file format. The options can include the following:
 
-1. `escape_char`: escape character
+- `escape_char`: escape character
 
-1. `quote_char`: character used to quote the values
+- `quote_char`: character used to quote the values
 
-Default: double quotes '"'
+Default (for both options): double quotes '"'
+
+Note that `escape_char` and `quote_char` are only valid/required for CSV file format.
 
 Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'`
 
