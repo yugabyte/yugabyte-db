@@ -32,6 +32,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -362,9 +363,11 @@ class WaitQueue::Impl {
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
        WaitingTxnRegistry* waiting_txn_registry,
        const std::shared_future<client::YBClient*>& client_future,
-       const server::ClockPtr& clock, const MetricEntityPtr& metrics)
+       const server::ClockPtr& clock, const MetricEntityPtr& metrics,
+       std::unique_ptr<ThreadPoolToken> thread_pool_token)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
+        thread_pool_token_(std::move(thread_pool_token)),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
@@ -577,6 +580,8 @@ class WaitQueue::Impl {
       blocker_status_.clear();
     }
 
+    thread_pool_token_->Shutdown();
+
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->ShutdownStatusRequest();
       waiter_data->InvokeCallback(kShuttingDownError);
@@ -716,8 +721,20 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : resolved_blocker->Signal(std::move(res))) {
-      // TODO(pessimistic): Resolve these waiters in parallel.
-      SignalWaiter(waiter);
+      WARN_NOT_OK(thread_pool_token_->SubmitFunc([weak_waiter = std::weak_ptr(waiter), this]() {
+        {
+          SharedLock<decltype(mutex_)> l(mutex_);
+          if (shutting_down_) {
+            VLOG(4) << "Skipping waiter signal - shutting down";
+            return;
+          }
+        }
+        if (auto waiter = weak_waiter.lock()) {
+          this->SignalWaiter(waiter);
+        } else {
+          LOG(INFO) << "Failed to lock weak_ptr to waiter to signal. Skipping.";
+        }
+      }), "Failed to submit waiter resumption");
     }
   }
 
@@ -805,6 +822,7 @@ class WaitQueue::Impl {
   WaitingTxnRegistry* const waiting_txn_registry_;
   const std::shared_future<client::YBClient*>& client_future_;
   const server::ClockPtr& clock_;
+  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   scoped_refptr<Histogram> pending_time_waiting_;
   scoped_refptr<Histogram> finished_waiting_latency_;
   scoped_refptr<Histogram> blockers_per_waiter_;
@@ -819,9 +837,10 @@ WaitQueue::WaitQueue(
     WaitingTxnRegistry* waiting_txn_registry,
     const std::shared_future<client::YBClient*>& client_future,
     const server::ClockPtr& clock,
-    const MetricEntityPtr& metrics):
+    const MetricEntityPtr& metrics,
+    std::unique_ptr<ThreadPoolToken> thread_pool_token):
   impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics)) {}
+                 metrics, std::move(thread_pool_token))) {}
 
 WaitQueue::~WaitQueue() = default;
 
