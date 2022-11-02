@@ -126,6 +126,7 @@
       img {
         margin-right: 4px;
       }
+
       span {
         margin-top: 1px;
       }
@@ -143,8 +144,7 @@
     gap: 10px;
   }
 
-  .incremental-backup-restore-button {
-    width: 136px;
+  .incremental-backup-action-button {
     height: 30px;
     background: #ffffff;
     border: 1px solid #c8c8c8;
@@ -153,6 +153,13 @@
     font-size: 12px;
     line-height: 15px;
     padding: 8px 10px;
+  }
+  .incremental-backup-restore-button {
+    width: 136px;
+  }
+
+  .incremental-backup-delete-button {
+    padding: 4px 10px;
   }
 
   .break {
