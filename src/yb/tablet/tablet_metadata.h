@@ -48,6 +48,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -139,7 +140,7 @@ struct TableInfo {
 
   const Schema& schema() const;
 
-  Status MergeWithRestored(const TableInfoPB& pb);
+  Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -161,7 +162,8 @@ struct KvStoreInfo {
                     const TableId& primary_table_id,
                     bool local_superblock);
 
-  Status MergeWithRestored(const KvStoreInfoPB& pb);
+  Status MergeWithRestored(
+      const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
 
   Status LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
@@ -424,7 +426,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status SaveTo(const std::string& path);
 
   // Merge this metadata with restored metadata located at specified path.
-  Status MergeWithRestored(const std::string& path);
+  Status MergeWithRestored(const std::string& path, docdb::OverwriteSchemaPacking overwrite);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.

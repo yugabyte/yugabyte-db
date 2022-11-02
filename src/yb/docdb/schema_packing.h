@@ -25,9 +25,12 @@
 #include "yb/docdb/docdb.fwd.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
+
+YB_STRONGLY_TYPED_BOOL(OverwriteSchemaPacking);
 
 struct ColumnPackingData {
   ColumnId id;
@@ -88,6 +91,11 @@ class SchemaPacking {
 
   bool operator==(const SchemaPacking&) const = default;
 
+  bool SchemaContainsPacking(const Schema& schema) const {
+    SchemaPacking packing(schema);
+    return packing == *this;
+  }
+
  private:
   std::vector<ColumnPackingData> columns_;
   std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
@@ -107,7 +115,8 @@ class SchemaPackingStorage {
   Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
   Status MergeWithRestored(
       SchemaVersion schema_version, const SchemaPB& schema,
-      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+      OverwriteSchemaPacking overwrite);
 
   // Copy all schema packings except schema_version_to_skip to out.
   void ToPB(
@@ -125,7 +134,8 @@ class SchemaPackingStorage {
  private:
   // Set could_present to true when schemas could contain the same packings as already present.
   Status InsertSchemas(
-      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present);
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+      bool could_present, OverwriteSchemaPacking overwrite);
 
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };

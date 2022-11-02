@@ -46,9 +46,9 @@ struct DocReadContext {
   }
 
   template <class PB>
-  Status MergeWithRestored(const PB& pb) {
+  Status MergeWithRestored(const PB& pb, OverwriteSchemaPacking overwrite) {
     return schema_packing_storage.MergeWithRestored(
-        pb.schema_version(), pb.schema(), pb.old_schema_packings());
+        pb.schema_version(), pb.schema(), pb.old_schema_packings(), overwrite);
   }
 
   template <class PB>

@@ -2384,6 +2384,15 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
+    // Bump up the schema version to the version of the snapshot if it is less.
+    if (meta.version() > table->LockForRead()->pb.version()) {
+      auto l = table->LockForWrite();
+      l.mutable_data()->pb.set_version(meta.version());
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+      l.Commit();
+      notify_ts_for_schema_change = true;
+    }
+
     // Update the new table schema in tablets.
     if (notify_ts_for_schema_change) {
       RETURN_NOT_OK(SendAlterTableRequest(table));
