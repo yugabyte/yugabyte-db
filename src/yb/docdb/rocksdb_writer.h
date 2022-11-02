@@ -88,7 +88,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Status Finish();
   Status AddWeakIntent(
       const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 2>& value,
+      const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
   const docdb::KeyValueWriteBatchPB& put_batch_;

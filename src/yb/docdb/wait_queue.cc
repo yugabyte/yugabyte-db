@@ -268,6 +268,10 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 class BlockerData {
  public:
   std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+    VLOG(4) << "Signaling waiters "
+            << (txn_status_response.ok() ?
+                txn_status_response->ToString() :
+                txn_status_response.status().ToString());
     auto txn_status = UnwrapResult(txn_status_response);
     bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
     bool should_signal = !is_txn_pending;
