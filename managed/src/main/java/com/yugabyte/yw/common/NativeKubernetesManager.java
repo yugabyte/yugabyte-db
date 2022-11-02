@@ -269,4 +269,9 @@ public class NativeKubernetesManager extends KubernetesManager {
     // TODO: Implement when switching to native client implementation
     return true;
   }
+
+  @Override
+  public void diff(Map<String, String> config, String inputYamlFilePath) {
+    // TODO(anijhawan): Implement this when we get a chance.
+  }
 }

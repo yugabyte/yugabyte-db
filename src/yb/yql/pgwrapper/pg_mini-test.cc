@@ -2912,7 +2912,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
 
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
           PgMiniMasterFailoverTest) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;

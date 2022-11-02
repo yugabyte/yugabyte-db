@@ -175,6 +175,8 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   container: {
@@ -239,6 +241,8 @@ export const MetricTypesWithOperations = {
     metrics: [
       'table_read_latency',
       'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
       'table_log_latency',
       'table_log_ops_second',
       'table_log_bytes_written',

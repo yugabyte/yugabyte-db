@@ -21,27 +21,33 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import com.yugabyte.util.PSQLException;
-import com.yugabyte.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.util.CatchingThread;
+import org.yb.util.RandomUtil;
 import org.yb.util.ThreadUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import com.yugabyte.util.PSQLException;
+import com.yugabyte.util.PSQLState;
 
 /**
  * Checks transparent retries in case of kReadRestart/kConflict errors when using YSQL API.
@@ -89,6 +95,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    * slowdown. Overstepping this limit might mean a bug in the {@code SELECT} threads code.
    */
   private static final int SELECTS_AWAIT_TIME_SEC = 20;
+
+  private static final String LOG_RESTARTS_SQL =
+      "SET yb_debug_log_internal_restarts TO true";
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -208,7 +217,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   /**
    * Same as the previous test but uses parameterized PreparedStatements with bindvars.
    */
-  @Test
+  @Ignore // TODO(alex, piyush): Enable after #14772 is fixed.
   public void selectStarShortPreparedParameterized() throws Exception {
     new PreparedStatementTester(
         getConnectionBuilder(),
@@ -503,6 +512,17 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   // Helpers methods
   //
 
+  /** Isolation levels supported by YSQL */
+  private static final List<IsolationLevel> isolationLevels =
+      Arrays.asList(IsolationLevel.SERIALIZABLE,
+                    IsolationLevel.REPEATABLE_READ,
+                    IsolationLevel.READ_COMMITTED);
+
+  /** Map from every supported isolation level to zero, used as a base for counter maps. */
+  private static final Map<IsolationLevel, Integer> emptyIsolationCounterMap =
+      Collections.unmodifiableMap(
+          isolationLevels.stream().collect(Collectors.toMap(il -> il, il -> 0)));
+
   /** Some short string to be inserted, order of magnitude shorter than PG output buffer */
   private static String getShortString() {
     return "s";
@@ -550,24 +570,31 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         || SERIALIZATION_FAILURE_PSQL_STATE.equals(sqlState);
   }
 
+  private static <T> T chooseForIsolation(
+      IsolationLevel isolation,
+      T serializableT,
+      T rrT,
+      T rcT) {
+    switch (isolation) {
+      case SERIALIZABLE:    return serializableT;
+      case REPEATABLE_READ: return rrT;
+      case READ_COMMITTED:  return rcT;
+      default:
+        throw new IllegalArgumentException("Unexpected isolation level: " + isolation);
+    }
+  }
+
+  private static <T> void inc(Map<T, Integer> map, T key) {
+    assertTrue("Map " + map + " does not contain key " + key, map.containsKey(key));
+    map.put(key, map.get(key) + 1);
+  }
+
   //
   // Helpers classes
   //
 
-  String IsolationLevelStr(IsolationLevel level) {
-    if (level == IsolationLevel.REPEATABLE_READ)
-      return "repeatable read";
-    else if (level == IsolationLevel.SERIALIZABLE)
-      return "serializable";
-    else if (level == IsolationLevel.READ_COMMITTED)
-      return "read committed";
-
-    assertTrue("Isolation level not supported yet", false);
-    return "";
-  }
-
   /** Runnable responsible for inserts. Starts paused, call unpause() when readers are set. */
-  private static class InsertRunnable implements Runnable {
+  private static class InsertRunnable implements ThrowingRunnable {
     private CountDownLatch startSignal = new CountDownLatch(1);
 
     /**
@@ -590,73 +617,62 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       startSignal.countDown();
     }
 
-    public void run() {
-      int insertsAttempted = 0;
-      int insertsSucceeded = 0;
+    public void run() throws Exception {
+      Map<IsolationLevel, Integer> insertsAttempted =
+          new HashMap<>(emptyIsolationCounterMap);
+      Map<IsolationLevel, Integer> insertsSucceeded =
+          new HashMap<>(emptyIsolationCounterMap);
       int insertsRetriesExhausted = 0;
       int insertsWithReadRestartError = 0;
       int insertsWithConflictError = 0;
       int insertsWithAbortError = 0;
       int insertsWithAbortErrorAtCommit = 0; // kAborted on explicit "commit"
-      int insertsWithSnapshotIsolation = 0;
-      int insertsWithSerializable = 0;
-      int insertsWithReadCommitted = 0;
       int insertsInTxnBlock = 0;
-      Random rnd = new Random();
-      try (Connection insertSnapshotIsolationConn =
-             cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
-           Connection insertSerializableConn =
+      Random rnd = RandomUtil.getRandomGenerator();
+      String insertSql = "INSERT INTO test_rr (t, i) VALUES (?, ?)";
+      try (Connection insertSerializableConn =
              cb.withIsolationLevel(IsolationLevel.SERIALIZABLE).connect();
-           Connection insertReadCommittedConn =
+           Connection insertRrConn =
+             cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+           Connection insertRcConn =
              cb.withIsolationLevel(IsolationLevel.READ_COMMITTED).connect();
-           PreparedStatement snapshotIsolationStmt = insertSnapshotIsolationConn
-               .prepareStatement("INSERT INTO test_rr (t, i) VALUES (?, ?)");
-           PreparedStatement serializableStmt = insertSerializableConn
-               .prepareStatement("INSERT INTO test_rr (t, i) VALUES (?, ?)");
-           PreparedStatement readCommittedStmt = insertReadCommittedConn
-               .prepareStatement("INSERT INTO test_rr (t, i) VALUES (?, ?)");
-           Statement auxSnapshotIsolationStmt = insertSnapshotIsolationConn.createStatement();
+
+           PreparedStatement serializableStmt = insertSerializableConn.prepareStatement(insertSql);
+           PreparedStatement rrStmt = insertRrConn.prepareStatement(insertSql);
+           PreparedStatement rcStmt = insertRcConn.prepareStatement(insertSql);
+
            Statement auxSerializableStmt = insertSerializableConn.createStatement();
-           Statement auxReadCommittedStmt = insertReadCommittedConn.createStatement()) {
-        auxSnapshotIsolationStmt.execute("set yb_debug_log_internal_restarts=true");
-        auxSerializableStmt.execute("set yb_debug_log_internal_restarts=true");
-        auxReadCommittedStmt.execute("set yb_debug_log_internal_restarts=true");
-        snapshotIsolationStmt.setString(1, stringToInsert);
+           Statement auxRrStmt = insertRrConn.createStatement();
+           Statement auxRcStmt = insertRcConn.createStatement()) {
+        auxSerializableStmt.execute(LOG_RESTARTS_SQL);
+        auxRrStmt.execute(LOG_RESTARTS_SQL);
+        auxRcStmt.execute(LOG_RESTARTS_SQL);
         serializableStmt.setString(1, stringToInsert);
-        readCommittedStmt.setString(1, stringToInsert);
+        rrStmt.setString(1, stringToInsert);
+        rcStmt.setString(1, stringToInsert);
         startSignal.await();
+
         for (int i = 0; i < numInserts; ++i) {
           boolean runInTxnBlock = rnd.nextBoolean();
-          IsolationLevel isolation = rnd.nextDouble() <= 0.33 ? IsolationLevel.REPEATABLE_READ
-            : (rnd.nextDouble() <= 0.5 ? IsolationLevel.SERIALIZABLE
-                                        : IsolationLevel.READ_COMMITTED);
-          PreparedStatement stmt =
-            isolation == IsolationLevel.REPEATABLE_READ ? snapshotIsolationStmt :
-              (isolation == IsolationLevel.SERIALIZABLE ? serializableStmt : readCommittedStmt);
-          Statement auxStmt =
-            isolation == IsolationLevel.REPEATABLE_READ ? auxSnapshotIsolationStmt :
-              (isolation == IsolationLevel.SERIALIZABLE ? auxSerializableStmt
-                                                        : auxReadCommittedStmt);
-          if (Thread.interrupted()) return; // Skips all post-loop checks
+          IsolationLevel isolation =
+              RandomUtil.getRandomElement(isolationLevels);
+          PreparedStatement stmt = chooseForIsolation(isolation,
+              serializableStmt, rrStmt, rcStmt);
+          Statement auxStmt = chooseForIsolation(isolation,
+              auxSerializableStmt, auxRrStmt, auxRcStmt);
           try {
-            ++insertsAttempted;
-            if (isolation == IsolationLevel.REPEATABLE_READ)
-              ++insertsWithSnapshotIsolation;
-            else if (isolation == IsolationLevel.SERIALIZABLE)
-              ++insertsWithSerializable;
-            else
-              ++insertsWithReadCommitted;
+            inc(insertsAttempted, isolation);
 
             if (runInTxnBlock) {
-              auxStmt.execute("start transaction");
+              auxStmt.execute("START TRANSACTION");
               ++insertsInTxnBlock;
             }
             stmt.setInt(2, rnd.nextInt(MAX_INT_TO_INSERT + 1));
             stmt.executeUpdate();
             if (runInTxnBlock) {
               try {
-                auxStmt.execute("commit");
-                ++insertsSucceeded;
+                auxStmt.execute("COMMIT");
+                inc(insertsSucceeded, isolation);
               } catch (Exception ex) {
                 if (!isTxnError(ex)) {
                   fail("Unexpected error in INSERT: isolation=" + isolation + " runInTxnBlock=" +
@@ -674,13 +690,13 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                        runInTxnBlock + " " + ex.getMessage());
                 }
                 try {
-                  auxStmt.execute("rollback");
+                  auxStmt.execute("ROLLBACK");
                 } catch (Exception ex2) {
-                  fail("rollback failed " + ex2.getMessage());
+                  fail("ROLLBACK failed " + ex2.getMessage());
                 }
               }
             } else {
-              ++insertsSucceeded;
+              inc(insertsSucceeded, isolation);
             }
           } catch (Exception ex) {
             if (!isTxnError(ex)) {
@@ -700,9 +716,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             }
             if (runInTxnBlock) {
               try {
-                auxStmt.execute("rollback");
+                auxStmt.execute("ROLLBACK");
               } catch (Exception ex2) {
-                fail("rollback failed " + ex2.getMessage());
+                fail("ROLLBACK failed " + ex2.getMessage());
               }
             }
           }
@@ -711,19 +727,17 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         LOG.error("INSERT thread failed", ex);
         fail("INSERT thread failed: " + ex.getMessage());
       }
-      LOG.info(
-          "insertsAttempted=" + insertsAttempted + "\n" +
+      LOG.info("INSERT:\n" +
+          " insertsAttempted=" + insertsAttempted + "\n" +
           " insertsSucceeded=" + insertsSucceeded + "\n" +
           " insertsRetriesExhausted=" + insertsRetriesExhausted + "\n" +
           " insertsWithReadRestartError=" + insertsWithReadRestartError + "\n" +
           " insertsWithConflictError=" + insertsWithConflictError + "\n" +
           " insertsWithAbortError=" + insertsWithAbortError + "\n" +
           " insertsWithAbortErrorAtCommit=" + insertsWithAbortErrorAtCommit + "\n" +
-          " insertsWithSnapshotIsolation=" + insertsWithSnapshotIsolation + "\n" +
-          " insertsWithSerializable=" + insertsWithSerializable + "\n" +
-          " insertsWithReadCommitted=" + insertsWithReadCommitted + "\n" +
           " insertsInTxnBlock=" + insertsInTxnBlock);
-      assertTrue("No INSERT operations succeeded!", insertsSucceeded > 0);
+      int totalSucceeded = insertsSucceeded.values().stream().reduce((a, b) -> a + b).get();
+      assertTrue("No INSERT operations succeeded!", totalSucceeded > 0);
       assertTrue(insertsWithConflictError == 0 && insertsWithReadRestartError == 0);
     }
   }
@@ -734,48 +748,55 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    */
   private abstract class ConcurrentInsertQueryTester<Stmt extends AutoCloseable> {
 
-    /** Number of threads in a fixed thread pool */
-    private static final int NUM_THREADS = 5;
     private int numInserts;
 
     private final ConnectionBuilder cb;
 
     private final String valueToInsert;
 
-    public ConcurrentInsertQueryTester(ConnectionBuilder cb, String valueToInsert,
+    public ConcurrentInsertQueryTester(ConnectionBuilder cb,
+                                       String valueToInsert,
                                        int numInserts) {
       this.cb = cb;
       this.valueToInsert = valueToInsert;
       this.numInserts = numInserts;
     }
 
-    public abstract List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution);
+    public abstract List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone);
 
     public void runTest() throws Exception {
-      ExecutorService es = Executors.newFixedThreadPool(NUM_THREADS);
-      List<Future<?>> futures = new ArrayList<>();
+      List<CatchingThread> workerThreads = new ArrayList<>();
 
       InsertRunnable insertRunnable = new InsertRunnable(cb, valueToInsert, numInserts);
-      Future<?> insertFuture = es.submit(insertRunnable);
-      futures.add(insertFuture);
+      CatchingThread insertThread = new CatchingThread("INSERT", insertRunnable);
+      insertThread.start();
+      workerThreads.add(insertThread);
 
-      for (Runnable r : getRunnableThreads(cb, insertFuture)) {
-        futures.add(es.submit(r));
+      BooleanSupplier areInsertsDone = () -> {
+        return !insertThread.isAlive();
+      };
+
+      int i = 0;
+      for (ThrowingRunnable r : getRunnableThreads(cb, areInsertsDone)) {
+        CatchingThread th = new CatchingThread("Worker-" + (++i), r);
+        th.start();
+        workerThreads.add(th);
       }
 
       insertRunnable.unpause();
       try {
-        try {
-          LOG.info("Waiting for INSERT thread");
-          insertFuture.get(INSERTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
-        } catch (TimeoutException ex) {
+        LOG.info("Waiting for INSERT thread");
+        insertThread.join(INSERTS_AWAIT_TIME_SEC * 1000);
+        if (insertThread.isAlive()) {
           LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
-          fail("Test timed out! Try increasing waiting time?");
+          fail("Waiting for INSERT thread timed out! Try increasing waiting time?");
         }
+        insertThread.rethrowIfCaught();
         try {
           LOG.info("Waiting for other threads");
-          for (Future<?> future : futures) {
-            future.get(SELECTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
+          for (CatchingThread th : workerThreads) {
+            th.finish(SELECTS_AWAIT_TIME_SEC * 1000);
           }
         } catch (TimeoutException ex) {
           LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
@@ -785,12 +806,13 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         }
       } finally {
         LOG.info("Shutting down executor service");
-        es.shutdownNow(); // This should interrupt all submitted threads
-        if (es.awaitTermination(10, TimeUnit.SECONDS)) {
-          LOG.info("Executor shutdown complete");
-        } else {
-          LOG.info("Executor shutdown failed (timed out)");
+        for (CatchingThread th : workerThreads) {
+          th.interrupt();
         }
+        for (CatchingThread th : workerThreads) {
+          th.finish(10 * 1000);
+        }
+        LOG.info("Threads shutdown complete");
       }
     }
   }
@@ -832,68 +854,71 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public abstract ResultSet executeQuery(Stmt stmt) throws Exception;
 
     @Override
-    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
-      List<Runnable> runnables = new ArrayList<>();
+    public List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      List<ThrowingRunnable> runnables = new ArrayList<>();
       //
-      // Singular SELECT statement (1/3 probability of being either snapshot/ serializable/ read
-      // committed isolation level)
+      // Singular SELECT statement (equal probability of being either serializable/repeatable read/
+      // /read committed isolation level)
       //
       runnables.add(() -> {
-        int selectsAttempted = 0;
-        int selectsRetriesExhausted = 0;
-        int selectsRestartRequired = 0;
-        int selectsWithAbortError = 0;
-        int selectsWithConflictError = 0;
-        int selectsSucceeded = 0;
-        int selectsWithSnapshotIsolation = 0;
-        int selectsWithSerializable = 0;
+        Map<IsolationLevel, Integer> selectsAttempted =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsSucceeded =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsRestartRequired =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsRetriesExhausted =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsWithAbortError =
+            new HashMap<>(emptyIsolationCounterMap);
+        Map<IsolationLevel, Integer> selectsWithConflictError =
+            new HashMap<>(emptyIsolationCounterMap);
 
         boolean onlyEmptyResults = true;
-        try (Connection snapshotIsolationConn =
-                cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
-             Stmt snapshotIsolationStmt = createStatement(snapshotIsolationConn);
-             Connection serializableConn =
-                cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
-             Stmt serializableStmt = createStatement(serializableConn);
-             Connection readCommittedConn =
-                cb.withIsolationLevel(IsolationLevel.READ_COMMITTED).connect();
-             Stmt readCommittedStmt = createStatement(readCommittedConn);) {
-          try (Statement auxSnapshotIsolationStatement = snapshotIsolationConn.createStatement()) {
-            auxSnapshotIsolationStatement.execute("set yb_debug_log_internal_restarts=true");
-          }
-          try (Statement auxSerializableStatement = serializableConn.createStatement()) {
-            auxSerializableStatement.execute("set yb_debug_log_internal_restarts=true");
-          }
-          try (Statement auxReadCommittedStatement = readCommittedConn.createStatement()) {
-            auxReadCommittedStatement.execute("set yb_debug_log_internal_restarts=true");
-          }
-          Random rnd = new Random();
 
-          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
-            if (Thread.interrupted()) return; // Skips all post-loop checks
-            IsolationLevel isolation = rnd.nextDouble() <= 0.33 ? IsolationLevel.REPEATABLE_READ
-              : (rnd.nextDouble() <= 0.5 ? IsolationLevel.SERIALIZABLE
-                                          : IsolationLevel.READ_COMMITTED);
-            Stmt stmt = isolation == IsolationLevel.REPEATABLE_READ ? snapshotIsolationStmt
-                : (isolation == IsolationLevel.SERIALIZABLE ? serializableStmt
-                                                            : readCommittedStmt);
+        try (Connection serializableConn =
+                cb.withIsolationLevel(IsolationLevel.SERIALIZABLE).connect();
+             Connection rrConn =
+                cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+             Connection rcConn =
+                cb.withIsolationLevel(IsolationLevel.READ_COMMITTED).connect();
+
+             Stmt serializableStmt = createStatement(serializableConn);
+             Stmt rrStmt = createStatement(rrConn);
+             Stmt rcStmt = createStatement(rcConn)) {
+          try (Statement auxSerializableStatement = serializableConn.createStatement();
+               Statement auxRrStatement = rrConn.createStatement();
+               Statement auxRcStatement = rcConn.createStatement()) {
+            auxSerializableStatement.execute(LOG_RESTARTS_SQL);
+            auxRrStatement.execute(LOG_RESTARTS_SQL);
+            auxRcStatement.execute(LOG_RESTARTS_SQL);
+          }
+
+          for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
+            IsolationLevel isolation =
+                RandomUtil.getRandomElement(isolationLevels);
+            Stmt stmt =
+                chooseForIsolation(isolation, serializableStmt, rrStmt, rcStmt);
+
             try {
+              inc(selectsAttempted, isolation);
               List<Row> rows = getRowList(executeQuery(stmt));
               if (!rows.isEmpty()) {
                 onlyEmptyResults = false;
               }
-              ++selectsSucceeded;
+              inc(selectsSucceeded, isolation);
             } catch (Exception ex) {
               if (!isTxnError(ex)) {
                 fail("SELECT thread failed: " + ex.getMessage());
               } else if (isRetriesExhaustedError(ex)) {
-                ++selectsRetriesExhausted;
+                inc(selectsRetriesExhausted, isolation);
               } else if (isRestartReadError(ex)) {
-                ++selectsRestartRequired;
+                inc(selectsRestartRequired, isolation);
               } else if (isAbortError(ex)) {
-                ++selectsWithAbortError;
+                inc(selectsWithAbortError, isolation);
               } else if (isConflictError(ex)) {
-                ++selectsWithConflictError;
+                inc(selectsWithConflictError, isolation);
               } else {
                 fail("SELECT thread failed: " + ex.getMessage());
               }
@@ -903,31 +928,51 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           LOG.error("Connection-wide exception! This shouldn't happen", ex);
           fail("Connection-wide exception! This shouldn't happen: " + ex.getMessage());
         }
-        LOG.info("SELECT (non-txn): " +
-            " selectsAttempted=" + selectsAttempted +
-            " selectsRetriesExhausted=" + selectsRetriesExhausted +
-            " selectsRestartRequired=" + selectsRestartRequired +
-            " selectsWithAbortError=" + selectsWithAbortError +
-            " selectsWithConflictError=" + selectsWithConflictError +
-            " selectsSucceeded=" + selectsSucceeded +
-            " selectsWithSnapshotIsolation=" + selectsWithSnapshotIsolation +
-            " selectsWithSerializable=" + selectsWithSerializable);
+        LOG.info("SELECT (single-stmt):\n" +
+            " selectsAttempted=" + selectsAttempted + "\n" +
+            " selectsSucceeded=" + selectsSucceeded + "\n" +
+            " selectsRestartRequired=" + selectsRestartRequired + "\n" +
+            " selectsRetriesExhausted=" + selectsRetriesExhausted + "\n" +
+            " selectsWithAbortError=" + selectsWithAbortError + "\n" +
+            " selectsWithConflictError=" + selectsWithConflictError);
 
-        assertTrue(
-          "expectRestartErrors=" + expectRestartErrors +
-            ", selectsRestartRequired=" + selectsRestartRequired,
-          (expectRestartErrors && selectsRestartRequired > 0) ||
-          (!expectRestartErrors && selectsRestartRequired == 0));
-        assertTrue(expectRestartErrors || selectsWithConflictError == 0);
+        for (Entry<IsolationLevel, Integer> e : selectsRestartRequired.entrySet()) {
+          IsolationLevel isolation = e.getKey();
+          int numReadRestarts = e.getValue();
+
+          // We never expect SERIALIZABLE transaction to result in "restart read required".
+          if (this.expectRestartErrors && isolation != IsolationLevel.SERIALIZABLE) {
+            assertNotEquals("SELECT (single-stmt): expected read restarts to happen, but got " +
+                "none at " + isolation + " level",
+                0, numReadRestarts);
+          } else {
+            assertEquals("SELECT (single-stmt): unexpected " + numReadRestarts +
+                " read restarts at " + isolation + " level!",
+                0, numReadRestarts);
+          }
+        }
+
+        for (Entry<IsolationLevel, Integer> e : selectsWithConflictError.entrySet()) {
+          IsolationLevel isolation = e.getKey();
+          int numConflictRestarts = e.getValue();
+
+          // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict"
+          // for pure reads.
+          if (this.expectRestartErrors && isolation == IsolationLevel.SERIALIZABLE) {
+            assertNotEquals("SELECT (single-stmt): expected conflict errors to happen, but got " +
+                "none at " + isolation + " level",
+                0, numConflictRestarts);
+          } else {
+            assertEquals("SELECT (single-stmt): unexpected " + numConflictRestarts +
+                " conflict errors at " + isolation + " level!",
+                0, numConflictRestarts);
+          }
+        }
 
         if (onlyEmptyResults) {
-          fail("SELECT (non-txn) thread didn't yield any meaningful result! Flawed test?");
+          fail("SELECT (single-stmt) thread didn't yield any meaningful result! Flawed test?");
         }
       });
-
-      List<IsolationLevel> isoLevels = Arrays.asList(IsolationLevel.REPEATABLE_READ,
-                                                     IsolationLevel.SERIALIZABLE,
-                                                     IsolationLevel.READ_COMMITTED);
 
       //
       // Two SELECTs grouped in a transaction. Their result should match for REPEATABLE READ
@@ -935,7 +980,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       // parallel inserts. And so, for READ COMMITTED ensure that there is atleast one instance
       // where the results don't match.
       //
-      isoLevels.forEach((isolation) -> {
+      for (IsolationLevel isolation : isolationLevels) {
         runnables.add(() -> {
           int txnsAttempted = 0;
           int selectsRetriesExhausted = 0;
@@ -947,8 +992,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int commitOfTxnThatRequiresRestart = 0;
           boolean resultsAlwaysMatched = true;
 
-          // We never expect SNAPSHOT ISOLATION/ READ COMMITTED transaction to result in "conflict"
-          // We never expect SERIALIZABLE transaction to result in "restart read required"
+          // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict"
+          // for pure reads.
+          // We never expect SERIALIZABLE transaction to result in "restart read required".
           boolean expectReadRestartErrors = this.expectRestartErrors &&
                                             (isolation == IsolationLevel.REPEATABLE_READ ||
                                             isolation == IsolationLevel.READ_COMMITTED);
@@ -958,16 +1004,14 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
               Stmt stmt = createStatement(selectTxnConn)) {
             try (Statement auxStmt = selectTxnConn.createStatement()) {
-              auxStmt.execute("set yb_debug_log_internal_restarts=true");
+              auxStmt.execute(LOG_RESTARTS_SQL);
             }
             selectTxnConn.setAutoCommit(false);
-            for (/* No setup */; !execution.isDone(); ++txnsAttempted) {
-              if (Thread.interrupted()) return; // Skips all post-loop checks
+            for (/* No setup */; !isExecutionDone.getAsBoolean(); ++txnsAttempted) {
               int numCompletedOps = 0;
               try {
                 List<Row> rows1 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
-                if (Thread.interrupted()) return; // Skips all post-loop checks
                 List<Row> rows2 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
                 try {
@@ -1011,10 +1055,10 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               }
             }
           } catch (Exception ex) {
-            LOG.error("SELECT in " + isolation + " thread failed", ex);
+            LOG.error("SELECT (" + isolation + ") thread failed", ex);
             fail("SELECT in " + isolation + " thread failed: " + ex.getMessage());
           }
-          LOG.info("SELECT in " + isolation + ": " +
+          LOG.info("SELECT (" + isolation + "):" +
               " txnsAttempted=" + txnsAttempted +
               " selectsRetriesExhausted=" + selectsRetriesExhausted +
               " selectsFirstOpRestartRequired=" + selectsFirstOpRestartRequired +
@@ -1025,23 +1069,30 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
           if (expectReadRestartErrors) {
-            assertTrue(selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);
-          }
-          else {
-            assertTrue(selectsFirstOpRestartRequired == 0);
-            if (isolation == IsolationLevel.REPEATABLE_READ) {
-              // Read restart errors are retried transparently only for the first statement in the
-              // transaction
-              assertTrue(selectsSecondOpRestartRequired > 0);
-            } else if (isolation == IsolationLevel.READ_COMMITTED) {
-              // Read restarts retries are performed transparently for each statement in
-              // READ COMMITTED isolation
-              assertTrue(selectsSecondOpRestartRequired == 0);
-            } else if (isolation == IsolationLevel.SERIALIZABLE) {
-              // Read restarts can't occur in SERIALIZABLE isolation
-              assertTrue(selectsSecondOpRestartRequired == 0);
-            } else {
-              assertTrue(false); // Shouldn't reach here.
+            assertTrue("SELECT (" + isolation + "): Expected restarts, but " +
+                " selectsFirstOpRestartRequired=" + selectsFirstOpRestartRequired +
+                " selectsSecondOpRestartRequired=" + selectsSecondOpRestartRequired,
+                selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);
+          } else {
+            assertEquals("SELECT (" + isolation + "): Unexpected restarts!",
+                0, selectsFirstOpRestartRequired);
+            switch (isolation) {
+              case SERIALIZABLE:
+                // Read restarts can't occur in SERIALIZABLE isolation
+                assertEquals(0, selectsSecondOpRestartRequired);
+                break;
+              case REPEATABLE_READ:
+                // Read restart errors are retried transparently only for the first statement in the
+                // transaction
+                assertGreaterThan(selectsSecondOpRestartRequired, 0);
+                break;
+              case READ_COMMITTED:
+                // Read restarts retries are performed transparently for each statement in
+                // READ COMMITTED isolation
+                assertEquals(0, selectsSecondOpRestartRequired);
+                break;
+              default:
+                fail("Unexpected isolation level: " + isolation);
             }
           }
 
@@ -1052,15 +1103,15 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           // If we (at all) expect restart/conflict errors, then we cannot guarantee that any
           // operation would succeed.
           if (!(expectReadRestartErrors || expectConflictErrors)) {
-            assertTrue("No txns in " + isolation + " succeeded, ever! Flawed test?",
-                       txnsSucceeded > 0);
+            assertGreaterThan("No txns in " + isolation + " succeeded, ever! Flawed test?",
+                txnsSucceeded, 0);
           }
           assertTrue("It can't be the case that results were always same in both SELECTs at " +
                      "READ COMMITTED isolation level",
                      (isolation != IsolationLevel.READ_COMMITTED && resultsAlwaysMatched) ||
                      (isolation == IsolationLevel.READ_COMMITTED && !resultsAlwaysMatched));
         });
-      });
+      }
 
       return runnables;
     }
@@ -1122,18 +1173,17 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       super(cb, valueToInsert, 1000 /* numInserts */);
     }
 
-    private Runnable getRunnableThread(
-        ConnectionBuilder cb, Future<?> execution, String secondSavepointOpString) {
+    private ThrowingRunnable getRunnableThread(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone, String secondSavepointOpString) {
       return () -> {
         int selectsAttempted = 0;
         int selectsRestartRequired = 0;
         int selectsSucceeded = 0;
-        try (Connection selectTxnConn = cb.withIsolationLevel(
-              IsolationLevel.REPEATABLE_READ).connect();
-              Statement stmt = selectTxnConn.createStatement()) {
+        try (Connection selectTxnConn =
+                 cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+             Statement stmt = selectTxnConn.createStatement()) {
           selectTxnConn.setAutoCommit(false);
-          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
-            if (Thread.interrupted()) return; // Skips all post-loop checks
+          for (/* No setup */; !isExecutionDone.getAsBoolean(); ++selectsAttempted) {
             try {
               stmt.execute("SAVEPOINT a");
               if (!secondSavepointOpString.isEmpty()) {
@@ -1173,12 +1223,13 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     }
 
     @Override
-    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
-      List<Runnable> runnables = new ArrayList<>();
-      runnables.add(getRunnableThread(cb, execution, ""));
-      runnables.add(getRunnableThread(cb, execution, "SAVEPOINT b"));
-      runnables.add(getRunnableThread(cb, execution, "ROLLBACK TO a"));
-      runnables.add(getRunnableThread(cb, execution, "RELEASE a"));
+    public List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      List<ThrowingRunnable> runnables = new ArrayList<>();
+      runnables.add(getRunnableThread(cb, isExecutionDone, ""));
+      runnables.add(getRunnableThread(cb, isExecutionDone, "SAVEPOINT b"));
+      runnables.add(getRunnableThread(cb, isExecutionDone, "ROLLBACK TO a"));
+      runnables.add(getRunnableThread(cb, isExecutionDone, "RELEASE a"));
       return runnables;
     }
   }
@@ -1194,12 +1245,10 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     }
 
     @Override
-    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
-      List<IsolationLevel> isoLevels = Arrays.asList(IsolationLevel.REPEATABLE_READ,
-                                                     IsolationLevel.SERIALIZABLE,
-                                                     IsolationLevel.READ_COMMITTED);
-      List<Runnable> runnables = new ArrayList<>();
-      isoLevels.forEach((isolation) -> {
+    public List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      List<ThrowingRunnable> runnables = new ArrayList<>();
+      for (IsolationLevel isolation : isolationLevels) {
         runnables.add(() -> {
           LOG.info("Starting DmlTester's runnable...");
 
@@ -1215,35 +1264,32 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           try (Connection conn = cb.withIsolationLevel(isolation).connect();
                Stmt stmt = createStatement(conn);
                Statement auxStmt = conn.createStatement()) {
-            auxStmt.execute("set yb_debug_log_internal_restarts=true");
-            for (/* No setup */; !execution.isDone(); ++executionsAttempted) {
-              if (Thread.interrupted()) return; // Skips all post-loop checks
-              Random rnd = new Random();
-              boolean runInTxnBlock = rnd.nextDouble() <= 0.5;
+            auxStmt.execute(LOG_RESTARTS_SQL);
+            for (/* No setup */; !isExecutionDone.getAsBoolean(); ++executionsAttempted) {
+              boolean runInTxnBlock = RandomUtil.getRandomGenerator().nextBoolean();
               executionsRanInTxnBlock += runInTxnBlock ? 1 : 0;
               try {
                 if (runInTxnBlock)
-                  auxStmt.execute("start transaction isolation level " +
-                    IsolationLevelStr(isolation));
+                  auxStmt.execute("START TRANSACTION ISOLATION LEVEL " + isolation.sql);
                 execute(stmt);
                 if (runInTxnBlock) {
                   try {
-                    auxStmt.execute("commit");
+                    auxStmt.execute("COMMIT");
                   } catch (Exception ex) {
                     if (!isTxnError(ex)) {
-                      fail("commit faced unknown error: " + ex.getMessage());
+                      fail("COMMIT faced unknown error: " + ex.getMessage());
                     } else if (isRetriesExhaustedError(ex)) {
                       ++executionsRetriesExhausted;
                     } else if (isAbortError(ex)) {
                       // A txn might have already been aborted by another txn before commit
                       ++executionsAbortedByOtherTxnAtCommit;
                     } else {
-                      fail("commit faced unknown error: " + ex.getMessage());
+                      fail("COMMIT faced unknown error: " + ex.getMessage());
                     }
                     try {
                       auxStmt.execute("rollback");
                     } catch (Exception ex2) {
-                      fail("rollback shouldn't fail: " + ex2.getMessage());
+                      fail("Rollback shouldn't fail: " + ex2.getMessage());
                     }
                   }
                 }
@@ -1275,7 +1321,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               }
             }
             LOG.info(
-                "isolation=" + IsolationLevelStr(isolation) + "\n" +
+                "isolation=" + isolation + "\n" +
                 " executionsAttempted=" + executionsAttempted + "\n" +
                 " executionsRanInTxnBlock=" + executionsRanInTxnBlock + "\n" +
                 " executionsSucceeded=" + executionsSucceeded + "\n" +
@@ -1291,7 +1337,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             fail(ex.getMessage());
           }
         });
-      });
+      }
 
       return runnables;
     }

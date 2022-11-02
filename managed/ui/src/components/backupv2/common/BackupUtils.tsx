@@ -25,6 +25,9 @@ import './BackupUtils.scss';
 export const calculateDuration = (startTime: number, endtime: number): string => {
   const start = moment(startTime);
   const end = moment(endtime);
+
+  if (start.isSame(end)) return '0 s';
+
   const totalDays = end.diff(start, 'days');
   const totalHours = end.diff(start, 'hours');
   const totalMinutes = end.diff(start, 'minutes');

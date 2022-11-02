@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
@@ -65,24 +66,25 @@ public class FileUtils {
   }
 
   public static String getFileChecksum(String file) throws IOException, NoSuchAlgorithmException {
-    FileInputStream fis = new FileInputStream(file);
-    byte[] byteArray = new byte[1024];
-    int bytesCount = 0;
+    try (FileInputStream fis = new FileInputStream(file)) {
+      byte[] byteArray = new byte[1024];
+      int bytesCount = 0;
 
-    MessageDigest digest = MessageDigest.getInstance("MD5");
+      MessageDigest digest = MessageDigest.getInstance("MD5");
 
-    while ((bytesCount = fis.read(byteArray)) != -1) {
-      digest.update(byteArray, 0, bytesCount);
+      while ((bytesCount = fis.read(byteArray)) != -1) {
+        digest.update(byteArray, 0, bytesCount);
+      }
+
+      fis.close();
+
+      byte[] bytes = digest.digest();
+      StringBuilder sb = new StringBuilder();
+      for (byte b : bytes) {
+        sb.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
+      }
+      return sb.toString();
     }
-
-    fis.close();
-
-    byte[] bytes = digest.digest();
-    StringBuilder sb = new StringBuilder();
-    for (byte b : bytes) {
-      sb.append(Integer.toString((b & 0xff) + 0x100, 16).substring(1));
-    }
-    return sb.toString();
   }
 
   public static List<File> listFiles(Path backupDir, String pattern) throws IOException {
@@ -125,9 +127,16 @@ public class FileUtils {
   }
 
   public static InputStream getInputStreamOrFail(File file) {
+    return getInputStreamOrFail(file, false);
+  }
+
+  public static InputStream getInputStreamOrFail(File file, boolean deleteOnClose) {
     try {
+      if (deleteOnClose) {
+        return Files.newInputStream(file.toPath(), StandardOpenOption.DELETE_ON_CLOSE);
+      }
       return new FileInputStream(file);
-    } catch (FileNotFoundException e) {
+    } catch (IOException e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }

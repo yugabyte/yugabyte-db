@@ -32,7 +32,7 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -40,7 +40,7 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYsqlPartitionedBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlPartitionedBackup.class);
 

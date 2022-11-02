@@ -16,7 +16,7 @@
     margin-top: 10px;
     font-family: 'Inter';
     font-style: normal;
-    font-weight: 500;
+    font-weight: 400;
     font-size: 13px;
   }
 
@@ -55,7 +55,12 @@
   }
 
   .runtime-config-data-container {
-    margin-top: 45px;
+    &__check {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+      font-size: 13px;
+    }
 
     .config-inherited-row {
       color: colors.$YB_TEXT_BLACK;
@@ -69,6 +74,6 @@
 
 .global-runtime-config-container {
   .runtime-config-data-container {
-    margin-top: 100px;
+    margin-top: 80px;
   }
 }

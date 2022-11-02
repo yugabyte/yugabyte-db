@@ -45,7 +45,7 @@ func (s *shellTask) Process(ctx context.Context) (string, error) {
 	util.FileLogger().Infof("Running command %s with args %v", s.cmd, s.args)
 	err := shellCmd.Run()
 	if err != nil {
-		output = errOut.String()
+		output = fmt.Sprintf("%s: %s", err.Error(), errOut.String())
 		util.FileLogger().Errorf("Shell Run - %s task failed - %s", s.name, err.Error())
 		util.FileLogger().Errorf("Shell command output %s", output)
 	} else {
@@ -54,7 +54,6 @@ func (s *shellTask) Process(ctx context.Context) (string, error) {
 		util.FileLogger().Debugf("Shell command output %s", output)
 	}
 	s.done = true
-
 	return output, err
 }
 
