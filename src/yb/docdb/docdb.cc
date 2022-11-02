@@ -951,9 +951,23 @@ class PrepareTransactionWriteBatchHelper {
 
     DocHybridTimeBuffer doc_ht_buffer;
 
-    std::array<Slice, 2> value = {{
+    const auto subtransaction_value_type = ValueTypeAsChar::kSubTransactionId;
+    SubTransactionId big_endian_subtxn_id;
+    Slice subtransaction_marker;
+    Slice subtransaction_id;
+    if (subtransaction_id_ > kMinSubTransactionId) {
+      subtransaction_marker = Slice(&subtransaction_value_type, 1);
+      big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
+      subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
+    } else {
+      DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
+    }
+
+    std::array<Slice, 4> value = {{
         Slice(&transaction_id_value_type, 1),
         transaction_id_.AsSlice(),
+        subtransaction_marker,
+        subtransaction_id,
     }};
 
     if (PREDICT_TRUE(!FLAGS_TEST_docdb_sort_weak_intents_in_tests)) {
@@ -974,7 +988,7 @@ class PrepareTransactionWriteBatchHelper {
  private:
   void AddWeakIntent(
       const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 2>& value,
+      const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer) {
     char intent_type[2] = { ValueTypeAsChar::kIntentTypeSet,
                             static_cast<char>(intent_and_types.second.ToUIntPtr()) };
