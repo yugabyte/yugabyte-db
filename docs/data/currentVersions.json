@@ -7,36 +7,45 @@
       "version": "2.15.3.0",
       "versionShort": "2.15.3",
       "appVersion": "2.15.3.0-b231",
-      "alias": "preview"
+      "alias": "preview",
+      "isStable": false
     },
     {
       "series": "v2.14",
-      "display": "v2.14 (Stable)",
+      "display": "v2.14 (LTS)",
       "version": "2.14.4.0",
       "versionShort": "2.14.4",
       "appVersion": "2.14.4.0-b26",
-      "alias": "stable"
+      "alias": "stable",
+      "isStable": true,
+      "isLTS": true
     },
     {
       "series": "v2.12",
       "display": "v2.12",
       "version": "2.12.10.0",
       "versionShort": "2.12.10",
-      "appVersion": "2.12.10.0-b41"
+      "appVersion": "2.12.10.0-b41",
+      "isStable": true,
+      "isLTS": false
     },
     {
       "series": "v2.8",
       "display": "v2.8",
       "version": "2.8.10.0",
       "versionShort": "2.8.10",
-      "appVersion": "2.8.10.0-b21"
+      "appVersion": "2.8.10.0-b21",
+      "isStable": true,
+      "isLTS": false
     },
     {
       "series": "v2.6",
       "display": "v2.6",
       "version": "2.6.20.0",
       "versionShort": "2.6.20",
-      "appVersion": "2.6.20.0-b10"
+      "appVersion": "2.6.20.0-b10",
+      "isStable": true,
+      "isLTS": false
     }
   ],
   "ybaVersions":
