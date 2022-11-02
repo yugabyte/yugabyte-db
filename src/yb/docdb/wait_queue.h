@@ -60,7 +60,8 @@ class WaitQueue {
       WaitingTxnRegistry* waiting_txn_registry,
       const std::shared_future<client::YBClient*>& client_future,
       const server::ClockPtr& clock,
-      const MetricEntityPtr& metrics);
+      const MetricEntityPtr& metrics,
+      std::unique_ptr<ThreadPoolToken> thread_pool_token);
 
   ~WaitQueue();
 
