@@ -81,6 +81,7 @@
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -106,6 +107,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(enable_replicate_transaction_status_table);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
 
 namespace yb {
 
@@ -154,8 +156,13 @@ class TwoDCYsqlTest : public TwoDCTestBase
                                       bool enable_cdc_sdk_in_producer = false,
                                       bool do_explict_transaction = false);
 
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
-    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1,
+                    boost::optional<uint32_t> batch_size = boost::none) {
+    if (batch_size) {
+      FLAGS_cdc_max_apply_batch_num_records = *batch_size;
+    } else {
+      FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
+    }
 
     // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
     // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
@@ -177,8 +184,9 @@ class TwoDCYsqlTest : public TwoDCTestBase
                       uint32_t replication_factor,
                       uint32_t num_masters = 1,
                       bool colocated = false,
-                      boost::optional<std::string> tablegroup_name = boost::none) {
-    RETURN_NOT_OK(Initialize(replication_factor, num_masters));
+                      boost::optional<std::string> tablegroup_name = boost::none,
+                      boost::optional<uint32_t> batch_size = boost::none) {
+    RETURN_NOT_OK(Initialize(replication_factor, num_masters, batch_size));
 
     if (num_consumer_tablets.size() != num_producer_tablets.size()) {
       return STATUS(IllegalState,
@@ -355,7 +363,7 @@ class TwoDCYsqlTest : public TwoDCTestBase
   }
 
   void WriteTransactionalWorkload(uint32_t start, uint32_t end, Cluster* cluster,
-                                  const YBTableName& table) {
+                                  const YBTableName& table, bool commit_transaction = true) {
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
     std::string table_name_str = GetCompleteTableName(table);
     EXPECT_OK(conn.Execute("BEGIN"));
@@ -363,7 +371,11 @@ class TwoDCYsqlTest : public TwoDCTestBase
       EXPECT_OK(conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2) ON CONFLICT DO NOTHING",
                                    table_name_str, kKeyColumnName, i));
     }
-    EXPECT_OK(conn.Execute("COMMIT"));
+    if (commit_transaction) {
+      EXPECT_OK(conn.Execute("COMMIT"));
+    } else {
+      EXPECT_OK(conn.Execute("ABORT"));
+    }
   }
 
   void DeleteWorkload(uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table) {
@@ -447,6 +459,125 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
   ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
 
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
+class TwoDCYSqlTestConsistentTransationsTest : public TwoDCYsqlTest {
+ public:
+  void MultiTransactionConsistencyTest(
+      uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
+      const YBTableName& consumer_table, bool commit_all_transactions) {
+    // Have one writer thread and one reader thread. For each read, assert
+    // - atomicity: that the total number of records read mod the transaction size is 0 to ensure
+    // that we have no half transactional cuts.
+    // - ordering: that the records returned are always [0, num_records_reads] to ensure that no
+    // later transaction is readable before an earlier one.
+    auto total_intent_records = transaction_size * num_transactions;
+    auto total_committed_records =
+        commit_all_transactions ? total_intent_records : total_intent_records / 2;
+    auto test_thread_holder = TestThreadHolder();
+    test_thread_holder.AddThread([&]() {
+      auto commit_transaction = true;
+      for (uint32_t i = 0; i < total_intent_records; i += transaction_size) {
+        ASSERT_NO_FATALS(WriteTransactionalWorkload(
+            i, i + transaction_size, &producer_cluster_, producer_table,
+            commit_all_transactions || commit_transaction));
+        commit_transaction = !commit_transaction;
+        LOG(INFO) << "Wrote records: " << i + transaction_size;
+      }
+    });
+
+    test_thread_holder.AddThread([&]() {
+      ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table.namespace_id()));
+      SleepFor(MonoDelta::FromSeconds(5));
+      uint32_t num_read_records = 0;
+      while (num_read_records < total_committed_records) {
+        auto consumer_results = ScanToStrings(consumer_table, &consumer_cluster_);
+        num_read_records = PQntuples(consumer_results.get());
+        ASSERT_EQ(num_read_records % transaction_size, 0);
+        LOG(INFO) << "Read records: " << num_read_records;
+        if (commit_all_transactions) {
+          for (uint32_t i = 0; i < num_read_records; ++i) {
+            auto val = ASSERT_RESULT(GetInt32(consumer_results.get(), i, 0));
+            ASSERT_EQ(val, i);
+          }
+        }
+      }
+      ASSERT_EQ(num_read_records, total_committed_records);
+    });
+
+    test_thread_holder.JoinAll();
+  }
+
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateTableAndSetupReplication() {
+    FLAGS_enable_replicate_transaction_status_table = true;
+    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, 1, false /* colocated */,
+                                                boost::none /* tablegroup_name */,
+                                                0 /* batch_size */));
+    auto producer_table = tables[0];
+    auto consumer_table = tables[1];
+    const string kUniverseId = VERIFY_RESULT(GetUniverseId(&producer_cluster_));
+    RETURN_NOT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+    // Verify that universe was setup on consumer.
+    master::GetUniverseReplicationResponsePB resp;
+    RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+
+    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+
+    return std::make_pair(producer_table, consumer_table);
+  }
+};
+
+constexpr uint32_t kTransactionSize = 50;
+constexpr uint32_t kNumTransactions = 100;
+
+TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransationsTest, ConsistentTransactionsWithApplyDisabled) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransationsTest, LargeTransaction) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      10000, 1, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransationsTest, ManySmallTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      2, 500, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransationsTest, UncommittedTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      false /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {

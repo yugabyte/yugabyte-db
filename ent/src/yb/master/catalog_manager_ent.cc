@@ -3222,7 +3222,6 @@ Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& c
   if (cdc_enabled_.load(std::memory_order_acquire)) {
     resp->set_xcluster_enabled_on_producer(true);
   }
-  resp->set_cluster_config_version(cluster_config.version());
   if (cluster_config.has_consumer_registry()) {
     {
       auto l = xcluster_safe_time_info_.LockForRead();
@@ -3230,7 +3229,17 @@ Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& c
     }
 
     if (req->cluster_config_version() < cluster_config.version()) {
-      *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
+      const auto& consumer_registry = cluster_config.consumer_registry();
+      if (consumer_registry.enable_replicate_transaction_status_table()) {
+        auto producer_map = consumer_registry.producer_map();
+        if ((!producer_map.empty() &&
+             producer_map.count(kSystemXClusterReplicationId) == 0) ||
+             producer_map.size() == 1) {
+          return Status::OK();
+        }
+      }
+      resp->set_cluster_config_version(cluster_config.version());
+      *resp->mutable_consumer_registry() = consumer_registry;
     }
   }
 
