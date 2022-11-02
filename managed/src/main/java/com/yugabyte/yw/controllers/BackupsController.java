@@ -444,6 +444,11 @@ public class BackupsController extends AuthenticatedController {
     if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
       taskParams.category = BackupCategory.YB_CONTROLLER;
     }
+
+    if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore the ybc backup as ybc is not installed on the universe");
+    }
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,
