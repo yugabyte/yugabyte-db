@@ -752,12 +752,12 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ### Use node agents
 
-To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent (also known as gRPC agent) that you can run on each node meeting the following requirements:
+To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that you can run on each node meeting the following requirements:
 
 - The node has already been set up with the `yugabyte` user group and home.
 - The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa). 
 
-### Installation
+#### Installation
 
 You can install a node agent as follows:
 
@@ -811,16 +811,11 @@ You can install a node agent as follows:
    sudo node-agent-installer.sh -t install-service  
    ```
 
+When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
 
-### Registration
+#### Registration
 
 To enable secured communication, the node agent is automatically registered during its installation so the YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
-
-The YugabyteDB Anywhere API provides the endpoint via the following API: 
-
-```
-POST /api/v1/customers/<customer_id>/node_agents
-```
 
 The following is the node agent registration command:
 
@@ -835,6 +830,8 @@ If you need to overwrite any previously configured values, you can use the follo
 
 For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
 
+<!--
+
 You can obtain a list of existing node agents using the following API: 
 
 ```http
@@ -847,14 +844,22 @@ To unregister a node agent, use the following API:
 DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
 ```
 
-### Operations
+-->
 
-A node agent supports the following commands:
+To unregister a node agent, use the following command: 
 
-- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere. This is needed before starting a node agent server. YugabyteDB Anywhere can maintain a table for node agents.
+```sh
+node-agent node unregister
+```
+
+#### Operations
+
+Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
+
+- `node-agent node unregister` is used for unregistersing the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
+- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
 - `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
 - `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).
-- `node-agent node unregister` is used for unregistersing the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
 
 #### Preflight check
 
@@ -864,7 +869,9 @@ Once the node agent is installed, configured, and connected to YugabyteDB Anywhe
 node-agent node preflight-check
 ```
 
-The result is generated, uploaded to the existing node instance creation API, and posted in a tabular form on the terminal. Expect an output similar to the following:
+The result of the check is forwarded to YugabyteDB Anywhere for validation. The validated information is posted in a tabular form on the terminal. If there is a failure against a required check, you can apply a fix and then rerun the preflight check.
+
+Expect an output similar to the following:
 
 ![Result](/images/yp/node-agent-preflight-check.png)
 
