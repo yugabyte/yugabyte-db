@@ -522,12 +522,21 @@ bool ValidateVmodule(const char* flag_name, const string& new_value) {
 
 namespace {
 std::mutex vmodule_mtx;
-// Use a vector instead of map as order matters. For each file the first matching pattern is applied
-// and it is not updated even if a better matching pattern is found later.
 vector<std::pair<string, int>> vmodule_values GUARDED_BY(vmodule_mtx);
 }  // namespace
 
 void UpdateVmodule() {
+  // glog behavior: The first time VLOG is invoked for a file it tries to find a matching pattern in
+  // vmodule list. If found it links to that pattern for the rest of the program lifetime. If not
+  // found it uses the default logging level from FLAGS_v and gets added to a list of files that
+  // don't match any pattern. When SetVLOGLevel is called, all files in this list that match the new
+  // pattern get linked to it, and all linked files will use the new logging level.
+  // Since files are evaluated at the first VLOG call it is possible that files with similar pattern
+  // get linked to different vmodule values if patterns are reordered or removed, which can get
+  // confusing to the user. To avoid this we never remove any pattern from vmodule and always keep
+  // the order of modules the same as it would have been if it was only set once. Ex: If vmodule is
+  // set to "ab=1,a=1" and then changed to "b=2,ab=3" then we will set it to "ab=3,a=0,b=2" and the
+  // behavior will be identical to if it was set to this value from the start.
   std::lock_guard l(vmodule_mtx);
   // Set everything to 0
   for (auto& module_value : vmodule_values) {

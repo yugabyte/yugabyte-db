@@ -25,7 +25,7 @@ class FlagCallbackInfo;
 class FlagCallbackRegistration {
  public:
   FlagCallbackRegistration();
-  FlagCallbackRegistration(const std::shared_ptr<FlagCallbackInfo>& callback_info);
+  explicit FlagCallbackRegistration(const std::shared_ptr<FlagCallbackInfo>& callback_info);
   ~FlagCallbackRegistration();
   FlagCallbackRegistration(FlagCallbackRegistration&& other);
   FlagCallbackRegistration& operator=(FlagCallbackRegistration&& other);
@@ -42,13 +42,17 @@ class FlagCallbackRegistration {
 // Each flag can have multiple callbacks.
 // The descriptive name of the callback must be unique per flag.
 // Callbacks may be invoked even when the flag is set to the same value.
-// All callbacks are invoked once after gFlag initialization.
-// If successfully registered then Deregister must be called on FlagCallbackRegistration before it
-// is destroyed.
+// All callbacks are invoked once during startup at time of gFlag initialization.
+// If successfully registered then Deregister must be called on FlagCallbackRegistration before any
+// object that the callback depends on gets destroyed.
 Result<FlagCallbackRegistration> RegisterFlagUpdateCallback(
     const void* flag_ptr, const std::string& descriptive_name, FlagCallback callback);
 
 // Same as above. Macro to register a callback at global construction time.
+// Since this is used at static initialization time, the descriptive_name and callback construction
+// (ex: using std::bind) must not depend on any other static objects. The callback itself is invoked
+// only at runtime so is safe to access other static objects.
+// This is never Deregistered so all dependencies must outlive the program.
 #define REGISTER_CALLBACK(flag_name, descriptive_name, callback) \
   namespace { \
   static const std::shared_ptr<yb::FlagCallbackInfo> BOOST_PP_CAT( \
