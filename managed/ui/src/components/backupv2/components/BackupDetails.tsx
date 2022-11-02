@@ -16,7 +16,8 @@ import { YBButton } from '../../common/forms/fields';
 import {
   convertBackupToFormValues,
   FormatUnixTimeStampTimeToTimezone,
-  RevealBadge
+  RevealBadge,
+  calculateDuration
 } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
@@ -186,7 +187,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   )}
                 </div>
               </div>
-              <div></div>
+              {!backupDetails.hasIncrementalBackups && (
+                <div>
+                  <div className="header-text">Duration</div>
+                  <div>
+                    {calculateDuration(
+                      backupDetails?.commonBackupInfo?.createTime,
+                      backupDetails?.commonBackupInfo?.completionTime
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="header-text">Created At</div>
                 <div>
