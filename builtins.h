@@ -310,9 +310,30 @@ extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_n(PG_FUNCTION_ARGS)
 extern PGDLLEXPORT Datum orafce_textregexreplace_extended_no_flags(PG_FUNCTION_ARGS);
 
 /* from math.c */
-extern Datum orafce_reminder_smallint(PG_FUNCTION_ARGS);
-extern Datum orafce_reminder_int(PG_FUNCTION_ARGS);
-extern Datum orafce_reminder_bigint(PG_FUNCTION_ARGS);
-extern Datum orafce_reminder_numeric(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_smallint(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_int(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_bigint(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_reminder_numeric(PG_FUNCTION_ARGS);
+
+/* from dbms_sql.c */
+extern PGDLLEXPORT Datum dbms_sql_is_open(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_open_cursor(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_close_cursor(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_parse(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_variable(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_variable_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_array_3(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_bind_array_5(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_define_column(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_define_array(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_execute(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_fetch_rows(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_execute_and_fetch(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_column_value(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_column_value_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_last_row_count(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_describe_columns(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_describe_columns_f(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_sql_debug_cursor(PG_FUNCTION_ARGS);
 
 #endif

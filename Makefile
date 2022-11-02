@@ -25,11 +25,12 @@ OBJS= regexp.o\
 		charpad.o\
 		charlen.o\
 		replace_empty_string.o\
-		math.o
+		math.o\
+		dbms_sql.o
 
 EXTENSION = orafce
 
-DATA = orafce--3.26.sql\
+DATA = orafce--4.0.sql\
 		orafce--3.2--3.3.sql\
 		orafce--3.3--3.4.sql\
 		orafce--3.4--3.5.sql\
@@ -53,7 +54,7 @@ DATA = orafce--3.26.sql\
 		orafce--3.22--3.23.sql\
 		orafce--3.23--3.24.sql\
 		orafce--3.24--3.25.sql\
-		orafce--3.25--3.26.sql
+		orafce--3.25--4.0.sql
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
@@ -62,7 +63,18 @@ PG_CONFIG ?= pg_config
 # make "all" the default target
 all:
 
-REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggregates nlssort dbms_random regexp_func
+REGRESS = orafce\
+		orafce2\
+		dbms_output\
+		dbms_utility\
+		files\
+		varchar2\
+		nvarchar2\
+		aggregates\
+		nlssort\
+		dbms_random\
+		regexp_func\
+		dbms_sql
 
 #REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
