@@ -26,7 +26,7 @@ import {
   YSQLTableProps
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useQuery } from 'react-query';
@@ -176,7 +176,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Table Type</div>
-                <div>{TABLE_TYPE_MAP[backupDetails.backupType]}</div>
+                <div>{TableTypeLabel[backupDetails.backupType]}</div>
               </div>
               <div>
                 <div className="header-text">Size</div>

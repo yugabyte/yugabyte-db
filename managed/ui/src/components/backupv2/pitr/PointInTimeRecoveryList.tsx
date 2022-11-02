@@ -21,7 +21,7 @@ import { PointInTimeRecoveryEmpty } from './PointInTimeRecoveryEmpty';
 import { PointInTimeRecoveryEnableModal } from './PointInTimeRecoveryEnableModal';
 import { YBTable } from '../../common/YBTable';
 import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
 import './PointInTimeRecoveryList.scss';
 
@@ -93,7 +93,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
   const pitr_list = configs.filter(
     (config: any) =>
       regex.test(config.dbName.toLowerCase()) ||
-      regex.test(TABLE_TYPE_MAP[config.tableType].toLowerCase())
+      regex.test(TableTypeLabel[config.tableType].toLowerCase())
   );
 
   return (
@@ -145,7 +145,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="tableType"
-              dataFormat={(tableType) => TABLE_TYPE_MAP[tableType]}
+              dataFormat={(tableType) => TableTypeLabel[tableType]}
               dataSort
             >
               API Type

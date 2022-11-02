@@ -7,7 +7,7 @@ import { Dropdown, MenuItem } from 'react-bootstrap';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
-  editXClusterTables,
+  editXClusterConfigTables,
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes
 } from '../../../actions/xClusterReplication';
@@ -23,7 +23,7 @@ import { XClusterModalName, XClusterTableStatus } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 
-import { TableType, TABLE_TYPE_MAP, YBTable } from '../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTable, XClusterTableDetails } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
@@ -57,7 +57,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
 
   const removeTableFromXCluster = useMutation(
     (replication: XClusterConfig) => {
-      return editXClusterTables(replication);
+      return editXClusterConfigTables(replication.uuid, replication.tables);
     },
     {
       onSuccess: (resp, replication) => {
@@ -87,9 +87,9 @@ export function ReplicationTables({ xClusterConfig }: props) {
 
   if (
     sourceUniverseTableQuery.isLoading ||
-    (sourceUniverseTableQuery.isIdle && sourceUniverseTableQuery.data === undefined) ||
+    sourceUniverseTableQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    (sourceUniverseQuery.isIdle && sourceUniverseQuery.data === undefined)
+    sourceUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -133,7 +133,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="tableType"
-            dataFormat={(cell: TableType) => TABLE_TYPE_MAP[cell]}
+            dataFormat={(cell: TableType) => TableTypeLabel[cell]}
           >
             Table Type
           </TableHeaderColumn>
