@@ -13,6 +13,7 @@
 #pragma once
 
 #include "yb/server/call_home.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/test_util.h"
 #include "yb/common/wire_protocol.h"
@@ -25,6 +26,8 @@ DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(callhome_interval_secs);
+
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb {
 
@@ -167,5 +170,22 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
   SleepFor(MonoDelta::FromSeconds(3 * FLAGS_callhome_interval_secs * kTimeMultiplier));
 }
 
-}  // namespace yb
+template <class ServerType, class CallHomeType>
+void TestGFlagsCallHome(ServerType* server) {
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(flagA="String with quotes")"));
+  std::string json;
+  CallHomeType call_home(server);
+  json = call_home.BuildJson();
+  ASSERT_TRUE(!json.empty());
+  JsonReader reader(json);
+  ASSERT_OK(reader.Init());
 
+  LOG(INFO) << "Checking json has field: tag";
+  ASSERT_TRUE(reader.root()->HasMember("gflags"));
+
+  std::string flags;
+  ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
+  ASSERT_TRUE(flags.find(R"(flagA="String with quotes")") != std::string::npos);
+}
+
+}  // namespace yb
