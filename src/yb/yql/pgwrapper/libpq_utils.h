@@ -25,8 +25,6 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 
-#include <boost/optional.hpp>
-
 namespace yb {
 namespace pgwrapper {
 

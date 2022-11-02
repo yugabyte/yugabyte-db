@@ -552,7 +552,7 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
                                       bool* skipped) {
   bool result = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val,
-      is_called, boost::none, boost::none));
+      is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
   }
