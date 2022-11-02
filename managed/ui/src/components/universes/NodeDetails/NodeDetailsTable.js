@@ -65,7 +65,6 @@ export default class NodeDetailsTable extends Component {
           {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
         </div>
       );
-
     };
 
     const getIpPortLinks = (cell, row) => {
@@ -213,6 +212,7 @@ export default class NodeDetailsTable extends Component {
           hideConnect={hideIP}
           hideQueries={hideQueries}
           disabled={actions_disabled}
+          clusterType={clusterType}
         />
       );
     };

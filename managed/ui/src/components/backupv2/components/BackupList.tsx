@@ -42,7 +42,7 @@ import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { BackupThrottleParameters } from './BackupThrottleParameters';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -567,7 +567,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="backupType"
-            dataFormat={(backupType) => TABLE_TYPE_MAP[backupType]}
+            dataFormat={(backupType) => TableTypeLabel[backupType]}
             width="10%"
           >
             API Type

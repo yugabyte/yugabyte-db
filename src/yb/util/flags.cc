@@ -77,8 +77,7 @@ DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_int32(svc_queue_length_default, 50, "Default RPC queue length for a service");
-TAG_FLAG(svc_queue_length_default, advanced);
+DEPRECATE_FLAG(int32, svc_queue_length_default, "11_2022");
 
 // This provides a more accurate representation of default gFlag values for application like
 // yb-master which override the hard coded values at process startup time.

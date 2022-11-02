@@ -25,7 +25,7 @@ const validationSchema = Yup.object().shape({
         value !== null && value !== undefined && !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(value)
     )
 });
-export function EditReplicationDetails({ onHide, visible, replication }: Props) {
+export function EditConfigModal({ onHide, visible, replication }: Props) {
   const queryClient = useQueryClient();
   const initialValues: any = { ...replication };
 

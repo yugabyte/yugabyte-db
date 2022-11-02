@@ -75,7 +75,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
   // positioned.
-  Result<bool> HasNext() const override;
+  Result<bool> HasNext() override;
 
   std::string ToString() const override;
 
@@ -109,11 +109,13 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Result<bool> SeekTuple(const Slice& tuple_id) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
+  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) {
     debug_dump_ = value;
   }
+
+  static bool is_hybrid_scan_enabled();
 
  private:
   template <class T>
@@ -125,34 +127,6 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Result<bool> InitScanChoices(
       const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
       const KeyBytes& upper_doc_key);
-
-  // Get the non-key column values of a QL row.
-  Status GetValues(const Schema& projection, std::vector<SubDocument>* values);
-
-  // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on
-  // the hybrid time of subdoc_key. If valid, it is added to the values vector and is_null is set
-  // to false. Otherwise, is_null is set to true.
-  Status ProcessValues(const Value& value, const SubDocKey& subdoc_key,
-                               std::vector<PrimitiveValue>* values,
-                               bool *is_null) const;
-
-  // Figures out whether the current sub_doc_key with the given top_level_value is a valid column
-  // that has not expired. Sets column_found to true if this is a valid column, false otherwise.
-  Status FindValidColumn(bool* column_found) const;
-
-  // Figures out whether we have a valid column present indicating the existence of the row.
-  // Sets column_found to true if a valid column is found, false otherwise.
-  Status ProcessColumnsForHasNext(bool* column_found) const;
-
-  // Verifies whether or not the column pointed to by subdoc_key is deleted by the current
-  // row_delete_marker_key_.
-  bool IsDeletedByRowDeletion(const SubDocKey& subdoc_key) const;
-
-  // Given a subdoc_key pointing to a column and its associated value, determine whether or not
-  // the column is valid based on TTL expiry, row level delete markers and column delete markers
-  Status CheckColumnValidity(const SubDocKey& subdoc_key,
-                                     const Value& value,
-                                     bool* is_valid) const;
 
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
@@ -193,44 +167,41 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // RocksDB does not get destroyed while the iterator is still in use.
   ScopedRWOperation pending_op_;
 
-  // The mutable fields that follow are modified by HasNext, a const method.
-
   // Indicates whether we've already finished iterating.
-  mutable bool done_;
+  bool done_;
 
   // HasNext constructs the whole row's SubDocument.
-  mutable SubDocument row_;
+  SubDocument row_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
-  mutable Slice row_key_;
+  Slice row_key_;
 
   // The current row's hash part of primary key.
-  mutable Slice row_hash_key_;
+  Slice row_hash_key_;
 
   // The current row's iterator key.
-  mutable KeyBytes iter_key_;
+  KeyBytes iter_key_;
 
   // When HasNext constructs a row, row_ready_ is set to true.
   // When NextRow consumes the row, this variable is set to false.
   // It is initialized to false, to make sure first HasNext constructs a new row.
-  mutable bool row_ready_;
+  bool row_ready_;
 
-  mutable std::vector<KeyEntryValue> projection_subkeys_;
+  std::vector<KeyEntryValue> projection_subkeys_;
 
   // Used for keeping track of errors in HasNext.
-  mutable Status has_next_status_;
+  Status has_next_status_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
 
-  mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
+  std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
 
   TableType table_type_;
-  mutable bool ignore_ttl_ = false;
+  bool ignore_ttl_ = false;
 
   bool debug_dump_ = false;
 };
 
 }  // namespace docdb
 }  // namespace yb
-

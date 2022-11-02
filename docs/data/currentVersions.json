@@ -1,5 +1,5 @@
 {
-  "docVersions":
+  "dbVersions":
   [
     {
       "series": "v2.15",
@@ -38,5 +38,8 @@
       "versionShort": "2.6.20",
       "appVersion": "2.6.20.0-b10"
     }
+  ],
+  "ybaVersions":
+  [
   ]
 }

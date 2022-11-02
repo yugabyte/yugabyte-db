@@ -74,8 +74,8 @@ import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.*;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 
