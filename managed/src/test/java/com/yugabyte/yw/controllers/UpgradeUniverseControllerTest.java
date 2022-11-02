@@ -40,6 +40,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -97,7 +98,7 @@ import play.mvc.Result;
 import play.test.WithApplication;
 
 @RunWith(JUnitParamsRunner.class)
-public class UpgradeUniverseControllerTest extends WithApplication {
+public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 

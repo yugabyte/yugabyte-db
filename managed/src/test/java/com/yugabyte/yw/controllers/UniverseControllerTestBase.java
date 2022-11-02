@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -71,9 +72,8 @@ import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
-import play.test.WithApplication;
 
-public class UniverseControllerTestBase extends WithApplication {
+public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest {
   protected static Commissioner mockCommissioner;
   protected static MetricQueryHelper mockMetricQueryHelper;
 
