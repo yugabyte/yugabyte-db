@@ -149,12 +149,17 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
+  public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
     ShellResponse response =
         execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
-    return deserialize(response.message, Pod.class).getStatus();
+    return deserialize(response.message, Pod.class);
+  }
+
+  @Override
+  public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
+    return getPodObject(config, namespace, podName).getStatus();
   }
 
   @Override
