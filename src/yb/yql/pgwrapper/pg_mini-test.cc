@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <optional>
 #include <thread>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -2088,7 +2089,7 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
       )#", day));
     }
 
-    boost::optional<PGConn> uncommitted_intents_conn;
+    std::optional<PGConn> uncommitted_intents_conn;
     if (uncommitted_intents) {
       uncommitted_intents_conn = ASSERT_RESULT(Connect());
       ASSERT_OK(uncommitted_intents_conn->Execute("BEGIN"));
