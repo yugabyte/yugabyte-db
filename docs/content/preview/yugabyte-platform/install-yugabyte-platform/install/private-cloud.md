@@ -18,21 +18,21 @@ For installation overview, select one of the following installation types:
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../public-cloud/" class="nav-link">
-      <i class="fas fa-cloud"></i>
+      <i class="fa-solid fa-cloud"></i>
       Public Cloud
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li >
     <a href="../private-cloud/" class="nav-link active">
-      <i class="fas fa-unlink"></i>
+      <i class="fa-solid fa-link-slash"></i>
       Private Cloud
     </a>
   </li>

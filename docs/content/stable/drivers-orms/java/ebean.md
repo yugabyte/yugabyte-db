@@ -16,14 +16,14 @@ type: docs
 
   <li >
     <a href="../ebean/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
     <a href="../hibernate" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Hibernate ORM
     </a>
   </li>
