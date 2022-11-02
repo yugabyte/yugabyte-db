@@ -50,7 +50,6 @@ using namespace std::literals;
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
-TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
 namespace yb {
 namespace tablet {
@@ -252,8 +251,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
-    restore_metadata.index_map.emplace(request.indexes());
+    RETURN_NOT_OK(SchemaFromPB(
+        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
@@ -262,12 +262,13 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(entry.schema(), table_metadata->schema.get_ptr()));
-    table_metadata->index_map.emplace(entry.indexes());
-    table_metadata->table_id = entry.table_id();
+    RETURN_NOT_OK(SchemaFromPB(
+        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
+    table_metadata->table_id = entry.table_id().ToBuffer();
   }
-
-  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(
+      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -284,7 +285,7 @@ Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
   docdb::DocWriteBatch write_batch(tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
 
   auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
-      *operation->request(), &write_batch));
+      operation->request()->ToGoogleProtobuf(), &write_batch));
   if (restore_patch.TotalTickerCount() != 0 || VLOG_IS_ON(3)) {
     LOG(INFO) << "PITR: Sequences data tablet: " << tablet().tablet_id()
               << ", " << restore_patch.TickersToString();
@@ -334,7 +335,7 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   const auto destroy = !dir.empty();
@@ -406,8 +407,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     auto tablet_metadata_file = TabletMetadataFile(dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
     if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
-      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+                            << " , force overwrite of schema packing " << !is_pitr_restore;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
+          tablet_metadata_file,
+          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
+              : docdb::OverwriteSchemaPacking::kTrue));
+      need_flush = true;
     }
   }
 
@@ -469,7 +475,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const auto& snapshot_id = operation.request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
-      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();

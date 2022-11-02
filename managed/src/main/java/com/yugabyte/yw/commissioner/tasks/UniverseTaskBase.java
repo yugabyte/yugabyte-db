@@ -21,9 +21,10 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
@@ -110,6 +111,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Backup;
@@ -181,6 +183,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     NEVER,
     ALWAYS,
     HA_ONLY
+  }
+
+  // Enum for specifying the server type.
+  public enum ServerType {
+    MASTER,
+    TSERVER,
+    CONTROLLER,
+    // TODO: Replace all YQLServer with YCQLserver
+    YQLSERVER,
+    YSQLSERVER,
+    REDISSERVER,
+    EITHER
   }
 
   // Set of locked universes in this task.
@@ -621,6 +635,48 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     lockedUniversesUuid.remove(universeUUID);
     log.trace("Unlocked universe {} for updates.", universeUUID);
     return universe;
+  }
+
+  public AnsibleConfigureServers.Params getBaseAnsibleServerTaskParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskParams.UpgradeTaskType type,
+      UpgradeTaskParams.UpgradeTaskSubType taskSubType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    params.type = type;
+    params.setProperty("processType", processType.toString());
+    params.setProperty("taskSubType", taskSubType.toString());
+
+    if (userIntent.providerType.equals(CloudType.onprem)) {
+      params.instanceType = node.cloudInfo.instance_type;
+    }
+
+    return params;
   }
 
   /** Create a task to mark the change on a universe as success. */
@@ -1087,7 +1143,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createServerControlTask(
       NodeDetails node,
-      UniverseDefinitionTaskBase.ServerType processType,
+      UniverseTaskBase.ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
@@ -1098,7 +1154,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createServerControlTask(
-      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      NodeDetails node, UniverseTaskBase.ServerType processType, String command) {
     return createServerControlTask(node, processType, command, params -> {});
   }
 
@@ -1158,7 +1214,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createServerControlTasks(
       List<NodeDetails> nodes,
-      UniverseDefinitionTaskBase.ServerType processType,
+      UniverseTaskBase.ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
@@ -1172,13 +1228,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public SubTaskGroup createServerControlTasks(
-      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      List<NodeDetails> nodes, UniverseTaskBase.ServerType processType, String command) {
     return createServerControlTasks(nodes, processType, command, params -> {});
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
       NodeDetails node,
-      UniverseDefinitionTaskBase.ServerType processType,
+      UniverseTaskBase.ServerType processType,
       String command,
       int sleepAfterCmdMillis,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
@@ -1813,6 +1869,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             }
             backupTableParamsList.add(backupParams);
           } else {
+            backupParams.allTables = true;
             for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : tableInfoList) {
               TableType tableType = table.getTableType();
               String tableKeySpace = table.getNamespace().getName();
@@ -2145,6 +2202,40 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task to install xxhash on the DB nodes from third-party packages.
+   *
+   * @param universeUUID universe on which xxhash need to be upgraded
+   * @param universe universe on which xxhash needs to be installed
+   */
+  public SubTaskGroup installThirdPartyPackagesTask(UUID universeUUID, Universe universe) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for nodes",
+            SubTaskGroupType.InstallingThirdPartySoftware);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    List<NodeDetails> nodes = universe.getServers(ServerType.TSERVER);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+      AnsibleConfigureServers.Params params =
+          getBaseAnsibleServerTaskParams(
+              userIntent,
+              node,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.ThirdPartyPackages,
+              UpgradeTaskParams.UpgradeTaskSubType.InstallThirdPartyPackages);
+      params.universeUUID = universeUUID;
+      params.installThirdPartyPackages = true;
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

@@ -47,7 +47,7 @@ public enum TaskType {
 
   CreatePitrConfig("CreatePitrConfig"),
 
-  RestoreSnapshot("RestoreSnapshot"),
+  RestoreSnapshotSchedule("RestoreSnapshotSchedule"),
 
   EditUniverse("EditUniverse"),
 
@@ -61,6 +61,9 @@ public enum TaskType {
   ImportIntoTable("ImportIntoTable"),
 
   RunApiTriggeredHooks("RunApiTriggeredHooks"),
+
+  AddOnClusterCreate("AddOnClusterCreate"),
+  AddOnClusterDelete("AddOnClusterDelete"),
 
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
@@ -84,6 +87,8 @@ public enum TaskType {
   CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
 
   TlsToggle("upgrade.TlsToggle"),
+
+  NodeCertReloadTask("subtasks.NodeCertReloadTask"),
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
@@ -141,18 +146,17 @@ public enum TaskType {
   KubernetesCheckStorageClass("subtasks.KubernetesCheckStorageClass"),
 
   StartMasterOnNode("StartMasterOnNode"),
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
+  SyncXClusterConfig("SyncXClusterConfig"),
+
+  CreateSupportBundle("CreateSupportBundle"),
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
   EditXClusterConfig("EditXClusterConfig"),
 
   RestartXClusterConfig("RestartXClusterConfig"),
-
-  DeleteXClusterConfig("DeleteXClusterConfig"),
-
-  SyncXClusterConfig("SyncXClusterConfig"),
-
-  CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey("subtasks.AddAuthorizedKey"),

@@ -289,13 +289,8 @@ public class MetricConfigDefinition {
           functions[functions.length - 1] = settings.getNodeAggregation().getAggregationFunction();
         }
       }
-      if (functions.length > 1) {
-        // We need to split the multiple functions and form the query string
-        for (String functionName : functions) {
-          queryStr = String.format("%s(%s)", functionName, queryStr);
-        }
-      } else {
-        queryStr = String.format("%s(%s)", function, queryStr);
+      for (String functionName : functions) {
+        queryStr = String.format("%s(%s)", functionName, queryStr);
       }
     }
 

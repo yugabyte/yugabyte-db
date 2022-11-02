@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_DOCDB_UTIL_H
-#define YB_DOCDB_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -180,7 +179,8 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
-  void DocDBDebugDumpToConsole();
+  void DocDBDebugDumpToConsole(
+      const SchemaPackingStorage& schema_packing_storage = SchemaPackingStorage());
 
   Status FlushRocksDbAndWait();
 
@@ -254,4 +254,3 @@ class DocDBRocksDBUtil {
 }  // namespace docdb
 }  // namespace yb
 
-#endif // YB_DOCDB_DOCDB_UTIL_H

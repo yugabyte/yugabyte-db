@@ -19,6 +19,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_expr.h"
 
+#include "yb/consensus/consensus.messages.h"
+
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_key.h"
 
@@ -34,10 +36,8 @@ DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DEFINE_bool(
-    enable_single_record_update, true,
+DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
-TAG_FLAG(enable_single_record_update, runtime);
 
 namespace yb {
 namespace cdc {
@@ -519,11 +519,11 @@ Status PopulateCDCSDKWriteRecord(
 }
 
 void SetTableProperties(
-    const TablePropertiesPB* table_properties,
+    const TablePropertiesPB& table_properties,
     CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb) {
-  cdc_sdk_table_properties_pb->set_default_time_to_live(table_properties->default_time_to_live());
-  cdc_sdk_table_properties_pb->set_num_tablets(table_properties->num_tablets());
-  cdc_sdk_table_properties_pb->set_is_ysql_catalog_table(table_properties->is_ysql_catalog_table());
+  cdc_sdk_table_properties_pb->set_default_time_to_live(table_properties.default_time_to_live());
+  cdc_sdk_table_properties_pb->set_num_tablets(table_properties.num_tablets());
+  cdc_sdk_table_properties_pb->set_is_ysql_catalog_table(table_properties.is_ysql_catalog_table());
 }
 
 void SetColumnInfo(const ColumnSchemaPB& column, CDCSDKColumnInfoPB* column_info) {
@@ -555,20 +555,18 @@ Status PopulateCDCSDKDDLRecord(
   SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
 
   for (const auto& column : msg->change_metadata_request().schema().columns()) {
-    CDCSDKColumnInfoPB* column_info = nullptr;
-    column_info = row_message->mutable_schema()->add_column_info();
-    SetColumnInfo(column, column_info);
+    SetColumnInfo(column.ToGoogleProtobuf(), row_message->mutable_schema()->add_column_info());
   }
 
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb;
-  const TablePropertiesPB* table_properties =
-      &(msg->change_metadata_request().schema().table_properties());
+  const auto* table_properties =
+      &msg->change_metadata_request().schema().table_properties();
 
   cdc_sdk_table_properties_pb = row_message->mutable_schema()->mutable_tab_info();
   row_message->set_schema_version(msg->change_metadata_request().schema_version());
-  row_message->set_new_table_name(msg->change_metadata_request().new_table_name());
+  row_message->set_new_table_name(msg->change_metadata_request().new_table_name().ToBuffer());
   row_message->set_pgschema_name(schema.SchemaName());
-  SetTableProperties(table_properties, cdc_sdk_table_properties_pb);
+  SetTableProperties(table_properties->ToGoogleProtobuf(), cdc_sdk_table_properties_pb);
 
   return Status::OK();
 }
@@ -783,16 +781,15 @@ void FillDDLInfo(
     CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
         row_message->mutable_schema()->mutable_tab_info();
 
-    const TablePropertiesPB* table_properties = &(schema_pb.table_properties());
-    SetTableProperties(table_properties, cdc_sdk_table_properties_pb);
+    SetTableProperties(schema_pb.table_properties(), cdc_sdk_table_properties_pb);
   }
 }
 
 bool VerifyTabletSplitOnParentTablet(
     const TableId& table_id, const TabletId& tablet_id,
-    const std::shared_ptr<yb::consensus::ReplicateMsg>& msg, client::YBClient* client) {
-  if (!(msg->has_split_request() && msg->split_request().has_tablet_id() &&
-        msg->split_request().tablet_id() == tablet_id)) {
+    const consensus::LWReplicateMsg& msg, client::YBClient* client) {
+  if (!(msg.has_split_request() && msg.split_request().has_tablet_id() &&
+        msg.split_request().tablet_id() == tablet_id)) {
     LOG(WARNING) << "The replicate message for split-op does not have the parent tablet_id set to: "
                  << tablet_id << ". Could not verify tablet-split for tablet: " << tablet_id;
     return false;
@@ -845,11 +842,13 @@ Status GetChangesForCDCSDK(
   bool checkpoint_updated = false;
   bool report_tablet_split = false;
   OpId split_op_id = OpId::Invalid();
+  bool snapshot_operation = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
+    snapshot_operation = true;
     auto txn_participant = tablet_ptr->transaction_participant();
     ReadHybridTime time;
     std::string nextKey;
@@ -1068,7 +1067,8 @@ Status GetChangesForCDCSDK(
           break;
 
           case consensus::OperationType::CHANGE_METADATA_OP: {
-            RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
+            RETURN_NOT_OK(SchemaFromPB(
+                msg->change_metadata_request().schema().ToGoogleProtobuf(), &current_schema));
             const std::string& table_name = tablet_ptr->metadata()->table_name();
             *cached_schema = std::make_shared<Schema>(std::move(current_schema));
             // CHANGE_METADATA_OP read can be an entry from the past unsuccessful
@@ -1126,11 +1126,12 @@ Status GetChangesForCDCSDK(
             // 2. The split op is the last operation on the tablet
             // If either of the conditions are false, we will know the splitOp is not succesfull.
             const TableId& table_id = tablet_ptr->metadata()->table_id();
+            auto op_id = OpId::FromPB(msg->id());
 
-            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, msg, client))) {
+            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, *msg, client))) {
               // We could verify the tablet split succeeded. This is possible when the child tablets
               // of a split are not running yet.
-              LOG(INFO) << "Found SPLIT_OP record with index: " << msg->id()
+              LOG(INFO) << "Found SPLIT_OP record with index: " << op_id
                         << ", but did not find any children tablets for the tablet: " << tablet_id
                         << ". This is possible when the child tablets are not up and running yet.";
             } else {
@@ -1139,7 +1140,7 @@ Status GetChangesForCDCSDK(
                 // 'GetChangesForCDCSDK' call, we will not update the checkpoint to the SplitOp
                 // record's OpId and return the records seen till now. Next time the client will
                 // call 'GetChangesForCDCSDK' with the OpId just before the SplitOp's record.
-                LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                LOG(INFO) << "Found SPLIT_OP record with OpId: " << op_id
                           << ", for parent tablet: " << tablet_id
                           << ", will stream all seen records until now.";
               } else {
@@ -1147,15 +1148,14 @@ Status GetChangesForCDCSDK(
                 // record, and if there is no more data to stream and we can notify the client
                 // about the split and update the checkpoint. At this point, we will store the
                 // split_op_id.
-                LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                LOG(INFO) << "Found SPLIT_OP record with OpId: " << op_id
                           << ", for parent tablet: " << tablet_id
                           << ", and if we did not see any other records we will report the tablet "
                              "split to the client";
                 SetCheckpoint(
-                    msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint,
-                    last_streamed_op_id);
+                    op_id.term, op_id.index, 0, "", 0, &checkpoint, last_streamed_op_id);
                 checkpoint_updated = true;
-                split_op_id = OpId::FromPB(msg->id());
+                split_op_id = op_id;
               }
             }
           }
@@ -1186,7 +1186,8 @@ Status GetChangesForCDCSDK(
   // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
   // know that after the split there are no more actionable messages, and this confirms that the
   // SPLIT OP was succesfull.
-  if (split_op_id.term == checkpoint.term() && split_op_id.index == checkpoint.index()) {
+  if (!snapshot_operation && split_op_id.term == checkpoint.term() &&
+      split_op_id.index == checkpoint.index()) {
     report_tablet_split = true;
   }
 

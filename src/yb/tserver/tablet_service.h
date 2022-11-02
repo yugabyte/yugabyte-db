@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVICE_H_
-#define YB_TSERVER_TABLET_SERVICE_H_
+#pragma once
 
 #include <functional>
 #include <future>
@@ -158,10 +157,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const GetSplitKeyRequestPB* req,
       GetSplitKeyResponsePB* resp,
       rpc::RpcContext context) override;
-
-  void TakeTransaction(const TakeTransactionRequestPB* req,
-                       TakeTransactionResponsePB* resp,
-                       rpc::RpcContext context) override;
 
   void GetSharedData(const GetSharedDataRequestPB* req,
                      GetSharedDataResponsePB* resp,
@@ -293,8 +288,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
   virtual ~ConsensusServiceImpl();
 
-  void UpdateConsensus(const consensus::ConsensusRequestPB *req,
-                       consensus::ConsensusResponsePB *resp,
+  void UpdateConsensus(const consensus::LWConsensusRequestPB *req,
+                       consensus::LWConsensusResponsePB *resp,
                        rpc::RpcContext context) override;
 
   void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
@@ -343,11 +338,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
  private:
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
-                                       consensus::ConsensusResponsePB* resp);
+                                       consensus::LWConsensusResponsePB* resp);
   TabletPeerLookupIf* tablet_manager_;
 };
 
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_TABLET_SERVICE_H_

@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
-#define YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
 
 #pragma once
 
@@ -649,4 +647,3 @@ static std::unordered_map<std::string, InfoLogLevel> info_log_level_string_map =
 
 #endif  // !ROCKSDB_LITE
 
-#endif // YB_ROCKSDB_UTIL_OPTIONS_HELPER_H

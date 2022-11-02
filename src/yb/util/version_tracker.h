@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_VERSION_TRACKER_H
-#define YB_UTIL_VERSION_TRACKER_H
+#pragma once
 
 #include <stddef.h>
 
@@ -107,4 +106,3 @@ VersionTrackerCheckOut<Value> VersionTracker<Value>::CheckOut() {
 
 } // namespace yb
 
-#endif // YB_UTIL_VERSION_TRACKER_H

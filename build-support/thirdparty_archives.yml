@@ -1,26 +1,12 @@
-sha_for_local_checkout: 1aec6dda080d6e45e6c78f246eb2984579bac47e
+sha_for_local_checkout: 69d751ddbbb5e003aa831c207a174ad76c97f721
 archives:
-  - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang12
-    is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
-    lto_type:
-    tag: v20221019013314-1aec6dda08-almalinux8-aarch64-clang12
-  - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang12
-    is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
-    lto_type: full
-    tag: v20221019013302-1aec6dda08-almalinux8-aarch64-clang12-full-lto
   - os_type: almalinux8
     architecture: aarch64
     compiler_type: clang15
     is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
+    sha: 69d751ddbbb5e003aa831c207a174ad76c97f721
     lto_type:
-    tag: v20221019013254-1aec6dda08-almalinux8-aarch64-clang15
+    tag: v20221023015928-69d751ddbb-almalinux8-aarch64-clang15
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang13
@@ -177,25 +163,11 @@ archives:
     tag: v20221019013124-1aec6dda08-macos-x86_64
   - os_type: ubuntu20.04
     architecture: aarch64
-    compiler_type: clang12
-    is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
-    lto_type:
-    tag: v20221019013233-1aec6dda08-ubuntu2004-aarch64-clang12
-  - os_type: ubuntu20.04
-    architecture: aarch64
-    compiler_type: clang12
-    is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
-    lto_type: full
-    tag: v20221019013233-1aec6dda08-ubuntu2004-aarch64-clang12-full-lto
-  - os_type: ubuntu20.04
-    architecture: aarch64
     compiler_type: clang15
     is_linuxbrew: false
-    sha: 1aec6dda080d6e45e6c78f246eb2984579bac47e
+    sha: 69d751ddbbb5e003aa831c207a174ad76c97f721
     lto_type:
-    tag: v20221019013237-1aec6dda08-ubuntu2004-aarch64-clang15
+    tag: v20221023015909-69d751ddbb-ubuntu2004-aarch64-clang15
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang13

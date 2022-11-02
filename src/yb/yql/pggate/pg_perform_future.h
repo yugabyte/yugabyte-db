@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
-#define YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
+#pragma once
 
 #include <future>
 
@@ -49,4 +48,3 @@ class PerformFuture {
 } // namespace pggate
 } // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_

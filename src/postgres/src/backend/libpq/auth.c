@@ -1048,9 +1048,7 @@ static int
 CheckYbTserverKeyAuth(Port *port, char **logdetail)
 {
 	char	   *passwd;
-	int			result;
 	uint64_t	client_key;
-	uint64_t   *server_key;
 
 	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
 
@@ -1070,17 +1068,10 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
 		pfree(passwd);
 	}
 
-	server_key = yb_get_role_password(port->user_name, logdetail);
-	if (server_key)
-	{
-		result = yb_plain_key_verify(port->user_name, *server_key, client_key,
-									 logdetail);
-		pfree(server_key);
-	}
-	else
-		result = STATUS_ERROR;
-
-	return result;
+	uint64_t auth_key;
+	return yb_get_role_password(port->user_name, logdetail, &auth_key)
+		? yb_plain_key_verify(port->user_name, auth_key, client_key, logdetail)
+		: STATUS_ERROR;
 }
 
 

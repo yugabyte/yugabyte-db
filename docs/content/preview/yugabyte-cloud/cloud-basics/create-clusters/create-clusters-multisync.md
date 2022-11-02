@@ -26,6 +26,14 @@ Multi-region replicated clusters include the following features:
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 - Enterprise support.
 
+## Preferred region
+
+You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred.
+
+When no region is preferred, YugabyteDB Managed distributes requests equally across regions. You can set or change the preferred region after cluster creation.
+
 ## Prerequisites
 
 - Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
@@ -69,6 +77,8 @@ Set **Data distribution** to **Replicate across regions**.
 **Regions** - For each of the 3 regions, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
+
+**Preferred region** - optionally, assign one region as preferred to handle all reads and writes.
 
 Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 

@@ -103,10 +103,10 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 
-DEFINE_bool(ycql_enable_tracing_flag, true, "If enabled, setting TRACING ON in cqlsh will cause "
-  "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
-  "to disable tracing if an errant application has TRACING enabled by mistake.");
-TAG_FLAG(ycql_enable_tracing_flag, runtime);
+DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
+    "If enabled, setting TRACING ON in cqlsh will cause "
+    "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
+    "to disable tracing if an errant application has TRACING enabled by mistake.");
 
 // LDAP specific flags
 DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");

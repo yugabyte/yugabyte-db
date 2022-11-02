@@ -323,6 +323,15 @@ function(add_executable name)
     add_dependencies(${name} latest_symlink)
   endif()
 
+  if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    # Link every executable with gperftools's tcmalloc static library.
+    # The other relevant library, libprofiler, will be linked by the libraries that need it.
+    #
+    # We need to ensure that all symbols from the tcmalloc library are retained. This is done
+    # differently depending on the OS.
+    target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+  endif()
+
   yb_process_pch(${name})
 endfunction()
 

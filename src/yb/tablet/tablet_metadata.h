@@ -32,6 +32,8 @@
 #ifndef YB_TABLET_TABLET_METADATA_H
 #define YB_TABLET_TABLET_METADATA_H
 
+#pragma once
+
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -48,6 +50,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -71,6 +74,8 @@ extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
 extern const std::string kIntentsDBSuffix;
 extern const std::string kSnapshotsDirSuffix;
+
+const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
 YB_STRONGLY_TYPED_BOOL(Primary);
 
@@ -137,7 +142,7 @@ struct TableInfo {
 
   const Schema& schema() const;
 
-  Status MergeWithRestored(const TableInfoPB& pb);
+  Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -159,7 +164,8 @@ struct KvStoreInfo {
                     const TableId& primary_table_id,
                     bool local_superblock);
 
-  Status MergeWithRestored(const KvStoreInfoPB& pb);
+  Status MergeWithRestored(
+      const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
 
   Status LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
@@ -183,6 +189,9 @@ struct KvStoreInfo {
 
   // See KvStoreInfoPB field with the same name.
   bool has_been_fully_compacted = false;
+
+  // See KvStoreInfoPB field with the same name.
+  uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
 
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
@@ -278,6 +287,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   SchemaVersion schema_version(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
+  Result<SchemaVersion> schema_version(ColocationId colocation_id) const;
+
+  Result<SchemaVersion> schema_version(const Uuid& cotable_id) const;
+
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
   bool is_index(const TableId& table_id = "") const;
@@ -335,6 +348,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void set_has_been_fully_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
     kv_store_.has_been_fully_compacted = value;
+  }
+
+  uint64_t last_full_compaction_time() {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.last_full_compaction_time;
+  }
+
+  void set_last_full_compaction_time(const uint64& value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.last_full_compaction_time = value;
   }
 
   bool AddSnapshotSchedule(const SnapshotScheduleId& schedule_id) {
@@ -405,7 +428,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Status SaveTo(const std::string& path);
 
   // Merge this metadata with restored metadata located at specified path.
-  Status MergeWithRestored(const std::string& path);
+  Status MergeWithRestored(const std::string& path, docdb::OverwriteSchemaPacking overwrite);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.

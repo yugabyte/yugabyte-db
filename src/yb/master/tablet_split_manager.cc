@@ -48,11 +48,7 @@ DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
              "tablet splitting method, which checks for the time since last run, is run once per "
              "loop.");
-DEFINE_int32(max_queued_split_candidates, 0,
-             "DEPRECATED. The max number of pending tablet split candidates we will hold onto. We "
-             "potentially iterate through every candidate in the queue for each tablet we process "
-             "in a tablet report so this size should be kept relatively small to avoid any "
-             "issues.");
+DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022")
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
@@ -66,19 +62,9 @@ DEFINE_uint64(outstanding_tablet_split_limit_per_tserver, 1,
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
-DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
-            "When set, it enables automatic tablet splitting of tables covered by "
-            "Point In Time Restore schedules.");
-TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
-
-DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
-    "When set, it enables automatic tablet splitting for tables that are part of an "
-    "xCluster replication setup");
-
-DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup and are currently being bootstrapped for xCluster.");
-TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
+DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
+    "When set, it enables automatic tablet splitting of tables covered by "
+    "Point In Time Restore schedules.");
 
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
@@ -228,22 +214,6 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
         " some active PITR schedule, table_id: $0", table.id());
-  }
-  // Check if this table is part of a cdc stream.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      filter_->IsCdcEnabled(table)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, table_id: $0", table.id());
-  }
-  // Check if the table is in the bootstrapping phase of xCluster.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
-      filter_->IsTablePartOfBootstrappingCdcStream(table)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a bootstrapping CDC stream, table_id: $0", table.id());
   }
 
   if (table.GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -637,6 +607,11 @@ void TabletSplitManager::DoSplitting(
   vector<TableInfoPtr> valid_tables;
   for (const auto& table : table_info_map) {
     Status status = ValidateSplitCandidateTable(*table.second);
+    if (!status.ok()) {
+      VLOG(3) << "Skipping table for splitting. " << status;
+      continue;
+    }
+    status = filter_->ValidateSplitCandidateTableCdc(*table.second);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
       continue;

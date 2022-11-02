@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_RPC_FWD_H
-#define YB_RPC_RPC_FWD_H
+#pragma once
 
 #include <chrono>
 #include <functional>
@@ -149,8 +148,8 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
 
 using SidecarHolder = std::pair<RefCntBuffer, Slice>;
 using CallResponsePtr = std::shared_ptr<CallResponse>;
+using RpcCallParamsPtr = std::shared_ptr<RpcCallParams>;
 
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_FWD_H

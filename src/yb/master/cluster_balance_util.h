@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_UTIL_H
-#define YB_MASTER_CLUSTER_BALANCE_UTIL_H
+#pragma once
 
 #include <memory>
 #include <set>
@@ -450,4 +449,3 @@ class PerTableLoadState {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_CLUSTER_BALANCE_UTIL_H

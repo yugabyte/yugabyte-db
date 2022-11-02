@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_SEMAPHORE_H
-#define YB_UTIL_SEMAPHORE_H
+#pragma once
 
 #include <semaphore.h>
 #if defined(__APPLE__)
@@ -90,4 +89,3 @@ class Semaphore {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_SEMAPHORE_H */

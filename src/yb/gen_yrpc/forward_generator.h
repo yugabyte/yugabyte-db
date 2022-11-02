@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_FORWARD_GENERATOR_H
-#define YB_GEN_YRPC_FORWARD_GENERATOR_H
+#pragma once
 
 #include "yb/gen_yrpc/printer.h"
 
@@ -32,4 +31,3 @@ class ForwardGenerator {
 }  // namespace gen_yrpc
 }  // namespace yb
 
-#endif  // YB_GEN_YRPC_FORWARD_GENERATOR_H

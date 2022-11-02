@@ -125,15 +125,16 @@ Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term) {
-  TabletSnapshotOpRequestPB tablet_snapshot_req;
+  auto operation = std::make_unique<SnapshotOperation>(
+      VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe()));
+
+  auto& tablet_snapshot_req = *operation->AllocateRequest();
   tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
-  tablet_snapshot_req.add_tablet_id(kSysCatalogTabletId);
-  tablet_snapshot_req.set_snapshot_dir_override(
+  tablet_snapshot_req.mutable_tablet_id()->push_back(kSysCatalogTabletId);
+  tablet_snapshot_req.dup_snapshot_dir_override(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto tablet = VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe());
-  auto operation = std::make_unique<SnapshotOperation>(tablet, &tablet_snapshot_req);
 
   CountDownLatch latch(1);
   operation->set_completion_callback(
@@ -200,7 +201,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
       VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
-      CHECK_OK(SetFlagDefaultAndCurrent("initial_sys_catalog_snapshot_path", candidate_dir));
+      CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(initial_sys_catalog_snapshot_path, candidate_dir));
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";

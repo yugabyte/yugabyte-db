@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_CATALOG_MANAGER_INTERNAL_H
-#define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
+#pragma once
 
 #include "yb/common/wire_protocol.h"
 
@@ -85,4 +84,3 @@ Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
 }  // namespace master
 }  // namespace yb
 
-#endif // YB_MASTER_CATALOG_MANAGER_INTERNAL_H

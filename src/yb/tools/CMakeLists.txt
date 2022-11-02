@@ -226,3 +226,12 @@ endif()
 set(YB_PCH_PREFIX util)
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
+
+set(YB_BACKUP_TEST_BASE_SRCS
+    ${TOOLS_LIB_SRCS_EXTENSIONS})
+set(YB_BACKUP_TEST_BASE_DEPS
+    pg_wrapper_test_base
+    admin-test-base)
+ADD_YB_TEST_LIBRARY(yb-backup-test_base_ent
+                    SRCS ${YB_BACKUP_TEST_BASE_SRCS}
+                    DEPS ${YB_BACKUP_TEST_BASE_DEPS})

@@ -89,7 +89,6 @@ DEFINE_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DECLARE_int32(scanner_batch_size_rows);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
@@ -197,7 +196,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     EXPECT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value");
+    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value. Check stderr for more information.");
     EXPECT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -947,7 +946,6 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 
   // Finally, delete row 2, so we're back to the row 1 checksum.
   ASSERT_NO_FATALS(DeleteTestRowsRemote(key, 1));
-  FLAGS_scanner_batch_size_rows = 100;
   controller.Reset();
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
   ASSERT_NE(total_crc, resp.checksum());

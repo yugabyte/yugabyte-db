@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_TABLE_H
-#define YB_YQL_PGGATE_PG_TABLE_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -67,4 +66,3 @@ class PgTable {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_TABLE_H

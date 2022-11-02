@@ -13,8 +13,7 @@
 //
 // This file contains the classes that represent a QL row and a row block.
 
-#ifndef YB_COMMON_QL_ROWBLOCK_H
-#define YB_COMMON_QL_ROWBLOCK_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -138,4 +137,3 @@ class QLRowBlock {
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_ROWBLOCK_H

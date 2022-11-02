@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_H
-#define YB_TABLET_OPERATIONS_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -43,6 +42,8 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_types.pb.h"
+
+#include "yb/rpc/lightweight_message.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -121,7 +122,7 @@ class Operation {
 
   // Returns the request PB associated with this transaction. May be NULL if the transaction's state
   // has been reset.
-  virtual const google::protobuf::Message* request() const { return nullptr; }
+  virtual const rpc::LightweightMessage* request() const { return nullptr; }
 
   // Sets the ConsensusRound for this transaction, if this transaction is being executed through the
   // consensus system.
@@ -265,12 +266,12 @@ class Operation {
 template <class Request>
 struct RequestTraits {
   static void SetAllocatedRequest(
-      consensus::ReplicateMsg* replicate, Request* request);
+      consensus::LWReplicateMsg* replicate, Request* request);
 
-  static Request* MutableRequest(consensus::ReplicateMsg* replicate);
+  static Request* MutableRequest(consensus::LWReplicateMsg* replicate);
 };
 
-consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
+consensus::LWReplicateMsg* CreateReplicateMsg(Arena* arena, OperationType op_type);
 
 // Request here actually means serializable part of operation state.
 // When creating new XxxOperation class inherited from OperationBase, it is better to declare
@@ -288,7 +289,7 @@ class OperationBase : public Base {
   }
 
   Request* AllocateRequest() {
-    request_holder_ = std::make_unique<Request>();
+    request_holder_ = rpc::MakeSharedMessage<Request>();
     request_.store(request_holder_.get(), std::memory_order_release);
     return request_holder_.get();
   }
@@ -297,25 +298,15 @@ class OperationBase : public Base {
     return request_holder_.get();
   }
 
-  Request* ReleaseRequest() {
-    return request_holder_.release();
-  }
-
-  void TakeRequest(Request* request) {
-    request_holder_.reset(new Request);
+  void TakeRequest(std::shared_ptr<Request> request) {
+    request_holder_ = std::move(request);
     request_.store(request_holder_.get(), std::memory_order_release);
-    request_holder_->Swap(request);
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override {
-    auto result = CreateReplicateMsg(op_type);
-    auto* request = request_holder_.release();
-    if (request) {
-      RequestTraits<Request>::SetAllocatedRequest(result.get(), request);
-    } else {
-      *RequestTraits<Request>::MutableRequest(result.get()) = *request_;
-    }
-    return result;
+    auto result = CreateReplicateMsg(&request_holder_->arena(), op_type);
+    RequestTraits<Request>::SetAllocatedRequest(result, request_holder_.get());
+    return consensus::ReplicateMsgPtr(request_holder_, result);
   }
 
   void UpdateRequestFromConsensusRound() override {
@@ -329,7 +320,7 @@ class OperationBase : public Base {
   }
 
  private:
-  std::unique_ptr<Request> request_holder_;
+  std::shared_ptr<Request> request_holder_;
   std::atomic<const Request*> request_;
 };
 
@@ -385,4 +376,3 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_OPERATION_H

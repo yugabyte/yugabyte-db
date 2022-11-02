@@ -42,12 +42,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
-              "If greater than zero, indicates the maximum amount of time to wait to lock keys "
-              "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
+DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
+    "If greater than zero, indicates the maximum amount of time to wait to lock keys "
+    "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
-TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
 
 DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
               "The amount of time to wait before sending the client of a single shard transaction "
@@ -186,11 +185,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     }
     finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
+      unlocked_ = std::nullopt;
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_ = std::nullopt;;
+    unlocked_ = std::nullopt;
     callback(locks->status());
   }
 
@@ -267,6 +267,10 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 class BlockerData {
  public:
   std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+    VLOG(4) << "Signaling waiters "
+            << (txn_status_response.ok() ?
+                txn_status_response->ToString() :
+                txn_status_response.status().ToString());
     auto txn_status = UnwrapResult(txn_status_response);
     bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
     bool should_signal = !is_txn_pending;

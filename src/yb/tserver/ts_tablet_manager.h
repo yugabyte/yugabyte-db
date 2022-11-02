@@ -32,6 +32,8 @@
 #ifndef YB_TSERVER_TS_TABLET_MANAGER_H
 #define YB_TSERVER_TS_TABLET_MANAGER_H
 
+#pragma once
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -96,6 +98,7 @@ class RaftConfigPB;
 
 namespace tserver {
 class TabletServer;
+class FullCompactionManager;
 
 using rocksdb::MemoryMonitor;
 
@@ -161,6 +164,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* read_pool() const { return read_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
+  ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -333,6 +337,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
+
+  FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
 
   Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
@@ -597,10 +603,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
 
-  // Thread pool for manually triggering compactions for tablets created from a split.
+  // Thread pool for manually triggering full compactions for tablets, either via schedule
+  // of tablets created from a split.
   // This is used by a tablet method to schedule compactions on the child tablets after
   // a split so each tablet has a reference to this pool.
-  std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
+  std::unique_ptr<ThreadPool> full_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
   std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
@@ -646,6 +653,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
+
+  // Background task for periodically scheduling major compactions.
+  std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
+
+  std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
@@ -705,4 +717,5 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
 
 } // namespace tserver
 } // namespace yb
+
 #endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

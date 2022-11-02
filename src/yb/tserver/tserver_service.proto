@@ -35,7 +35,6 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
-import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/tablet/tablet_types.proto";
@@ -85,9 +84,6 @@ service TabletServerService {
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
 
   rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
-
-  // Takes precreated transaction from this tserver.
-  rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
 
   rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
 
@@ -291,14 +287,6 @@ message UpdateTransactionStatusLocationRequestPB {
 message UpdateTransactionStatusLocationResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
-}
-
-message TakeTransactionRequestPB {
-  optional bool is_global = 1;
-}
-
-message TakeTransactionResponsePB {
-  optional TransactionMetadataPB metadata = 1;
 }
 
 message GetSplitKeyRequestPB {

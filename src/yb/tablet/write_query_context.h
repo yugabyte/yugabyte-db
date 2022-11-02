@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_WRITE_QUERY_CONTEXT_H
-#define YB_TABLET_WRITE_QUERY_CONTEXT_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 
@@ -33,4 +32,3 @@ class WriteQueryContext {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_WRITE_QUERY_CONTEXT_H

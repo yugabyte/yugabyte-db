@@ -184,8 +184,8 @@ Status PromoteAutoFlags(
 
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
-  auto operation =
-      std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /*tablet*/, &new_config);
+  auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
+  *operation->AllocateRequest() = new_config;
   CountDownLatch latch(1);
   operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));

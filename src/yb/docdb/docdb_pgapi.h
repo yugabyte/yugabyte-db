@@ -21,8 +21,7 @@
 // The implementation for these should typically call (and/or extend) either the PG/YSQL C API
 // from pgapi.h or  directly the pggate C++ API.
 
-#ifndef YB_DOCDB_DOCDB_PGAPI_H_
-#define YB_DOCDB_DOCDB_PGAPI_H_
+#pragma once
 
 #include <map>
 #include <unordered_map>
@@ -118,4 +117,3 @@ Status SetValueFromQLBinaryHelper(
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_DOCDB_PGAPI_H_

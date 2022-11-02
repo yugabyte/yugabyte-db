@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COMMON_FWD_H
-#define YB_COMMON_COMMON_FWD_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -87,4 +86,3 @@ class Jsonb;
 
 } // namespace yb
 
-#endif // YB_COMMON_COMMON_FWD_H

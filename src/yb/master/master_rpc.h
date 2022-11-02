@@ -30,8 +30,7 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef YB_MASTER_MASTER_RPC_H
-#define YB_MASTER_MASTER_RPC_H
+#pragma once
 
 #include <stdint.h>
 #include <string.h>
@@ -158,4 +157,3 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 } // namespace master
 } // namespace yb
 
-#endif /* YB_MASTER_MASTER_RPC_H */

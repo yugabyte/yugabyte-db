@@ -71,7 +71,7 @@ The following steps show how to meet these prerequisites:
 
   Note that GKE is usually two or three major releases behind the upstream or OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions.
 
-- Ensure that `helm` is installed. 
+- Ensure that `helm` is installed.
 
   First, check the Helm version, as follows:
 
@@ -234,7 +234,7 @@ kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-d
 
 ## Connect using external clients
 
-To connect an external program, get the load balancer `EXTERNAL-IP` IP address of the `yb-tserver-service` service and connect to the 5433 pr 9042 ports for YSQL or YCQL services respectively:
+To connect an external program, get the load balancer `EXTERNAL-IP` address of the `yb-tserver-service` service and connect using port 5433 for YSQL or port 9042 for YCQL, as follows:
 
 ```sh
 kubectl get services --namespace yb-demo

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
-#define YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
+#pragma once
 
 #include "yb/encryption/encryption_fwd.h"
 
@@ -26,4 +25,3 @@ std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
 } // namespace yb
 
 
-#endif // YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_WRITER_H
-#define YB_MASTER_SYS_CATALOG_WRITER_H
+#pragma once
 
 #include <set>
 #include <utility>
@@ -134,4 +133,3 @@ Status ReadNextSysCatalogRow(
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_SYS_CATALOG_WRITER_H

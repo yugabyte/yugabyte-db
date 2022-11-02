@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_COORDINATOR_H
-#define YB_TABLET_TRANSACTION_COORDINATOR_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -68,7 +67,7 @@ class TransactionCoordinatorContext {
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) = 0;
+      std::shared_ptr<LWTransactionStatePB> request) = 0;
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
@@ -97,7 +96,7 @@ class TransactionCoordinator {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
 
@@ -108,7 +107,7 @@ class TransactionCoordinator {
   Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
 
     std::string ToString() const;
@@ -164,4 +163,3 @@ class TransactionCoordinator {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TRANSACTION_COORDINATOR_H

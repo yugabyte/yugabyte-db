@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_RETRYABLE_REQUEST_H
-#define YB_COMMON_RETRYABLE_REQUEST_H
+#pragma once
 
 #include <float.h>
 #include <stdint.h>
@@ -54,4 +53,3 @@ using MinRunningRequestIdStatusData = StatusErrorCodeImpl<MinRunningRequestIdTag
 
 }  // namespace yb
 
-#endif  // YB_COMMON_RETRYABLE_REQUEST_H

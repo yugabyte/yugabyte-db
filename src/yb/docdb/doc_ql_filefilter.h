@@ -13,8 +13,7 @@
 
 // Utilities for encoding and decoding key/value pairs that are used in the DocDB code.
 
-#ifndef YB_DOCDB_DOC_QL_FILEFILTER_H
-#define YB_DOCDB_DOC_QL_FILEFILTER_H
+#pragma once
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/db/compaction.h"
@@ -42,4 +41,3 @@ class QLRangeBasedFileFilter : public rocksdb::ReadFileFilter {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_QL_FILEFILTER_H

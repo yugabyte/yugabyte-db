@@ -160,7 +160,7 @@ public class BackupTableYbc extends YbcTaskBase {
       if (taskParams().baseBackupUUID != taskParams().backupUuid) {
         Backup baseBackup =
             Backup.getOrBadRequest(taskParams().customerUuid, taskParams().baseBackupUUID);
-        baseBackup.onIncrementCompletion(backup.getExpiry(), totalSizeinBytes);
+        baseBackup.onIncrementCompletion(backup.getCreateTime(), totalSizeinBytes);
         // Unset expiry time for increment, only the base backup's expiry is what we need.
         backup.onCompletion(totalTimeTaken, totalSizeinBytes, true);
       } else {

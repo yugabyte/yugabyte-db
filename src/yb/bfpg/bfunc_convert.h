@@ -27,8 +27,7 @@
 // See the header of file "/util/bfpg/bfpg.h" for overall info.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFUNC_CONVERT_H_
-#define YB_BFPG_BFUNC_CONVERT_H_
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -768,4 +767,3 @@ Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
 } // namespace bfpg
 } // namespace yb
 
-#endif  // YB_BFPG_BFUNC_CONVERT_H_

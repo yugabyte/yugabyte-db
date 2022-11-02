@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_SERVICE_H
-#define YB_RPC_RPC_SERVICE_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -67,4 +66,3 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_SERVICE_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_SESSION_H
-#define YB_CLIENT_SESSION_H
+#pragma once
 
 #include <future>
 #include <unordered_set>
@@ -288,4 +287,3 @@ bool ShouldSessionRetryError(const Status& status);
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_SESSION_H

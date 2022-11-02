@@ -107,6 +107,10 @@ message KvStoreInfoPB {
   optional bool has_been_fully_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
+
+  // Uint64 representation of a HybridTime indicating the last time the tablet was fully
+  // compacted. Defaults to 0 (i.e. HybridTime::kMin).
+  optional uint64 last_full_compaction_time = 10;
 }
 
 // The super-block keeps track of the Raft group.

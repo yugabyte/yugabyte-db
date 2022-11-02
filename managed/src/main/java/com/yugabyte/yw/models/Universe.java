@@ -12,7 +12,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -214,6 +214,9 @@ public class Universe extends Model {
 
   // Prefix added to read only node.
   public static final String READONLY = "-readonly";
+
+  // Prefix added to addon node.
+  public static final String ADDON = "-addon";
 
   // Prefix added to node Index of each read replica node.
   public static final String NODEIDX_PREFIX = "-n";

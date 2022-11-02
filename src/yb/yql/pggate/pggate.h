@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PGGATE_H_
-#define YB_YQL_PGGATE_PGGATE_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -38,6 +37,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 
@@ -149,10 +149,8 @@ class PgApiImpl {
 
   Result<bool> IsInitDbDone();
 
-  Result<uint64_t> GetSharedCatalogVersion();
-  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
-  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
-  Result<uint64_t> GetSharedAuthKey();
+  Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
+  uint64_t GetSharedAuthKey() const;
 
   // Setup the table to store sequences data.
   Status CreateSequencesDataTable();
@@ -317,11 +315,8 @@ class PgApiImpl {
 
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
-  Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
-
-  Status SetDBCatalogCacheVersion(PgStatement *handle,
-                                  uint32_t db_oid,
-                                  uint64_t catalog_cache_version);
+  Status SetCatalogCacheVersion(
+      PgStatement *handle, uint64_t version, std::optional<PgOid> db_oid = std::nullopt);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
@@ -632,7 +627,7 @@ class PgApiImpl {
   scoped_refptr<server::HybridClock> clock_;
 
   // Local tablet-server shared memory segment handle.
-  std::unique_ptr<tserver::TServerSharedObject> tserver_shared_object_;
+  tserver::TServerSharedObject tserver_shared_object_;
 
   YBCPgCallbacks pg_callbacks_;
 
@@ -644,9 +639,9 @@ class PgApiImpl {
   scoped_refptr<PgSession> pg_session_;
   std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
+  std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
 };
 
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PGGATE_H_

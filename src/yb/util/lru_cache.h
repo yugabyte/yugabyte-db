@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_LRU_CACHE_H
-#define YB_UTIL_LRU_CACHE_H
+#pragma once
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -84,4 +83,3 @@ class LRUCache {
 
 } // namespace yb
 
-#endif // YB_UTIL_LRU_CACHE_H

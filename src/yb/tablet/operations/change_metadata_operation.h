@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
-#define YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -42,6 +41,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
 
 #include "yb/tserver/tserver_fwd.h"
@@ -61,12 +61,12 @@ class TabletPeer;
 // Keeps track of the Operation states (request, result, ...)
 class ChangeMetadataOperation
     : public ExclusiveSchemaOperation<OperationType::kChangeMetadata,
-                                      ChangeMetadataRequestPB> {
+                                      LWChangeMetadataRequestPB> {
  public:
   ChangeMetadataOperation(TabletPtr tablet, log::Log* log,
-                          const ChangeMetadataRequestPB* request = nullptr);
+                          const LWChangeMetadataRequestPB* request = nullptr);
 
-  explicit ChangeMetadataOperation(const ChangeMetadataRequestPB* request);
+  explicit ChangeMetadataOperation(const LWChangeMetadataRequestPB* request);
 
   ~ChangeMetadataOperation();
 
@@ -79,7 +79,7 @@ class ChangeMetadataOperation
     return index_map_;
   }
 
-  std::string new_table_name() const {
+  Slice new_table_name() const {
     return request()->new_table_name();
   }
 
@@ -103,7 +103,7 @@ class ChangeMetadataOperation
     return request()->has_alter_table_id();
   }
 
-  const std::string& table_id() const {
+  Slice table_id() const {
     return request()->alter_table_id();
   }
 
@@ -142,4 +142,3 @@ Status SyncReplicateChangeMetadataOperation(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_OPERATIONS_CHANGE_METADATA_OPERATION_H

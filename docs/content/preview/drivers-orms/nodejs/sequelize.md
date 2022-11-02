@@ -212,4 +212,4 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
 
 ## Next steps
 
-Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB

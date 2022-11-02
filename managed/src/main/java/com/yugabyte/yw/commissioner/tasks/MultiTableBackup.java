@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -83,6 +84,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     tableBackupParams.ignoreErrors = true;
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
@@ -240,6 +242,14 @@ public class MultiTableBackup extends UniverseTaskBase {
 
         // Clear previous subtasks if any.
         getRunnableTask().reset();
+
+        if (cloudType != CloudType.kubernetes) {
+          // Ansible Configure Task for copying xxhsum binaries from
+          // third_party directory to the DB nodes.
+          installThirdPartyPackagesTask(params().universeUUID, universe)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
+        }
+
         if (params().alterLoadBalancer) {
           createLoadBalancerStateChangeTask(false)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

@@ -11,8 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
-#define YB_CONSENSUS_STATE_CHANGE_CONTEXT_H
+#pragma once
+
+#include "yb/consensus/consensus.messages.h"
 
 namespace yb {
 namespace consensus {
@@ -35,10 +36,10 @@ struct StateChangeContext {
   }
 
   StateChangeContext(StateChangeReason in_reason,
-                     ChangeConfigRecordPB change_rec,
+                     const LWChangeConfigRecordPB& change_rec,
                      std::string remove = "")
       : reason(in_reason),
-        change_record(change_rec),
+        change_record(change_rec.ToGoogleProtobuf()),
         remove_uuid(remove) {
   }
 
@@ -94,4 +95,3 @@ struct StateChangeContext {
 } // namespace consensus
 } // namespace yb
 
-#endif // YB_CONSENSUS_STATE_CHANGE_CONTEXT_H

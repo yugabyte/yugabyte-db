@@ -82,7 +82,7 @@ $ make install
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../develop/build-apps/csharp/ysql/).
+For a tutorial on building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
 
 #### Install the driver
 
@@ -154,11 +154,11 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 [Vert.x PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with basic APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
-For a tutorial on building a sample Java application with the Vert.x PG Client, see [Build a Java application](../../../develop/build-apps/java/ysql-vertx-pg-client/).
+For a tutorial on building a sample Java application with the Vert.x PG Client, see [Connect an application](../../../drivers-orms/java/ysql-vertx-pg-client/).
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository of Vert.x PG Client](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client).
 
-## Node.JS
+## Node.js
 
 ### node-postgres
 
@@ -166,7 +166,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a sample Node.js application with node-postgres, see [Build a Node.js application](../../../develop/build-apps/nodejs/ysql-pg/).
+For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../../../drivers-orms/nodejs/yugabyte-node-driver/).
 
 #### Install the node-postgres (pg) driver
 
@@ -204,7 +204,7 @@ CentOS users can install the driver using the `sudo yum install php-pgsql` comma
 
 For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses psycopg2, see [Build a Python application](../../../develop/build-apps/python/ysql-psycopg2).
+For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../../../drivers-orms/python/postgres-psycopg2/).
 
 #### Install the psycopg2 binary
 
@@ -218,7 +218,7 @@ $ pip3 install psycopg2-binary
 
 [aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using aiopg, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses aiopg, see [Build a Python application](../../../develop/build-apps/python/ysql-aiopg).
+For a tutorial on building a sample Python application that uses aiopg, see [YSQL Aiopg](../../../integrations/aiopg/).
 
 #### Install
 

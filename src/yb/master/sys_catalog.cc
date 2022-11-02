@@ -78,6 +78,7 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -578,8 +579,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->auto_flags_manager(),
-      // We don't support splitting the catalog tablet, these fields are unneeded.
-      .post_split_compaction_pool = nullptr,
+      // We won't be doing full compactions on the catalog tablet.
+      .full_compaction_pool = nullptr,
+      // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr
   };
   tablet::BootstrapTabletData data = {
@@ -1673,9 +1675,11 @@ Status SysCatalogTable::CopyPgsqlTables(
   return Status::OK();
 }
 
-Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
-  tablet_peer()->tablet_metadata()->RemoveTable(table_id);
-  return Status::OK();
+Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id, int64_t term) {
+  tablet::ChangeMetadataRequestPB change_req;
+  change_req.set_tablet_id(kSysCatalogTabletId);
+  change_req.set_remove_table_id(table_id);
+  return tablet::SyncReplicateChangeMetadataOperation(&change_req, tablet_peer().get(), term);
 }
 
 const Schema& SysCatalogTable::schema() {

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_RPC_WITH_CALL_ID_H
-#define YB_RPC_RPC_WITH_CALL_ID_H
+#pragma once
 
 #include <stdint.h>
 
@@ -62,4 +61,3 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_RPC_WITH_CALL_ID_H

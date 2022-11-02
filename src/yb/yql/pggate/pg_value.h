@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_VALUE_H_
-#define YB_YQL_PGGATE_PG_VALUE_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -44,4 +43,3 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
 }  // namespace pggate
 }  // namespace yb
 
-#endif // YB_YQL_PGGATE_PG_VALUE_H_

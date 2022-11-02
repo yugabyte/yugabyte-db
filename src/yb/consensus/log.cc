@@ -48,6 +48,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
@@ -99,22 +100,20 @@ using namespace std::placeholders;
 
 // Log retention configuration.
 // -----------------------------
-DEFINE_int32(log_min_segments_to_retain, 2,
-             "The minimum number of past log segments to keep at all times,"
-             " regardless of what is required for durability. "
-             "Must be at least 1.");
-TAG_FLAG(log_min_segments_to_retain, runtime);
+DEFINE_RUNTIME_int32(log_min_segments_to_retain, 2,
+    "The minimum number of past log segments to keep at all times,"
+    " regardless of what is required for durability. "
+    "Must be at least 1.");
 TAG_FLAG(log_min_segments_to_retain, advanced);
 
-DEFINE_int32(log_min_seconds_to_retain, 900,
-             "The minimum number of seconds for which to keep log segments to keep at all times, "
-             "regardless of what is required for durability. Logs may be still retained for "
-             "a longer amount of time if they are necessary for correct restart. This should be "
-             "set long enough such that a tablet server which has temporarily failed can be "
-             "restarted within the given time period. If a server is down for longer than this "
-             "amount of time, it is possible that its tablets will be re-replicated on other "
-             "machines.");
-TAG_FLAG(log_min_seconds_to_retain, runtime);
+DEFINE_RUNTIME_int32(log_min_seconds_to_retain, 900,
+    "The minimum number of seconds for which to keep log segments to keep at all times, "
+    "regardless of what is required for durability. Logs may be still retained for "
+    "a longer amount of time if they are necessary for correct restart. This should be "
+    "set long enough such that a tablet server which has temporarily failed can be "
+    "restarted within the given time period. If a server is down for longer than this "
+    "amount of time, it is possible that its tablets will be re-replicated on other "
+    "machines.");
 TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Flag to enable background log sync. When enabled, we DON'T wait for performing fsync until
@@ -142,15 +141,13 @@ DEFINE_double(log_background_sync_interval_fraction, 0.6,
 
 
 // Flags for controlling kernel watchdog limits.
-DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
-             "If calling consensus log callback(s) take longer than this, the kernel watchdog "
-             "will print out a stack trace.");
-TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, runtime);
+DEFINE_RUNTIME_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
+    "If calling consensus log callback(s) take longer than this, the kernel watchdog "
+    "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, advanced);
-DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 1000,
-             "If consensus log append takes longer than this, the kernel watchdog "
-             "will print out a stack trace.");
-TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, runtime);
+DEFINE_RUNTIME_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 1000,
+    "If consensus log append takes longer than this, the kernel watchdog "
+    "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, advanced);
 
 // Fault/latency injection flags.
@@ -245,9 +242,9 @@ bool IsMarkerType(LogEntryTypePB type) {
 
 // This class represents a batch of operations to be written and synced to the log. It is opaque to
 // the user and is managed by the Log class.
-class LogEntryBatch {
+class Log::LogEntryBatch {
  public:
-  LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb);
+  LogEntryBatch(LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch_pb);
   ~LogEntryBatch();
 
   std::string ToString() const {
@@ -311,12 +308,10 @@ class LogEntryBatch {
   // The highest OpId of a REPLICATE message in this batch.
   OpId MaxReplicateOpId() const {
     DCHECK_EQ(REPLICATE, type_);
-    int idx = entry_batch_pb_.entry_size() - 1;
-    if (idx < 0) {
+    if (entry_batch_pb_->entry().empty()) {
       return OpId::Invalid();
     }
-    DCHECK(entry_batch_pb_.entry(idx).replicate().IsInitialized());
-    return OpId::FromPB(entry_batch_pb_.entry(idx).replicate().id());
+    return OpId::FromPB(entry_batch_pb_->entry().back().replicate().id());
   }
 
   void SetReplicates(const ReplicateMsgs& replicates) {
@@ -327,10 +322,10 @@ class LogEntryBatch {
   const LogEntryTypePB type_;
 
   // Contents of the log entries that will be written to disk.
-  LogEntryBatchPB entry_batch_pb_;
+  std::shared_ptr<LWLogEntryBatchPB> entry_batch_pb_;
 
   // Total size in bytes of all entries
-  uint32_t total_size_bytes_ = 0;
+  size_t total_size_bytes_ = 0;
 
   // Number of entries in 'entry_batch_pb_'
   const size_t count_;
@@ -756,11 +751,9 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-void Log::Reserve(LogEntryTypePB type,
-                    LogEntryBatchPB* entry_batch,
-                    LogEntryBatch** reserved_entry) {
+std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
+    LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch) {
   TRACE_EVENT0("log", "Log::Reserve");
-  DCHECK(reserved_entry != nullptr);
   {
     SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
     CHECK_EQ(kLogWriting, log_state_);
@@ -769,12 +762,12 @@ void Log::Reserve(LogEntryTypePB type,
   // In DEBUG builds, verify that all of the entries in the batch match the specified type.  In
   // non-debug builds the foreach loop gets optimized out.
 #ifndef NDEBUG
-  for (const LogEntryPB& entry : entry_batch->entry()) {
-    DCHECK_EQ(entry.type(), type) << "Bad batch: " << entry_batch->DebugString();
+  for (const auto& entry : entry_batch->entry()) {
+    DCHECK_EQ(entry.type(), type) << "Bad batch: " << entry_batch->ShortDebugString();
   }
 #endif
 
-  auto new_entry_batch = std::make_unique<LogEntryBatch>(type, std::move(*entry_batch));
+  auto new_entry_batch = std::make_unique<LogEntryBatch>(type, std::move(entry_batch));
   new_entry_batch->MarkReserved();
 
   // Release the memory back to the caller: this will be freed when
@@ -782,16 +775,19 @@ void Log::Reserve(LogEntryTypePB type,
   //
   // TODO (perf) Use a ring buffer instead of a blocking queue and set
   // 'reserved_entry' to a pre-allocated slot in the buffer.
-  *reserved_entry = new_entry_batch.release();
+  return new_entry_batch;
 }
 
-Status Log::TEST_AsyncAppendWithReplicates(
-    LogEntryBatch* entry, const ReplicateMsgs& replicates, const StatusCallback& callback) {
+Status Log::TEST_ReserveAndAppend(
+    std::shared_ptr<LWLogEntryBatchPB> batch, const ReplicateMsgs& replicates,
+    const StatusCallback& callback) {
+  auto entry = Reserve(REPLICATE, std::move(batch));
   entry->SetReplicates(replicates);
-  return AsyncAppend(entry, callback);
+  return AsyncAppend(std::move(entry), callback);
 }
 
-Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callback) {
+Status Log::AsyncAppend(
+    std::unique_ptr<LogEntryBatch> entry_batch, const StatusCallback& callback) {
   {
     SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
     CHECK_EQ(kLogWriting, log_state_);
@@ -804,13 +800,14 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
     last_submitted_op_id_ = entry_batch->MaxReplicateOpId();
   }
 
-  auto submit_status = appender_->Submit(entry_batch);
+  auto submit_status = appender_->Submit(entry_batch.get());
   if (PREDICT_FALSE(!submit_status.ok())) {
     LOG_WITH_PREFIX(WARNING)
         << "Failed to submit batch " << entry_batch->MaxReplicateOpId() << ": " << submit_status;
-    delete entry_batch;
     return kLogShutdownStatus;
   }
+
+  entry_batch.release();
 
   return Status::OK();
 }
@@ -820,27 +817,23 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
   if (!committed_op_id.empty()) {
-    committed_op_id.ToPB(batch.mutable_committed_op_id());
+    committed_op_id.ToPB(batch->mutable_committed_op_id());
   }
   // Set batch mono time if it was specified.
   if (batch_mono_time != RestartSafeCoarseTimePoint()) {
-    batch.set_mono_time(batch_mono_time.ToUInt64());
+    batch->set_mono_time(batch_mono_time.ToUInt64());
   }
 
-  LogEntryBatch* reserved_entry_batch;
-  Reserve(REPLICATE, &batch, &reserved_entry_batch);
+  auto reserved_entry_batch = Reserve(LogEntryTypePB::REPLICATE, std::move(batch));
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
   reserved_entry_batch->SetReplicates(msgs);
 
-  RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, callback));
-  return Status::OK();
+  return AsyncAppend(std::move(reserved_entry_batch), callback);
 }
 
-Status Log::DoAppend(LogEntryBatch* entry_batch,
-                     bool caller_owns_operation,
-                     bool skip_wal_write) {
+Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
   if (!skip_wal_write) {
     RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
@@ -908,14 +901,6 @@ Status Log::DoAppend(LogEntryBatch* entry_batch,
   CHECK_OK(UpdateIndexForBatch(*entry_batch));
   UpdateFooterForBatch(entry_batch);
 
-  // We expect the caller to free the actual entries if caller_owns_operation is set.
-  if (caller_owns_operation) {
-    for (int i = 0; i < entry_batch->entry_batch_pb_.entry_size(); i++) {
-      LogEntryPB* entry_pb = entry_batch->entry_batch_pb_.mutable_entry(i);
-      entry_pb->release_replicate();
-    }
-  }
-
   return Status::OK();
 }
 
@@ -924,13 +909,12 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch) {
     return Status::OK();
   }
 
-  for (const LogEntryPB& entry_pb : batch.entry_batch_pb_.entry()) {
-    LogIndexEntry index_entry;
-
-    index_entry.op_id = yb::OpId::FromPB(entry_pb.replicate().id());
-    index_entry.segment_sequence_number = batch.active_segment_sequence_number_;
-    index_entry.offset_in_segment = batch.offset_;
-    RETURN_NOT_OK(log_index_->AddEntry(index_entry));
+  for (const auto& entry_pb : batch.entry_batch_pb_->entry()) {
+    RETURN_NOT_OK(log_index_->AddEntry(LogIndexEntry {
+      .op_id = OpId::FromPB(entry_pb.replicate().id()),
+      .segment_sequence_number = batch.active_segment_sequence_number_,
+      .offset_in_segment = batch.offset_,
+    }));
   }
   return Status::OK();
 }
@@ -942,7 +926,7 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
   // startup.  We also retrieve the OpId of the first operation in the batch so that, if we roll
   // over to a new segment, we set the first operation in the footer immediately.
   // Update the index bounds for the current segment.
-  for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
+  for (const auto& entry_pb : batch->entry_batch_pb_->entry()) {
     UpdateSegmentFooterIndexes(entry_pb.replicate(), &footer_builder_);
   }
   if (footer_builder_.has_min_replicate_index()) {
@@ -952,9 +936,9 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 
 Status Log::AllocateSegmentAndRollOver() {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
-  auto* reserved_entry_batch = ReserveMarker(ROLLOVER_MARKER);
+  auto reserved_entry_batch = ReserveMarker(ROLLOVER_MARKER);
   Synchronizer s;
-  RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
+  RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();
 }
 
@@ -1230,16 +1214,16 @@ void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
   }
 }
 
-Status Log::Append(LogEntryPB* phys_entry,
-                   LogEntryMetadata entry_metadata,
-                   bool skip_wal_write) {
-  LogEntryBatchPB entry_batch_pb;
+Status Log::Append(
+     const std::shared_ptr<LWLogEntryPB>& phys_entry, LogEntryMetadata entry_metadata,
+     SkipWalWrite skip_wal_write) {
+  auto& entry_batch_pb = *phys_entry->arena().NewObject<LWLogEntryBatchPB>(&phys_entry->arena());
   if (entry_metadata.entry_time != RestartSafeCoarseTimePoint()) {
     entry_batch_pb.set_mono_time(entry_metadata.entry_time.ToUInt64());
   }
 
-  entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
-  LogEntryBatch entry_batch(phys_entry->type(), std::move(entry_batch_pb));
+  entry_batch_pb.mutable_entry()->push_back_ref(phys_entry.get());
+  LogEntryBatch entry_batch(phys_entry->type(), {phys_entry, &entry_batch_pb});
   // Mark this as reserved, as we're building it from preallocated data.
   entry_batch.state_ = LogEntryBatch::kEntryReserved;
   // Ready assumes the data is reserved before it is ready.
@@ -1249,28 +1233,25 @@ Status Log::Append(LogEntryPB* phys_entry,
     entry_batch.offset_ = entry_metadata.offset;
     entry_batch.active_segment_sequence_number_ = entry_metadata.active_segment_sequence_number;
   }
-  Status s = DoAppend(&entry_batch, false, skip_wal_write);
+  Status s = DoAppend(&entry_batch, skip_wal_write);
   if (s.ok() && !skip_wal_write) {
     // Only sync if we actually performed a wal write.
     s = Sync();
   }
-  entry_batch.entry_batch_pb_.mutable_entry()->ExtractSubrange(0, 1, nullptr);
   return s;
 }
 
-LogEntryBatch* Log::ReserveMarker(LogEntryTypePB type) {
-  LogEntryBatchPB entry_batch;
-  entry_batch.add_entry()->set_type(type);
-  LogEntryBatch* reserved_entry_batch;
-  Reserve(type, &entry_batch, &reserved_entry_batch);
-  return reserved_entry_batch;
+std::unique_ptr<Log::LogEntryBatch> Log::ReserveMarker(LogEntryTypePB type) {
+  auto entry_batch = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
+  entry_batch->add_entry()->set_type(type);
+  return Reserve(type, std::move(entry_batch));
 }
 
 Status Log::WaitUntilAllFlushed() {
   // In order to make sure we empty the queue we need to use the async API.
-  auto* reserved_entry_batch = ReserveMarker(FLUSH_MARKER);
+  auto reserved_entry_batch = ReserveMarker(FLUSH_MARKER);
   Synchronizer s;
-  RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
+  RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();
 }
 
@@ -1538,7 +1519,7 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
   auto read_entries = segment->ReadEntries();
   RETURN_NOT_OK(read_entries.status);
 
-  const auto has_replicate = [](const std::unique_ptr<LogEntryPB>& entry) {
+  const auto has_replicate = [](const auto& entry) {
     return entry->has_replicate();
   };
   const auto first_replicate =
@@ -1854,39 +1835,32 @@ Log::~Log() {
 // ------------------------------------------------------------------------------------------------
 // LogEntryBatch
 
-LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_pb)
+Log::LogEntryBatch::LogEntryBatch(
+    LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch_pb)
     : type_(type),
       entry_batch_pb_(std::move(entry_batch_pb)),
-      count_(entry_batch_pb_.entry().size()) {
+      count_(entry_batch_pb_->entry().size()) {
   if (!IsMarkerType(type_)) {
-    DCHECK_NE(entry_batch_pb_.mono_time(), 0);
+    DCHECK_NE(entry_batch_pb_->mono_time(), 0);
   }
 }
 
-LogEntryBatch::~LogEntryBatch() {
-  // ReplicateMsg objects are pointed to by LogEntryBatchPB but are really owned by shared pointers
-  // in replicates_. To avoid double freeing, release them from the protobuf.
-  for (auto& entry : *entry_batch_pb_.mutable_entry()) {
-    if (entry.has_replicate()) {
-      entry.release_replicate();
-    }
-  }
-}
+Log::LogEntryBatch::~LogEntryBatch() = default;
 
-void LogEntryBatch::MarkReserved() {
+void Log::LogEntryBatch::MarkReserved() {
   DCHECK_EQ(state_, kEntryInitialized);
   state_ = kEntryReserved;
 }
 
-bool LogEntryBatch::IsMarker() const {
-  return count() == 1 && IsMarkerType(entry_batch_pb_.entry(0).type());
+bool Log::LogEntryBatch::IsMarker() const {
+  return count() == 1 && IsMarkerType(entry_batch_pb_->entry().front().type());
 }
 
-bool LogEntryBatch::IsSingleEntryOfType(LogEntryTypePB type) const {
-  return count() == 1 && entry_batch_pb_.entry(0).type() == type;
+bool Log::LogEntryBatch::IsSingleEntryOfType(LogEntryTypePB type) const {
+  return count() == 1 && entry_batch_pb_->entry().front().type() == type;
 }
 
-Status LogEntryBatch::Serialize() {
+Status Log::LogEntryBatch::Serialize() {
   DCHECK_EQ(state_, kEntryReady);
   buffer_.clear();
   // *_MARKER LogEntries are markers and are not serialized.
@@ -1895,17 +1869,16 @@ Status LogEntryBatch::Serialize() {
     state_ = kEntrySerialized;
     return Status::OK();
   }
-  DCHECK_NE(entry_batch_pb_.mono_time(), 0);
-  total_size_bytes_ = entry_batch_pb_.ByteSize();
-  buffer_.reserve(total_size_bytes_);
-
-  RETURN_NOT_OK(pb_util::AppendToString(entry_batch_pb_, &buffer_));
+  SCHECK_NE(entry_batch_pb_->mono_time(), 0ULL, IllegalState, "Mono time should be specified");
+  total_size_bytes_ = entry_batch_pb_->SerializedSize();
+  buffer_.resize(total_size_bytes_);
+  entry_batch_pb_->SerializeToArray(buffer_.data());
 
   state_ = kEntrySerialized;
   return Status::OK();
 }
 
-void LogEntryBatch::MarkReady() {
+void Log::LogEntryBatch::MarkReady() {
   DCHECK_EQ(state_, kEntryReserved);
   state_ = kEntryReady;
 }

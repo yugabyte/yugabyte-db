@@ -50,6 +50,52 @@ disk_usage:
         "node_filesystem_size_bytes": "size"
       ticksuffix: "&nbsp;GB"
 
+disk_usage_percent:
+  metric: "disk_used_size_total/disk_capacity_size_total"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "disk_used_size_total/disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+
+disk_used_size_total:
+  metric: "node_filesystem_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  layout:
+    title: "Disk Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+
+disk_capacity_size_total:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  layout:
+    title: "Disk Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_size_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
 cpu_usage:
   metric: "node_cpu_usage_avg"
   function: "avg_over_time|avg"
@@ -188,6 +234,20 @@ container_volume_max_usage:
       ticksuffix: "&nbsp;GB"
       alias:
         "kubelet_volume_stats_capacity_bytes": "used"
+
+container_volume_usage_percent:
+  metric: "container_volume_stats/container_volume_max_usage"
+  filters:
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
+  layout:
+    title: "Persistent Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_volume_stats/container_volume_max_usage": "Container Usage"
+      ticksuffix: "&nbsp;%"
 
 network_bytes:
   metric: ""
@@ -2750,6 +2810,35 @@ master_lsm_rocksdb_compaction_time:
         "rocksdb_compaction_times_micros.avg": "Avg"
       ticksuffix: "&nbsp;\u00B5s"
 
+table_write_latency:
+  metric: "ql_write_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_write_rps:
+  metric: "ql_write_latency_count"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency_count": "Write"
+
 table_read_latency:
   metric: "ql_read_latency.avg"
   function: "rate|avg"
@@ -2931,3 +3020,36 @@ table_block_cache_hit_miss:
       alias:
         "rocksdb_block_cache_hit": "Hit"
         "rocksdb_block_cache_miss": "Miss"
+
+tablet_splitting_stats:
+  metric: ""
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "ts_split_op_added|ts_split_op_apply|ts_split_compaction_added|ts_post_split_compaction_added"
+  group_by: saved_name
+  panel_group: "RocksDB"
+  layout:
+    title: "Tablet Splitting Operations"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_split_op_added": "Add"
+        "ts_split_op_apply": "Apply"
+        "ts_split_compaction_added": "Compaction"
+        "ts_post_split_compaction_added": "Compaction"
+
+automatic_split_manager_time:
+  metric: "automatic_split_manager_time"
+  function: "rate|avg"
+  range: true
+  panel_group: "RocksDB"
+  layout:
+    "title": "Automatic Split"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "automatic_split_manager_time": "Split"
+      ticksuffix: "&nbsp;ms"

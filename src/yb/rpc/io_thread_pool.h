@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_IO_THREAD_POOL_H
-#define YB_RPC_IO_THREAD_POOL_H
+#pragma once
 
 #include <memory>
 #include <functional>
@@ -44,4 +43,3 @@ class IoThreadPool {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_IO_THREAD_POOL_H

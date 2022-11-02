@@ -18,14 +18,17 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/kv_debug.h"
+#include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/bitmap.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
 
@@ -116,7 +119,7 @@ void PutApplyState(
 } // namespace
 
 NonTransactionalWriter::NonTransactionalWriter(
-    std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch, HybridTime hybrid_time)
+    std::reference_wrapper<const docdb::LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time)
     : put_batch_(put_batch), hybrid_time_(hybrid_time) {
 }
 
@@ -144,7 +147,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     CHECK(s.ok())
         << "Failed decoding key: " << s.ToString() << "; "
         << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-        << "value: " << FormatBytesAsStr(kv_pair.value());
+        << "value: " << kv_pair.value().ToDebugHexString();
 #endif
 
     // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
@@ -173,7 +176,7 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 }
 
 TransactionalWriter::TransactionalWriter(
-    std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch,
+    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch,
     HybridTime hybrid_time,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
@@ -211,7 +214,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       Slice(&txn_value_type, 1),
       transaction_id_.AsSlice(),
     };
-    auto data_copy = *metadata_to_store_;
+    yb::LWTransactionMetadataPB data_copy(&metadata_to_store_->arena(), *metadata_to_store_);
     // We use hybrid time only for backward compatibility, actually wall time is required.
     data_copy.set_metadata_write_time(GetCurrentTimeMicros());
     auto value = data_copy.SerializeAsString();
@@ -315,9 +318,23 @@ Status TransactionalWriter::Finish() {
 
   DocHybridTimeBuffer doc_ht_buffer;
 
-  std::array<Slice, 2> value = {{
+  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
+  SubTransactionId big_endian_subtxn_id;
+  Slice subtransaction_marker;
+  Slice subtransaction_id;
+  if (subtransaction_id_ > kMinSubTransactionId) {
+    subtransaction_marker = Slice(&subtransaction_value_type, 1);
+    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
+    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
+  } else {
+    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
+  }
+
+  std::array<Slice, 4> value = {{
       Slice(&transaction_id_value_type, 1),
       transaction_id_.AsSlice(),
+      subtransaction_marker,
+      subtransaction_id,
   }};
 
   if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
@@ -340,7 +357,7 @@ Status TransactionalWriter::Finish() {
 
 Status TransactionalWriter::AddWeakIntent(
     const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-    const std::array<Slice, 2>& value,
+    const std::array<Slice, 4>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
                           static_cast<char>(intent_and_types.second.ToUIntPtr()) };
@@ -553,6 +570,10 @@ Result<bool> ApplyIntentsContext::Entry(
     handler->Put(key_parts, value_parts);
     ++write_id_;
     RegisterRecord();
+
+    YB_TRANSACTION_DUMP(
+        ApplyIntent, transaction_id(), intent.doc_path.size(), intent.doc_path,
+        commit_ht_, write_id_, decoded_value.body);
   }
 
   return false;
@@ -566,8 +587,8 @@ void ApplyIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
   }
 }
 
-RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id)
-    : IntentsWriterContext(transaction_id) {
+RemoveIntentsContext::RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason)
+    : IntentsWriterContext(transaction_id), reason_(reason) {
 }
 
 Result<bool> RemoveIntentsContext::Entry(
@@ -578,9 +599,12 @@ Result<bool> RemoveIntentsContext::Entry(
   }
 
   handler->SingleDelete(key);
+  YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, key);
   RegisterRecord();
+
   if (!metadata) {
     handler->SingleDelete(value);
+    YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, value);
     RegisterRecord();
   }
   return false;

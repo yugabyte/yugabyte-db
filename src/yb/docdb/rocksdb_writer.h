@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_ROCKSDB_WRITER_H
-#define YB_DOCDB_ROCKSDB_WRITER_H
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
@@ -31,14 +30,14 @@ namespace docdb {
 class NonTransactionalWriter : public rocksdb::DirectWriter {
  public:
   NonTransactionalWriter(
-    std::reference_wrapper<const KeyValueWriteBatchPB> put_batch, HybridTime hybrid_time);
+    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time);
 
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
 
  private:
-  const docdb::KeyValueWriteBatchPB& put_batch_;
+  const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;
 };
 
@@ -62,7 +61,7 @@ class DocHybridTimeBuffer {
 class TransactionalWriter : public rocksdb::DirectWriter {
  public:
   TransactionalWriter(
-      std::reference_wrapper<const docdb::KeyValueWriteBatchPB> put_batch,
+      std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch,
       HybridTime hybrid_time,
       const TransactionId& transaction_id,
       IsolationLevel isolation_level,
@@ -76,7 +75,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
     return intra_txn_write_id_;
   }
 
-  void SetMetadataToStore(const TransactionMetadataPB* value) {
+  void SetMetadataToStore(const LWTransactionMetadataPB* value) {
     metadata_to_store_ = value;
   }
 
@@ -88,10 +87,10 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Status Finish();
   Status AddWeakIntent(
       const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 2>& value,
+      const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
-  const docdb::KeyValueWriteBatchPB& put_batch_;
+  const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;
   TransactionId transaction_id_;
   IsolationLevel isolation_level_;
@@ -99,7 +98,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Slice replicated_batches_state_;
   IntraTxnWriteId intra_txn_write_id_;
   IntraTxnWriteId write_id_ = 0;
-  const TransactionMetadataPB* metadata_to_store_ = nullptr;
+  const LWTransactionMetadataPB* metadata_to_store_ = nullptr;
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowing about intents structure to lower level.
@@ -212,7 +211,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
 
 class RemoveIntentsContext : public IntentsWriterContext {
  public:
-  explicit RemoveIntentsContext(const TransactionId& transaction_id);
+  explicit RemoveIntentsContext(const TransactionId& transaction_id, uint8_t reason);
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,
@@ -220,9 +219,9 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
+  uint8_t reason_;
 };
 
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_ROCKSDB_WRITER_H

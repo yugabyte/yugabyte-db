@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_SNAPSHOTS_H
-#define YB_TABLET_TABLET_SNAPSHOTS_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -103,7 +102,7 @@ class TabletSnapshots : public TabletComponent {
   // Only used when table_type_ == YQL_TABLE_TYPE.
   Status RestoreCheckpoint(
       const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
-      const docdb::ConsensusFrontier& frontier);
+      const docdb::ConsensusFrontier& frontier, bool is_pitr_restore);
 
   // Applies specified snapshot operation.
   Status Apply(SnapshotOperation* operation);
@@ -136,4 +135,3 @@ class TabletRestorePatch : public RestorePatch {
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_TABLET_SNAPSHOTS_H

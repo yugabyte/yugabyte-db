@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
-#define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
+#pragma once
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -199,4 +198,3 @@ void MasterServiceBase::HandleIn(
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H

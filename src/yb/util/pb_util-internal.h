@@ -31,8 +31,7 @@
 //
 // Classes used internally by pb_util.h.
 // This header should not be included by anything but pb_util and its tests.
-#ifndef YB_UTIL_PB_UTIL_INTERNAL_H
-#define YB_UTIL_PB_UTIL_INTERNAL_H
+#pragma once
 
 #include <glog/logging.h>
 #include <google/protobuf/io/zero_copy_stream.h>
@@ -137,4 +136,3 @@ class WritableFileOutputStream : public google::protobuf::io::ZeroCopyOutputStre
 } // namespace pb_util
 } // namespace yb
 
-#endif  // YB_UTIL_PB_UTIL_INTERNAL_H

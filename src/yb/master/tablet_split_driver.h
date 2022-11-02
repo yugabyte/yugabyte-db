@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_DRIVER_H
-#define YB_MASTER_TABLET_SPLIT_DRIVER_H
+#pragma once
 
 #include <set>
 #include <utility>
@@ -38,4 +37,3 @@ class TabletSplitDriverIf {
 }  // namespace master
 }  // namespace yb
 
-#endif // YB_MASTER_TABLET_SPLIT_DRIVER_H

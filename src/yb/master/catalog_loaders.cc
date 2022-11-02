@@ -49,7 +49,6 @@ DEFINE_bool(master_ignore_deleted_on_load, true,
 
 DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
                  "When set, it pauses load of cluster config during sys catalog load.");
-TAG_FLAG(TEST_slow_cluster_config_load_secs, runtime);
 
 namespace yb {
 namespace master {

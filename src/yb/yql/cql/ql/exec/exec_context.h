@@ -17,8 +17,7 @@
 // executed.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
-#define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
+#pragma once
 
 #include <string>
 
@@ -564,4 +563,3 @@ class ExecContext : public ProcessContextBase {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_

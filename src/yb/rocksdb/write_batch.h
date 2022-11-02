@@ -36,8 +36,7 @@
 // non-const method, all threads accessing the same WriteBatch must use
 // external synchronization.
 
-#ifndef YB_ROCKSDB_WRITE_BATCH_H
-#define YB_ROCKSDB_WRITE_BATCH_H
+#pragma once
 
 #include <stdint.h>
 
@@ -59,7 +58,8 @@ class UserFrontiers;
 
 class DirectWriteHandler {
  public:
-  virtual void Put(const SliceParts& key, const SliceParts& value) = 0;
+  // Returns slices to inserted key and value.
+  virtual std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) = 0;
   virtual void SingleDelete(const Slice& key) = 0;
 
   virtual ~DirectWriteHandler() = default;
@@ -301,4 +301,3 @@ class WriteBatch : public WriteBatchBase {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_WRITE_BATCH_H

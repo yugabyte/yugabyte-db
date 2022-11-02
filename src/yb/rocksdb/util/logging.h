@@ -23,8 +23,6 @@
 //
 // Must not be included from any .h files to avoid polluting the namespace
 // with macros.
-#ifndef YB_ROCKSDB_UTIL_LOGGING_H
-#define YB_ROCKSDB_UTIL_LOGGING_H
 
 #pragma once
 
@@ -75,4 +73,3 @@ extern bool ConsumeDecimalNumber(Slice* in, uint64_t* val);
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_UTIL_LOGGING_H

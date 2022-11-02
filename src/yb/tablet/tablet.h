@@ -29,8 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_H_
-#define YB_TABLET_TABLET_H_
+#ifndef YB_TABLET_TABLET_H
+#define YB_TABLET_TABLET_H
+
+#pragma once
 
 #include <boost/intrusive/list.hpp>
 
@@ -65,6 +67,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/util/memory/arena_list.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -86,6 +89,9 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
+
+YB_DEFINE_ENUM(FullCompactionReason, (PostSplit)(Scheduled));
+
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -296,10 +302,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) override;
 
-  Status RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) override;
+  Status RemoveIntents(
+      const RemoveIntentsData& data, RemoveReason reason, const TransactionId& id) override;
 
   Status RemoveIntents(
-      const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
+      const RemoveIntentsData& data, RemoveReason reason,
+      const TransactionIdSet& transactions) override;
 
   Status GetIntents(
       const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
@@ -312,14 +320,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
-      const docdb::KeyValueWriteBatchPB& write_batch,
+      const docdb::LWKeyValueWriteBatchPB& write_batch,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx, // index of this batch in its transaction
-      const docdb::KeyValueWriteBatchPB& put_batch,
+      const docdb::LWKeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
@@ -419,7 +427,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status AlterSchema(ChangeMetadataOperation* operation);
 
   // Used to update the tablets on the index table that the index has been backfilled.
-  // This means that major compactions can now garbage collect delete markers.
+  // This means that full compactions can now garbage collect delete markers.
   Status MarkBackfillDone(const TableId& table_id = "");
 
   // Change wal_retention_secs in the metadata.
@@ -591,7 +599,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
-      docdb::KeyValueWriteBatchPB* out);
+      docdb::LWKeyValueWriteBatchPB* out);
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
@@ -640,6 +648,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Get the isolation level of the given transaction from the metadata stored in the provisional
   // records RocksDB.
+  Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) override;
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
 
   // Creates an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
@@ -703,6 +712,26 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compacted. It is an error to call this method if a post-split compaction has been triggered
   // previously by this tablet.
   void TriggerPostSplitCompactionIfNeeded();
+
+  // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
+  // It is an error to call this function if it was called previously
+  // and that compaction has not yet finished.
+  Status TriggerFullCompactionIfNeeded(FullCompactionReason reason);
+
+  bool HasActiveFullCompaction();
+
+  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
+    // Check if there is an active scheduled full compaction.
+    return full_compaction_task_pool_token_ != nullptr ?
+        !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero) :
+        false;
+  }
+
+  bool HasActiveTTLFileExpiration();
+
+  // Indicates whether this tablet can currently be compacted by any (non-admin) triggered
+  // full compaction.
+  bool IsEligibleForFullCompaction();
 
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
@@ -772,7 +801,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status WriteTransactionalBatch(
       int64_t batch_idx, // index of this batch in its transaction
-      const docdb::KeyValueWriteBatchPB& put_batch,
+      const docdb::LWKeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       const rocksdb::UserFrontiers* frontiers,
       bool external_transaction = false);
@@ -827,7 +856,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
   void CreateNewYBMetaDataCache();
 
-  void TriggerPostSplitCompactionSync();
+  void TriggerFullCompactionSync(FullCompactionReason reason);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);
@@ -845,6 +874,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
   bool StillHasOrphanedPostSplitDataAbortable();
+
+  template <class PB>
+  Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -979,7 +1011,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
 
   template <class Ids>
-  Status RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids);
+  Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
 
   // Tries to find intent .SST files that could be deleted and remove them.
   void CleanupIntentFiles();
@@ -1030,15 +1062,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<docdb::WaitQueue> wait_queue_;
 
-  // Thread pool token for manually triggering compactions for tablets created from a split. This
-  // member is set when a post-split compaction is triggered on this tablet as the result of a call
-  // to TriggerPostSplitCompactionIfNeeded. It is an error to attempt to trigger another post-split
-  // compaction if this member is already set, as the existence of this member implies that such a
-  // compaction has already been triggered for this instance.
-  std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+  std::mutex full_compaction_token_mutex_;
 
-  // Pointer to shared thread pool in TsTabletManager. Managed by the TsTabletManager.
-  ThreadPool* post_split_compaction_pool_ = nullptr;
+  // Thread pool token for triggering full compactions for tablets via full compaction manager.
+  // Once set, this token is reused, but only when not active (HasActiveFullCompaction()).
+  std::unique_ptr<ThreadPoolToken> full_compaction_task_pool_token_
+      GUARDED_BY(full_compaction_token_mutex_);
+
+  // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
+  ThreadPool* full_compaction_pool_ = nullptr;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
@@ -1100,4 +1132,4 @@ bool IsSchemaVersionCompatible(
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TABLET_H_
+#endif /* YB_TABLET_TABLET_H */

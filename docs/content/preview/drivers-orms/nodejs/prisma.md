@@ -264,4 +264,4 @@ Open [http://localhost:5555](http://localhost:5555) in your browser to see the t
 
 ## Next steps
 
-Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB

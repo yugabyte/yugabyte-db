@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_DEBUG_TRACE_EVENT_MEMORY_H
-#define YB_DEBUG_TRACE_EVENT_MEMORY_H
+#pragma once
 
 // Stub for this part of chromium tracing we haven't yet
 // imported.
@@ -40,4 +39,3 @@
 
 #define INTERNAL_TRACE_MEMORY(category_group, name)
 
-#endif /* YB_DEBUG_TRACE_EVENT_MEMORY_H */

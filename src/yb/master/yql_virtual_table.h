@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
-#define YB_MASTER_YQL_VIRTUAL_TABLE_H
+#pragma once
 
 #include "yb/common/ql_rowblock.h"
 
@@ -147,4 +146,3 @@ extern const std::string kSystemTablesReleaseVersionColumn;
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VIRTUAL_TABLE_H

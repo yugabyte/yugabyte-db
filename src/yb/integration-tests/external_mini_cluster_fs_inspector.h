@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
+#pragma once
 
 #include <functional>
 #include <string>
@@ -149,4 +148,3 @@ class ExternalMiniClusterFsInspector {
 } // namespace itest
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H

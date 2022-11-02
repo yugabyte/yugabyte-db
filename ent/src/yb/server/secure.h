@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_SERVER_SECURE_H
-#define ENT_SRC_YB_SERVER_SECURE_H
+#pragma once
 
 #include <gflags/gflags_declare.h>
 
@@ -82,4 +81,3 @@ bool IsClientToServerEncryptionEnabled();
 } // namespace server
 } // namespace yb
 
-#endif // ENT_SRC_YB_SERVER_SECURE_H

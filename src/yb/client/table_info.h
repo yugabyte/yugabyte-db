@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_INFO_H
-#define YB_CLIENT_TABLE_INFO_H
+#pragma once
 
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
@@ -49,4 +48,3 @@ struct TableSizeInfo {
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_TABLE_INFO_H

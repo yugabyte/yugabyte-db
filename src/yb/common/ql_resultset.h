@@ -16,8 +16,7 @@
 //   an interface with multiple implementations for different use-cases.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_RESULTSET_H_
-#define YB_COMMON_QL_RESULTSET_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_type.h"
@@ -87,4 +86,3 @@ class QLResultSet {
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_RESULTSET_H_

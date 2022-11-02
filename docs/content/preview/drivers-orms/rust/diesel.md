@@ -337,4 +337,4 @@ Email: "tstewart@example.com"
 
 ## Next steps
 
-Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB

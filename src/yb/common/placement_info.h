@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_PLACEMENT_INFO_H
-#define YB_COMMON_PLACEMENT_INFO_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -61,4 +60,3 @@ class PlacementInfoConverter {
 
 } // namespace yb
 
-#endif // YB_COMMON_PLACEMENT_INFO_H

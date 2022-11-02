@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_QL_PROTOCOL_UTIL_H
-#define YB_COMMON_QL_PROTOCOL_UTIL_H
+#pragma once
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -227,4 +226,3 @@ static inline uint8_t Load8(const void* p) {
 
 } // namespace yb
 
-#endif // YB_COMMON_QL_PROTOCOL_UTIL_H

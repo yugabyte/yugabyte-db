@@ -26,8 +26,7 @@
 // define InDomain and InRange to determine which slices are in either
 // of these sets respectively.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_SLICE_TRANSFORM_H
-#define ROCKSDB_INCLUDE_ROCKSDB_SLICE_TRANSFORM_H
+#pragma once
 
 #include <string>
 
@@ -87,4 +86,3 @@ extern const SliceTransform* NewNoopTransform();
 
 } // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_SLICE_TRANSFORM_H

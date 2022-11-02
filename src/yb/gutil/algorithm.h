@@ -38,8 +38,7 @@
 // <algorithm> C++ header. Many of these algorithms were in the
 // original STL before it was proposed for standardization.
 
-#ifndef YB_GUTIL_ALGORITHM_H
-#define YB_GUTIL_ALGORITHM_H
+#pragma once
 
 #include <algorithm>
 #include <functional>
@@ -437,4 +436,3 @@ bool is_heap(RandomAccessIterator begin,
 }  // namespace gtl
 }  // namespace util
 
-#endif  // YB_GUTIL_ALGORITHM_H

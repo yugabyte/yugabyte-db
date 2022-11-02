@@ -47,6 +47,8 @@ export const MetricTypesWithOperations = {
       'cpu_usage',
       'memory_usage',
       'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -173,11 +175,17 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   container: {
     title: 'Container',
-    metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
+    metrics: [
+      'container_cpu_usage',
+      'container_memory_usage',
+      'container_volume_stats',
+      'container_volume_usage_percent']
   },
   sql: {
     title: 'YSQL Advanced',
@@ -233,6 +241,8 @@ export const MetricTypesWithOperations = {
     metrics: [
       'table_read_latency',
       'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
       'table_log_latency',
       'table_log_ops_second',
       'table_log_bytes_written',

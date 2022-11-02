@@ -19,8 +19,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_TABLE_MOCK_TABLE_H
-#define YB_ROCKSDB_TABLE_MOCK_TABLE_H
+#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -213,4 +212,3 @@ class MockTableFactory : public TableFactory {
 }  // namespace mock
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_TABLE_MOCK_TABLE_H

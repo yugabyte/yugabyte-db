@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_UNIVERSE_KEY_CLIENT_H
-#define YB_CLIENT_UNIVERSE_KEY_CLIENT_H
+#pragma once
 
 #include <condition_variable>
 #include <mutex>
@@ -65,4 +64,3 @@ class UniverseKeyClient {
 } // namespace client
 } // namespace yb
 
-#endif // YB_CLIENT_UNIVERSE_KEY_CLIENT_H

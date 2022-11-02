@@ -70,27 +70,27 @@ YB_DEFINE_ENUM(
 // Runtime AutoFlags
 #define DEFINE_RUNTIME_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_AUTO_int32(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_AUTO_int64(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_AUTO_uint64(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_AUTO_double(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO(double, name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_AUTO_string(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, true, txt); \
-  TAG_FLAG(name, runtime)
+  _TAG_FLAG_RUNTIME(name)
 
 // Non Runtime AutoFlags
 #define DEFINE_NON_RUNTIME_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
@@ -113,17 +113,18 @@ YB_DEFINE_ENUM(
 
 struct AutoFlagDescription {
   std::string name;
+  const void* flag_ptr; /* Pointer to the gFlag */
+  yb::AutoFlagClass flag_class;
   std::string initial_val;
   std::string target_val;
   bool is_runtime;
-  yb::AutoFlagClass flag_class;
 };
 
 const AutoFlagDescription* GetAutoFlagDescription(const std::string& flag_name);
 std::vector<const AutoFlagDescription*> GetAllAutoFlagsDescription();
 
 Status PromoteAutoFlag(const std::string& flag_name);
-void PromoteAllAutoFlags();
+Status PromoteAllAutoFlags();
 
 bool IsFlagPromoted(
     const gflags::CommandLineFlagInfo& flag, const AutoFlagDescription& auto_flag_desc);
@@ -147,8 +148,13 @@ bool ShouldTestPromoteAllAutoFlags();
   BOOST_PP_CAT(DEFINE_, type)(name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
-    BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name), yb::AutoFlagClass::flag_class, \
-      BOOST_PP_STRINGIZE(initial_val), BOOST_PP_STRINGIZE(target_val), is_runtime); \
+    BOOST_PP_CAT(afr_, name)( \
+      BOOST_PP_STRINGIZE(name), /* name */ \
+      &BOOST_PP_CAT(FLAGS_, name), /* flag_ptr */ \
+      yb::AutoFlagClass::flag_class, /* flag_class */ \
+      BOOST_PP_STRINGIZE(initial_val), /* initial_val */ \
+      BOOST_PP_STRINGIZE(target_val), /* target_val */ \
+      is_runtime); /* is_runtime */ \
   } \
   TAG_FLAG(name, auto); \
   TAG_FLAG(name, stable)
@@ -166,11 +172,12 @@ bool ShouldTestPromoteAllAutoFlags();
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
     BOOST_PP_CAT(afr_, name)( \
-      BOOST_PP_STRINGIZE(name), \
-      yb::AutoFlagClass::flag_class, \
-      initial_val, \
-      target_val, \
-      is_runtime); \
+      BOOST_PP_STRINGIZE(name), /* name */ \
+      &BOOST_PP_CAT(FLAGS_, name), /*f lag_ptr */ \
+      yb::AutoFlagClass::flag_class,  /* flag_class */\
+      initial_val, /* initial_val */ \
+      target_val, /* target_val */ \
+      is_runtime);  /* is_runtime */\
   } \
   TAG_FLAG(name, auto); \
   TAG_FLAG(name, stable)
@@ -221,14 +228,15 @@ void SetAutoFlagDescription(const AutoFlagDescription* desc);
 class AutoFlagDescRegisterer {
  public:
   AutoFlagDescRegisterer(
-      std::string name, yb::AutoFlagClass flag_class, const std::string& initial_val,
-      const std::string& target_val, bool is_runtime)
+      std::string name, const void* flag_ptr, yb::AutoFlagClass flag_class,
+      const std::string& initial_val, const std::string& target_val, bool is_runtime)
       : description_{
-          .name = name,
-          .initial_val = initial_val,
-          .target_val = target_val,
-          .is_runtime = is_runtime,
-          .flag_class = flag_class} {
+            .name = name,
+            .flag_ptr = flag_ptr,
+            .flag_class = flag_class,
+            .initial_val = initial_val,
+            .target_val = target_val,
+            .is_runtime = is_runtime} {
     SetAutoFlagDescription(&description_);
   };
 

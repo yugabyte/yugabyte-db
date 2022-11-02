@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_IMMUTABLE_OPTIONS_H
-#define YB_ROCKSDB_IMMUTABLE_OPTIONS_H
 
 #pragma once
 
@@ -142,4 +140,3 @@ struct ImmutableCFOptions {
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_IMMUTABLE_OPTIONS_H

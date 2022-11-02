@@ -163,6 +163,13 @@
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
 
+# Build an app for aiopg, now in integrations
+
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-aiopg/"
+  to = "/preview/integrations/aiopg/"
+  force = true
+
 # Manual import was in migrate, now in manage
 
 [[redirects]]
@@ -413,8 +420,26 @@
    to = "/preview/drivers-orms/ruby/activerecord/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/python/ysql-psycopg2/"
+   to = "/preview/drivers-orms/python/postgres-psycopg2/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/nodejs/ysql-pg/"
+   to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/csharp/ysql/"
+   to = "/preview/drivers-orms/csharp/postgres-npgsql/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
+
+# Foreign data wrappers from SQL features to Advanced features
+
+[[redirects]]
+   from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
+   to = "/preview/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

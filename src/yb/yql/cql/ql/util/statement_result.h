@@ -15,8 +15,7 @@
 // Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
-#define YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
+#pragma once
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
@@ -195,4 +194,3 @@ class SchemaChangeResult : public ExecutedResult {
 } // namespace ql
 } // namespace yb
 
-#endif  // YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_

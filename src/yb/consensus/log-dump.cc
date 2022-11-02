@@ -44,6 +44,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 
@@ -183,18 +184,18 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   Schema tablet_schema;
   RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
 
-  for (const auto& entry : read_entries.entries) {
-
+  for (const auto& lw_entry : read_entries.entries) {
+    auto entry = lw_entry->ToGoogleProtobuf();
     if (print_type == PRINT_PB) {
       if (FLAGS_truncate_data > 0) {
-        pb_util::TruncateFields(entry.get(), FLAGS_truncate_data);
+        pb_util::TruncateFields(&entry, FLAGS_truncate_data);
       }
 
-      cout << "Entry:\n" << entry->DebugString();
+      cout << "Entry:\n" << entry.DebugString();
     } else if (print_type == PRINT_DECODED) {
-      RETURN_NOT_OK(PrintDecoded(*entry, tablet_schema));
+      RETURN_NOT_OK(PrintDecoded(entry, tablet_schema));
     } else if (print_type == PRINT_ID) {
-      PrintIdOnly(*entry);
+      PrintIdOnly(entry);
     }
   }
   if (FLAGS_print_headers && segment->HasFooter()) {
@@ -345,9 +346,7 @@ Status FilterLogSegment(const string& segment_path) {
       num_omitted++;
       continue;
     }
-    RETURN_NOT_OK(log->Append(
-        entry_ptr.release(), read_entries.entry_metadata[i],
-        /* skip_wal_rewrite */ false));
+    RETURN_NOT_OK(log->Append(entry_ptr, read_entries.entry_metadata[i], SkipWalWrite::kFalse));
     num_included++;
   }
   LOG(INFO) << "Included " << num_included << " entries, omitted " << num_omitted << " entries";

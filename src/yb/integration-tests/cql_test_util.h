@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H
-#define YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H
+#pragma once
 
 #include <cassandra.h>
 
@@ -351,4 +350,3 @@ Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_CQL_TEST_UTIL_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_SOURCE_LOCATION_H
-#define YB_UTIL_SOURCE_LOCATION_H
+#pragma once
 
 #include <string>
 
@@ -29,4 +28,3 @@ struct SourceLocation {
 
 }  // namespace yb
 
-#endif  // YB_UTIL_SOURCE_LOCATION_H

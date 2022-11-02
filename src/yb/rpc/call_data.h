@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CALL_DATA_H
-#define YB_RPC_CALL_DATA_H
+#pragma once
 
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -71,4 +70,3 @@ struct CallData {
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_CALL_DATA_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STOL_UTILS_H
-#define YB_UTIL_STOL_UTILS_H
+#pragma once
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -43,4 +42,3 @@ Result<long double> CheckedStold(Slice slice);
 
 } // namespace yb
 
-#endif // YB_UTIL_STOL_UTILS_H

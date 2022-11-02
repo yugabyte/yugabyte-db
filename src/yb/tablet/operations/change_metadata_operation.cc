@@ -37,6 +37,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log.h"
 
@@ -60,23 +61,23 @@ using google::protobuf::RepeatedPtrField;
 using tserver::TabletServerErrorPB;
 
 template <>
-void RequestTraits<ChangeMetadataRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, ChangeMetadataRequestPB* request) {
-  replicate->set_allocated_change_metadata_request(request);
+void RequestTraits<LWChangeMetadataRequestPB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWChangeMetadataRequestPB* request) {
+  replicate->ref_change_metadata_request(request);
 }
 
 template <>
-ChangeMetadataRequestPB* RequestTraits<ChangeMetadataRequestPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWChangeMetadataRequestPB* RequestTraits<LWChangeMetadataRequestPB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_change_metadata_request();
 }
 
 ChangeMetadataOperation::ChangeMetadataOperation(
-    TabletPtr tablet, log::Log* log, const ChangeMetadataRequestPB* request)
+    TabletPtr tablet, log::Log* log, const LWChangeMetadataRequestPB* request)
     : ExclusiveSchemaOperation(std::move(tablet), request), log_(log) {
 }
 
-ChangeMetadataOperation::ChangeMetadataOperation(const ChangeMetadataRequestPB* request)
+ChangeMetadataOperation::ChangeMetadataOperation(const LWChangeMetadataRequestPB* request)
     : ChangeMetadataOperation(nullptr, nullptr, request) {
 }
 
@@ -98,7 +99,7 @@ Status ChangeMetadataOperation::Prepare() {
   auto has_schema = request()->has_schema();
   if (has_schema) {
     schema_holder_ = std::make_unique<Schema>();
-    Status s = SchemaFromPB(request()->schema(), schema_holder_.get());
+    Status s = SchemaFromPB(request()->schema().ToGoogleProtobuf(), schema_holder_.get());
     if (!s.ok()) {
       return s.CloneAndAddErrorCode(
           tserver::TabletServerError(TabletServerErrorPB::INVALID_SCHEMA));
@@ -108,7 +109,7 @@ Status ChangeMetadataOperation::Prepare() {
   TabletPtr tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(tablet->CreatePreparedChangeMetadata(this, schema_holder_.get()));
 
-  SetIndexes(request()->indexes());
+  SetIndexes(ToRepeatedPtrField(request()->indexes()));
 
   TRACE("PREPARE CHANGE-METADATA: finished");
   return Status::OK();
@@ -173,7 +174,7 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     }
   }
 
-  if (request()->add_multiple_tables_size()) {
+  if (!request()->add_multiple_tables().empty()) {
     metadata_change = MetadataChange::NONE;
     if (++num_operations == 1) {
       metadata_change = MetadataChange::ADD_MULTIPLE_TABLES;
@@ -200,22 +201,24 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     case MetadataChange::ADD_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->AddTable(request()->add_table()));
+      RETURN_NOT_OK(tablet->AddTable(request()->add_table().ToGoogleProtobuf()));
       break;
     case MetadataChange::REMOVE_TABLE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->RemoveTable(request()->remove_table_id()));
+      RETURN_NOT_OK(tablet->RemoveTable(request()->remove_table_id().ToBuffer()));
       break;
     case MetadataChange::BACKFILL_DONE:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->MarkBackfillDone(request()->backfill_done_table_id()));
+      RETURN_NOT_OK(tablet->MarkBackfillDone(
+          request()->backfill_done_table_id().ToBuffer()));
       break;
     case MetadataChange::ADD_MULTIPLE_TABLES:
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
-      RETURN_NOT_OK(tablet->AddMultipleTables(request()->add_multiple_tables()));
+      RETURN_NOT_OK(tablet->AddMultipleTables(
+          ToRepeatedPtrField(request()->add_multiple_tables())));
       break;
   }
 
@@ -235,7 +238,8 @@ Status SyncReplicateChangeMetadataOperation(
     TabletPeer* tablet_peer,
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      VERIFY_RESULT(tablet_peer->shared_tablet_safe()), tablet_peer->log(), req);
+      VERIFY_RESULT(tablet_peer->shared_tablet_safe()), tablet_peer->log());
+  operation->AllocateRequest()->CopyFrom(*req);
 
   Synchronizer synchronizer;
 

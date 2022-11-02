@@ -1703,15 +1703,14 @@ public class YBClient implements AutoCloseable {
 
   /**
    * It makes parallel calls to {@link AsyncYBClient#isBootstrapRequired(java.util.Map)} method with
-   * batches of 8 tables.
+   * batches of {@code partitionSize} tables.
    *
    * @see YBClient#isBootstrapRequired(java.util.Map)
    */
   public List<IsBootstrapRequiredResponse> isBootstrapRequiredParallel(
-      Map<String, String> tableIdStreamIdMap) throws Exception {
+      Map<String, String> tableIdStreamIdMap, int partitionSize) throws Exception {
     // Partition the tableIdStreamIdMap.
     List<Map<String, String>> tableIdStreamIdMapList = new ArrayList<>();
-    int partitionSize = 8;
     Iterator<Entry<String, String>> iter = tableIdStreamIdMap.entrySet().iterator();
     while (iter.hasNext()) {
       Map<String, String> partition = new HashMap<>();
@@ -1786,10 +1785,10 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public RestoreSnapshotResponse restoreSnapshot(UUID snapshotUUID,
-                                                 long restoreHybridTime) throws Exception {
-    Deferred<RestoreSnapshotResponse> d =
-      asyncClient.restoreSnapshot(snapshotUUID, restoreHybridTime);
+  public RestoreSnapshotScheduleResponse restoreSnapshotSchedule(UUID snapshotScheduleUUID,
+                                                 long restoreTimeInMillis) throws Exception {
+    Deferred<RestoreSnapshotScheduleResponse> d =
+      asyncClient.restoreSnapshotSchedule(snapshotScheduleUUID, restoreTimeInMillis);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

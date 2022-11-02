@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -92,4 +91,3 @@ class CreateTableITestBase : public ExternalMiniClusterITestBase {
 
 }  // namespace yb
 
-#endif  // YB_INTEGRATION_TESTS_CREATE_TABLE_ITEST_BASE_H

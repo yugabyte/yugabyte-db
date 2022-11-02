@@ -11,6 +11,7 @@ import lombok.Value;
 @Builder
 public class KeyspaceTablesList {
   String keyspace;
+  Boolean allTables;
   Set<String> tablesList;
   Set<UUID> tableUUIDList;
   Long backupSizeInBytes;

@@ -31,8 +31,7 @@
 //
 // Simple pool/freelist for objects of the same type, typically used
 // in local context.
-#ifndef YB_UTIL_OBJECT_POOL_H
-#define YB_UTIL_OBJECT_POOL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -258,4 +257,3 @@ class ThreadSafeObjectPool {
 
 } // namespace yb
 
-#endif // YB_UTIL_OBJECT_POOL_H

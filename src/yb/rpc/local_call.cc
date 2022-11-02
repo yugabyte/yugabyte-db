@@ -123,7 +123,7 @@ Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
   LOG(FATAL) << "local call should not require parsing";
 }
 
-Result<size_t> LocalYBInboundCall::ParseRequest(Slice param) {
+Result<size_t> LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer& buffer) {
   return STATUS(InternalError, "ParseRequest called for local call");
 }
 

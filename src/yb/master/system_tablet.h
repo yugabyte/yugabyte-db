@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYSTEM_TABLET_H
-#define YB_MASTER_SYSTEM_TABLET_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 
@@ -81,6 +80,10 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TableName& GetTableName() const;
 
+  Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) override {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override {
     return IsolationLevel::NON_TRANSACTIONAL;
   }
@@ -101,4 +104,3 @@ class SystemTablet : public tablet::AbstractTablet {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_SYSTEM_TABLET_H

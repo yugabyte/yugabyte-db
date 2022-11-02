@@ -47,8 +47,7 @@
  * Author: Chris Ruemmler
  */
 
-#ifndef YB_GUTIL_SYNCHRONIZATION_PROFILING_H
-#define YB_GUTIL_SYNCHRONIZATION_PROFILING_H
+#pragma once
 
 #include "yb/gutil/integral_types.h"
 
@@ -64,4 +63,3 @@ extern void SubmitSpinLockProfileData(const void *contendedlock,
                                       int64 wait_cycles) {}
 } // namespace gutil
 
-#endif  // YB_GUTIL_SYNCHRONIZATION_PROFILING_H

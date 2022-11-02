@@ -232,24 +232,22 @@ DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRp
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
-DEFINE_int32(ycql_num_tablets, -1,
-             "The number of tablets per YCQL table. Default value is -1. "
-             "Colocated tables are not affected. "
-             "If it's value is not set then the value of yb_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (with tablets = x syntax) then it takes precedence over the value "
-             "of this flag. Needs to be set at tserver.");
-TAG_FLAG(ycql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
+    "The number of tablets per YCQL table. Default value is -1. "
+    "Colocated tables are not affected. "
+    "If it's value is not set then the value of yb_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (with tablets = x syntax) then it takes precedence over the value "
+    "of this flag. Needs to be set at tserver.");
 
-DEFINE_int32(ysql_num_tablets, -1,
-             "The number of tablets per YSQL table. Default value is -1. "
-             "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (split into x tablets syntax) then it takes precedence over the "
-             "value of this flag. Needs to be set at tserver.");
-TAG_FLAG(ysql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
+    "The number of tablets per YSQL table. Default value is -1. "
+    "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (split into x tablets syntax) then it takes precedence over the "
+    "value of this flag. Needs to be set at tserver.");
 
 namespace yb {
 namespace client {
@@ -1563,15 +1561,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
-Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
+Status YBClient::UpdateConsumerOnProducerMetadata(
     const string& producer_id,
     const CDCStreamId& stream_id,
-    const tablet::ChangeMetadataRequestPB& meta_info) {
+    const tablet::ChangeMetadataRequestPB& meta_info,
+    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
   if (producer_id.empty()) {
     return STATUS(InvalidArgument, "Producer id is required.");
   }
   if (stream_id.empty()) {
     return STATUS(InvalidArgument, "Stream id is required.");
+  }
+  if (resp == nullptr) {
+    return STATUS(InvalidArgument, "Response pointer is required.");
   }
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
@@ -1579,9 +1581,8 @@ Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
   req.set_stream_id(stream_id);
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
-  master::UpdateConsumerOnProducerMetadataResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerMetadata);
-  return resp.should_wait();
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
 }
 
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
