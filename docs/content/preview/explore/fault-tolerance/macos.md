@@ -17,14 +17,13 @@ menu:
 type: docs
 ---
 
-
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). In this section, you'll see how YugabyteDB can continue to do reads and writes even in case of node failures. You'll create YSQL tables with a replication factor (RF) of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster remains available for both reads and writes even if one node fails. However, if another node fails (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
-## 1. Create a universe
+## Create a universe
 
-Start a local three-node cluster with a replication factor of `3`. First create a single node cluster as follows:
+To start a local three-node cluster with a replication factor of `3`, first create a single-node cluster as follows:
 
 ```sh
 ./bin/yugabyted start \
@@ -32,7 +31,7 @@ Start a local three-node cluster with a replication factor of `3`. First create 
                 --base_dir=/tmp/ybd1
 ```
 
-Next, create a 3 node cluster by joining two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
+Next, join two more nodes with the previous node. By default, [yugabyted](../../../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
 
 ```sh
 ./bin/yugabyted start \
@@ -48,7 +47,7 @@ Next, create a 3 node cluster by joining two more nodes with the previous node. 
                 --join=127.0.0.1
 ```
 
-## 2. Run the sample key-value app
+## Run the sample key-value app
 
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) using the following command:
 
@@ -72,13 +71,15 @@ The `SqlInserts` workload prints some statistics while running as follows. You c
 37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
 ```
 
-## 3. Observe even load across all nodes
+## Observe even load across all nodes
 
-You can check a lot of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The total read and write IOPS per node are highlighted in the following screenshot. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
+You can check a lot of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The total read and write IOPS per node are highlighted in the following screenshot.
 
 ![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
 
-## 4. Remove a node and observe continuous write availability
+Note how both the reads and the writes are roughly the same across all the nodes, indicating uniform usage across the nodes.
+
+## Remove a node and observe continuous write availability
 
 Remove a node from the universe using the following command:
 
@@ -87,13 +88,15 @@ $ ./bin/yugabyted stop \
                   --base_dir=/tmp/ybd3
 ```
 
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (1 minute), YugabyteDB will change the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update.
+
+The `Time since heartbeat` value for that node will keep increasing. After that number reaches 60s (1 minute), YugabyteDB changes the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
 
-## 6. [Optional] Clean up
+## Clean up
 
-Optionally, you can shut down the local cluster you created earlier as follows:
+Optionally, you can shut down the local cluster you created as follows:
 
 ```sh
 $ ./bin/yugabyted destroy \
