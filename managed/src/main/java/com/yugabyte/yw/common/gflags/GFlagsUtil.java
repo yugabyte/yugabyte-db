@@ -94,6 +94,18 @@ public class GFlagsUtil {
   public static final String CERTS_FOR_CLIENT_DIR = "certs_for_client_dir";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
+  public static final String TSERVER_DIR = "/tserver";
+  public static final String POSTGRES_BIN_DIR = "/postgres/bin";
+  public static final String TSERVER_BIN_DIR = TSERVER_DIR + "/bin";
+  public static final String TSERVER_POSTGRES_BIN_DIR = TSERVER_DIR + POSTGRES_BIN_DIR;
+  public static final String YB_ADMIN_PATH = TSERVER_BIN_DIR + "/yb-admin";
+  public static final String YB_CTL_PATH = TSERVER_BIN_DIR + "/yb-ctl";
+  public static final String YSQL_DUMP_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysql_dump";
+  public static final String YSQL_DUMPALL_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysql_dumpall";
+  public static final String YSQLSH_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysqlsh";
+  public static final String YCQLSH_PATH = TSERVER_BIN_DIR + "/ycqlsh";
+  public static final String REDIS_CLI_PATH = TSERVER_BIN_DIR + "/redis-cli";
+  public static final String CORES_DIR_PATH = "/cores";
   public static final String YBC_MAX_CONCURRENT_UPLOADS = "max_concurrent_uploads";
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
@@ -251,6 +263,14 @@ public class GFlagsUtil {
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
+    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
     ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     if (node.isMaster) {
       ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
