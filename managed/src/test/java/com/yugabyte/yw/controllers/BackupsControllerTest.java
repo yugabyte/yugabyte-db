@@ -389,9 +389,9 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("incrementalBackupFrequency", 100000L);
     r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "Minimum schedule duration is 1 hour");
+    assertValue(resultJson, "error", "Minimum incremental backup schedule duration is 30 mins");
     assertEquals(BAD_REQUEST, r.status());
-    bodyJson.put("incrementalBackupFrequency", 1000000000L);
+    bodyJson.put("incrementalBackupFrequency", 1800000);
     r = createBackupSchedule(bodyJson, null);
     assertOk(r);
   }
