@@ -1,6 +1,10 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2022  Orafce Global Development Group
 
+Version 4.0.0 - 2 Nov 2022
+* removed support for PostgreSQL 9.6 and 10
+* merged orafce_sql project - implementation of dbms_sql package
+
 Version 3.24.0 - 31 Jul 2022
 * fixed badly used plain TOAST strategy of types varchar2 and nvarchar2
 
