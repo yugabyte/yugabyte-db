@@ -472,6 +472,8 @@ public abstract class KubernetesManager {
 
   public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
 
+  public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
+
   public abstract List<Pod> getPodInfos(
       Map<String, String> config, String universePrefix, String namespace);
 
