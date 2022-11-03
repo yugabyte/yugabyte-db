@@ -235,25 +235,25 @@ void GeoTransactionsTestBase::WaitForLoadBalanceCompletion() {
 }
 
 Status GeoTransactionsTestBase::StartTabletServersByRegion(int region) {
-  return StartTabletServers(yb::Format("rack$0", region), boost::none /* zone_str */);
+  return StartTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServersByRegion(int region) {
-  return ShutdownTabletServers(yb::Format("rack$0", region), boost::none /* zone_str */);
+  return ShutdownTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::StartTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str) {
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str) {
   return StartShutdownTabletServers(region_str, zone_str, false /* shutdown */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str) {
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str) {
   return StartShutdownTabletServers(region_str, zone_str, true /* shutdown */);
 }
 
 Status GeoTransactionsTestBase::StartShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str,
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown) {
   if (tserver_placements_.empty()) {
     tserver_placements_.reserve(NumTabletServers());

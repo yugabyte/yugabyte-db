@@ -842,11 +842,13 @@ Status GetChangesForCDCSDK(
   bool checkpoint_updated = false;
   bool report_tablet_split = false;
   OpId split_op_id = OpId::Invalid();
+  bool snapshot_operation = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
+    snapshot_operation = true;
     auto txn_participant = tablet_ptr->transaction_participant();
     ReadHybridTime time;
     std::string nextKey;
@@ -1171,8 +1173,8 @@ Status GetChangesForCDCSDK(
             nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
-      if (!checkpoint_updated) {
-        LOG_WITH_FUNC(INFO)
+      if (!checkpoint_updated && VLOG_IS_ON(1)) {
+        VLOG_WITH_FUNC(1)
             << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
             << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
             << ". Will retry and get another batch";
@@ -1184,7 +1186,8 @@ Status GetChangesForCDCSDK(
   // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
   // know that after the split there are no more actionable messages, and this confirms that the
   // SPLIT OP was succesfull.
-  if (split_op_id.term == checkpoint.term() && split_op_id.index == checkpoint.index()) {
+  if (!snapshot_operation && split_op_id.term == checkpoint.term() &&
+      split_op_id.index == checkpoint.index()) {
     report_tablet_split = true;
   }
 

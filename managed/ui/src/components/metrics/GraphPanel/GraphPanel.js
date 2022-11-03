@@ -175,7 +175,9 @@ export const panelTypes = {
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
-      'docdb_transaction_pool_cache'
+      'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   ysql_ops: {

@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <optional>
 #include <thread>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -2088,7 +2089,7 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
       )#", day));
     }
 
-    boost::optional<PGConn> uncommitted_intents_conn;
+    std::optional<PGConn> uncommitted_intents_conn;
     if (uncommitted_intents) {
       uncommitted_intents_conn = ASSERT_RESULT(Connect());
       ASSERT_OK(uncommitted_intents_conn->Execute("BEGIN"));
@@ -2912,7 +2913,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
 
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
           PgMiniMasterFailoverTest) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;

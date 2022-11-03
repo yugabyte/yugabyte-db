@@ -90,9 +90,6 @@
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
-#include <boost/optional.hpp>
-#include <boost/optional/optional.hpp>
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/config/config.hpp>
 #include <boost/preprocessor/expr_if.hpp>
@@ -112,7 +109,6 @@
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
-#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>

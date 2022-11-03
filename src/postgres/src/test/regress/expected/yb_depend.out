@@ -42,3 +42,4 @@ DETAIL:  column f1 of composite type type_pair_with_int depends on type type_pai
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE type_pair CASCADE;
 NOTICE:  drop cascades to column f1 of composite type type_pair_with_int
+DROP TYPE type_pair_with_int;

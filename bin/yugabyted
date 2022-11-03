@@ -389,7 +389,7 @@ class ControlScript(object):
 
     # Prints status of YugabyteDB.
     def status(self):
-        if os.path.isdir(self.configs.saved_data.get("data_dir")):
+        if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
             Output.print_out(self.get_status_string())
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
@@ -1079,14 +1079,14 @@ class ControlScript(object):
                 self.configs.saved_data.get("data_dir")),
         }
 
-        if self.configs.temp_data.get("ui"):
-            yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
-                [
-                    "-database_host={}".format(bind_ip)
-                ]
-            self.processes["yugabyted-ui"] = ProcessManager(
-                "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
-                self.configs.saved_data.get("data_dir"))
+        # if self.configs.temp_data.get("ui"):
+        #     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
+        #         [
+        #             "-database_host={}".format(bind_ip)
+        #         ]
+        #     self.processes["yugabyted-ui"] = ProcessManager(
+        #         "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
+        #         self.configs.saved_data.get("data_dir"))
 
         for p in self.processes.values():
             pid = p.get_pid()
@@ -1187,6 +1187,21 @@ class ControlScript(object):
                             self.update_tserver_master_addrs()
                         process.start()
                         should_callhome = True
+
+            if is_first_run:
+                if self.configs.temp_data.get("ui"):
+                    yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
+                        [
+                            "-database_host={}".format(bind_ip)
+                        ]
+                    if self.configs.saved_data.get("secure"):
+                        yugabyted_ui_cmd.extend(["-secure=true",
+                            "-database_password={}".format(
+                            self.configs.saved_data.get("database_password"))])
+
+                    self.processes["yugabyted-ui"] = ProcessManager(
+                        "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
+                        self.configs.saved_data.get("data_dir"))
 
             if self.configs.temp_data.get("ui"):
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
@@ -1920,11 +1935,15 @@ class ControlScript(object):
         ysql_port_param = "-p {}".format(ysql_port) if ysql_port != DEFAULT_YSQL_PORT else ""
         ysql_username, ysql_password, ysql_db = self.setup_env_init.get_ysql_credentials()
 
+        status_info = []
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_red("")))
             status = "Stopped"
+            status_info = [
+                (Output.make_yellow("Status"), status),
+            ]
         else:
             title = Output.make_bold(Output.make_green(SCRIPT_NAME))
             extra_len = len(Output.make_bold(Output.make_green("")))
@@ -1938,6 +1957,11 @@ class ControlScript(object):
             else:
                 status = "Status command timed out as YugabyteDB \"yb-master\" " + \
                             "process is not responding."
+            status_info = [
+                (Output.make_yellow("Status"), status),
+                (Output.make_yellow("Replication Factor"),
+                        YBAdminProxy.get_cluster_rf(master_addrs)),
+            ]
 
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
@@ -1960,10 +1984,6 @@ class ControlScript(object):
         yb_master_status = "http://{}:{}".format(advertise_ip,
                                           self.configs.saved_data.get("master_webserver_port"))
 
-        status_info = [
-            (Output.make_yellow("Status"), status),
-            (Output.make_yellow("Replication Factor"), YBAdminProxy.get_cluster_rf(master_addrs)),
-        ]
         console_desc = "Web console"
         if self.configs.temp_data.get("ui"):
             console_desc = "YugabyteDB UI"
@@ -2804,7 +2824,7 @@ class ControlScript(object):
                 "--secure", help="Start a YugabyteDB cluster in secure mode with encryption in " +
                 "transit and password authentication enabled. No need to set a value for the " +
                 "flag. Use --secure or --insecure flag to toggle security features on a " +
-                "YugabyteDB cluster. Need to be used along with --certs_dir flag.",
+                "YugabyteDB cluster.",
                 action="store_true", default=None)
             cur_parser.add_argument(
                 "--insecure", help="Start a YugabyteDB cluster in an insecure mode without " +

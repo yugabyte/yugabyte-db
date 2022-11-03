@@ -27,7 +27,7 @@ using namespace std::literals;
 namespace yb {
 namespace tools {
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackup)) {
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
@@ -44,16 +44,16 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup
 
 // Exercise the CatalogManager::ImportTableEntry first code path where namespace ids and table ids
 // match.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYEDISBackup)) {
   DoTestYEDISBackup(helpers::TableOp::kKeepTable);
 }
 
 // Exercise the CatalogManager::ImportTableEntry second code path where, instead, table names match.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackupWithDropTable)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYEDISBackupWithDropTable)) {
   DoTestYEDISBackup(helpers::TableOp::kDropTable);
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithEnum)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
   ASSERT_NO_FATALS(CreateType("CREATE TYPE e_t as ENUM ('foo', 'bar', 'cab')"));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v e_t)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
@@ -82,7 +82,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithEnum
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPgBasedBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'abc')"));
 
@@ -107,34 +107,34 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPgBasedBackup)
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLKeyspaceBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackup)) {
   DoTestYSQLKeyspaceBackup(helpers::TableOp::kKeepTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLKeyspaceBackupWithDropTable)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLKeyspaceBackupWithDropTable)) {
   DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithDropYugabyteDB)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithDropYugabyteDB)) {
   DoTestYSQLKeyspaceBackup(helpers::TableOp::kDropDB);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLMultiSchemaKeyspaceBackup)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackup)) {
   DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kKeepTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLMultiSchemaKeyspaceBackupWithDropTable)) {
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackupWithDropTable)) {
   DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kDropTable);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLMultiSchemaKeyspaceBackupWithDropDB)) {
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLMultiSchemaKeyspaceBackupWithDropDB)) {
   DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kDropDB);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -142,7 +142,7 @@ TEST_F(YBBackupTest,
 // Create two schemas. Create a table with the same name and columns in each of them. Restore onto a
 // cluster where the schema names swapped. Restore should succeed because the tables are not found
 // in the ids check phase but later found in the names check phase.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLSameIdDifferentSchemaName)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLSameIdDifferentSchemaName)) {
   // Initialize data:
   // - s1.mytbl: (1, 1)
   // - s2.mytbl: (2, 2)
@@ -222,7 +222,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLSameIdDifferen
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupToNewKeyspace)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKeyspace)) {
   // Test hash-table.
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE hashtbl(k INT PRIMARY KEY, v TEXT)"));
   // Test single shard range-table.
@@ -484,7 +484,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreBackupT
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBBackupWrongUsage)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBBackupWrongUsage)) {
   client::kv_table_test::CreateTable(
       client::Transactional::kTrue, CalcNumTablets(3), client_.get(), &table_);
   const string& keyspace = table_.name().namespace_name();
@@ -509,7 +509,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBBackupWrongUsage
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefinedPartitions)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLBackupWithDefinedPartitions)) {
   const int kNumPartitions = 3;
 
   const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
@@ -567,7 +567,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
 // split points. When restoring, ysql_dump is not able to express the splits, so it will create the
 // constraint as 1 hash tablet. Restore should restore the unique constraint index as 3 tablets
 // since the tablet snapshot files are already split into 3 tablets.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRangeSplitConstraint)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRangeSplitConstraint)) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -635,7 +635,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRangeSplitCons
 
 // The backup script should disable automatic tablet splitting temporarily to avoid race conditions.
 TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupDisablesAutomaticTabletSplitting)) {
+       YB_DISABLE_TEST_IN_SANITIZERS(TestBackupDisablesAutomaticTabletSplitting)) {
   const string table_name = "mytbl";
 
   // Create table.
@@ -663,7 +663,7 @@ TEST_F(YBBackupTest,
 
 // When trying to run yb_admin with a command that is not supported, we should get a
 // YbAdminOpNotSupportedException.
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYBAdminUnsupportedCommands)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBAdminUnsupportedCommands)) {
   // Dummy command for yb_backup.py, no restore actually runs.
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
@@ -683,7 +683,7 @@ class YBFailSnapshotTest: public YBBackupTest {
 };
 
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestFailBackupRestore),
           YBFailSnapshotTest) {
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
@@ -700,7 +700,7 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackupWithLB)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithLB)) {
   // Create table with a lot of tablets.
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, CalcNumTablets(20), client_.get(), &table_);
@@ -723,7 +723,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLearnerTS)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithLearnerTS)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v INT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 200)"));
 
@@ -808,7 +808,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLear
 }
 
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPartialDeletedTables)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithPartialDeletedTables)) {
   // Test backups on tables that are deleted in the YSQL layer but not in docdb, see gh #13361.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_keep_docdb_table_on_ysql_drop_table", "true"));
 
@@ -876,19 +876,19 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPart
 }
 
 TEST_F(YBBackupTest,
-    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreSimpleKeyspaceToKeyspaceWithHyphen)) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreSimpleKeyspaceToKeyspaceWithHyphen)) {
   DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte", "yugabyte-restored");
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(YBBackupTest,
-    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreKeyspaceWithHyphenToKeyspaceWithHyphen)) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreKeyspaceWithHyphenToKeyspaceWithHyphen)) {
   DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte-restored");
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(YBBackupTest,
-    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace)) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace)) {
   DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte_restored");
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

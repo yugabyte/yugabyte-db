@@ -36,7 +36,7 @@ class YQLRowwiseIteratorIf {
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual Result<bool> HasNext() const = 0;
+  virtual Result<bool> HasNext() = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;
@@ -61,7 +61,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;

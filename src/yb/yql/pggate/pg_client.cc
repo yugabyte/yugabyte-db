@@ -284,8 +284,8 @@ class PgClient::Impl {
                                    uint64_t ysql_catalog_version,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called) {
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called) {
     tserver::PgUpdateSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -688,8 +688,8 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
                                            uint64_t ysql_catalog_version,
                                            int64_t last_val,
                                            bool is_called,
-                                           boost::optional<int64_t> expected_last_val,
-                                           boost::optional<bool> expected_is_called) {
+                                           std::optional<int64_t> expected_last_val,
+                                           std::optional<bool> expected_is_called) {
   return impl_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
       expected_is_called);
