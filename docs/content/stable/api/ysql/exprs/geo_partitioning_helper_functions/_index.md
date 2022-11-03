@@ -27,4 +27,3 @@ The followinng functions are primarily helpful while implementing [Row-level geo
 | [yb_server_region()](func_yb_server_region) | varchar | Returns the region of the currently connected node |
 | [yb_server_zone()](func_yb_server_zone) | varchar | Returns the zone of the currently connected node |
 | [yb_server_cloud()](func_yb_server_zone) | varchar | Returns the zone of the currently connected node |
-
