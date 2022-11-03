@@ -627,6 +627,14 @@ public class Audit extends Model {
     return this.taskUUID;
   }
 
+  @ApiModelProperty(value = "User IP Address", accessMode = READ_ONLY)
+  @Column(nullable = true)
+  private String userAddress;
+
+  public String getUserAddress() {
+    return this.userAddress;
+  }
+
   public Audit() {
     this.timestamp = new Date();
   }
@@ -647,7 +655,8 @@ public class Audit extends Model {
       ActionType action,
       JsonNode body,
       UUID taskUUID,
-      JsonNode details) {
+      JsonNode details,
+      String userAddress) {
     Audit entry = new Audit();
     entry.customerUUID = user.customerUUID;
     entry.userUUID = user.uuid;
@@ -660,6 +669,7 @@ public class Audit extends Model {
     entry.taskUUID = taskUUID;
     entry.payload = body;
     entry.additionalDetails = details;
+    entry.userAddress = userAddress;
     entry.save();
     return entry;
   }
