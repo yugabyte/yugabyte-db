@@ -182,7 +182,9 @@ class GFlagsCollector : public Collector {
   void Collect(CollectionLevel collection_level) {
     auto gflags = CommandlineFlagsIntoString();
     boost::replace_all(gflags, "\n", " ");
-    json_ = Substitute("\"gflags\":\"$0\"", gflags);
+    string escaped_gflags;
+    JsonEscape(gflags, &escaped_gflags);
+    json_ = Substitute("\"gflags\":\"$0\"", escaped_gflags);
   }
 
   string collector_name() { return "GFlagsCollector"; }

@@ -114,9 +114,8 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  Status CallDeleteTablet(const std::string& uuid,
-                    const char* tablet_id,
-                    tablet::TabletDataState state) {
+  Status CallDeleteTablet(
+      const string& uuid, const char* tablet_id, tablet::TabletDataState state) {
     DeleteTabletRequestPB req;
     DeleteTabletResponsePB resp;
     RpcController rpc;
@@ -137,6 +136,8 @@ class TabletServerTest : public TabletServerTestBase {
     }
     return Status::OK();
   }
+
+  string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
 
 TEST_F(TabletServerTest, TestPingServer) {
@@ -834,7 +835,7 @@ void CalcTestRowChecksum(uint64_t *out, int32_t key, uint8_t string_field_define
   QLValue value;
 
   string strval = strings::Substitute("original$0", key);
-  std::string buffer;
+  string buffer;
   uint32_t index = 0;
   buffer.append(pointer_cast<const char*>(&index), sizeof(index));
   value.set_int32_value(key);
@@ -902,7 +903,7 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 }
 
 TEST_F(TabletServerTest, TestCallHome) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<TabletServer, TserverCallHome>(
       webserver_dir, {} /*additional_collections*/, mini_server_->server());
@@ -911,9 +912,14 @@ TEST_F(TabletServerTest, TestCallHome) {
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(TabletServerTest, TestCallHomeFlag) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
+}
+
+TEST_F(TabletServerTest, TestGFlagsCallHome) {
+  CHECK_OK(env_->CreateDir(GetWebserverDir()));
+  TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
 } // namespace tserver
