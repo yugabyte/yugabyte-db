@@ -303,6 +303,8 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
+
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
     const YBCPgOid index_oid);

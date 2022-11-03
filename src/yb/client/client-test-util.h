@@ -74,5 +74,23 @@ YBSchema YBSchemaFromSchema(const Schema& schema);
 std::shared_ptr<YBqlReadOp> CreateReadOp(
     int32_t key, const TableHandle& table, const std::string& value_column);
 
+Result<std::string> GetNamespaceIdByNamespaceName(
+    YBClient* client, const std::string& namespace_name);
+
+Result<std::string> GetTableIdByTableName(
+    YBClient* client, const std::string& namespace_name, const std::string& table_name);
+
+void VerifyNamespaceExists(YBClient *client, const NamespaceName& db_name, int timeout_secs = 20);
+
+void VerifyNamespaceNotExists(
+    YBClient *client, const NamespaceName& db_name, int timeout_secs = 20);
+
+void VerifyTableExists(
+    YBClient* client, const std::string& db_name, const std::string& table_name, int timeout_secs);
+
+void VerifyTableNotExists(
+    YBClient* client, const std::string& db_name, const std::string& table_name, int timeout_secs);
+
+
 }  // namespace client
 }  // namespace yb

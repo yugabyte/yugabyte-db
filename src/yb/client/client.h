@@ -53,6 +53,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/transaction.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
@@ -258,8 +259,13 @@ class YBClient {
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
-  Status DeleteTable(
-      const std::string& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
+  // 'txn' describes the transaction that is performing this delete operation. For YSQL
+  // operations, YB-Master will perform the actual deletion only if this transaction is a
+  // success.
+  Status DeleteTable(const std::string& table_id,
+                     bool wait = true,
+                     const TransactionMetadata *txn = nullptr,
+                     CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.

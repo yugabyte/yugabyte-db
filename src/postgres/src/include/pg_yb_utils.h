@@ -565,8 +565,6 @@ YbTableProperties YbTryGetTableProperties(Relation rel);
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
-void YBTestFailDdlIfRequested();
-
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);

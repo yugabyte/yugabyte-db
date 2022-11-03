@@ -54,6 +54,7 @@
 using std::string;
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace tserver {
@@ -430,7 +431,13 @@ Status PgClientSession::DropTable(
     return Status::OK();
   }
 
-  RETURN_NOT_OK(client().DeleteTable(yb_table_id, true, context->GetClientDeadline()));
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      true /* use_transaction */, context->GetClientDeadline()));
+  // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
+  // table deletion to complete. The table will be deleted in the background only after the
+  // transaction has been determined to be a success.
+  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_ddl_rollback_enabled, metadata,
+        context->GetClientDeadline()));
   table_cache_.Invalidate(yb_table_id);
   return Status::OK();
 }
