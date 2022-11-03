@@ -264,8 +264,8 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     table_metadata->index_map.emplace(entry.indexes());
     table_metadata->table_id = entry.table_id();
   }
-
-  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(
+      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -321,7 +321,7 @@ Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   const auto destroy = !dir.empty();
@@ -393,8 +393,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     auto tablet_metadata_file = TabletMetadataFile(dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
     if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
-      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+                            << " , force overwrite of schema packing " << !is_pitr_restore;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
+          tablet_metadata_file,
+          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
+              : docdb::OverwriteSchemaPacking::kTrue));
+      need_flush = true;
     }
   }
 

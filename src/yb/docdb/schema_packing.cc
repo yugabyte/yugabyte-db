@@ -192,24 +192,38 @@ void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema
 Status SchemaPackingStorage::LoadFromPB(
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas) {
   version_to_schema_packing_.clear();
-  return InsertSchemas(schemas, false);
+  return InsertSchemas(schemas, false, OverwriteSchemaPacking::kFalse);
 }
 
 Status SchemaPackingStorage::MergeWithRestored(
     SchemaVersion schema_version, const SchemaPB& schema,
-    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas) {
-  RETURN_NOT_OK(InsertSchemas(schemas, true));
+    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+    OverwriteSchemaPacking overwrite) {
+  RETURN_NOT_OK(InsertSchemas(schemas, true, overwrite));
+  if (overwrite) {
+    version_to_schema_packing_.erase(schema_version);
+  }
   if (!version_to_schema_packing_.contains(schema_version)) {
     Schema temp_schema;
     RETURN_NOT_OK(SchemaFromPB(schema, &temp_schema));
     AddSchema(schema_version, temp_schema);
   }
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Schema Packing History after merging with snapshot";
+    for (const auto& schema : version_to_schema_packing_) {
+      VLOG(2) << schema.first << " : " << schema.second.ToString();
+    }
+  }
   return Status::OK();
 }
 
 Status SchemaPackingStorage::InsertSchemas(
-    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present) {
+    const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+    bool could_present, OverwriteSchemaPacking overwrite) {
   for (const auto& entry : schemas) {
+    if (overwrite) {
+      version_to_schema_packing_.erase(entry.schema_version());
+    }
     auto inserted = version_to_schema_packing_.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(entry.schema_version()),
@@ -224,7 +238,7 @@ void SchemaPackingStorage::ToPB(
     SchemaVersion skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) {
   for (const auto& version_and_packing : version_to_schema_packing_) {
     if (version_and_packing.first == skip_schema_version) {
-      continue;;
+      continue;
     }
     auto* packing_out = out->Add();
     packing_out->set_schema_version(version_and_packing.first);

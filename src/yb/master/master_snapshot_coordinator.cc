@@ -1204,6 +1204,9 @@ class MasterSnapshotCoordinator::Impl {
                           std::bind(&Impl::FinishRestoration, this, _1, leader_term)));
     task->SetSnapshotHybridTime(operation.restore_at);
     task->SetRestorationId(operation.restoration_id);
+    if (!operation.schedule_id.IsNil()) {
+      task->SetSnapshotScheduleId(operation.schedule_id);
+    }
     if (operation.sys_catalog_restore_needed) {
       task->SetMetadata(tablet_info->table()->LockForRead()->pb);
       // Populate metadata for colocated tables.
