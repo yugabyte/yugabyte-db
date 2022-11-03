@@ -71,6 +71,8 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
@@ -736,6 +738,10 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
 }
 
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropTable(handle));
+}
+
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
     const YBCPgOid index_oid) {
@@ -1279,7 +1285,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled
   };
   return &accessor;
 }

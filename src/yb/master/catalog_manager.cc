@@ -84,6 +84,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -343,6 +344,8 @@ TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
+
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
@@ -3273,7 +3276,8 @@ Status CatalogManager::CreateYsqlSysTable(
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
     WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
+                  txn, table, false /* has_ysql_txn_ddl_state */, when_done)),
                 "Could not submit VerifyTransaction to thread pool");
   }
 
@@ -4001,11 +4005,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Tables with a transaction should be rolled back if the transaction does not get committed.
   // Store this on the table persistent state until the transaction has been a verified success.
   TransactionMetadata txn;
-  if (req.has_transaction() && FLAGS_enable_transactional_ddl_gc) {
+  bool schedule_ysql_txn_verifier = false;
+  if (req.has_transaction() &&
+      (FLAGS_enable_transactional_ddl_gc || FLAGS_ysql_ddl_rollback_enabled)) {
     table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
         CopyFrom(req.transaction());
     txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
     RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+
+    // Set the YsqlTxnVerifierState.
+    if (FLAGS_ysql_ddl_rollback_enabled && !IsIndex(req) && !colocated &&
+        !table->is_matview()) {
+      table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
+        set_contains_create_table_op(true);
+      schedule_ysql_txn_verifier = true;
+    }
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
@@ -4089,13 +4103,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // Verify Transaction gets committed, which occurs after table create finishes.
-  if (req.has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
-    LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
-    std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
-    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
-        "Could not submit VerifyTransaction to thread pool");
+  if (req.has_transaction()) {
+    if (schedule_ysql_txn_verifier) {
+      ScheduleYsqlTxnVerification(table, txn);
+    } else if (PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+      LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
+      std::function<Status(bool)> when_done =
+          std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
+      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
+                    txn, table, false /* has_ysql_ddl_txn_state */, when_done)),
+          "Could not submit VerifyTransaction to thread pool");
+    }
   }
 
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
@@ -5595,6 +5614,59 @@ Status CatalogManager::DeleteTable(
     }
   }
 
+  // Check whether DDL rollback is enabled.
+  if (FLAGS_ysql_ddl_rollback_enabled && req->has_transaction()) {
+    bool ysql_txn_verifier_state_present = false;
+    bool table_created_by_same_transaction = false;
+    auto l = table->LockForWrite();
+    if (l->has_ysql_ddl_txn_verifier_state()) {
+      DCHECK(!l->pb_transaction_id().empty());
+
+      // If the table is already undergoing DDL transaction verification as part of a different
+      // transaction then fail this request.
+      if (l->pb_transaction_id() != req->transaction().transaction_id()) {
+        const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
+        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+      }
+      // This DROP operation is part of a DDL transaction that has already made changes
+      // to this table.
+      ysql_txn_verifier_state_present = true;
+      // If this table is being dropped in the same transaction where it was being created, then
+      // it can be dropped without waiting for the transaction to end. This is because this table
+      // will be dropped anyway whether this transaction commits or aborts.
+      table_created_by_same_transaction = l->is_being_created_by_ysql_ddl_txn();
+    }
+
+    // If this table has not been created in the same transaction that is dropping it, mark this
+    // table for deletion upon successful commit of this transaction.
+    if (!table_created_by_same_transaction &&
+        table->GetTableType() == PGSQL_TABLE_TYPE && !table->is_matview() &&
+        !req->is_index_table() && !table->colocated()) {
+      // Setup a background task. It monitors the YSQL transaction. If it commits, the task drops
+      // the table. Otherwise it removes the deletion marker in the ysql_ddl_txn_verifier_state.
+      TransactionMetadata txn;
+      auto& pb = l.mutable_data()->pb;
+      if (!ysql_txn_verifier_state_present) {
+        pb.mutable_transaction()->CopyFrom(req->transaction());
+        txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+        RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+        pb.add_ysql_ddl_txn_verifier_state()->set_contains_drop_table_op(true);
+      } else {
+        DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+        pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+      }
+      // Upsert to sys_catalog.
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+      // Update the in-memory state.
+      TRACE("Committing in-memory state as part of DeleteTable operation");
+      l.Commit();
+      if (!ysql_txn_verifier_state_present) {
+        ScheduleYsqlTxnVerification(table, txn);
+      }
+      return Status::OK();
+    }
+  }
+
   return DeleteTableInternal(req, resp, rpc);
 }
 
@@ -6207,6 +6279,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
+  // If the table is already undergoing an alter operation, return failure.
+  if (FLAGS_ysql_ddl_rollback_enabled && l->has_ysql_ddl_txn_verifier_state()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    if (l->pb_transaction_id() != req->transaction().transaction_id()) {
+      const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+    }
+  }
+
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
   const TableName table_name = l->name();
@@ -6215,6 +6297,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
+  Schema previous_schema;
+  RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
+  string previous_table_name = l->pb.name();
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties()) {
     TRACE("Apply alter schema");
@@ -6346,7 +6431,67 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       SysTablesEntryPB::ALTERING,
       Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
-  // Update sys-catalog with the new table schema.
+  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
+        table, ddl_log_entries, new_namespace_id, new_table_name, resp));
+
+  // Remove the old name. Not present if PGSQL.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+      (req->has_new_namespace() || req->has_new_table_name())) {
+    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
+          namespace_id, table_name);
+    LockGuard lock(mutex_);
+    table_names_map_.erase({namespace_id, table_name});
+  }
+
+  // Update a task to rollback alter if the corresponding YSQL transaction
+  // rolls back.
+  TransactionMetadata txn;
+  bool schedule_ysql_txn_verifier = false;
+  if (!FLAGS_ysql_ddl_rollback_enabled) {
+    // If DDL rollback is no longer enabled, make sure that there is no transaction
+    // verification state present.
+    table_pb.clear_ysql_ddl_txn_verifier_state();
+  } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE &&
+             !table->colocated()) {
+    if (!l->has_ysql_ddl_txn_verifier_state()) {
+      table_pb.mutable_transaction()->CopyFrom(req->transaction());
+      auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
+      SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
+      ddl_state->set_previous_table_name(previous_table_name);
+      schedule_ysql_txn_verifier = true;
+    }
+    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+    DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
+    table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l.Commit();
+
+  // Verify Transaction gets committed, which occurs after table alter finishes.
+  if (schedule_ysql_txn_verifier) {
+    ScheduleYsqlTxnVerification(table, txn);
+  }
+  RETURN_NOT_OK(SendAlterTableRequest(table, req));
+
+  // Increment transaction status version if needed.
+  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
+  }
+
+  LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
+            << table->ToString() << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateSysCatalogWithNewSchema(
+    const scoped_refptr<TableInfo>& table,
+    const std::vector<DdlLogEntry>& ddl_log_entries,
+    const string& new_namespace_id,
+    const string& new_table_name,
+    AlterTableResponsePB* resp) {
   TRACE("Updating metadata on disk");
   std::vector<const DdlLogEntry*> ddl_log_entry_pointers;
   ddl_log_entry_pointers.reserve(ddl_log_entries.size());
@@ -6360,38 +6505,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                    s.ToString()));
     LOG(WARNING) << s.ToString();
     if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-        (req->has_new_namespace() || req->has_new_table_name())) {
+        (!new_namespace_id.empty() || !new_table_name.empty())) {
       LockGuard lock(mutex_);
       VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
       CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
     }
-    // TableMetadaLock follows RAII paradigm: when it leaves scope,
-    // 'l' will be unlocked, and the mutation will be aborted.
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    if (resp)
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+
+    return CheckIfNoLongerLeader(s);
   }
-
-  // Remove the old name. Not present if PGSQL.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-      (req->has_new_namespace() || req->has_new_table_name())) {
-    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
-          namespace_id, table_name);
-    LockGuard lock(mutex_);
-    table_names_map_.erase({namespace_id, table_name});
-  }
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l.Commit();
-
-  RETURN_NOT_OK(SendAlterTableRequest(table, req));
-
-  // Increment transaction status version if needed.
-  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    RETURN_NOT_OK(IncrementTransactionTablesVersion());
-  }
-
-  LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
-            << table->ToString() << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
 
@@ -6410,6 +6533,136 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   resp->set_schema_version(l->pb.version());
   resp->set_done(l->pb.state() != SysTablesEntryPB::ALTERING);
 
+  return Status::OK();
+}
+
+void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
+                                                 const TransactionMetadata& txn) {
+  auto l = table->LockForRead();
+  LOG(INFO) << "Enqueuing table for DDL transaction Verification: " << table->name()
+            << " id: " << table->id() << " schema version: " << l->pb.version();
+  std::function<Status(bool)> when_done =
+    std::bind(&CatalogManager::YsqlTableSchemaChecker, this, table,
+              l->pb_transaction_id(), _1);
+  // For now, just print warning if submission to thread pool fails. Fix this as part of
+  // #13358.
+  WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+    std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, table,
+              true /* has_ysql_ddl_state */, when_done)),
+      "Could not submit VerifyTransaction to thread pool");
+}
+
+Status CatalogManager::YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
+                                            const string& txn_id_pb,
+                                            bool txn_rpc_success) {
+  if (!txn_rpc_success) {
+    return STATUS_FORMAT(IllegalState, "Failed to find Transaction Status for table $0",
+                         table->ToString());
+  }
+  bool is_committed = VERIFY_RESULT(ysql_transaction_->PgSchemaChecker(table));
+  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed);
+}
+
+Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
+                                                  const string& txn_id_pb,
+                                                  bool success) {
+  DCHECK(!txn_id_pb.empty());
+  DCHECK(table);
+  const string& id = "table id: " + table->id();
+  auto txn = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  auto l = table->LockForWrite();
+  LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
+            << " for transaction " << txn
+            << ": Success: " << (success ? "true" : "false")
+            << " ysql_ddl_txn_verifier_state: "
+            << l->ysql_ddl_txn_verifier_state().DebugString();
+
+  if (!l->has_ysql_ddl_txn_verifier_state()) {
+    // The table no longer has any DDL state to clean up. It was probably cleared by
+    // another thread, nothing to do.
+    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked but no ysql transaction "
+              << "verification state found for " << id << " , ignoring";
+    return Status::OK();
+  }
+
+  if (txn_id_pb != l->pb_transaction_id()) {
+    // Now the table has transaction state for a different transaction.
+    // Do nothing.
+    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked for transaction " << txn << " but the "
+              << "schema contains state for a different transaction";
+    return Status::OK();
+  }
+
+  if (success && !l->is_being_deleted_by_ysql_ddl_txn()) {
+    // This transaction was successful. We did not drop this table in this
+    // transaction. In that case, we have nothing else to do.
+    LOG(INFO) << "Clearing ysql_ddl_txn_verifier_state from " << id;
+    auto& pb = l.mutable_data()->pb;
+    pb.clear_ysql_ddl_txn_verifier_state();
+    pb.clear_transaction();
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+    l.Commit();
+    return Status::OK();
+  }
+
+  if ((success && l->is_being_deleted_by_ysql_ddl_txn()) ||
+      (!success && l->is_being_created_by_ysql_ddl_txn())) {
+    // This is either a successful DROP operation or a failed CREATE operation.
+    // In both cases, drop the table.
+    LOG(INFO) << "Dropping " << id;
+    l.Commit();
+    DeleteTableRequestPB dtreq;
+    DeleteTableResponsePB dtresp;
+
+    dtreq.mutable_table()->set_table_name(table->name());
+    dtreq.mutable_table()->set_table_id(table->id());
+    dtreq.set_is_index_table(false);
+    return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */);
+  }
+
+  auto& table_pb = l.mutable_data()->pb;
+  if (!success && l->ysql_ddl_txn_verifier_state().contains_alter_table_op()) {
+    LOG(INFO) << "Alter transaction " << txn << " failed, rolling back its schema changes";
+    std::vector<DdlLogEntry> ddl_log_entries;
+    ddl_log_entries.emplace_back(
+        master_->clock()->Now(),
+        table->id(),
+        l->pb,
+        "Rollback of DDL Transaction");
+    table_pb.mutable_schema()->CopyFrom(table_pb.ysql_ddl_txn_verifier_state(0).previous_schema());
+    const string& new_table_name = table_pb.ysql_ddl_txn_verifier_state(0).previous_table_name();
+    l.mutable_data()->pb.set_name(new_table_name);
+    table_pb.set_version(table_pb.version() + 1);
+    table_pb.set_updates_only_index_permissions(false);
+    l.mutable_data()->set_state(
+        SysTablesEntryPB::ALTERING,
+        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+
+    table_pb.clear_ysql_ddl_txn_verifier_state();
+    table_pb.clear_transaction();
+
+    // Update sys-catalog with the new table schema.
+    RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
+          table,
+          ddl_log_entries,
+          "" /* new_namespace_id */,
+          new_table_name,
+          nullptr /* resp */));
+    l.Commit();
+    LOG(INFO) << "Sending Alter Table request as part of rollback for table " << table->name();
+    return SendAlterTableRequestInternal(table, TransactionId::Nil());
+  }
+
+  // This must be a failed transaction with only a delete operation in it and no alter operations.
+  // Hence we don't need to do anything other than clear the transaction state.
+  DCHECK(!success && l->is_being_deleted_by_ysql_ddl_txn())
+    << "Unexpected state for table " << table->ToString() << " with transaction verification "
+    << "state " << l->ysql_ddl_txn_verifier_state().DebugString();
+
+  table_pb.clear_ysql_ddl_txn_verifier_state();
+  table_pb.clear_transaction();
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+  l.Commit();
   return Status::OK();
 }
 
@@ -8055,7 +8308,7 @@ void CatalogManager::ProcessPendingNamespace(
               std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
           WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
               std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
-                        txn, when_done)),
+                        txn, nullptr /* table */, false /* has_ysql_ddl_state */, when_done)),
               "Could not submit VerifyTransaction to thread pool");
         }
       } else {
@@ -9688,9 +9941,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 }
 
 Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
-                                             const AlterTableRequestPB* req) {
-  auto tablets = table->GetTablets();
-
+                                                     const AlterTableRequestPB* req) {
   bool is_ysql_table_with_transaction_metadata =
       table->GetTableType() == TableType::PGSQL_TABLE_TYPE &&
       req != nullptr &&
@@ -9719,6 +9970,12 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
+  return SendAlterTableRequestInternal(table, txn_id);
+}
+
+Status CatalogManager::SendAlterTableRequestInternal(const scoped_refptr<TableInfo>& table,
+                                                     const TransactionId& txn_id) {
+  auto tablets = table->GetTablets();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id);
     table->AddTask(call);

@@ -1053,6 +1053,14 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
+Status PgApiImpl::ExecDropTable(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_TABLE)) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  return down_cast<PgDropTable*>(handle)->Exec();
+}
+
 Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());

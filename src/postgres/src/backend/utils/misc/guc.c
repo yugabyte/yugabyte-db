@@ -2020,8 +2020,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Relaxes some internal sanity checks for system catalogs to "
-						 "allow creating them."),
+			gettext_noop("Relaxes some internal sanity checks for system "
+						 "catalogs to allow creating them."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -2032,8 +2032,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("When set, the next DDL (only CREATE TABLE for now) "
-						 "will fail right after DocDB processes the actual database structure change."),
+			gettext_noop("When set, the next DDL will fail right before "
+					     "commit."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
