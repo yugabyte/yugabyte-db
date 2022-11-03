@@ -110,6 +110,8 @@ You need to perform the following steps:
 1. Fetch the YugabyteDB Helm chart on your desktop (install Helm on your desktop). Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
 
    ```sh
+   helm repo add yugabytedb https://charts.yugabyte.com 
+   helm repo update 
    helm fetch yugabytedb/yugaware - - version= {{ version }}
    tar zxvf yugaware-{{ version }}.tgz
    cd yugaware
