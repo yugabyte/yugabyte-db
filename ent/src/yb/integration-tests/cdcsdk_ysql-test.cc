@@ -5969,7 +5969,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
 
   ASSERT_EQ(insert_count, expected_key1);
   ASSERT_EQ(insert_count, expected_key2);
-  ASSERT_EQ(ddl_count, 3);
+  ASSERT_EQ(ddl_count, 2);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
@@ -7883,6 +7883,120 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId))
     }
   }
   ASSERT_EQ(reads_snapshot, 1000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDDLRecordValidationWithColocation)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  std::unordered_map<std::string, std::string> excepected_schema_name{
+      {"test1", "public"}, {"test2", "public"}};
+  std::unordered_map<std::string, std::vector<std::string>> excepected_column_name{
+      {"test1", {"id1"}}, {"test2", {"id2"}}};
+
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    LOG(INFO) << "Record found: " << record.ShortDebugString();
+    if (record.row_message().op() == RowMessage::DDL) {
+      if (excepected_schema_name.find(record.row_message().table()) ==
+          excepected_schema_name.end()) {
+        LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
+        FAIL();
+      }
+      ASSERT_EQ(
+          excepected_schema_name[record.row_message().table()],
+          record.row_message().pgschema_name());
+      for (auto& ech_column_info : record.row_message().schema().column_info()) {
+        if (excepected_column_name.find(record.row_message().table()) ==
+            excepected_column_name.end()) {
+          LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
+          FAIL();
+        }
+        auto& excepted_column_list = excepected_column_name[record.row_message().table()];
+        if (std::find(
+                excepted_column_list.begin(), excepted_column_list.end(), ech_column_info.name()) ==
+            excepted_column_list.end()) {
+          LOG(INFO) << "Colname found in the record:" << ech_column_info.name()
+                    << " for the table: " << record.row_message().table()
+                    << " doesn't match the expected result.";
+          FAIL();
+        }
+      }
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWithColocation)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_begin_records = 2;
+  int expected_commit_records = 2;
+  int actual_begin_records = 0;
+  int actual_commit_records = 0;
+  std::vector<std::string> excepted_table_list{"test1", "test2"};
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    LOG(INFO) << "Record found: " << record.ShortDebugString();
+    if (std::find(
+            excepted_table_list.begin(), excepted_table_list.end(), record.row_message().table()) ==
+        excepted_table_list.end()) {
+      LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
+      FAIL();
+    }
+
+    if (record.row_message().op() == RowMessage::BEGIN) {
+      actual_begin_records += 1;
+    } else if (record.row_message().op() == RowMessage::COMMIT) {
+      actual_commit_records += 1;
+    }
+  }
+  ASSERT_EQ(actual_begin_records, expected_begin_records);
+  ASSERT_EQ(actual_commit_records, expected_commit_records);
 }
 
 }  // namespace enterprise

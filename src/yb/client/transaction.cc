@@ -93,7 +93,7 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace client {
@@ -600,8 +600,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global ||
-        FLAGS_enable_wait_queue_based_pessimistic_locking) {
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global || FLAGS_enable_wait_queues) {
       if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
         YB_LOG_EVERY_N_SECS(WARNING, 100)
             << "Cross-region transactions are disabled in clusters with pessimistic locking "

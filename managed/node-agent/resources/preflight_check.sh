@@ -245,7 +245,7 @@ preflight_all_checks() {
   update_result_json "python_version" "$result"
 
   # Check home directory exists.
-  if [[ -d $yb_home_dir ]]; then
+  if [[ -d "$yb_home_dir" ]]; then
     update_result_json "home_dir_exists" true
   else
     update_result_json "home_dir_exists" false
@@ -432,7 +432,7 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --yb_home_dir)
-      yb_home_dir="$2"
+      yb_home_dir=${2//\'/}
       shift
     ;;
     --cleanup)
