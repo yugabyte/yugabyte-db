@@ -242,7 +242,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
 
 Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
