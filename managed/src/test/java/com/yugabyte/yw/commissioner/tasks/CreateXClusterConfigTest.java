@@ -331,7 +331,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
             targetUniverse);
 
@@ -373,7 +373,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
             targetUniverse);
 
@@ -418,7 +418,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
             targetUniverse);
 
@@ -467,7 +467,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
             targetUniverse);
 
