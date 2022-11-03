@@ -287,7 +287,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
         –-data-dir </path/to/files/dir/> \
         --file-table-map <filename1:table1,filename2:table2> \
         --delimiter <DELIMITER> \
