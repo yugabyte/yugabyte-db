@@ -1070,6 +1070,11 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "userAddress" : {
+          "description" : "User IP Address",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "userEmail" : {
           "description" : "User Email",
           "readOnly" : true,
