@@ -62,5 +62,22 @@
       <artifactId>junit</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.directory.server</groupId>
+      <artifactId>apacheds-all</artifactId>
+      <version>2.0.0-M22</version>
+      <exclusions>
+        <!-- exclude additional LDIF schema files to avoid conflicts through
+          multiple copies -->
+        <exclusion>
+          <groupId>org.apache.directory.shared</groupId>
+          <artifactId>shared-ldap-schema</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.directory.api</groupId>
+          <artifactId>api-ldap-schema-data</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
   </dependencies>
 </project>
