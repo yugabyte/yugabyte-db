@@ -46,9 +46,6 @@ public class RestartXClusterConfig extends EditXClusterConfig {
 
         createXClusterConfigSetStatusForTablesTask(tableIds, XClusterTableConfig.Status.Updating);
 
-        // Set needBootstrap to true for all tables. It will check if it is required.
-        xClusterConfig.setNeedBootstrapForTables(tableIds, true /* needBootstrap */);
-
         if (isRestartWholeConfig) {
           // Delete the xCluster config.
           createDeleteXClusterConfigSubtasks(
