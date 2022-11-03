@@ -175,3 +175,31 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/health-check:
+  get:
+    description: Get health information about the cluster
+    operationId: getClusterHealthCheck
+    summary: Get health information about the cluster
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/HealthCheckResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/tablets:
+  get:
+    description: Get list of tablets
+    operationId: getClusterTablets
+    summary: Get list of tablets
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTabletListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
