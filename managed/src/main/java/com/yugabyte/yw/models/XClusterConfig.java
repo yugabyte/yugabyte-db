@@ -9,23 +9,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
-import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.metrics.MetricQueryResponse;
-import com.yugabyte.yw.models.common.Condition;
-import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -33,7 +24,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -47,10 +37,8 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
-import play.api.Play;
 
 @Slf4j
 @Entity
@@ -343,9 +331,14 @@ public class XClusterConfig extends Model {
     addTablesIfNotExist(tableIds, tableIdsNeedBootstrap, false /* areIndexTables */);
   }
 
+  public void addTablesIfNotExist(
+      Set<String> tableIds, XClusterConfigCreateFormData.BootstrapParams bootstrapParams) {
+    addTablesIfNotExist(tableIds, bootstrapParams != null ? bootstrapParams.tables : null);
+  }
+
   @Transactional
   public void addTablesIfNotExist(Set<String> tableIds) {
-    addTablesIfNotExist(tableIds, null /* tableIdsNeedBootstrap */);
+    addTablesIfNotExist(tableIds, (Set<String>) null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
@@ -615,9 +608,6 @@ public class XClusterConfig extends Model {
     XClusterConfig xClusterConfig = create(createFormData);
     xClusterConfig.setTableType(requestedTableInfoList);
     xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
-    if (createFormData.bootstrapParams != null) {
-      xClusterConfig.setNeedBootstrapForTables(indexTableIdSet, true /* needBootstrap */);
-    }
     return xClusterConfig;
   }
 
