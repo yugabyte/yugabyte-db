@@ -140,7 +140,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-user <SOURCE_DB_USER> \
         --source-db-password <SOURCE_DB_PASSWORD> \
         --source-db-name <SOURCE_DB_NAME> \
-        --source-db-schema <SOURCE_DB_SCHEMA> # This argument is not applicable for MySQL.
+        --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL.
 
 ```
 
@@ -181,8 +181,6 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 Dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:
 
-Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager export data --export-dir <EXPORT_DIR> \
@@ -191,9 +189,10 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-user <SOURCE_DB_USER> \
         --source-db-password <SOURCE_DB_PASSWORD> \
         --source-db-name <SOURCE_DB_NAME> \
-        --source-db-schema <SOURCE_DB_SCHEMA> # This argument is not applicable for MySQL.
+        --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL.
 ```
 
+Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
 Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
@@ -218,7 +217,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only.
 ```
 
 Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
@@ -227,7 +226,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, `import schema` by default, does not import indexes and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, you can create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, you can create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
 
 {{< /note >}}
 
@@ -242,27 +241,15 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> # This argument is applicable only for MySQL and Oracle.
-```
-
-Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
-
-yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ . yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
-
-By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import data --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
         --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-The recommended value for the `--parallel-jobs` argument is C/2 where C is the number of cores in the cluster.
+By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. You can change the default number of connections using the `--parallel-jobs` argument. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
+
+Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
+
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
 {{< tip title="Importing large datasets" >}}
 
@@ -287,7 +274,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
         –-data-dir </path/to/files/dir/> \
         --file-table-map <filename1:table1,filename2:table2> \
         --delimiter <DELIMITER> \
@@ -308,9 +295,11 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
         --post-import-data
 ```
+
+Refer to [import schema](../yb-voyager-cli/#import-schema) for details about the arguments.
 
 ### Verify migration
 
