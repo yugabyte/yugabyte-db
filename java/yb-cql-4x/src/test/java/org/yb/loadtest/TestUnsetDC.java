@@ -84,7 +84,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       Collections.emptyMap(),
       cb -> {
         cb.perTServerFlags(perTserverFlags);
-      });
+      }, Collections.emptyMap());
   }
   protected void createMiniClusterWithDifferentRegionDifferentZone() throws Exception {
     destroyMiniCluster();
@@ -108,7 +108,7 @@ public class TestUnsetDC extends BaseMiniClusterTest {
       Collections.emptyMap(),
       cb -> {
         cb.perTServerFlags(perTserverFlags);
-      });
+      }, Collections.emptyMap());
   }
 
   protected void createMiniClusterWithPreferredLeaders() throws Exception {

@@ -206,6 +206,19 @@ public class BaseMiniClusterTest extends BaseYBTest {
     createMiniCluster(-1, -1, additionalMasterFlags, additionalTserverFlags);
   }
 
+  /**
+   * Creates a new cluster with additional flags and environment vars.
+   * <p>
+   * Flags will override initial ones on name clash.
+   */
+  protected final void createMiniCluster(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags,
+      Map<String, String> additionalEnvironmentVars) throws Exception {
+    createMiniCluster(-1, -1, additionalMasterFlags, additionalTserverFlags, null,
+        additionalEnvironmentVars);
+  }
+
   protected final void createMiniCluster(
       Consumer<MiniYBClusterBuilder> customize) throws Exception {
     createMiniCluster(-1, -1, customize);
@@ -227,7 +240,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
-    createMiniCluster(numMasters, numTservers, additionalMasterFlags, additionalTserverFlags, null);
+    createMiniCluster(numMasters, numTservers, additionalMasterFlags, additionalTserverFlags, null,
+        Collections.emptyMap());
   }
 
   protected final void createMiniCluster(
@@ -235,7 +249,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Consumer<MiniYBClusterBuilder> customize) throws Exception {
     createMiniCluster(numMasters, numTservers, Collections.emptyMap(), Collections.emptyMap(),
-        customize);
+        customize, Collections.emptyMap());
   }
 
   protected void createMiniCluster(
@@ -243,7 +257,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags,
-      Consumer<MiniYBClusterBuilder> customize) throws Exception {
+      Consumer<MiniYBClusterBuilder> customize,
+      Map<String, String> additionalEnvironmentVars
+      ) throws Exception {
     if (!isMiniClusterEnabled()) {
       return;
     }
@@ -279,6 +295,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (customize != null) {
       customize.accept(clusterBuilder);
     }
+
+    clusterBuilder.addEnvironmentVariables(additionalEnvironmentVars);
 
     miniCluster = clusterBuilder.build();
     masterAddresses = miniCluster.getMasterAddresses();
