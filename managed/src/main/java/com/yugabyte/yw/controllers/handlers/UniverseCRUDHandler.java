@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -1593,9 +1594,16 @@ public class UniverseCRUDHandler {
               taskParams.enableClientToNodeEncrypt,
               taskParams.rootAndClientRootCASame);
 
-      TlsToggleParams tlsToggleParams = new TlsToggleParams();
-      tlsToggleParams.enableNodeToNodeEncrypt = taskParams.enableNodeToNodeEncrypt;
-      tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
+      // taskParams has the same subset of overridable fields as TlsToggleParams.
+      // taskParams is already merged with universe details.
+      TlsToggleParams tlsToggleParams;
+      try {
+        tlsToggleParams =
+            Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), TlsToggleParams.class);
+      } catch (JsonProcessingException e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
+
       tlsToggleParams.allowInsecure =
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
       tlsToggleParams.rootCA =
@@ -1604,10 +1612,6 @@ public class UniverseCRUDHandler {
           isClientRootCA
               ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
               : null;
-      tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
-      tlsToggleParams.upgradeOption = taskParams.upgradeOption;
-      tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
-      tlsToggleParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
@@ -1637,9 +1641,15 @@ public class UniverseCRUDHandler {
               universeDetails.nodePrefix,
               customer.uuid);
     }
-
-    CertsRotateParams certsRotateParams =
-        CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
+    // taskParams has the same subset of overridable fields as CertsRotateParams.
+    // taskParams is already merged with universe details.
+    CertsRotateParams certsRotateParams;
+    try {
+      certsRotateParams =
+          Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), CertsRotateParams.class);
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }

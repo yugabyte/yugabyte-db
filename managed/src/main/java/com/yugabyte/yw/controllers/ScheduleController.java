@@ -26,6 +26,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -131,6 +132,28 @@ public class ScheduleController extends AuthenticatedController {
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);
+      }
+
+      // Update incremental backup schedule frequency, if provided after validation.
+      if (params.incrementalBackupFrequency != null) {
+        if (ScheduleUtil.isIncrementalBackupSchedule(scheduleUUID)) {
+          if (params.incrementalBackupFrequencyTimeUnit == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Please provide time unit for incremental backup frequency");
+          }
+          long schedulingFrequency =
+              (StringUtils.isEmpty(params.cronExpression))
+                  ? params.frequency
+                  : BackupUtil.getCronExpressionTimeInterval(params.cronExpression);
+          BackupUtil.validateIncrementalScheduleFrequency(
+              params.incrementalBackupFrequency, schedulingFrequency);
+          schedule.updateIncrementalBackupFrequencyAndTimeUnit(
+              params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
+        } else {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot assign incremental backup frequency to a non-incremental schedule");
+        }
       }
     }
     auditService()

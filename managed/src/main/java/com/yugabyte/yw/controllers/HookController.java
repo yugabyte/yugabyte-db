@@ -159,14 +159,13 @@ public class HookController extends AuthenticatedController {
   @ApiOperation(value = "Run API Triggered hooks", nickname = "runHooks", response = YBPTask.class)
   public Result run(UUID customerUUID, UUID universeUUID, Boolean isRolling) {
     verifyAuth();
-    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_API_HOOK_RUN_PATH)) {
+    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_API_HOOK_RUN_PATH)) {
       throw new PlatformServiceException(
           UNAUTHORIZED,
           "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
     }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-
     RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
     taskParams.universeUUID = universe.universeUUID;
     taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());

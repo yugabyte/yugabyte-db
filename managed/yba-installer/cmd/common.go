@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 )
 
@@ -356,7 +357,7 @@ func (com Common) extractPlatformSupportPackageAndYugabundle(vers string) {
 		LogError("Error in starting the File Extraction process.")
 	}
 
-	Untar(rExtract1, INSTALL_VERSION_DIR)
+	tar.Untar(rExtract1, INSTALL_VERSION_DIR)
 
 	path1 := INSTALL_VERSION_DIR + "/yugabyte-" + vers +
 		"/yugabundle_support-" + vers + "-centos-x86_64.tar.gz"
@@ -366,7 +367,7 @@ func (com Common) extractPlatformSupportPackageAndYugabundle(vers string) {
 		LogError("Error in starting the File Extraction process.")
 	}
 
-	Untar(rExtract2, INSTALL_VERSION_DIR)
+	tar.Untar(rExtract2, INSTALL_VERSION_DIR)
 
 	LogDebug(path1 + " successfully extracted.")
 
@@ -387,7 +388,7 @@ func (com Common) renameThirdPartyDependencies() {
 	//that the install action is idempotent.
 	os.RemoveAll(INSTALL_VERSION_DIR + "/thirdparty")
 	rExtract, _ := os.Open(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz")
-	Untar(rExtract, INSTALL_VERSION_DIR)
+	tar.Untar(rExtract, INSTALL_VERSION_DIR)
 	LogDebug(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz successfully extracted.")
 	MoveFileGolang(INSTALL_VERSION_DIR+"/thirdparty", INSTALL_VERSION_DIR+"/third-party")
 	ExecuteBashCommand("bash", []string{"-c",
