@@ -1074,6 +1074,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return (String) elems.get(index);
     }
 
+    Float getFloat(int index) {
+      return (Float) elems.get(index);
+    }
+
     public boolean elementEquals(int idx, Object value) {
       return compare(elems.get(idx), value) == 0;
     }
