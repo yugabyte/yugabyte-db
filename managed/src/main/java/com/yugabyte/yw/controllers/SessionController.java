@@ -378,7 +378,8 @@ public class SessionController extends AbstractPlatformController {
         Audit.ActionType.Login,
         null,
         null,
-        null);
+        null,
+        request().remoteAddress());
     return withData(sessionInfo);
   }
 
@@ -437,7 +438,8 @@ public class SessionController extends AbstractPlatformController {
           Audit.ActionType.Login,
           null,
           null,
-          null);
+          null,
+          request().remoteAddress());
     }
 
     if (environment.isDev()) {
@@ -486,7 +488,8 @@ public class SessionController extends AbstractPlatformController {
           Audit.ActionType.Login,
           null,
           null,
-          null);
+          null,
+          request().remoteAddress());
       return withData(sessionInfo);
     }
     throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");
