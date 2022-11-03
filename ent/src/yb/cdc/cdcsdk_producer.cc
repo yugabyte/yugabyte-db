@@ -1080,8 +1080,8 @@ Status GetChangesForCDCSDK(
             nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
-      if (!checkpoint_updated) {
-        LOG_WITH_FUNC(INFO)
+      if (!checkpoint_updated && VLOG_IS_ON(1)) {
+        VLOG_WITH_FUNC(1)
             << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
             << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
             << ". Will retry and get another batch";
