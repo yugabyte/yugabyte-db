@@ -29,7 +29,6 @@ YugabyteDB Voyager manages the entire lifecycle of a database migration, includi
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
 - Supports direct data import from CSV files.
-- Currently, supports migrating up to 1TB of data.
 - Live migration - Coming soon. For more details, refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/50) and for any questions, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new).
 
 ## Source databases
@@ -63,6 +62,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
 - Dump the source database in the local files on the machine where yb-voyager is installed, using the [`yb-voyager export data`](migrate-steps/#export-data) command.
 - Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-schema) command.
 - Import the data to the target YugabyteDB database using the [`yb-voyager import data`](migrate-steps/#import-data) command.
+- Import indexes and triggers to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-indexes-and-triggers) command with an additional `--post-import-data` flag.
 
 ![Migration workflow](/images/migrate/migration-workflow.png)
 
