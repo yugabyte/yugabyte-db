@@ -652,7 +652,7 @@ The example below shows migration when the hierarchical structure is displayed.
  	WHERE staff_id = '1001' 
  	UNION ALL 
  	SELECT n.staff_id, 
-               name, 
+               n.name, 
                n.manager_id, 
                <b>w.PATH &#124;&#124; '/' &#124;&#124; n.name</b> 
  	FROM staff_table n,staff_table_w w 
