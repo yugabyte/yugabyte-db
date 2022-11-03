@@ -441,6 +441,12 @@
    from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
    to = "/preview/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
 
+# Fault tolerance redirects
+
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/*"
+   to = "/preview/explore/fault-tolerance/macos/"
+
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 
