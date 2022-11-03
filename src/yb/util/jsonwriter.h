@@ -37,6 +37,7 @@
 #include <memory>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 namespace google {
 namespace protobuf {
@@ -46,6 +47,9 @@ class FieldDescriptor;
 } // namespace google
 
 namespace yb {
+
+// Escape the given string using JSON rules.
+void JsonEscape(GStringPiece s, std::string* out);
 
 class JsonWriterIf;
 

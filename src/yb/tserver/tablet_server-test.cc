@@ -115,9 +115,8 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  Status CallDeleteTablet(const std::string& uuid,
-                    const char* tablet_id,
-                    tablet::TabletDataState state) {
+  Status CallDeleteTablet(
+      const string& uuid, const char* tablet_id, tablet::TabletDataState state) {
     DeleteTabletRequestPB req;
     DeleteTabletResponsePB resp;
     RpcController rpc;
@@ -138,6 +137,8 @@ class TabletServerTest : public TabletServerTestBase {
     }
     return Status::OK();
   }
+
+  string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
 
 TEST_F(TabletServerTest, TestPingServer) {
@@ -310,11 +311,11 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
   // string looks like: handler_latency_yb_tserver_TabletServerService_Write{quantile=p50.....} 0
-  std::string page_content = buf.ToString();
+  string page_content = buf.ToString();
   std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write"
                                         "{quantile=\"p50\"");
   std::size_t end = page_content.find("}", begin);
-  std::string metric_instance_with_zero_value = page_content.substr(begin, end-begin+1)+" 0";
+  string metric_instance_with_zero_value = page_content.substr(begin, end - begin + 1) + " 0";
 
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
@@ -887,7 +888,7 @@ void CalcTestRowChecksum(uint64_t *out, int32_t key, uint8_t string_field_define
   QLValue value;
 
   string strval = strings::Substitute("original$0", key);
-  std::string buffer;
+  string buffer;
   uint32_t index = 0;
   buffer.append(pointer_cast<const char*>(&index), sizeof(index));
   value.set_int32_value(key);
@@ -955,7 +956,7 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 }
 
 TEST_F(TabletServerTest, TestCallHome) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<TabletServer, TserverCallHome>(
       webserver_dir, {} /*additional_collections*/, mini_server_->server());
@@ -964,9 +965,14 @@ TEST_F(TabletServerTest, TestCallHome) {
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(TabletServerTest, TestCallHomeFlag) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
+}
+
+TEST_F(TabletServerTest, TestGFlagsCallHome) {
+  CHECK_OK(env_->CreateDir(GetWebserverDir()));
+  TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
 } // namespace tserver
