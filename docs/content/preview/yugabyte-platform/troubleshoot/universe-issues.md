@@ -28,7 +28,7 @@ You can chose to view metrics based on different criteria:
 
 - If your universe has more than one region, cluster, zone, or node, the **Metrics** page allows you to view metrics for a specific region, cluster, zone, or node.
 
-- You can view the overall node metrics which represent an aggregate across the selected nodes. Dpending on the metric type, either an average across nodes or a sum of all node values is displayed.
+- You can view the overall node metrics which represent an aggregate across the selected nodes. Depending on the metric type, either an average across nodes or a sum of all node values is displayed.
 
 - You can view metrics for up to five top or bottom outlier nodes. For example, to display graphs for the top three nodes with the highest CPU usage, you would select **Outlier Nodes**, then **Top**, and then **3 nodes**. The graph also includes the average for all nodes.
 
