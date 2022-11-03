@@ -537,6 +537,7 @@ class ConcurrentBlockedWaitersTest {
 
     EXPECT_EQ(GetWaiterNotFinishedCount(), 2 * num_waiters - 1);
 
+    LOG(INFO) << "About to commit blocking transaction.";
     ASSERT_OK(blocker_conn->CommitTransaction());
     LOG(INFO) << "Finished blocking transaction.";
 
