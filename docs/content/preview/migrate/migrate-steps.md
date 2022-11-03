@@ -308,7 +308,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \
         --target-db-name <TARGET_DB_NAME> \
         --target-db-user <TARGET_DB_USER> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # This argument is applicable only for MySQL and Oracle.
+        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
         --post-import-data
 ```
 
