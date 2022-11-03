@@ -26,7 +26,7 @@ public class TestPgPessimisticLockingRegress extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_wait_queue_based_pessimistic_locking", "true");
+    flagMap.put("enable_wait_queues", "true");
     flagMap.put("enable_deadlock_detection", "true");
     flagMap.put("yb_enable_read_committed_isolation", "false");
     flagMap.put("auto_promote_nonlocal_transactions_to_global", "false");
