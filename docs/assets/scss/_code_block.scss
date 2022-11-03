@@ -5,7 +5,7 @@ main {
       vertical-align: middle;
       margin: 0 0;
       font-size: inherit !important;
-      line-height: 1;
+      line-height: 110%;
       max-width: 100%;
       overflow: auto;
       background: #f2f6ff;
@@ -153,6 +153,7 @@ main {
         background-image: url(/icons/copy-icon.svg);
         background-repeat: no-repeat;
         z-index: 1;
+        box-shadow: none;
         background-position: center center;
 
         &:hover {
@@ -191,8 +192,8 @@ main {
           position: absolute;
           top: 0;
           left: 0;
-          font: 13px/1 "font awesome 5 free";
-          font-weight: 100;
+          font: 15px/1 "font awesome 6 free";
+          font-weight: 700;
           content: "\f00c";
           color: #48ab52 !important;
           text-align: center;

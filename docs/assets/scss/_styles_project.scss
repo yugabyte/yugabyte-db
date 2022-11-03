@@ -315,6 +315,10 @@ ol.breadcrumb {
 
 .td-main {
   .td-content {
+    iframe {
+      margin: 20px 0;
+    }
+
     a.section-link {
       &:hover {
         &::after {
