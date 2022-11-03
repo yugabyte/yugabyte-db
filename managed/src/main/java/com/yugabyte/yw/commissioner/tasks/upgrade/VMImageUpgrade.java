@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -104,13 +103,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       List<NodeDetails> nodeList = Collections.singletonList(node);
       createSetupServerTasks(nodeList, p -> p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
-      UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
-      taskParams().rootCA = universeDetails.rootCA;
-      taskParams().clientRootCA = universeDetails.clientRootCA;
-      taskParams().rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-      taskParams().allowInsecure = universeDetails.allowInsecure;
-      taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
       createConfigureServerTasks(
               nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);

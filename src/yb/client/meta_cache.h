@@ -633,15 +633,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   boost::optional<std::vector<RemoteTabletPtr>> FastLookupAllTabletsUnlocked(
       const std::shared_ptr<const YBTable>& table) REQUIRES_SHARED(mutex_);
 
-  // If `tablet` is a result of splitting of pre-split tablet for which we already have
-  // TabletRequests structure inside YBClient - updates TabletRequests.request_id_seq for the
-  // `tablet` based on value for pre-split tablet.
-  // This is required for correct tracking of duplicate requests to post-split tablets, if we
-  // start from scratch - tserver will treat these requests as duplicates/incorrect, because
-  // on tserver side related structure for tracking duplicate requests is also copied from
-  // pre-split tablet to post-split tablets.
-  void MaybeUpdateClientRequests(const RemoteTablet& tablet);
-
   std::unordered_map<TableId, TableData>::iterator InitTableDataUnlocked(
       const TableId& table_id, const VersionedTablePartitionListPtr& partitions)
       REQUIRES_SHARED(mutex_);

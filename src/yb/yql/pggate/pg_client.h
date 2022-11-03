@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -113,8 +114,8 @@ class PgClient {
                                    uint64_t ysql_catalog_version,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called);
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,

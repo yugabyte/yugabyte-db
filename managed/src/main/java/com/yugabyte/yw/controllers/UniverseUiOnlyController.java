@@ -329,7 +329,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     TlsConfigUpdateParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            ctx(), request(), TlsConfigUpdateParams.class);
+            ctx(), request(), TlsConfigUpdateParams.class, universe);
 
     UUID taskUUID = universeCRUDHandler.tlsConfigUpdate(customer, universe, taskParams);
     auditService()

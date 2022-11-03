@@ -90,6 +90,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
 using std::string;
@@ -155,6 +156,7 @@ DECLARE_bool(TEST_pause_before_send_hinted_election);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -2445,6 +2447,64 @@ TEST_F(TabletSplitSingleServerITest, SplitBeforeParentDeleted) {
 
 TEST_F(TabletSplitSingleServerITest, SplitBeforeParentHidden) {
   ASSERT_OK(TestSplitBeforeParentDeletion(true /* hide_only */));
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
+  // Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
+  // 1. Parent tablet leader received and replicated the WRITE_OP 1
+  //    but the client didn't get response.
+  // 2. The client retried WRITE_OP 1 and gets TABLET_SPLIT.
+  // 3. The client prepared WRITE_OP 2 to the child tablet and cause duplication.
+
+  auto kNumRows = 2;
+  CreateSingleTablet();
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1",
+       "TabletSplitSingleServerITest::TestRetryableWrite:WaitForSetTimedOut"},
+      {"TabletSplitSingleServerITest::TestRetryableWrite:RowDeleted",
+       "AsyncRpc::Finished:SetTimedOut:2"}
+  });
+
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  // Start a new thread for writing a new row.
+  std::thread th([&] {
+    CHECK_OK(WriteRow(NewSession(), kNumRows + 1, kNumRows + 1));
+  });
+
+  // Wait for 1.4 is replicated.
+  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  ASSERT_OK(WaitFor([&] {
+    return peer->raft_consensus()->GetLastCommittedOpId().index == kNumRows + 2;
+  }, 10s, "the third row is replicated"));
+
+  TEST_SYNC_POINT("TabletSplitSingleServerITest::TestRetryableWrite:WaitForSetTimedOut");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(2, 0, 1));
+
+  // Delete the new row, if retryable request causes duplication, will write it back.
+  ASSERT_OK(DeleteRow(NewSession(), kNumRows + 1));
+
+  TEST_SYNC_POINT("TabletSplitSingleServerITest::TestRetryableWrite:RowDeleted");
+
+  th.join();
+
+  // The new row should be deleted.
+  ASSERT_OK(CheckRowsCount(kNumRows));
+
+#ifndef NDEBUG
+     SyncPoint::GetInstance()->DisableProcessing();
+     SyncPoint::GetInstance()->ClearTrace();
+#endif // NDEBUG
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {

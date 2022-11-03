@@ -36,10 +36,6 @@ namespace yb {
 YB_STRONGLY_TYPED_UUID_DECL(ClientId);
 typedef int64_t RetryableRequestId;
 
-// Special value which is used to initialize starting RetryableRequestId for the client and tablet
-// based on min running at server side.
-constexpr RetryableRequestId kInitializeFromMinRunning = -1;
-
 struct MinRunningRequestIdTag : IntegralErrorTag<int64_t> {
   // It is part of the wire protocol and should not be changed once released.
   static constexpr uint8_t kCategory = 13;

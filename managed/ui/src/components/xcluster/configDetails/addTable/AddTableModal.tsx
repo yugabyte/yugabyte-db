@@ -22,6 +22,7 @@ import {
   fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
 import { TableSelect } from '../../common/tableSelect/TableSelect';
+import { YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { XClusterConfig, XClusterTableType } from '../..';
 
@@ -247,8 +248,11 @@ export const AddTableModal = ({
   const ysqlTableUUIDToKeyspace = new Map<string, string>();
   const sourceUniverseTables = sourceUniverseTablesQuery.data;
   sourceUniverseTables.forEach((table) => {
-    if (table.tableType !== TableType.PGSQL_TABLE_TYPE) {
-      // Ignore all non-YSQL tables.
+    if (
+      table.tableType !== TableType.PGSQL_TABLE_TYPE ||
+      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+    ) {
+      // Ignore all index tables and non-YSQL tables.
       return;
     }
     const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);

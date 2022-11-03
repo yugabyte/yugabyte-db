@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package main
+package cmd
 
 import (
 	"errors"
@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/fluxcd/pkg/tar"
 )
 
 // Component 3: Platform
@@ -102,7 +104,7 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			Untar(rExtract, packageFolderPath+"/devops")
+			tar.Untar(rExtract, packageFolderPath+"/devops")
 
 		} else if strings.Contains(f.Name(), "yugaware") {
 
@@ -113,7 +115,7 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			Untar(rExtract, packageFolderPath+"/yugaware")
+			tar.Untar(rExtract, packageFolderPath+"/yugaware")
 
 		}
 	}

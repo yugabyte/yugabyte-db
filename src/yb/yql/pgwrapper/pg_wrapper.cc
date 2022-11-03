@@ -519,7 +519,7 @@ Status PgWrapper::Start() {
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
   pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
-  SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
+  SetCommonEnv(&*pg_proc_, /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
     std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
