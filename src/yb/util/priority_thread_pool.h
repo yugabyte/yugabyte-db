@@ -15,7 +15,7 @@
 
 #include <memory>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/casts.h"
 
@@ -144,4 +144,3 @@ class PriorityThreadPool {
 };
 
 } // namespace yb
-

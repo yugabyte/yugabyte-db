@@ -42,8 +42,6 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags.h>
-#include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
@@ -56,7 +54,6 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 #include "yb/server/server_base.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"

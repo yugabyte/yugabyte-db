@@ -37,7 +37,6 @@
 #include <thread>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/async_initializer.h"
@@ -95,6 +94,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"

@@ -63,7 +63,7 @@
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"

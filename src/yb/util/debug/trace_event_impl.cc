@@ -42,7 +42,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"

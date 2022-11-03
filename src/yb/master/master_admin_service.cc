@@ -17,7 +17,7 @@
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 DEFINE_test_flag(bool, timeout_non_leader_master_rpcs, false,
                  "Timeout all master requests to non leader.");

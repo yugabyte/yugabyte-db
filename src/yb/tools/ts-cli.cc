@@ -33,7 +33,6 @@
 
 #include <memory>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/partition.h"

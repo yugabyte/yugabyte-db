@@ -30,7 +30,7 @@ int main() {
 #else
 
 #include <vector>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/logging.h"

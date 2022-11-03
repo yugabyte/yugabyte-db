@@ -37,7 +37,7 @@
 #include <mutex>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"

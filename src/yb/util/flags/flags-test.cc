@@ -13,8 +13,6 @@
 
 #include <filesystem>
 
-#include <gflags/gflags.h>
-
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"

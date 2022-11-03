@@ -27,7 +27,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
 using std::string;

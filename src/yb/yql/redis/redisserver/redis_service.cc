@@ -17,7 +17,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"

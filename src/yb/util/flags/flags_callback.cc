@@ -13,8 +13,8 @@
 
 #include <map>
 #include "yb/gutil/singleton.h"
-#include "yb/util/flags_callback.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/result.h"

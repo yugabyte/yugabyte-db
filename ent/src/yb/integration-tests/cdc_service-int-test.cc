@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"

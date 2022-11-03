@@ -74,7 +74,7 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

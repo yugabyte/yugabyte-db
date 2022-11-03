@@ -30,7 +30,7 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/twodc_write_interface.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"

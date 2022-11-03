@@ -26,7 +26,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"

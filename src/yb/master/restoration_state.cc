@@ -21,7 +21,7 @@
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
 DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs, -1,

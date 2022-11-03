@@ -80,7 +80,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

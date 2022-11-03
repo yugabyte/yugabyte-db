@@ -46,7 +46,7 @@
 #include "yb/rpc/service_pool.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"

@@ -199,7 +199,6 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
-#include "yb/util/flag_tags.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"

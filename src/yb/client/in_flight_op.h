@@ -15,7 +15,7 @@
 
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
 
@@ -69,4 +69,3 @@ struct InFlightOp {
 } // namespace internal
 } // namespace client
 } // namespace yb
-

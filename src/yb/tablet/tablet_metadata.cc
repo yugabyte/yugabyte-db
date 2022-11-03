@@ -37,7 +37,6 @@
 #include <string>
 
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/entity_ids.h"
