@@ -223,19 +223,8 @@ public class BackupUtil {
   public static BackupResp toBackupResp(
       Backup backup, CustomerConfigService customerConfigService) {
 
-    Boolean isStorageConfigPresent = true;
-    Boolean isUniversePresent = true;
-    try {
-      customerConfigService.getOrBadRequest(
-          backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
-    } catch (PlatformServiceException e) {
-      isStorageConfigPresent = false;
-    }
-    try {
-      Universe.getOrBadRequest(backup.universeUUID);
-    } catch (PlatformServiceException e) {
-      isUniversePresent = false;
-    }
+    Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
+    Boolean isUniversePresent = checkIfUniverseExists(backup);
     List<Backup> backupChain =
         Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
     Date lastIncrementDate = null;
@@ -668,5 +657,13 @@ public class BackupUtil {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
         .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
+  }
+
+  public static boolean checkIfStorageConfigExists(Backup backup) {
+    return CustomerConfig.get(backup.customerUUID, backup.storageConfigUUID) != null;
+  }
+
+  public static boolean checkIfUniverseExists(Backup backup) {
+    return Universe.maybeGet(backup.universeUUID).isPresent();
   }
 }
