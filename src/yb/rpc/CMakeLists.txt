@@ -168,6 +168,7 @@ target_link_libraries(any_yrpc yrpc rpc_base_proto)
 # Tests
 set(YB_TEST_LINK_LIBS rtest_yrpc yrpc rpc_test_util any_yrpc ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(growable_buffer-test)
+ADD_YB_TEST(lwproto-test)
 ADD_YB_TEST(mt-rpc-test RUN_SERIAL true)
 ADD_YB_TEST(periodic-test)
 ADD_YB_TEST(reactor-test)
