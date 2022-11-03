@@ -158,11 +158,11 @@ body_class: yb-page-style
 <div class="three-box-row">
   <div class="row">
     <h2 class="col-12">Continue learning</h2>
-    <div class="col-12 col-md-6 col-lg-4"> 
+    <div class="col-12 col-md-6 col-lg-4">
       <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Build Applications</div>
-          <div class="tag-line">FROM EXAMPLES</div> 
+          <div class="tag-line">FROM EXAMPLES</div>
           <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
           <a class="text-link" href="../develop/build-apps/" title="Get Started">Get Started</a>
         </div>

@@ -74,35 +74,19 @@ main {
           color: #4e5f6d;
           padding: 11.5px 16px;
         }
-
-        code {
-          font-size: inherit !important;
-          display: inline-block;
-          vertical-align: middle;
-          margin: 0 0;
-          line-height: 1;
-          max-width: 100%;
-          background: #f2f6ff;
-          border: 1px solid #cbdbff;
-          overflow: auto;
-          border-radius: 4px;
-          color: $yb-font-gray;
-          padding: 2px 6px;
-
-          &[style*=padding] {
-            overflow: hidden;
-          }
-        }
       }
     }
   }
 }
 
-@media (min-width: 1024) {
+@media (min-width: 1024px) {
   main {
     .td-content {
       table {
         max-width: 828px;
+        table-layout: fixed;
+        margin-left: 0 !important;
+        overflow: hidden;
       }
     }
   }

@@ -12,7 +12,7 @@ main {
       border: 1px solid #cbdbff;
       border-radius: 4px;
       color: $yb-font-gray;
-      padding: 0 2px;
+      padding: 0 3px;
     }
 
     p > a {
@@ -54,17 +54,7 @@ main {
 
     > pre,
     .highlight {
-      margin: 16px 0;
-    }
-
-    > .highlight + pre,
-    .highlight + .highlight {
-      margin-top: 24px;
-    }
-
-    p + pre,
-    p + .highlight {
-      margin-top: -8px;
+      margin: 20px 0;
     }
 
     li > p + pre,
@@ -84,22 +74,10 @@ main {
       position: relative !important;
       overflow-y: auto;
       overflow-x: visible;
-      min-height: 85px;
       font-weight: 400;
       font-size: 13px;
-
-      &::after {
-        content: "";
-        display: inline-block;
-        background: #f7fafc;
-        height: 37px;
-        position: absolute;
-        right: 1px;
-        width: 40px;
-        top: 6px;
-        z-index: 0;
-        border-radius: 5px;
-      }
+      margin-top: 20px;
+      margin-bottom: 20px;
 
       &:has(code > span:only-child) {
         margin-bottom: -35px;
@@ -137,6 +115,15 @@ main {
         &::-webkit-scrollbar-thumb {
           background: #b7c3cb;
           border-radius: 6px;
+        }
+      }
+
+      .highlight {
+        margin-bottom: 20px !important;
+
+        > pre {
+          margin-top: 1rem;
+          margin-bottom: 1rem;
         }
       }
 
@@ -192,7 +179,7 @@ main {
           position: absolute;
           top: 0;
           left: 0;
-          font: 15px/1 "font awesome 6 free";
+          font: 15px/1 "Font awesome 6 free";
           font-weight: 700;
           content: "\f00c";
           color: #48ab52 !important;
@@ -214,9 +201,19 @@ main {
       width: calc(100% + 20px);
       padding-right: 20px !important;
       max-width: none;
+      min-height: 85px;
 
       &::after {
+        content: "";
+        display: inline-block;
+        background: #f7fafc;
+        height: 37px;
+        position: absolute;
         right: 21px;
+        width: 40px;
+        top: 6px;
+        z-index: 0;
+        border-radius: 5px;
       }
 
       button.copy {
@@ -224,6 +221,15 @@ main {
       }
     }
   }
+}
+
+.highlight:has(pre>code>span:nth-child(2):last-child) {
+  margin-bottom: 6px;
+}
+
+.highlight:has(pre>code>span:nth-child(2):last-child) + .highlight,
+.highlight:has(pre>code>span:nth-child(2):last-child) + pre {
+  margin-top: 0;
 }
 
 @media (min-width: 992px) {

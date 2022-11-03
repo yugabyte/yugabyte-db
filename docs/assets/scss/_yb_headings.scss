@@ -3,11 +3,8 @@
   h1 {
     .tag-beta {
       text-decoration: none;
-      height: 30px;
-      width: 70px;
       text-transform: uppercase;
       margin-left: 20px;
-      margin-top: -6px;
       background: #7879f1;
       border: 1px solid #7879f1;
       border-radius: 6px;
@@ -18,18 +15,24 @@
       display: inline-flex;
       justify-content: center;
       align-items: center;
+      position: relative;
+      top: -10px;
+      padding: 3px 7px;
 
       &:hover,
       &:focus,
       &:active {
         background: rgba(120, 121, 241, 0.8);
-        border: none;
       }
     }
   }
 
   p {
     margin: 0 0 24px 0;
+
+    + div {
+      margin: 20px 0;
+    }
   }
 
   h1[id],
@@ -85,7 +88,7 @@
       color: $yb-font-darkgray;
     }
 
-    &+ {
+    & + {
       .lead {
         font-size: 20px;
         font-weight: 400;
@@ -104,7 +107,7 @@
     margin-bottom: 16px;
     color: $yb-font-dark;
 
-    &+ {
+    & + {
       .lead {
         font-size: 16px;
         font-weight: 400;
@@ -124,7 +127,7 @@
         color: $yb-font-dark;
       }
 
-      &+ {
+      & + {
         .body {
           font-size: 16px;
           font-weight: 400;
