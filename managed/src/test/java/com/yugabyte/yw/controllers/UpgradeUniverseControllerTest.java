@@ -5,8 +5,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
@@ -94,7 +95,6 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 import play.test.WithApplication;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseControllerTest extends WithApplication {
@@ -499,6 +499,12 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     assertEquals("456", taskParams.tserverGFlags.get("tserver-flag"));
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
 
+    // Checking params are merged with universe info.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    assertEquals(universe.getUniverseDetails().rootCA, taskParams.rootCA);
+    assertEquals(universe.getUniverseDetails().clientRootCA, taskParams.clientRootCA);
+    assertEquals(universe.getUniverseDetails().clusters.size(), taskParams.clusters.size());
+
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
@@ -666,6 +672,59 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
     assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+
+    // Checking params are merged with universe info.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    assertEquals(universe.getUniverseDetails().allowInsecure, taskParams.allowInsecure);
+    assertEquals(
+        universe.getUniverseDetails().setTxnTableWaitCountFlag,
+        taskParams.setTxnTableWaitCountFlag);
+    assertEquals(universe.getUniverseDetails().clusters.size(), taskParams.clusters.size());
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCertsRotateByTlsConfigUpdate() throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForCertsRotate(false);
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/update_tls";
+    ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
+    bodyJson.put("enableNodeToNodeEncrypt", "true");
+    bodyJson.put("enableClientToNodeEncrypt", "true");
+    bodyJson.put("rootAndClientRootCASame", "false");
+    bodyJson.put("sleepAfterMasterRestartMillis", 1200);
+    bodyJson.put("sleepAfterTServerRestartMillis", 1300);
+    bodyJson.put("upgradeOption", "Non-Rolling");
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.CertsRotate), argCaptor.capture());
+
+    CertsRotateParams taskParams = argCaptor.getValue();
+    assertEquals(bodyJson.get("rootCA").asText(), taskParams.rootCA.toString());
+    assertEquals(bodyJson.get("clientRootCA").asText(), taskParams.clientRootCA.toString());
+    assertEquals(1200, (int) taskParams.sleepAfterMasterRestartMillis);
+    assertEquals(1300, (int) taskParams.sleepAfterTServerRestartMillis);
+    assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
+
+    // Checking params are merged with universe info.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    assertEquals(universe.getUniverseDetails().allowInsecure, taskParams.allowInsecure);
+    assertEquals(
+        universe.getUniverseDetails().setTxnTableWaitCountFlag,
+        taskParams.setTxnTableWaitCountFlag);
+    assertEquals(universe.getUniverseDetails().clusters.size(), taskParams.clusters.size());
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
@@ -1060,6 +1119,9 @@ public class UpgradeUniverseControllerTest extends WithApplication {
                 userIntent.providerType = CloudType.aws;
               }
               universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              // Modifying default values to make sure these params are merged into taskParams.
+              universeDetails.setTxnTableWaitCountFlag = !universeDetails.setTxnTableWaitCountFlag;
+              universeDetails.allowInsecure = !universeDetails.allowInsecure;
               universe.setUniverseDetails(universeDetails);
             })
         .universeUUID;
