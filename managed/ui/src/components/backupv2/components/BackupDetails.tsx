@@ -263,6 +263,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                     btnText="Add Incremental Backup"
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
+                    disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
                     onConfirm={() => {}}
                     onClick={() => {
                       setFormValues(convertBackupToFormValues(backupDetails, storageConfig));
