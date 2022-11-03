@@ -218,7 +218,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull prom/prometheus: {{}}
+   docker pull prom/prometheus:v2.2.1
    ```
 
    ```output
