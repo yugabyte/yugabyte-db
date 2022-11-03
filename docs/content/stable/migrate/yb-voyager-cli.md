@@ -61,7 +61,8 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName #Include schema name only for Oracle migrations.
+        --source-db-schema schemaName \ #Not applicable for MySQL.
+        --use-orafce
 
 ```
 
@@ -80,14 +81,7 @@ yb-voyager analyze-schema [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager analyze-schema --export-dir /path/to/yb/export/dir \
-        --source-db-type sourceDB \
-        --source-db-host localhost \
-        --source-db-user username \
-        --source-db-password password \
-        --source-db-name dbname \
-        --source-db-schema schemaName \ #Include schema name only for Oracle migrations.
-        --output-format txt
+yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format txt
 ```
 
 ### export data
@@ -111,7 +105,29 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName #Include schema name only for Oracle migrations.
+        --source-db-schema schemaName \ #Not applicable for MySQL.
+        --oracle-db-sid string \ #Applicable only for Oracle
+        --oracle-home string \ #Applicable only for Oracle
+        --table-list string \
+        --exclude-table-list string
+```
+
+### export data status
+
+Get the status report of an ongoing or completed data export operation.
+
+#### Syntax
+
+```sh
+yb-voyager export data status [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+#### Example
+
+```sh
+yb-voyager export data status --export-dir /path/to/yb/export/dir
 ```
 
 ### import schema
@@ -133,7 +149,8 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-host hostname \
         --target-db-user username \
         --target-db-password password \
-        --target-db-name dbname
+        --target-db-name dbname \
+        --target-db-schema #Applicable only for MySQL and Oracle
 ```
 
 ### import data
@@ -156,6 +173,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
+        --target-db-schema #Applicable only for MySQL and Oracle
         --parallel-jobs connectionCount \
         --batch-size size
 ```
@@ -181,11 +199,31 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        –-data-dir "/path/to/files/dir/" \
+        --target-db-schema #Applicable only for MySQL and Oracle
+        --data-dir "/path/to/files/dir/" \
         --file-table-map "filename1:table1,filename2:table2" \
         --delimiter "|" \
-        –-has-header \
-        --file-opts string
+        --has-header \
+        --file-opts string \
+        --format format
+```
+
+### import data status
+
+Get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
+
+#### Syntax
+
+```sh
+yb-voyager import data status [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+#### Example
+
+```sh
+yb-voyager import data status --export-dir /path/to/yb/export/dir
 ```
 
 ## Arguments
@@ -216,7 +254,7 @@ Specifies the name of the source database.
 
 ### --source-db-schema
 
-Specifies the schema of the source database. Only applicable for Oracle.
+Specifies the schema of the source database. Not applicable for MySQL.
 
 ### --output-format
 
@@ -237,6 +275,10 @@ Specifies the password of the target database.
 ### --target-db-name
 
 Specifies the name of the target database.
+
+### --target-db-schema
+
+Specifies the schema of the target database. Applicable only for MySQL and Oracle.
 
 ### --parallel-jobs
 
@@ -280,11 +322,44 @@ Comma-separated string options for CSV file format. The options can include the 
 
 - `quote_char`: character used to quote the values
 
-Default (for both options): double quotes '"'
+Default : double quotes (") for both escape and quote characters
 
-Note that `escape_char` and `quote_char` are only valid/required for CSV file format.
+Note that `escape_char` and `quote_char` are only valid and required for CSV file format.
 
 Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'`
+
+### --format
+
+Specifies the format of your data file with CSV or text as the supported formats.
+
+Default : CSV
+
+### --post-import-data
+
+Run this argument with [import schema](#import-schema) command to import indexes and triggers after data import is complete.
+The `--post-import-data` argument assumes that data import is already done and imports only indexes and triggers.
+
+### --oracle-db-sid
+
+Oracle System Identifier (SID) you can use while exporting data from Oracle instances.
+
+### --oracle-home
+
+Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`.
+
+### --use-orafce
+
+Enable using orafce extension in export schema.
+
+Default : true
+
+### --yes
+
+By default, answer yes to all questions during migration.
+
+### --start-clean
+
+Clean the project's data directory for already existing files before starting migration.
 
 ---
 
@@ -313,7 +388,6 @@ Currently, yb-voyager doesn't support the following features:
 | Feature | Description/Alternatives  | GitHub Issue |
 | :-------| :---------- | :----------- |
 | BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
-| Tablespaces |  Currently YugabyteDB Voyager can't migrate tables associated with certain TABLESPACES automatically. <br> As a workaround, manually create the required tablespace in YugabyteDB and then start the migration.<br> Alternatively if that tablespace is not relevant in the YugabyteDB distributed cluster, you can remove the tablespace association of the table from the create table definition. | [47](https://github.com/yugabyte/yb-voyager/issues/47) |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
 
 ## Data modeling
