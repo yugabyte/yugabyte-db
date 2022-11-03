@@ -59,8 +59,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 
-DECLARE_bool(disable_hybrid_scan);
-
 using std::string;
 
 namespace yb {
@@ -125,7 +123,7 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
 Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
   scan_choices_ = ScanChoices::Create(
-      is_hybrid_scan_enabled(), doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
+      doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 
   if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
     // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
@@ -140,7 +138,7 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
   scan_choices_ = ScanChoices::Create(
-      is_hybrid_scan_enabled(), doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
+      doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
 
   if (scan_choices_ && scan_choices_->IsInitialPositionKnown()) {
     // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
@@ -518,10 +516,6 @@ Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
   row_ready_ = false;
 
   return VERIFY_RESULT(HasNext()) && VERIFY_RESULT(GetTupleId()) == tuple_id;
-}
-
-bool DocRowwiseIterator::is_hybrid_scan_enabled() {
-  return !FLAGS_disable_hybrid_scan;
 }
 
 }  // namespace docdb
