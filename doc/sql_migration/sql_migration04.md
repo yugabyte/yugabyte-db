@@ -788,6 +788,86 @@ The example below shows migration when a hierarchical query is used to perform a
 </tbody>
 </table>
 
+##### 4.2.3.6 Hierarchical Query Displaying data from the root
+
+**Functional differences**
+
+ - **Oracle database**
+     - Specifying CONNECT_BY_ROOT in the select list of a hierarchical query displays data from the root.
+ - **PostgreSQL**
+     - CONNECT_BY_ROOT cannot be specified.
+
+**Migration procedure**
+
+In a recursive query that uses a WITH clause, add a root column that also uses the recursive query of the WITH clause so that the same result is returned. Use the following procedure to perform migration:
+
+1. Replace the hierarchical query with syntax that uses a recursive query (WITH clause).
+2. Add root column to the column list of the query result of the WITH clause.
+
+-	In the first query, specify the root columnName to the values of the columns from the root to the node.
+-	Specify m.columnName in the next query. (columnName is a root column.)
+
+
+The following shows the conversion format containing rootName.
+
+~~~
+WITH RECURSIVE queryName(
+     columnUsed, rootName
+) AS
+( SELECT columnUsed, columnName
+      FROM  targetTableOfHierarchicalQuery
+    UNION ALL
+    SELECT columnUsed(qualified by n), w.columnName
+      FROM  targetTableOfHierarchicalQuery  n,
+            queryName  w
+      WHERE conditionalExprOfConnectByClause )
+~~~
+
+For conditionalExprOfConnectByClause, use w to qualify the part qualified by PRIOR.
+
+**Migration example**
+
+The example below shows migration when the root data is displayed.
+<table>
+<thead>
+<tr>
+<th align="center">Oracle database</th>
+<th align="center">PostgreSQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">
+<pre><code>SELECT staff_id, name, <b>CONNECT_BY_ROOT name as "Manager" </b>
+  FROM staff_table 
+  START WITH staff_id = '1001' 
+  CONNECT BY PRIOR staff_id = manager_id;
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+ </code></pre>
+</td>
+
+<td align="left">
+<pre><code>WITH RECURSIVE staff_table_w( staff_id, 
+ name, 
+ Manager ) AS 
+ ( SELECT staff_id, name, <b>name </b>
+       FROM staff_table 
+     UNION ALL 
+     SELECT n.staff_id, n.name, <b>w.name </b>
+       FROM staff_table n, staff_table_w w 
+       WHERE w.staff_id = n.manager_id ) 
+ SELECT staff_id, name, Manager 
+ FROM staff_table_w;</code></pre>
+</td>
+</tr>
+</tbody>
+</table>
 
 #### 4.2.4 MINUS
 
