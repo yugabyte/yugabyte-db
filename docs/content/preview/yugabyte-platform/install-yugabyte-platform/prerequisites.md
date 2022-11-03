@@ -193,7 +193,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull postgres: {{}}
+   docker pull postgres:11.5
    ```
 
    ```output
