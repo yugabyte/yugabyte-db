@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package main
+package cmd
 
 import (
 	//"bytes"

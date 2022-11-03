@@ -19,7 +19,6 @@
 #include <string>
 #include <unordered_set>
 
-#include <boost/optional.hpp>
 #include <gflags/gflags.h>
 
 #include "yb/common/entity_ids.h"
