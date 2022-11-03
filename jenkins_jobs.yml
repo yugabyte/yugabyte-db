@@ -38,9 +38,10 @@ jobs:
     build_type: fastdebug
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac12
     compiler: clang
     build_type: debug
+    architecture: arm64
     release_artifact: false
 
   - os: mac11.6
