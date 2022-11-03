@@ -28,11 +28,18 @@ import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import './BackupTableList.scss';
+
+export enum BackupTypes {
+  FULL_BACKUP = 'FULL BACKUP',
+  INCREMENT_BACKUP = 'INCREMENT'
+}
 export interface YSQLTableProps {
   keyspaceSearch?: string;
   onRestore: Function;
   backup: IBackup;
+  backupType?: BackupTypes;
   hideRestore?: boolean;
+  incrementalBackup?: ICommonBackupInfo;
 }
 
 const COLLAPSED_ICON = <i className="fa fa-caret-right expand-keyspace-icon" />;
@@ -40,11 +47,17 @@ const EXPANDED_ICON = <i className="fa fa-caret-down expand-keyspace-icon" />;
 
 export const YSQLTableList: FC<YSQLTableProps> = ({
   backup,
+  backupType,
   keyspaceSearch,
   onRestore,
-  hideRestore = false
+  hideRestore = false,
+  incrementalBackup
 }) => {
-  const databaseList = backup.commonBackupInfo.responseList
+  const dbList =
+    backupType === BackupTypes.INCREMENT_BACKUP
+      ? incrementalBackup?.responseList
+      : backup.commonBackupInfo.responseList;
+  const filteredDBList = (dbList || [])
     .filter((e) => {
       return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
     })
@@ -56,9 +69,10 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
         index
       };
     });
+
   return (
     <div className="backup-table-list">
-      <BootstrapTable data={databaseList} tableHeaderClass="table-list-header">
+      <BootstrapTable data={filteredDBList} tableHeaderClass="table-list-header">
         <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Database Name</TableHeaderColumn>
         <TableHeaderColumn
@@ -108,9 +122,11 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
 
 export const YCQLTableList: FC<YSQLTableProps> = ({
   backup,
+  backupType,
   keyspaceSearch,
   onRestore,
-  hideRestore
+  hideRestore,
+  incrementalBackup
 }) => {
   const expandTables = (row: any) => {
     return (
@@ -130,13 +146,17 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
       </div>
     );
   };
-  const dblist = backup.commonBackupInfo.responseList.filter((e) => {
+  const dbList =
+    backupType === BackupTypes.INCREMENT_BACKUP
+      ? incrementalBackup?.responseList
+      : backup.commonBackupInfo.responseList;
+  const filteredDBList = (dbList || []).filter((e) => {
     return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
   });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
-        data={dblist}
+        data={filteredDBList}
         expandableRow={() => true}
         expandComponent={expandTables}
         expandColumnOptions={{
@@ -246,7 +266,9 @@ const IncrementalBackupCard = ({
   ...rest
 }: { backup: IBackup; incrementalBackup: ICommonBackupInfo } & YSQLTableProps) => {
   const backup_type =
-    incrementalBackup.backupUUID === incrementalBackup.baseBackupUUID ? 'FULL BACKUP' : 'INCREMENT';
+    incrementalBackup.backupUUID === incrementalBackup.baseBackupUUID
+      ? BackupTypes.FULL_BACKUP
+      : BackupTypes.INCREMENT_BACKUP;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
 
@@ -258,9 +280,23 @@ const IncrementalBackupCard = ({
       backup.backupType === TableType.YQL_TABLE_TYPE ||
       backup.backupType === TableType.REDIS_TABLE_TYPE
     ) {
-      listComponent = <YCQLTableList backup={backup} {...rest} />;
+      listComponent = (
+        <YCQLTableList
+          backup={backup}
+          incrementalBackup={incrementalBackup}
+          backupType={backup_type}
+          {...rest}
+        />
+      );
     } else {
-      listComponent = <YSQLTableList backup={backup} {...rest} />;
+      listComponent = (
+        <YSQLTableList
+          backup={backup}
+          incrementalBackup={incrementalBackup}
+          backupType={backup_type}
+          {...rest}
+        />
+      );
     }
   }
 
