@@ -15,7 +15,7 @@
 
 #include <deque>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -27,7 +27,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"

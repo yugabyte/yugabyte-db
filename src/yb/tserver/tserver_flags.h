@@ -13,8 +13,7 @@
 
 #pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 DECLARE_string(tserver_master_addrs);
 DECLARE_uint64(tserver_master_replication_factor);
-

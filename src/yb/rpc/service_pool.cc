@@ -56,7 +56,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"

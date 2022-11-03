@@ -13,14 +13,18 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
 #include <string>
 
-#include "yb/util/status.h"
+#include <gflags/gflags.h>
 
 namespace yb {
 using FlagCallback = std::function<void(void)>;
 
 class FlagCallbackInfo;
+template<class T>
+class Result;
 
 class FlagCallbackRegistration {
  public:

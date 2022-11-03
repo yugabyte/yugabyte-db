@@ -35,7 +35,7 @@
 #include <shared_mutex>
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/log_fwd.h"
@@ -141,4 +141,3 @@ struct LogAnchor {
 
 } // namespace log
 } // namespace yb
-

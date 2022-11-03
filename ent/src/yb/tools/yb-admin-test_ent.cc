@@ -13,7 +13,7 @@
 
 // Tests for the EE yb-admin command-line tool.
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"

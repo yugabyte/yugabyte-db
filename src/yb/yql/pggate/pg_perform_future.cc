@@ -18,7 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pg_session.h"
 
 DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,

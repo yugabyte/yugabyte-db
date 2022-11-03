@@ -20,7 +20,7 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/ts_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 DEFINE_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "

@@ -37,7 +37,7 @@
 #ifndef GFLAGS
 bool FLAGS_enable_print = false;
 #else
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 using GFLAGS::ParseCommandLineFlags;
 DEFINE_bool(enable_print, false, "Print options generated to console.");

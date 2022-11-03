@@ -38,7 +38,7 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -324,4 +324,3 @@ class FsManager {
 };
 
 } // namespace yb
-

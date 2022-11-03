@@ -42,7 +42,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"

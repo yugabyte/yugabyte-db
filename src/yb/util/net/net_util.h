@@ -38,7 +38,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
@@ -219,4 +219,3 @@ bool IsWildcardAddress(const std::string& host_str);
 void TEST_SetFailToFastResolveAddress(const std::string& address);
 
 } // namespace yb
-
