@@ -34,7 +34,8 @@
     color: #1A44A5;
   }
 
-  &.QueuedForDeletion {
+  &.QueuedForDeletion,
+  &.Stopping {
     background: #FFEEC8;
     color: #9D6C00;
   }
