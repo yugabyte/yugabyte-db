@@ -191,7 +191,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-user <SOURCE_DB_USER> \
         --source-db-password <SOURCE_DB_PASSWORD> \
         --source-db-name <SOURCE_DB_NAME> \
-        --source-db-schema <SOURCE_DB_SCHEMA> # This argument is not applicable for MySQL.
+        --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
 Refer to [export data](../yb-voyager-cli/#export-data) for details about the arguments.
