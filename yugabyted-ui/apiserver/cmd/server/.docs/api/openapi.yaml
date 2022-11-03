@@ -303,6 +303,58 @@ paths:
       summary: Get list of DB tables per YB API (YCQL/YSQL)
       tags:
       - cluster-info
+  /health-check:
+    get:
+      description: Get health information about the cluster
+      operationId: getClusterHealthCheck
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health_Check_Response'
+          description: Successful health check response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get health information about the cluster
+      tags:
+      - cluster-info
+  /tablets:
+    get:
+      description: Get list of tablets
+      operationId: getClusterTablets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_tablet_list_response'
+          description: List of cluster tablets
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get list of tablets
+      tags:
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -354,6 +406,18 @@ components:
           schema:
             $ref: '#/components/schemas/Cluster_table_list_response'
       description: List of cluster tables
+    HealthCheckResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Health_Check_Response'
+      description: Successful health check response
+    ClusterTabletListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cluster_tablet_list_response'
+      description: List of cluster tablets
   schemas:
     CloudEnum:
       default: MANUAL
@@ -393,9 +457,11 @@ components:
     ClusterNodeInfo:
       description: Node level information
       example:
+        disk_size_used_gb: 5.962133916683182
+        num_cores: 2
         memory_mb: 6.027456183070403
-        cpu_usage: 5.962133916683182
-        disk_size_gb: 608
+        cpu_usage: 5.637376656633329
+        disk_size_gb: 1.4658129805029452
       properties:
         memory_mb:
           default: 0
@@ -403,16 +469,24 @@ components:
           format: double
           type: number
         disk_size_gb:
-          default: 256
+          default: 0
           description: The total size of disk (GB)
-          maximum: 4096
-          minimum: 10
-          type: integer
+          format: double
+          type: number
+        disk_size_used_gb:
+          default: 0
+          description: The total size of used disk space (GB)
+          format: double
+          type: number
         cpu_usage:
           default: 0
           description: The average CPU usage over all nodes
           format: double
           type: number
+        num_cores:
+          default: 0
+          description: The number of CPU cores per node
+          type: integer
       required:
       - disk_size_gb
       - memory_mb
@@ -423,11 +497,13 @@ components:
       description: Cluster level information
       example:
         node_info:
+          disk_size_used_gb: 5.962133916683182
+          num_cores: 2
           memory_mb: 6.027456183070403
-          cpu_usage: 5.962133916683182
-          disk_size_gb: 608
+          cpu_usage: 5.637376656633329
+          disk_size_gb: 1.4658129805029452
         is_production: false
-        version: 5
+        version: 7
         num_nodes: 2
       properties:
         num_nodes:
@@ -460,7 +536,7 @@ components:
       example:
         cloud_info:
           region: us-west2
-        num_nodes: 6
+        num_nodes: 22
       properties:
         cloud_info:
           $ref: '#/components/schemas/CloudInfo'
@@ -480,7 +556,7 @@ components:
         placement_info:
           cloud_info:
             region: us-west2
-          num_nodes: 6
+          num_nodes: 22
       properties:
         placement_info:
           $ref: '#/components/schemas/PlacementInfo'
@@ -509,11 +585,11 @@ components:
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 6
+            num_nodes: 22
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 6
+            num_nodes: 22
         name: name
         cloud_info:
           region: us-west2
@@ -522,11 +598,13 @@ components:
           encryption_at_rest: false
         cluster_info:
           node_info:
+            disk_size_used_gb: 5.962133916683182
+            num_cores: 2
             memory_mb: 6.027456183070403
-            cpu_usage: 5.962133916683182
-            disk_size_gb: 608
+            cpu_usage: 5.637376656633329
+            disk_size_gb: 1.4658129805029452
           is_production: false
-          version: 5
+          version: 7
           num_nodes: 2
       properties:
         name:
@@ -607,11 +685,11 @@ components:
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 6
+              num_nodes: 22
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 6
+              num_nodes: 22
           name: name
           cloud_info:
             region: us-west2
@@ -620,11 +698,13 @@ components:
             encryption_at_rest: false
           cluster_info:
             node_info:
+              disk_size_used_gb: 5.962133916683182
+              num_cores: 2
               memory_mb: 6.027456183070403
-              cpu_usage: 5.962133916683182
-              disk_size_gb: 608
+              cpu_usage: 5.637376656633329
+              disk_size_gb: 1.4658129805029452
             is_production: false
-            version: 5
+            version: 7
             num_nodes: 2
         info:
           metadata:
@@ -1164,6 +1244,83 @@ components:
       title: Cluster Table Data
       type: array
       uniqueItems: true
+    HealthCheckInfo:
+      example:
+        most_recent_uptime: 0
+        dead_nodes:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        leaderless_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        under_replicated_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        dead_nodes:
+          description: UUIDs of dead nodes
+          items:
+            format: uuid
+            type: string
+          type: array
+        most_recent_uptime:
+          format: int64
+          minimum: 0
+          type: integer
+        under_replicated_tablets:
+          description: UUIDs of under-replicated tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+        leaderless_tablets:
+          description: UUIDs of leaderless tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+      required:
+      - dead_nodes
+      - leaderless_tablets
+      - most_recent_uptime
+      - under_replicated_tablets
+      title: Health Check Info
+      type: object
+    ClusterTablet:
+      description: Model representing a tablet
+      example:
+        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        namespace: namespace
+        table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        table_name: table_name
+        has_leader: true
+      properties:
+        namespace:
+          type: string
+        table_name:
+          type: string
+        table_uuid:
+          format: uuid
+          type: string
+        tablet_id:
+          format: uuid
+          type: string
+        has_leader:
+          type: boolean
+      required:
+      - has_leader
+      - namespace
+      - table_id
+      - table_name
+      - table_uuid
+      title: Cluster Tablet Object
+      type: object
+    ClusterTabletData:
+      additionalProperties:
+        $ref: '#/components/schemas/ClusterTablet'
+      description: List of cluster tablets
+      title: Cluster Tablet Data
+      type: object
     Cluster_Response:
       example:
         data:
@@ -1172,11 +1329,11 @@ components:
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 6
+                num_nodes: 22
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 6
+                num_nodes: 22
             name: name
             cloud_info:
               region: us-west2
@@ -1185,11 +1342,13 @@ components:
               encryption_at_rest: false
             cluster_info:
               node_info:
+                disk_size_used_gb: 5.962133916683182
+                num_cores: 2
                 memory_mb: 6.027456183070403
-                cpu_usage: 5.962133916683182
-                disk_size_gb: 608
+                cpu_usage: 5.637376656633329
+                disk_size_gb: 1.4658129805029452
               is_production: false
-              version: 5
+              version: 7
               num_nodes: 2
           info:
             metadata:
@@ -1303,6 +1462,44 @@ components:
       required:
       - data
       title: Cluster table list response
+      type: object
+    Health_Check_Response:
+      example:
+        data:
+          most_recent_uptime: 0
+          dead_nodes:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          leaderless_tablets:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          under_replicated_tablets:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        data:
+          $ref: '#/components/schemas/HealthCheckInfo'
+      title: Health Check Response
+      type: object
+    Cluster_tablet_list_response:
+      example:
+        data:
+          key:
+            tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            namespace: namespace
+            table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            table_name: table_name
+            has_leader: true
+      properties:
+        data:
+          additionalProperties:
+            $ref: '#/components/schemas/ClusterTablet'
+          description: List of cluster tablets
+          title: Cluster Tablet Data
+          type: object
+      required:
+      - data
+      title: Cluster tablet list response
       type: object
     ApiError_error:
       properties:

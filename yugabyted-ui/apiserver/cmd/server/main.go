@@ -219,6 +219,9 @@ func main() {
         // GetClusterNodes - Get the nodes for a cluster
         e.GET("/api/nodes", c.GetClusterNodes)
 
+        // GetHealthCheck - Get health information about the cluster
+        e.GET("/api/health-check", c.GetClusterHealthCheck)
+
         // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
         e.GET("/api/tables", c.GetClusterTables)
 
@@ -227,6 +230,9 @@ func main() {
 
         // GetSlowQueries - Get the slow queries in a cluster
         e.GET("/api/slow_queries", c.GetSlowQueries)
+
+        // GetClusterTablets - Get list of tablets
+        e.GET("/api/tablets", c.GetClusterTablets)
 
         render_htmls := templates.NewTemplate()
 
