@@ -189,6 +189,17 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createXClusterConfigSetStatusForTablesTask(
           tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);
 
+      // Support mismatched TLS root certificates.
+      Optional<File> sourceCertificate =
+          getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
+      sourceCertificate.ifPresent(
+          cert ->
+              createTransferXClusterCertsCopyTasks(
+                  targetUniverse.getNodes(),
+                  xClusterConfig.getReplicationGroupName(),
+                  cert,
+                  targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+
       // Add the subtasks to set up replication for tables that need bootstrapping.
       addSubtasksForTablesNeedBootstrap(
           sourceUniverse,
