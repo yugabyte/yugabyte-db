@@ -247,7 +247,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 Refer to [import data](../yb-voyager-cli/#import-data) for details about the arguments.
 
-yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ . yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
 By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
 
