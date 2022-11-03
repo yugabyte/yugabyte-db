@@ -57,7 +57,7 @@ GOOS="linux"
 GOARCH="amd64"
 PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME} GOOS=${GOOS} GOARCH=${GOARCH}"
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
 
 command="--package ${PACKAGE_NAME} --destination ${destination}"
 activate_virtualenv
