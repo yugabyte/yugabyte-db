@@ -56,14 +56,13 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
-      XClusterConfigRestartFormData restartFormData,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       boolean isForced) {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;
-    this.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
-    this.bootstrapParams.backupRequestParams = restartFormData.bootstrapParams.backupRequestParams;
+    this.bootstrapParams = bootstrapParams;
     this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
     this.tableIdsToAdd = XClusterConfigTaskBase.getTableIds(tableInfoList);
