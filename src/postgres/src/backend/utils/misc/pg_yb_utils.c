@@ -2336,10 +2336,7 @@ yb_server_region(PG_FUNCTION_ARGS) {
 	const char *current_region = YBGetCurrentRegion();
 
 	if (current_region == NULL)
-	{
-		elog(NOTICE, "No region was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_region);
 }
@@ -2350,10 +2347,7 @@ yb_server_cloud(PG_FUNCTION_ARGS)
 	const char *current_cloud = YBGetCurrentCloud();
 
 	if (current_cloud == NULL)
-	{
-		elog(NOTICE, "No cloud was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_cloud);
 }
@@ -2364,10 +2358,7 @@ yb_server_zone(PG_FUNCTION_ARGS)
 	const char *current_zone = YBGetCurrentZone();
 
 	if (current_zone == NULL)
-	{
-		elog(NOTICE, "No zone was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_zone);
 }

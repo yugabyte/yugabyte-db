@@ -39,7 +39,7 @@
 
 #include "yb/util/pb_util.h"
 
-DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
@@ -60,7 +60,7 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_ysql_pg_conf_csv = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
-    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
+    FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
     FLAGS_force_single_shard_waiter_retry_ms = 10000;
@@ -714,7 +714,7 @@ class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
  protected:
   void SetUp() override {
     FLAGS_rpc_connection_timeout_ms = 60000;
-    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
+    FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
     PgTabletSplitTestBase::SetUp();

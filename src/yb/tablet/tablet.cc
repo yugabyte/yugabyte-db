@@ -3586,6 +3586,29 @@ Result<int64_t> Tablet::CountIntents() {
   return num_intents;
 }
 
+Status Tablet::ReadIntents(std::vector<std::string>* intents) {
+  auto pending_op = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options;
+  auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
+      intents_db_->NewIterator(read_options));
+  intent_iter->SeekToFirst();
+  docdb::SchemaPackingStorage schema_packing_storage;
+
+  for (; intent_iter->Valid(); intent_iter->Next()) {
+    auto item = EntryToString(intent_iter->key(), intent_iter->value(),
+      schema_packing_storage, docdb::StorageDbType::kIntents);
+    intents->push_back(item);
+  }
+
+  return Status::OK();
+}
+
 void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
   std::lock_guard<std::mutex> lock(num_sst_files_changed_listener_mutex_);
   bool has_new_listener = listener != nullptr;
