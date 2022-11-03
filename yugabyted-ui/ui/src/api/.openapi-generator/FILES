@@ -21,8 +21,12 @@ src/models/ClusterResponse.ts
 src/models/ClusterSpec.ts
 src/models/ClusterTable.ts
 src/models/ClusterTableListResponse.ts
+src/models/ClusterTablet.ts
+src/models/ClusterTabletListResponse.ts
 src/models/EncryptionInfo.ts
 src/models/EntityMetadata.ts
+src/models/HealthCheckInfo.ts
+src/models/HealthCheckResponse.ts
 src/models/LiveQueryResponseData.ts
 src/models/LiveQueryResponseSchema.ts
 src/models/LiveQueryResponseYCQLData.ts
