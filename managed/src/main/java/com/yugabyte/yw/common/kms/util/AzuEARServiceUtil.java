@@ -101,10 +101,10 @@ public class AzuEARServiceUtil {
    *     name, etc.
    * @return the long form key identifier
    */
-  public String getKeyId(ObjectNode authConfig) {
+  public String getKeyId(ObjectNode authConfig, String keyVersion) {
     KeyClient keyClient = getKeyClient(authConfig);
     String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
-    String keyId = keyClient.getKey(keyName).getId();
+    String keyId = keyClient.getKey(keyName, keyVersion).getId();
     return keyId;
   }
 
@@ -115,10 +115,10 @@ public class AzuEARServiceUtil {
    *     name, etc.
    * @return an AZU KMS crypto client object
    */
-  public CryptographyClient getCryptographyClient(ObjectNode authConfig) {
+  public CryptographyClient getCryptographyClient(ObjectNode authConfig, String keyVersion) {
     return new CryptographyClientBuilder()
         .credential(getCredentials(authConfig))
-        .keyIdentifier(getKeyId(authConfig))
+        .keyIdentifier(getKeyId(authConfig, keyVersion))
         .buildClient();
   }
 
@@ -225,7 +225,7 @@ public class AzuEARServiceUtil {
    * @return the wrapped universe key
    */
   public byte[] wrapKey(ObjectNode authConfig, byte[] keyBytes) {
-    CryptographyClient cryptographyClient = getCryptographyClient(authConfig);
+    CryptographyClient cryptographyClient = getCryptographyClient(authConfig, null);
     WrapResult wrapResult = cryptographyClient.wrapKey(KeyWrapAlgorithm.RSA_OAEP, keyBytes);
     byte[] wrappedKeyBytes = wrapResult.getEncryptedKey();
     return wrappedKeyBytes;
@@ -241,9 +241,41 @@ public class AzuEARServiceUtil {
    * @return the unwrapped universe key
    */
   public byte[] unwrapKey(ObjectNode authConfig, byte[] keyRef) {
-    CryptographyClient cryptographyClient = getCryptographyClient(authConfig);
-    UnwrapResult unwrapResult = cryptographyClient.unwrapKey(KeyWrapAlgorithm.RSA_OAEP, keyRef);
-    byte[] keyBytes = unwrapResult.getKey();
+    CryptographyClient cryptographyClient = getCryptographyClient(authConfig, null);
+    byte[] keyBytes = null;
+    try {
+      // First try to decrypt using primary key version
+      UnwrapResult unwrapResult = cryptographyClient.unwrapKey(KeyWrapAlgorithm.RSA_OAEP, keyRef);
+      keyBytes = unwrapResult.getKey();
+      return keyBytes;
+    } catch (Exception E) {
+      // Else try to decrypt against all key versions for that key name
+      String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+      log.debug(
+          "Could not decrypt/unwrap using primary key version of key name '{}'. "
+              + "Trying other key versions.",
+          keyName);
+      KeyClient keyClient = getKeyClient(authConfig);
+      for (KeyProperties keyProperties : keyClient.listPropertiesOfKeyVersions(keyName)) {
+        cryptographyClient = getCryptographyClient(authConfig, keyProperties.getVersion());
+        try {
+          UnwrapResult unwrapResult =
+              cryptographyClient.unwrapKey(KeyWrapAlgorithm.RSA_OAEP, keyRef);
+          keyBytes = unwrapResult.getKey();
+          log.info(
+              "Successfully decrypted using azure key name: '{}' and key version: '{}'.",
+              keyProperties.getName(),
+              keyProperties.getVersion());
+          return keyBytes;
+        } catch (Exception e) {
+          log.debug(
+              "Found multiple azure key versions. "
+                  + "Failed to decrypt using key name: '{}' and key version: '{}'.",
+              keyProperties.getName(),
+              keyProperties.getVersion());
+        }
+      }
+    }
     return keyBytes;
   }
 
