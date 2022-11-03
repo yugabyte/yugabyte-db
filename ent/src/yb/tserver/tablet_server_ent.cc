@@ -33,7 +33,6 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"

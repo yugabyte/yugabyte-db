@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/integral_types.h"
@@ -431,4 +431,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 
 }  // namespace rpc
 }  // namespace yb
-

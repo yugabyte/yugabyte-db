@@ -17,7 +17,7 @@
 #include <regex>
 
 #include "yb/gutil/map-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"

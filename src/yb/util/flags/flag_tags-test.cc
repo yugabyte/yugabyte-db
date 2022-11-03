@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 
 DEFINE_int32(flag_with_no_tags, 0, "test flag that has no tags");
@@ -52,8 +52,7 @@ using std::unordered_set;
 
 namespace yb {
 
-class FlagTagsTest : public YBTest {
-};
+class FlagTagsTest : public YBTest {};
 
 TEST_F(FlagTagsTest, TestTags) {
   unordered_set<FlagTag> tags;
@@ -73,4 +72,4 @@ TEST_F(FlagTagsTest, TestTags) {
   EXPECT_EQ(0, tags.size());
 }
 
-} // namespace yb
+}  // namespace yb

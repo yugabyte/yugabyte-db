@@ -38,7 +38,6 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
@@ -51,7 +50,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"

@@ -46,13 +46,12 @@
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/flags.h"
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"

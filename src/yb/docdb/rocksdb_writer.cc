@@ -29,7 +29,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
 DEFINE_bool(enable_transaction_sealing, false,

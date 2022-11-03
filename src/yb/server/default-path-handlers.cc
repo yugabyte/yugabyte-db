@@ -72,7 +72,7 @@
 #include "yb/server/server_base.h"
 #include "yb/server/secure.h"
 #include "yb/server/webserver.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"

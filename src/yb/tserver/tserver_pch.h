@@ -224,7 +224,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"

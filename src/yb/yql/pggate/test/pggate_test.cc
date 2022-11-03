@@ -19,7 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"

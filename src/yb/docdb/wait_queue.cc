@@ -32,7 +32,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"

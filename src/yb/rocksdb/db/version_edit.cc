@@ -28,7 +28,7 @@
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"

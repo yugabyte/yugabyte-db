@@ -33,7 +33,7 @@
 #include <memory>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"

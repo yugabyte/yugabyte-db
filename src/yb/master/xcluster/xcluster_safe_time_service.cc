@@ -23,7 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/client/schema.h"

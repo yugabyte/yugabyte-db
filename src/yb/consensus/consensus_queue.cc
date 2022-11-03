@@ -58,7 +58,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"

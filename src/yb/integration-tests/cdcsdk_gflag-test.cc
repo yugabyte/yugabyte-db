@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <boost/assign.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"

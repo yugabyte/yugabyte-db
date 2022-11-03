@@ -47,8 +47,9 @@
 // String flags are not Runtime safe.
 
 #include <gflags/gflags.h>
+
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 
 namespace yb {
 
@@ -139,8 +140,8 @@ bool ShouldTestPromoteAllAutoFlags();
 #define _DEFINE_AUTO(type, name, flag_class, initial_val, target_val, is_runtime, txt) \
   static_assert( \
       yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(initial_val), \
-      "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(initial_val) \
-      "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
+      "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" \
+      BOOST_PP_STRINGIZE(initial_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
   static_assert( \
       yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(target_val) \
@@ -148,13 +149,12 @@ bool ShouldTestPromoteAllAutoFlags();
   BOOST_PP_CAT(DEFINE_, type)(name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
-    BOOST_PP_CAT(afr_, name)( \
-      BOOST_PP_STRINGIZE(name), /* name */ \
-      &BOOST_PP_CAT(FLAGS_, name), /* flag_ptr */ \
-      yb::AutoFlagClass::flag_class, /* flag_class */ \
-      BOOST_PP_STRINGIZE(initial_val), /* initial_val */ \
-      BOOST_PP_STRINGIZE(target_val), /* target_val */ \
-      is_runtime); /* is_runtime */ \
+      BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name), /* name */ \
+        &BOOST_PP_CAT(FLAGS_, name),      /* flag_ptr */ \
+        yb::AutoFlagClass::flag_class,    /* flag_class */ \
+        BOOST_PP_STRINGIZE(initial_val),  /* initial_val */ \
+        BOOST_PP_STRINGIZE(target_val),   /* target_val */ \
+        is_runtime);                      /* is_runtime */ \
   } \
   TAG_FLAG(name, auto); \
   TAG_FLAG(name, stable)
@@ -171,13 +171,12 @@ bool ShouldTestPromoteAllAutoFlags();
   DEFINE_string(name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
-    BOOST_PP_CAT(afr_, name)( \
-      BOOST_PP_STRINGIZE(name), /* name */ \
-      &BOOST_PP_CAT(FLAGS_, name), /*f lag_ptr */ \
-      yb::AutoFlagClass::flag_class,  /* flag_class */\
-      initial_val, /* initial_val */ \
-      target_val, /* target_val */ \
-      is_runtime);  /* is_runtime */\
+      BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name), /* name */ \
+        &BOOST_PP_CAT(FLAGS_, name),   /* flag_ptr */ \
+        yb::AutoFlagClass::flag_class, /* flag_class */ \
+        initial_val,                   /* initial_val */ \
+        target_val,                    /* target_val */ \
+        is_runtime);                   /* is_runtime */ \
   } \
   TAG_FLAG(name, auto); \
   TAG_FLAG(name, stable)
@@ -196,31 +195,26 @@ constexpr bool IsValid_int32(T a) {
 
 template <typename T>
 constexpr bool IsValid_int64(T a) {
-  return std::is_same<int64_t, decltype(a)>::value ||
-          std::is_same<uint32_t, decltype(a)>::value ||
-          std::is_same<int32_t, decltype(a)>::value;
+  return std::is_same<int64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
+         std::is_same<int32_t, decltype(a)>::value;
 }
 
 template <typename T>
 constexpr bool IsValid_uint64(T a) {
-  return std::is_same<uint64_t, decltype(a)>::value ||
-         std::is_same<uint32_t, decltype(a)>::value ||
+  return std::is_same<uint64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
          std::is_same<int32_t, decltype(a)>::value;
 }
 
 template <typename T>
 constexpr bool IsValid_double(T a) {
-  return std::is_same<double, decltype(a)>::value ||
-         std::is_same<int64_t, decltype(a)>::value ||
-         std::is_same<uint32_t, decltype(a)>::value ||
-         std::is_same<int32_t, decltype(a)>::value;
+  return std::is_same<double, decltype(a)>::value || std::is_same<int64_t, decltype(a)>::value ||
+         std::is_same<uint32_t, decltype(a)>::value || std::is_same<int32_t, decltype(a)>::value;
 }
 
 template <typename T>
 constexpr bool IsValid_string(T a) {
   return std::is_same<std::string, decltype(a)>::value ||
-         std::is_same<const char*, decltype(a)>::value ||
-         std::is_same<char*, decltype(a)>::value;
+         std::is_same<const char*, decltype(a)>::value || std::is_same<char*, decltype(a)>::value;
 }
 
 void SetAutoFlagDescription(const AutoFlagDescription* desc);

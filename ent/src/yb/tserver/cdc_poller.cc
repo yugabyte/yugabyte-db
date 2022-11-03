@@ -27,7 +27,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"

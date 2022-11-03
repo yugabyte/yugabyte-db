@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -80,4 +80,3 @@ bool IsClientToServerEncryptionEnabled();
 
 } // namespace server
 } // namespace yb
-

@@ -32,7 +32,7 @@
 
 #include <limits>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/wire_protocol.h"
 

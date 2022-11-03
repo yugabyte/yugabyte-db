@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 DECLARE_int32(pgsql_rpc_keepalive_time_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);

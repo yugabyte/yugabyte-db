@@ -44,7 +44,7 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
