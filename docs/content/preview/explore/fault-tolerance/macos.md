@@ -52,28 +52,30 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../../
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) using the following command:
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 Run the `SqlInserts` workload against the local universe using the following command:
 
 ```sh
-$ java -jar ./yb-sample-apps.jar --workload SqlInserts \
+java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                  --nodes 127.0.0.1:5433 \
                                  --num_threads_write 1 \
                                  --num_threads_read 4
 ```
 
-The `SqlInserts` workload prints some statistics while running as follows. You can read more details about the output of the workload applications at the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
+The `SqlInserts` workload prints some statistics while running as follows:
 
 ```output
 32001 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4508.59 ops/sec (0.88 ms/op), 121328 total ops  |  Write: 658.11 ops/sec (1.51 ms/op), 18154 total ops  |  Uptime: 30024 ms | ...
 37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
 ```
 
+For more information about the output of the workload applications, refer to [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
+
 ## Observe even load across all nodes
 
-You can check a lot of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The total read and write IOPS per node are highlighted in the following screenshot.
+You can check a lot of the per-node statistics by browsing to [tablet-servers](http://127.0.0.1:7000/tablet-servers). The total read and write IOPS per node are demonstrated by the following illustration:
 
 ![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
 
@@ -84,7 +86,7 @@ Note how both the reads and the writes are roughly the same across all the nodes
 Remove a node from the universe using the following command:
 
 ```sh
-$ ./bin/yugabyted stop \
+./bin/yugabyted stop \
                   --base_dir=/tmp/ybd3
 ```
 
@@ -99,16 +101,16 @@ The `Time since heartbeat` value for that node will keep increasing. After that 
 Optionally, you can shut down the local cluster you created as follows:
 
 ```sh
-$ ./bin/yugabyted destroy \
+./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd1
 ```
 
 ```sh
-$ ./bin/yugabyted destroy \
+./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd2
 ```
 
 ```sh
-$ ./bin/yugabyted destroy \
+./bin/yugabyted destroy \
                   --base_dir=/tmp/ybd3
 ```
