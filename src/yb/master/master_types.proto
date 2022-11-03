@@ -141,6 +141,8 @@ message MasterErrorPB {
     TABLET_NOT_RUNNING = 38;
 
     TABLE_NOT_RUNNING = 39;
+
+    TABLE_SCHEMA_CHANGE_IN_PROGRESS = 40;
   }
 
   // The error code.

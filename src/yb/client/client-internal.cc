@@ -108,6 +108,7 @@ DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 
@@ -558,7 +559,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    const bool is_index_table,
                                    CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
-                                   bool wait) {
+                                   bool wait,
+                                   const TransactionMetadata *txn) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -568,6 +570,14 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
+  }
+  if (FLAGS_ysql_ddl_rollback_enabled && txn) {
+    // If 'txn' is set, this means this delete operation should actually result in the
+    // deletion of table data only if this transaction is a success. Therefore ensure that
+    // 'wait' is not set, because it makes no sense to wait for the deletion to complete if we want
+    // to postpone the deletion until end of transaction.
+    DCHECK(!wait);
+    txn->ToPB(req.mutable_transaction());
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(

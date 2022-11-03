@@ -364,6 +364,11 @@ Status PGConn::RollbackTransaction() {
   return Execute("ROLLBACK");
 }
 
+Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
+  RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=true"));
+  return Execute(ddl_to_fail);
+}
+
 Result<bool> PGConn::HasIndexScan(const std::string& query) {
   return VERIFY_RESULT(HasScanType(query, "Index")) ||
          VERIFY_RESULT(HasScanType(query, "Index Only"));

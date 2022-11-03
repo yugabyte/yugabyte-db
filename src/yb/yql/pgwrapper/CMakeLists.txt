@@ -60,7 +60,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_tablet_split_test_base.cc
     pg_wrapper_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
-    pq_utils)
+    pq_utils
+    yb_client_test_util)
 ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
@@ -112,6 +113,7 @@ ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_ddl_atomicity-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

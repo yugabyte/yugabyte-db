@@ -1127,6 +1127,11 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 	--ddl_transaction_state.nesting_level;
 	if (ddl_transaction_state.nesting_level == 0)
 	{
+		if (yb_test_fail_next_ddl)
+		{
+			yb_test_fail_next_ddl = false;
+			elog(ERROR, "Failed DDL operation as requested");
+		}
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
@@ -1636,14 +1641,6 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	last_attr->type_entity = YbDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->collation_id = InvalidOid;
 	last_attr->is_null = true;
-}
-
-void YBTestFailDdlIfRequested() {
-	if (!yb_test_fail_next_ddl)
-		return;
-
-	yb_test_fail_next_ddl = false;
-	elog(ERROR, "DDL failed as requested");
 }
 
 void

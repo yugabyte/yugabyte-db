@@ -34,7 +34,6 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -697,15 +696,31 @@ YBCDropTable(Relation relation)
 													   false, /* if_exists */
 													   &handle),
 													   &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+		{
+			return;
+		}
+		/*
+		 * YSQL DDL Rollback is not yet supported for colocated tables.
+		 */
+		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
+			!yb_props->is_colocated)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * table once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropTable(handle),
+											&not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled/unsupported. This means DocDB will not
+		 * rollback the drop if the transaction ends up failing. We cannot
+		 * abort drop in DocDB so postpone the execution until the rest of the
+		 * statement/txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
 }
 
