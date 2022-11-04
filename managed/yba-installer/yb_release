@@ -29,6 +29,8 @@ export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 
+readonly yba_installer_home=$( cd "${BASH_SOURCE%/*}" && pwd )
+
 destination=""
 
 while [ $# -gt 0 ]; do
@@ -50,15 +52,16 @@ if [[ ! -d $destination ]]; then
 fi
 VERSION_FULL=$(<version.txt)
 BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
-# IFS splits input according to delimiter.
-IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
-VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
+IFS='-'
+read -ra VERSION_NUMBER <<< "$VERSION_FULL"
+IFS=" "
+VERSION="$VERSION_NUMBER-b$BUILD_NUMBER"
 GOOS="linux"
 GOARCH="amd64"
 PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+make VERSION="${VERSION}" PACKAGE_NAME=${PACKAGE_NAME} GOOS=${GOOS} GOARCH=${GOARCH}
 
-command="--package ${PACKAGE_NAME} --destination ${destination}"
+command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
-"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py "$command"
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py $command
