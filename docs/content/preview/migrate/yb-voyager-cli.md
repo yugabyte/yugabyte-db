@@ -291,7 +291,7 @@ Specifies the count to increase the number of connections.
 
 Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
 
-Default : 100,000
+Default: 100,000
 
 ### --data-dir
 
