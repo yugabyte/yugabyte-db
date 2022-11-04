@@ -57,7 +57,6 @@ set_python_executable() {
   for py_executable in "${executables[@]}"; do
     if which "$py_executable" > /dev/null 2>&1; then
       PYTHON_EXECUTABLE="$py_executable"
-      export PYTHON_EXECUTABLE
       return
     fi
   done
@@ -66,12 +65,10 @@ set_python_executable() {
     if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
       if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
         PYTHON_EXECUTABLE="python"
-        export PYTHON_EXECUTABLE
         return
       fi
     elif [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "1" ]]; then
       PYTHON_EXECUTABLE="python"
-      export PYTHON_EXECUTABLE
       return
     fi
   fi
@@ -85,12 +82,6 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
 readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
-readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9')
-readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-36-cp36m' 'manylinux2014_x86_64-cp-37-cp37m' \
-                         'manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39')
-readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m', \
-                         'macosx-10.10-x86_64-cp-38-cp38' 'macosx-10.10-x86_64-cp-39-cp39')
-DOCKER_IMAGE_NAME="yb-anywhere-pex-builder"
 PYTHON_EXECUTABLE=""
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
@@ -583,26 +574,6 @@ detect_os() {
     # TODO: detect other Linux flavors, including potentially non-Ubuntu Debian distributions
     # (if we ever need it).
   fi
-}
-
-# Function that is needed to activate the PEX environment. Note that using the PEX requires that
-# the PEX exists at the provided PEX_PATH location (which should happen automatically as part of
-# the Devops release generation process). Exports PEX_EXTRA_SYS_PATH when the PEX is used during the
-# execution of ybcloud.sh or pywrapper (needed to import node_client_utils.py when running
-# run_node_action.py). Also export PEX_PATH, SITE_PACKAGES, and SCRIPT_PATH, so that they
-# can be picked up by ybcloud.sh and py_wrapper to run Python scripts with the PEX env.
-activate_pex() {
-  PEX_EXTRA_SYS_PATH="$yb_devops_home/opscli:$yb_devops_home/bin:$yb_devops_home/opscli/ybops"
-  export PEX_EXTRA_SYS_PATH
-  # Used by other devops scripts
-  PEX_PATH="$yb_devops_home/pex/pexEnv"
-  SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
-  export SCRIPT_PATH
-  mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
-                "import sys; print([x for x in sys.path if x.find('mitogen-') >= 0][0])")
-  SITE_PACKAGES="$yb_devops_home/pex/$mitogen_path"
-  export SITE_PACKAGES
-  export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
 }
 
 # -------------------------------------------------------------------------------------------------
