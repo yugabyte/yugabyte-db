@@ -45,7 +45,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
+          <span>Docs</span>
         </div>
         <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
         <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
@@ -56,7 +56,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
+          <span>FAQ</span>
         </div>
         <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
         <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>

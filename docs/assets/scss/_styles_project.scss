@@ -46,6 +46,11 @@
 .td-breadcrumbs {
   margin-bottom: 20px;
 
+  &:has(.breadcrumb-item:only-child) {
+    height: 0;
+    margin: 0;
+  }
+
   ol.breadcrumb {
     padding-bottom: 0;
 
