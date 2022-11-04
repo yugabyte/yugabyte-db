@@ -354,7 +354,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
         if (isScheduledBackup) {
           if (isEditMode) {
-            doEditBackupSchedule.mutateAsync({
+            const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
               frequency:
                 values['policy_interval'] *
@@ -362,7 +362,16 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               cronExpression: values.cronExpression,
               status: values.scheduleObj.status,
               frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
-            });
+            };
+            if (values['is_incremental_backup_enabled']) {
+              editPayloadValues['incrementalBackupFrequency'] =
+                values['incremental_backup_frequency'] *
+                MILLISECONDS_IN[values['incremental_backup_frequency_type'].value.toUpperCase()];
+              editPayloadValues['incrementalBackupFrequencyTimeUnit'] = values[
+                'incremental_backup_frequency_type'
+              ].value.toUpperCase();
+            }
+            doEditBackupSchedule.mutateAsync(editPayloadValues);
           } else {
             doCreateBackupSchedule.mutateAsync({
               ...values,
@@ -753,7 +762,6 @@ function BackupConfigurationForm({
                           value: values['incremental_backup_frequency']
                         }}
                         minVal={0}
-                        readOnly={isEditMode}
                       />
                     </Col>
                     <Col lg={4}>
@@ -761,7 +769,6 @@ function BackupConfigurationForm({
                         name="incremental_backup_frequency_type"
                         component={YBFormSelect}
                         options={INCREMENTAL_BACKUP_DURATION_OPTIONS}
-                        isDisabled={isEditMode}
                       />
                     </Col>
                   </div>
