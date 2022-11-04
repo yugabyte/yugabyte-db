@@ -34,7 +34,7 @@ Internode (server-to-server or node-to-node) communication, including xCluster, 
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
-xCluster usesthe YB-Master port 7100 for the initial communication and then uses the YB-TServer port 9100 to get data changes.
+xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes.
 
 Note that YugabyteDB Anywhere obtained the replication lag using Prometheus metrics from tserver (port 9000). So, although the xCluster replication will work if this port is closed, the replication lag cannot be shown on YugabyteDB Anywhere.
 
