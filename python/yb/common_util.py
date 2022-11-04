@@ -14,17 +14,19 @@
 This module provides common utility functions.
 """
 
+import atexit
 import itertools
 import logging
 import os
 import re
-import sys
+import shutil
 import json
 import subprocess
 import shlex
 import io
 import platform
 import argparse
+import uuid
 
 import typing
 from typing import (
@@ -542,3 +544,25 @@ def assert_set_contains_all(a: Set[Any], b: Set[Any], message: str = '') -> None
             f"{set_to_str_one_element_per_line(b)}. "
             f"Elements in the second set but not in the first: "
             f"{set_to_str_one_element_per_line(d)}.")
+
+
+def create_temp_dir() -> str:
+    """
+    Create a temporary directory and return its path.
+    The directory is automatically deleted at program exit.
+    """
+    tmp_dir = os.path.join(YB_SRC_ROOT, "build", "yb_release_tmp_{}".format(str(uuid.uuid4())))
+    try:
+        os.mkdir(tmp_dir)
+    except OSError as e:
+        logging.error("Could not create directory at '{}'".format(tmp_dir))
+        raise e
+
+    atexit.register(lambda: shutil.rmtree(tmp_dir))
+    return tmp_dir
+
+
+def init_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
