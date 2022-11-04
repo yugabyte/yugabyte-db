@@ -274,4 +274,69 @@ public class NativeKubernetesManager extends KubernetesManager {
   public void diff(Map<String, String> config, String inputYamlFilePath) {
     // TODO(anijhawan): Implement this when we get a chance.
   }
+
+  @Override
+  public String getCurrentContext(Map<String, String> azConfig) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String execCommandProcessErrors(Map<String, String> config, List<String> commandList) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getEvents(Map<String, String> config, String namespace, String string) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sVersion(Map<String, String> config, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getPlatformNamespace() {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
 }

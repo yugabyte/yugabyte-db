@@ -31,7 +31,10 @@ public class BundleDetails {
     TabletMeta,
 
     @EnumValue("YbcLogs")
-    YbcLogs;
+    YbcLogs,
+
+    @EnumValue("K8sInfo")
+    K8sInfo;
 
     public static boolean isValid(String type) {
       for (ComponentType t : ComponentType.values()) {
