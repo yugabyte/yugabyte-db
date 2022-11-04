@@ -236,7 +236,8 @@ set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
   "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
   "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
-  "--output_file_path" "${AUTO_FLAGS_FILE}")
+  "--output_file_path" "${AUTO_FLAGS_FILE}"
+  "--previous_auto_flags_file" "${YB_SRC_ROOT}/src/yb/previous_auto_flags.json")
 add_custom_target(
   gen_auto_flags_json ALL
   COMMAND ${GEN_AUTO_FLAGS_COMMAND}
