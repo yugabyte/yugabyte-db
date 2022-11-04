@@ -2654,9 +2654,9 @@ class ControlScript(object):
             #     Output.print_out('WARNING: UI disabled - Unable to download ui binaries.')
             #     args.ui = False
 
-            if args.ui and not self.java_installed():
-                Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
-                args.ui = False
+            # if args.ui and not self.java_installed():
+            #     Output.print_out('WARNING: UI disabled - Java 1.8 or higher is required.')
+            #     args.ui = False
 
             self.configs.temp_data["background"] = args.background
             self.configs.temp_data["ui"] = args.ui
