@@ -24,17 +24,13 @@ import {
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
-import {
-  SortOrder,
-  XClusterConfigAction,
-  XClusterTableIneligibleStatuses,
-  YBTableRelationType
-} from '../../constants';
+import { SortOrder, XClusterConfigAction, XClusterTableIneligibleStatuses } from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { XClusterTableEligibility } from '../../constants';
 import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
+import { YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
@@ -53,8 +49,6 @@ interface CommonTableSelectProps {
   targetUniverseUUID: string;
   selectedTableUUIDs: string[];
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
-  isTableSelectionValidated: boolean;
-  setIsTableSelectionValidated: (isTableSelectionValidated: boolean) => void;
   isFixedTableType: boolean;
   tableType: XClusterTableType;
   setTableType: (tableType: XClusterTableType) => void;
@@ -69,7 +63,7 @@ type TableSelectProps =
       configAction: typeof XClusterConfigAction.CREATE;
     })
   | (CommonTableSelectProps & {
-      configAction: typeof XClusterConfigAction.ADD_TABLE | typeof XClusterConfigAction.RESTART;
+      configAction: typeof XClusterConfigAction.ADD_TABLE;
       xClusterConfigUUID: string;
     });
 
@@ -177,8 +171,6 @@ export const TableSelect = (props: TableSelectProps) => {
     targetUniverseUUID,
     selectedTableUUIDs,
     setSelectedTableUUIDs,
-    isTableSelectionValidated,
-    setIsTableSelectionValidated,
     tableType,
     isFixedTableType,
     setTableType,
@@ -249,17 +241,6 @@ export const TableSelect = (props: TableSelectProps) => {
   ) {
     return <YBErrorIndicator />;
   }
-  /**
-   * Wrapper around setFieldValue from formik.
-   * Reset `isTableSelectionValidated` to false if changing
-   * a validated table selection.
-   */
-  const setTableUUIDs = (tableUUIDs: string[]) => {
-    if (isTableSelectionValidated) {
-      setIsTableSelectionValidated(false);
-    }
-    setSelectedTableUUIDs(tableUUIDs);
-  };
 
   const toggleTableGroup = (isSelected: boolean, rows: XClusterTableCandidate[]) => {
     if (isSelected) {
@@ -272,11 +253,13 @@ export const TableSelect = (props: TableSelectProps) => {
         }
       });
 
-      setTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
+      setSelectedTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
     } else {
       const removedTables = new Set(rows.map((row) => row.tableUUID));
 
-      setTableUUIDs(selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID)));
+      setSelectedTableUUIDs(
+        selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
+      );
     }
   };
 
@@ -287,9 +270,9 @@ export const TableSelect = (props: TableSelectProps) => {
 
   const handleTableSelect = (row: XClusterTableCandidate, isSelected: boolean) => {
     if (isSelected) {
-      setTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
+      setSelectedTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
     } else {
-      setTableUUIDs([
+      setSelectedTableUUIDs([
         ...selectedTableUUIDs.filter((tableUUID: string) => tableUUID !== row.tableUUID)
       ]);
     }
@@ -351,7 +334,7 @@ export const TableSelect = (props: TableSelectProps) => {
       // Clear current item selection.
       // Form submission should only contain tables of the same type (YSQL or YCQL).
       setSelectedKeyspaces([]);
-      setTableUUIDs([]);
+      setSelectedTableUUIDs([]);
     }
   };
 
@@ -367,8 +350,7 @@ export const TableSelect = (props: TableSelectProps) => {
   }
 
   const replicationItems =
-    props.configAction === XClusterConfigAction.ADD_TABLE ||
-    props.configAction === XClusterConfigAction.RESTART
+    props.configAction === XClusterConfigAction.ADD_TABLE
       ? getReplicationItemsFromTables(
           sourceUniverseTablesQuery.data,
           targetUniverseTablesQuery.data,
@@ -429,7 +411,6 @@ export const TableSelect = (props: TableSelectProps) => {
             <ExpandedTableSelect
               row={row}
               selectedTableUUIDs={selectedTableUUIDs}
-              minPageSize={TABLE_MIN_PAGE_SIZE}
               tableType={tableType}
               handleTableSelect={handleTableSelect}
               handleAllTableSelect={handleAllTableSelect}
