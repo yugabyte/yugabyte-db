@@ -3854,6 +3854,14 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         continue;
       }
 
+      // Add the table/ stream pair details to 'cdcsdk_tables_to_stream_map_', so that parent
+      // tablets on which tablet split is successful will be hidden rather than deleted straight
+      // away, as needed.
+      {
+        LockGuard lock(mutex_);
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->id());
+      }
+
       stream_lock.Commit();
       stream->cdcsdk_unprocessed_tables.erase(table_id);
       LOG(INFO) << "Added tablets of table: " << table_id
