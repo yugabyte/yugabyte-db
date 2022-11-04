@@ -51,9 +51,6 @@
   "opscli": [
     "opscli/*"
   ],
-  "pex": [
-    "pex/*"
-  ],
   "plugins": [
     "plugins/*"
   ],
