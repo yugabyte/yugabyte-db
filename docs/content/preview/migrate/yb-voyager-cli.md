@@ -335,7 +335,7 @@ Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_ch
 
 Specifies the format of your data file with CSV or text as the supported formats.
 
-Default : CSV
+Default: CSV
 
 ### --post-import-data
 
