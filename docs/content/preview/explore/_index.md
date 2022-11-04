@@ -31,7 +31,7 @@ Explore assumes that you have either created an account in YugabyteDB Managed or
 | [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region deployment topologies that can be deployed using YugabyteDB. | Multi-node cluster<br/>Local instance |
 | [Query tuning](query-1-performance/) | Learn about the tools available for identifying and optimizing queries in YSQL. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
 | [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node cluster<br/>Local instance |
-| [Change data capture](change-data-capture/) | Learn about YugabyteDB’s support for streaming data to Kafka. | N/A |
+| [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how YugabyteDB secures your data, using authentication, authorization (RBAC), encryption, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node cluster<br/>Local instance |
 
@@ -59,17 +59,17 @@ To run the examples in explore, you'll need to create a single- or multi-node cl
 <div class="tab-content">
   <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
-Examples requiring a single-node cluster can be run using the free Sandbox cluster.
+- Single node - Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
-If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
+  If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
-Save your cluster credentials in a convenient location, you will use them to connect to your cluster.
+  Save your cluster credentials in a convenient location, you will use them to connect to your cluster.
 
-Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+- Multi node - Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-To create a single region multi-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
+  To create a single region multi-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
 
-### Connect to your clusters
+**Connect to your clusters**
 
 You can run Explore exercises in YugabyteDB Managed using the Cloud Shell:
 
@@ -144,7 +144,7 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../ref
 
 {{< /tabpane >}}
 
-### Connect to clusters
+**Connect to clusters**
 
 To run the examples in your cluster, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB using the YSQL or YCQL API.
 
