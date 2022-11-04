@@ -108,7 +108,7 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-password password \
         --source-db-name dbname \
         --source-db-schema schemaName \ #Not applicable for MySQL.
-        --oracle-db-sid string \ #Applicable only for Oracle
+        --oracle-db-sid string \ # Oracle only
         --oracle-home string \ #Applicable only for Oracle
         --table-list string \
         --exclude-table-list string
