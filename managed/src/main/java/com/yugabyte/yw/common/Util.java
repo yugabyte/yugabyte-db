@@ -95,6 +95,9 @@ public class Util {
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
 
+  public static final String K8S_POD_FQDN_TEMPLATE =
+      "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */

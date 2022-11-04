@@ -42,7 +42,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/random.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/memory/arena.h"

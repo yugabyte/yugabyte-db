@@ -2,26 +2,19 @@ import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 import { intlFormat } from 'date-fns';
-// import clsx from 'clsx';
 
 // Local imports
 import type { ClusterData } from '@app/api/src';
-// import { getCloudProviderIcon } from '@app/features/clusters/list/ClusterCard';
 import {
   roundDecimal,
   getFaultTolerance,
-  // OPEN_EDIT_INFRASTRUCTURE_MODAL
 } from '@app/helpers';
-// import { YBButton } from '@app/components';
-// import { ClusterContext } from '@app/features/clusters/details/ClusterDetails';
-
-// Icons
-// import PlusIcon from '@app/assets/plus_icon.svg';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
     padding: theme.spacing(2),
-    border: `1px solid ${theme.palette.grey[200]}`
+    border: `1px solid ${theme.palette.grey[200]}`,
+    width: '100%'
   },
   container: {
     justifyContent: 'space-between'
@@ -30,29 +23,12 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
     marginBottom: theme.spacing(0.75),
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    textAlign: 'center'
   },
   value: {
-    paddingTop: theme.spacing(0.57)
-  },
-  region: {
-    display: 'flex',
-    alignItems: 'center',
-
-    '& > svg': {
-      marginRight: theme.spacing(1)
-    }
-  },
-  chip: {
-    border: `1px solid ${theme.palette.grey[200]}`,
-    padding: theme.spacing(0.8, 1.5),
-    borderRadius: theme.spacing(0.8),
-    height: 'auto',
-    fontSize: 11.5
-  },
-  btnAddRegion: {
-    padding: theme.spacing(1),
-    color: theme.palette.grey[900]
+    paddingTop: theme.spacing(0.57),
+    textAlign: 'center'
   }
 }));
 
@@ -82,17 +58,10 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   // const context = useContext(ClusterContext);
 
   const clusterSpec = cluster?.spec;
-
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
   const totalRamUsageMb = clusterSpec?.cluster_info?.node_info.memory_mb ?? 0;
-  const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
-
-
-  // const editingDisabled =
-  //   isClusterEditingDisabled(cluster) || clusterSpec?.cluster_info?.cluster_tier === ClusterTier.Free;
-
-  // const editingDisabled = true;
+  const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
+  // const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
 
   // Convert ram from MB to GB
   // const getTotalRamText = (value: number, numberOfNodes: number) => {
@@ -121,39 +90,15 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
     return t('clusters.none')
   }
 
-  // Open edit infra
-  // const openEditInfraModal = () => {
-  //   if (context?.dispatch) {
-  //     context.dispatch({ type: OPEN_EDIT_INFRASTRUCTURE_MODAL });
-  //   }
-  // };
-
   return (
     <Paper className={classes.clusterInfo}>
       <Grid container className={classes.container}>
         <div>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.provider')}
-          </Typography>
-          <Typography variant="body2" className={classes.region}>
-            {/* {getCloudProviderIcon(clusterSpec?.cloud_info?.code)} */}
-            {clusterSpec?.cloud_info?.code}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.totalNodes')}
+            {t('clusterDetail.overview.replicationFactor')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
             {numNodes}
-          </Typography>
-        </div>
-        <div>
-          <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.averageCpu')}
-          </Typography>
-          <Typography variant="body2" className={classes.value}>
-            {t('units.percent', { value : roundDecimal(averageCpuUsage) })}
           </Typography>
         </div>
         <div>
@@ -166,27 +111,35 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
         </div>
         <div>
           <Typography variant="subtitle2" className={classes.label}>
+            {t('clusters.encryption')}
+          </Typography>
+          <Typography variant="body2" className={classes.value}>
+            {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
+              clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
+          </Typography>
+        </div>
+        <div>
+          <Typography variant="subtitle2" className={classes.label}>
             {t('clusterDetail.overview.ramUsed')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
             {getRamUsageText(totalRamUsageMb)}
           </Typography>
         </div>
-        <div>
+        {/*<div>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.totalDiskSize')}
+            {t('clusterDetail.overview.totalRam')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {t('units.GB', { value: totalDiskSize })}
+            {getRamUsageText(totalRamUsageMb)}
           </Typography>
-        </div>
+        </div>*/}
         <div>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusters.encryption')}
+            {t('clusterDetail.overview.totalCores')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
-              clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
+            {totalCores}
           </Typography>
         </div>
         <div>

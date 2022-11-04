@@ -399,15 +399,4 @@ public class Provider extends Model {
     }
     return newParams;
   }
-
-  // Specific to Kubernetes providers. This template is used to
-  // calculate per pod address. The default value is the Kubernetes
-  // FQDN, it can be changed for multi-cluster setups like Istio.
-  @JsonIgnore
-  public String getK8sPodAddrTemplate() {
-    return this.getUnmaskedConfig()
-        .getOrDefault(
-            "KUBE_POD_ADDRESS_TEMPLATE",
-            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}");
-  }
 }

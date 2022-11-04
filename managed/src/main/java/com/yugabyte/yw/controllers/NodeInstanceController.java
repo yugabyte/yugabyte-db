@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -51,8 +54,6 @@ import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 
 @Api(
     value = "Node instances",
@@ -324,16 +325,12 @@ public class NodeInstanceController extends AuthenticatedController {
       params.isHardReboot = nodeAction == HARD_REBOOT;
       taskParams = params;
     }
-    taskParams.universeUUID = universe.universeUUID;
-    taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
+    taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
+    taskParams =
+        UniverseControllerRequestBinder.mergeWithUniverse(
+            taskParams, universe, NodeTaskParams.class);
     taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-    if (universe.isYbcEnabled()) {
-      taskParams.installYbc = true;
-      taskParams.enableYbc = true;
-      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      taskParams.ybcInstalled = true;
-    }
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -351,9 +348,6 @@ public class NodeInstanceController extends AuthenticatedController {
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
         || nodeAction == NodeActionType.STOP) {
-      taskParams.rootCA = universe.getUniverseDetails().rootCA;
-      taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
-      taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(

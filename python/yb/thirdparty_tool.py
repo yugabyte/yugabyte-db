@@ -311,7 +311,9 @@ def parse_args() -> argparse.Namespace:
         '--github-token-file',
         help='Read GitHub token from this file. Authenticated requests have a higher rate limit. '
              'If this is not specified, we will still use the GITHUB_TOKEN environment '
-             'variable.')
+             'variable. The YB_GITHUB_TOKEN_FILE_PATH environment variable, if set, will be used '
+             'as the default value of this argument.',
+        default=os.getenv('YB_GITHUB_TOKEN_FILE_PATH'))
     parser.add_argument(
         '--update', '-u', action='store_true',
         help=f'Update the third-party archive metadata in in {THIRDPARTY_ARCHIVES_REL_PATH}.')
@@ -382,6 +384,7 @@ def get_manual_archive_metadata_file_path() -> str:
 def get_github_token(token_file_path: Optional[str]) -> Optional[str]:
     github_token: Optional[str]
     if token_file_path:
+        logging.info("Reading GitHub token from %s", token_file_path)
         github_token = read_file(token_file_path).strip()
     else:
         github_token = os.getenv('GITHUB_TOKEN')

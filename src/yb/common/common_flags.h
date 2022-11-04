@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 static constexpr int kAutoDetectNumShardsPerTServer = -1;
 
@@ -30,4 +30,3 @@ namespace yb {
 void InitCommonFlags();
 
 } // namespace yb
-

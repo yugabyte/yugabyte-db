@@ -12,13 +12,12 @@
 
 #pragma once
 
-#include <string>
 #include <atomic>
-
-#include <boost/optional.hpp>
+#include <optional>
+#include <string>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/flags_callback.h"
+#include "yb/util/flags.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -112,7 +111,7 @@ class PgWrapper {
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
 
   PgProcessConf conf_;
-  boost::optional<Subprocess> pg_proc_;
+  std::optional<Subprocess> pg_proc_;
 };
 
 YB_DEFINE_ENUM(PgProcessState,
@@ -150,7 +149,7 @@ class PgSupervisor {
   void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);
 
   PgProcessConf conf_;
-  boost::optional<PgWrapper> pg_wrapper_;
+  std::optional<PgWrapper> pg_wrapper_;
   PgProcessState state_ = PgProcessState::kNotStarted;
   scoped_refptr<Thread> supervisor_thread_;
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
@@ -159,4 +158,3 @@ class PgSupervisor {
 
 }  // namespace pgwrapper
 }  // namespace yb
-

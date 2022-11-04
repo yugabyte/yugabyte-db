@@ -683,5 +683,6 @@ extern void YBCheckServerAccessIsAllowed();
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
 
 #endif /* PG_YB_UTILS_H */

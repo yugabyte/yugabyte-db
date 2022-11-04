@@ -6,6 +6,7 @@ import (
         "encoding/json"
         "fmt"
         "net/http"
+        "runtime"
         "sort"
         "time"
 
@@ -52,49 +53,41 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
         }
 
-        // Getting relevant data from tabletServersResponse
-        regionsMap := map[string]int32{}
-        zonesMap := map[string]int32{}
-        numNodes := int32(0)
-        totalDisk := uint64(0)
-        ramUsageBytes := float64(0)
-        for _, cluster := range tabletServersResponse.Tablets {
-                for _, tablet := range cluster {
-                        numNodes++
-                        region := tablet.Region
-                        regionsMap[region]++
-                        zone := tablet.Zone
-                        zonesMap[zone]++
-                        ramUsageBytes += float64(tablet.RamUsedBytes)
-                        for _, pathMetric := range tablet.PathMetrics {
-                                totalSpaceSize := pathMetric.TotalSpaceSize
-                                if totalDisk < totalSpaceSize {
-                                        totalDisk = totalSpaceSize
-                                }
-                        }
-                }
+    // Getting relevant data from tabletServersResponse
+    regionsMap := map[string]int32{}
+    zonesMap := map[string]int32{}
+    numNodes := int32(0)
+    ramUsageBytes := float64(0)
+    for _, cluster := range tabletServersResponse.Tablets {
+        for _, tablet := range cluster {
+            numNodes++;
+            region := tablet.Region
+            regionsMap[region]++
+            zone := tablet.Zone
+            zonesMap[zone]++
+            ramUsageBytes += float64(tablet.RamUsedBytes)
         }
-        // convert from bytes to MB
-        ramUsageMb := ramUsageBytes / helpers.BYTES_IN_MB
-        // convert from bytes to GB
-        totalDiskGb := int32(totalDisk / helpers.BYTES_IN_GB)
-        provider := models.CLOUDENUM_MANUAL
-        clusterRegionInfo := []models.ClusterRegionInfo{}
-        for region, numNodesInRegion := range regionsMap {
-                clusterRegionInfo = append(clusterRegionInfo, models.ClusterRegionInfo{
-                        PlacementInfo: models.PlacementInfo{
-                                CloudInfo: models.CloudInfo{
-                                        Code:   provider,
-                                        Region: region,
-                                },
-                                NumNodes: numNodesInRegion,
-                        },
-                })
-        }
-        sort.Slice(clusterRegionInfo, func(i, j int) bool {
-                return clusterRegionInfo[i].PlacementInfo.CloudInfo.Region <
-                        clusterRegionInfo[j].PlacementInfo.CloudInfo.Region
+    }
+    // convert from bytes to MB
+    ramUsageMb := ramUsageBytes / helpers.BYTES_IN_MB
+    // convert from bytes to GB
+    provider := models.CLOUDENUM_MANUAL
+    clusterRegionInfo := []models.ClusterRegionInfo{}
+    for region, numNodesInRegion := range regionsMap {
+        clusterRegionInfo = append(clusterRegionInfo, models.ClusterRegionInfo{
+            PlacementInfo: models.PlacementInfo{
+                CloudInfo: models.CloudInfo{
+                    Code:   provider,
+                    Region: region,
+                },
+                NumNodes: numNodesInRegion,
+            },
         })
+    }
+    sort.Slice(clusterRegionInfo, func(i, j int) bool {
+        return clusterRegionInfo[i].PlacementInfo.CloudInfo.Region <
+               clusterRegionInfo[j].PlacementInfo.CloudInfo.Region
+    })
 
         // Getting response from mastersFuture
         mastersResponse := <-mastersFuture
@@ -172,37 +165,49 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Use the session from the context.
         session := c.Session
         averageCpu := float64(0)
-
+        totalDiskGb := float64(0)
+        freeDiskGb := float64(0)
         hostToUuid, err := helpers.GetHostToUuidMap(helpers.HOST)
         if err == nil {
-                sum := float64(0)
-                for _, uuid := range hostToUuid {
-                        query := fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics",
-                                "cpu_usage_user", uuid)
-                        iter := session.Query(query).Iter()
-                        var ts int64
-                        var value int
-                        var details string
-                        iter.Scan(&ts, &value, &details)
-                        detailObj := DetailObj{}
-                        json.Unmarshal([]byte(details), &detailObj)
-                        sum += detailObj.Value
-                        if err := iter.Close(); err != nil {
-                                continue
-                        }
-                        query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics",
-                                "cpu_usage_system", uuid)
-                        iter = session.Query(query).Iter()
-                        iter.Scan(&ts, &value, &details)
-                        json.Unmarshal([]byte(details), &detailObj)
-                        sum += detailObj.Value
-                        if err := iter.Close(); err != nil {
-                                continue
-                        }
+            sum := float64(0)
+            for _, uuid := range hostToUuid {
+                query := fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_user", uuid)
+                iter := session.Query(query).Iter()
+                var ts int64
+                var value int
+                var details string
+                iter.Scan(&ts, &value, &details)
+                detailObj := DetailObj{}
+                json.Unmarshal([]byte(details), &detailObj)
+                sum += detailObj.Value
+                if err := iter.Close(); err != nil {
+                    continue
                 }
-                averageCpu = (sum * 100) / float64(len(hostToUuid))
+                query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_system", uuid)
+                iter = session.Query(query).Iter()
+                iter.Scan(&ts, &value, &details)
+                json.Unmarshal([]byte(details), &detailObj)
+                sum += detailObj.Value
+                if err := iter.Close(); err != nil {
+                    continue
+                }
+            }
+            averageCpu = (sum * 100) / float64(len(hostToUuid))
+            // Get the disk usage as well. Assume every node reports the same metrics for disk space
+            query :=
+              fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk", hostToUuid[helpers.HOST])
+            iter := session.Query(query).Iter()
+            var ts int64
+            var value int
+            var details string
+            iter.Scan(&ts, &value, &details)
+            totalDiskGb = float64(value) / helpers.BYTES_IN_GB
+            query =
+              fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "free_disk", hostToUuid[helpers.HOST])
+            iter = session.Query(query).Iter()
+            iter.Scan(&ts, &value, &details)
+            freeDiskGb = float64(value) / helpers.BYTES_IN_GB
         }
-
         // Get software version
         smallestVersion := ""
         for _, versionInfoFuture := range versionInfoFutures {
@@ -216,35 +221,37 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 }
         }
 
-        response := models.ClusterResponse{
-                Data: models.ClusterData{
-                        Spec: models.ClusterSpec{
-                                CloudInfo: models.CloudInfo{
-                                        Code: provider,
-                                },
-                                ClusterInfo: models.ClusterInfo{
-                                        NumNodes:       numNodes,
-                                        FaultTolerance: faultTolerance,
-                                        NodeInfo: models.ClusterNodeInfo{
-                                                MemoryMb:   ramUsageMb,
-                                                DiskSizeGb: totalDiskGb,
-                                                CpuUsage:   averageCpu,
-                                        },
-                                },
-                                ClusterRegionInfo: &clusterRegionInfo,
-                                EncryptionInfo: models.EncryptionInfo{
-                                        EncryptionAtRest:    isEncryptionAtRestEnabled,
-                                        EncryptionInTransit: isEncryptionInTransitEnabled,
-                                },
-                        },
-                        Info: models.ClusterDataInfo{
-                                Metadata: models.EntityMetadata{
-                                        CreatedOn: &createdOn,
-                                        UpdatedOn: &createdOn,
-                                },
-                                SoftwareVersion: smallestVersion,
-                        },
+    response := models.ClusterResponse{
+        Data: models.ClusterData{
+            Spec: models.ClusterSpec{
+                CloudInfo: models.CloudInfo{
+                    Code: provider,
                 },
-        }
-        return ctx.JSON(http.StatusOK, response)
+                ClusterInfo: models.ClusterInfo{
+                    NumNodes:       numNodes,
+                    FaultTolerance: faultTolerance,
+                    NodeInfo: models.ClusterNodeInfo{
+                        MemoryMb:       ramUsageMb,
+                        DiskSizeGb:     totalDiskGb,
+                        DiskSizeUsedGb: totalDiskGb - freeDiskGb,
+                        CpuUsage:       averageCpu,
+                        NumCores:       int32(runtime.NumCPU()),
+                    },
+                },
+                ClusterRegionInfo: &clusterRegionInfo,
+                EncryptionInfo: models.EncryptionInfo{
+                    EncryptionAtRest:    isEncryptionAtRestEnabled,
+                    EncryptionInTransit: isEncryptionInTransitEnabled,
+                },
+            },
+            Info: models.ClusterDataInfo{
+                Metadata: models.EntityMetadata{
+                    CreatedOn: &createdOn,
+                    UpdatedOn: &createdOn,
+                },
+                SoftwareVersion: smallestVersion,
+            },
+        },
+    }
+    return ctx.JSON(http.StatusOK, response)
 }

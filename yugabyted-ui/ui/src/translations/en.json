@@ -709,12 +709,20 @@
       },
       "overview" : {
         "allRegions": "All Regions",
-        "sum" : "sum",
-        "provider": "Provider",
+        "replicationFactor": "Replication Factor",
+        "totalRam": "Total RAM",
+        "ramUsed": "RAM Used",
+        "totalCores": "Total Cores",
         "totalNodes": "Total Nodes",
-        "averageCpu": "Average CPU Usage",
+        "bootstrappingNodes": "Bootstrapping Nodes",
         "regions": "Regions",
-        "ramUsed": "RAM Used"
+        "diskUsage": "Disk Usage",
+        "usedDiskText": "{{usedDiskSizeGb}} GB used",
+        "freeDiskText": "{{freeDiskSizeGb}} GB free out of {{totalDiskSizeGb}} GB",
+        "deadNodes": "Dead Nodes",
+        "totalTablets": "Total Tablets",
+        "underReplicatedTablets": "Under Replicated Tablets",
+        "unavailableTablets": "Unavailable Tablets"
       },
       "tables": {
         "numTables": "{{count}} Table",
@@ -723,7 +731,7 @@
         "filterKeyword": "Filter by keyword",
         "tableName": "Table Name",
         "keyspace": "Keyspace",
-        "namespace": "Namespace",
+        "database": "Database",
         "size": "Size",
         "read": "Read",
         "write": "Write",

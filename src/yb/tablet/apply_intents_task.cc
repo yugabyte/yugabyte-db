@@ -18,7 +18,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/tablet/running_transaction.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"

@@ -27,7 +27,7 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"

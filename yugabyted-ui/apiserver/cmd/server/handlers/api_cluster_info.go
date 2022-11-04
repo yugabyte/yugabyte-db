@@ -699,6 +699,23 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         return ctx.JSON(http.StatusOK, tableListResponse)
 }
 
+// GetClusterHealthCheck - Get health information about the cluster
+func (c *Container) GetClusterHealthCheck(ctx echo.Context) error {
+    future := make(chan helpers.HealthCheckFuture)
+    go helpers.GetHealthCheckFuture(helpers.HOST, future)
+    result := <-future
+    if result.Error != nil {
+        return ctx.String(http.StatusInternalServerError, result.Error.Error())
+    }
+    return ctx.JSON(http.StatusOK, models.HealthCheckResponse{
+        Data: models.HealthCheckInfo{
+            DeadNodes: result.HealthCheck.DeadNodes,
+            MostRecentUptime: result.HealthCheck.MostRecentUptime,
+            UnderReplicatedTablets: result.HealthCheck.UnderReplicatedTablets,
+        },
+    })
+}
+
 // GetLiveQueries - Get the live queries in a cluster
 func (c *Container) GetLiveQueries(ctx echo.Context) error {
         api := ctx.QueryParam("api")
@@ -847,4 +864,27 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
                 slowQueryResponse.Data.Ysql.Queries = append(slowQueryResponse.Data.Ysql.Queries, *value)
         }
         return ctx.JSON(http.StatusOK, slowQueryResponse)
+}
+
+// GetLiveQueries - Get the live queries in a cluster
+func (c *Container) GetClusterTablets(ctx echo.Context) error {
+    tabletListResponse := models.ClusterTabletListResponse{
+        Data: map[string]models.ClusterTablet{},
+    }
+    tabletsFuture := make(chan helpers.TabletsFuture)
+    go helpers.GetTabletsFuture(helpers.HOST, tabletsFuture)
+    tabletsList := <-tabletsFuture
+    if tabletsList.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tabletsList.Error.Error())
+    }
+    for tabletId, tabletInfo := range tabletsList.Tablets {
+        tabletListResponse.Data[tabletId] = models.ClusterTablet{
+            Namespace: tabletInfo.Namespace,
+            TableName: tabletInfo.TableName,
+            TableUuid: tabletInfo.TableUuid,
+            TabletId: tabletId,
+            HasLeader: tabletInfo.HasLeader,
+        }
+    }
+    return ctx.JSON(http.StatusOK, tabletListResponse)
 }
