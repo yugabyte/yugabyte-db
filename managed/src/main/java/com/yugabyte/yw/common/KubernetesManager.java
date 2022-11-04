@@ -15,6 +15,9 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.ToString;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -523,4 +526,39 @@ public abstract class KubernetesManager {
 
   public abstract boolean storageClassAllowsExpansion(
       Map<String, String> config, String storageClassName);
+
+  public abstract String getCurrentContext(Map<String, String> azConfig);
+
+  public abstract String execCommandProcessErrors(
+      Map<String, String> config, List<String> commandList);
+
+  public abstract String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat);
+
+  public abstract String getEvents(Map<String, String> config, String namespace, String string);
+
+  public abstract String getK8sVersion(Map<String, String> config, String outputFormat);
+
+  public abstract String getPlatformNamespace();
+
+  public abstract String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat);
+
+  @Data
+  @ToString(includeFieldNames = true)
+  @AllArgsConstructor
+  public static class RoleData {
+    public String kind;
+    public String name;
+    public String namespace;
+  }
+
+  public abstract List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName);
+
+  public abstract String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat);
+
+  public abstract String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat);
 }

@@ -4,11 +4,13 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonParser.Feature;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
@@ -23,20 +25,23 @@ import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 import javax.inject.Singleton;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -405,5 +410,264 @@ public class ShellKubernetesManager extends KubernetesManager {
             .processErrors("Unable to read StorageClass volume expansion");
     String allowsExpansion = deserialize(response.getMessage(), String.class);
     return allowsExpansion.equalsIgnoreCase("true");
+  }
+
+  public void checkAndAddFlagToCommand(List<String> commandList, String flagKey, String flagValue) {
+    if (StringUtils.isNotBlank(flagValue)) {
+      commandList.add(flagKey);
+      commandList.add(flagValue);
+    }
+  }
+
+  /**
+   * Returns the current-context on a kubernetes cluster given its kubeconfig
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the current-context.
+   */
+  @Override
+  public String getCurrentContext(Map<String, String> config) {
+    List<String> commandList = ImmutableList.of("kubectl", "config", "current-context");
+    ShellResponse response =
+        execCommand(config, commandList).processErrors("Unable to get current-context");
+    return StringUtils.defaultString(response.message);
+  }
+
+  /**
+   * Executes the command passed, and stores the command output in the file given. Rewrites the file
+   * if it already exists.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @param commandList the list of strings forming a shell command when joined.
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return true if command executed and output saved successfully, else false.
+   */
+  @Override
+  public String execCommandProcessErrors(Map<String, String> config, List<String> commandList) {
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/)
+            .processErrors(
+                String.format(
+                    "Something went wrong trying to execute command: '%s'. \n",
+                    String.join(" ", commandList)));
+    return response.message;
+  }
+
+  /**
+   * Generic implementation to get any kubectl resource output to a file. Example command: {@code
+   * kubectl get pods -n <namespace> -o yaml}.
+   *
+   * @param config the environment variables to set (KUBECONFIG).
+   * @param k8sResource the resource to get.
+   * @param namespace the namespace in the cluster to run the command.
+   * @param outputFormat the format of the kubectl command output like "yaml", "json".
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return true if command executed and output saved successfully, else false.
+   */
+  @Override
+  public String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat) {
+    List<String> commandList = new ArrayList<String>(Arrays.asList("kubectl", "get", k8sResource));
+
+    checkAndAddFlagToCommand(commandList, "-n", namespace);
+    checkAndAddFlagToCommand(commandList, "-o", outputFormat);
+    return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Gets the kubectl events output to a file. Retrieves custom columns sorted by the creation
+   * timestamp.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @param namespace the namespace in the cluster to run the command.
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return true if command executed and output saved successfully, else false.
+   */
+  @Override
+  public String getEvents(Map<String, String> config, String namespace, String localFilePath) {
+    List<String> commandList = new ArrayList<String>(Arrays.asList("kubectl", "get", "events"));
+    String outputFormat =
+        "custom-columns=Namespace:.involvedObject.namespace,Object:.involvedObject.name,"
+            + "First:firstTimestamp,Last:lastTimestamp,Reason:reason,Message:message";
+    String sortByFormat = ".metadata.creationTimestamp";
+
+    checkAndAddFlagToCommand(commandList, "-n", namespace);
+    commandList.add("-o");
+    commandList.add(outputFormat);
+    commandList.add("--sort-by=" + sortByFormat);
+
+    return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Gets the output of running {@code kubectl version} to a file.
+   *
+   * @param outputFormat the format of the kubectl command output like "yaml", "json".
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return true if command executed and output saved successfully, else false.
+   */
+  @Override
+  public String getK8sVersion(Map<String, String> config, String outputFormat) {
+    List<String> commandList = new ArrayList<String>(Arrays.asList("kubectl", "version"));
+
+    checkAndAddFlagToCommand(commandList, "-o", outputFormat);
+    return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Veirfies whether a given namespace actually exists in the cluster or not.
+   *
+   * @param namespace the namespace to check.
+   * @return true if the namespace exists, else false.
+   */
+  public boolean verifyNamespace(String namespace) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "get", "ns", namespace));
+    ShellResponse response = execCommand(null, commandList);
+    return response.isSuccess();
+  }
+
+  /**
+   * Retrieves the platform namespace by running {@code hostname -f} to get the FQDN. Splits the
+   * FQDN output on "." to get the namespace at index 2.
+   *
+   * <pre>
+   * Example FQDN = {@code "yb-yugaware-0.yb-yugaware.yb-platform.svc.cluster.local"}
+   * Example namespace = {@code "yb-platform"}
+   * </pre>
+   *
+   * @return the platform namespace.
+   */
+  @Override
+  public String getPlatformNamespace() {
+    List<String> commandList = new ArrayList<String>(Arrays.asList("hostname", "-f"));
+    ShellResponse response = execCommand(null, commandList);
+    String hostNameFqdn = response.message;
+    String[] fqdnParts = hostNameFqdn.split(".");
+    if (fqdnParts.length < 3) {
+      log.debug(String.format("Output of 'hostname -f' is '%s'.", hostNameFqdn));
+      return null;
+    }
+    String platformNamespace = fqdnParts[2];
+    if (!verifyNamespace(platformNamespace)) {
+      return null;
+    }
+    return platformNamespace;
+  }
+
+  /**
+   * Executes the command {@code helm get values <release_name> -n <namespace> -o yaml} and stores
+   * the output in a file.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @param namespace the namespace in the cluster to run the command.
+   * @param helmReleaseName the release name.
+   * @param outputFormat the format of the kubectl command output like "yaml", "json".
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return true if command executed and output saved successfully, else false.
+   */
+  @Override
+  public String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("helm", "get", "values", helmReleaseName));
+
+    checkAndAddFlagToCommand(commandList, "-n", namespace);
+    checkAndAddFlagToCommand(commandList, "-o", outputFormat);
+    return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Gets all the role data for the given service account name. Executes {@code kubectl get
+   * rolebinding,clusterrolebinding --all-namespaces} and filters the output for the given service
+   * account name.
+   *
+   * @param serviceAccountName the name of the service account.
+   * @return List of all the role data. Contains {@code roleRef.kind}, {@code roleRef.name}, and
+   *     {@code metadata.namespace}.
+   */
+  @Override
+  public List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName) {
+    List<RoleData> roleDataList = new ArrayList<RoleData>();
+    String jsonPathFormat =
+        "{range .items[?(@.subjects[0].name==\""
+            + serviceAccountName
+            + "\")]}"
+            + "[\"{.roleRef.kind}\",\"{.roleRef.name}\",\"{.metadata.namespace}\"]{\"\\n\"}{end}";
+    List<String> commandList =
+        new ArrayList<String>(
+            Arrays.asList(
+                "kubectl",
+                "get",
+                "rolebinding,clusterrolebinding",
+                "--all-namespaces",
+                "-o",
+                "jsonpath=" + jsonPathFormat));
+
+    ShellResponse response = execCommand(config, commandList);
+    for (String rawRoleData : response.message.split("\n")) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        List<String> parsedRoleData =
+            mapper.readValue(rawRoleData, new TypeReference<List<String>>() {});
+        if (parsedRoleData.size() >= 3) {
+          RoleData roleData =
+              new RoleData(parsedRoleData.get(0), parsedRoleData.get(1), parsedRoleData.get(2));
+          roleDataList.add(roleData);
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }
+    return roleDataList;
+  }
+
+  /**
+   * Gets the permissions for a particular roleData and stores the output to a file.
+   *
+   * @param roleData contains {@code roleRef.kind}, {@code roleRef.name}, and {@code
+   *     metadata.namespace}.
+   * @param outputFormat the format of the kubectl command output like "yaml", "json"
+   * @param localFilePath the local file path to store the output of command executed
+   * @return true if command executed and output saved successfully, else false
+   */
+  @Override
+  public String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "get", roleData.kind, roleData.name));
+
+    checkAndAddFlagToCommand(commandList, "-n", roleData.namespace);
+    checkAndAddFlagToCommand(commandList, "-o", outputFormat);
+    return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Returns the output of {@code kubectl get storageclass <storageClassName> -o <outputformat>} to
+   * a given file.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @param storageClassName the name of the storage class
+   * @param namespace the namespace in the cluster to run the command.
+   * @param outputFormat the format of the kubectl command output like "yaml", "json".
+   * @param localFilePath the local file path to store the output of command executed.
+   * @return
+   */
+  @Override
+  public String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+    List<String> commandList =
+        new ArrayList<String>(
+            Arrays.asList(
+                "kubectl",
+                "get",
+                KubernetesResourceType.STORAGECLASS.toString().toLowerCase(),
+                storageClassName));
+
+    checkAndAddFlagToCommand(commandList, "-n", namespace);
+    checkAndAddFlagToCommand(commandList, "-o", outputFormat);
+
+    return execCommandProcessErrors(config, commandList);
   }
 }
