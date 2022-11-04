@@ -34,7 +34,7 @@ A value of the _interval_ data type represents a _duration_. In contrast, a valu
 <a name="avoid-timetz"></a>Subtraction between a pair of moment values with the same data type produces, with one exception, an _interval_ value. Exceptionally, subtracting one _date_ value from another produces an _integer_ value.
 
 {{< tip title="Avoid using the 'timetz' data type." >}}
-The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a> recommends against using the _timetz_ (a.k.a. _time with time zone_) data type. This text is slightly reworded:
+The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fa-solid fa-up-right-from-square"></i></a> recommends against using the _timetz_ (a.k.a. _time with time zone_) data type. This text is slightly reworded:
 
 > The data type _time with time zone_ is defined by the SQL standard, but the definition exhibits properties which lead to questionable usefulness. In most cases, a combination of _date_, (plain) _time_, (plain) _timestamp_, and _timestamptz_ should provide the complete range of _date-time_ functionality that any application could require.
 
