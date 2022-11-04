@@ -109,12 +109,13 @@
       margin: 12px 12px 0 0;
       overflow: hidden;
       transition: all 0.2s;
+      box-shadow: none;
 
       &::before {
         position: absolute;
         top: 0;
         left: 0;
-        font: normal normal normal 14px/1 "Font Awesome 5 Free";
+        font: normal normal normal 14px/1 "Font Awesome 6 Free";
         font-weight: 100;
         content: "\f0c5";
         color: #889396;
@@ -136,7 +137,7 @@
         position: absolute;
         top: 0;
         left: 0;
-        font: normal normal normal 11px/1 "Font Awesome 5 Free";
+        font: normal normal normal 11px/1 "Font Awesome 6 Free";
         font-weight: 100;
         content: "\f00c";
         color: #fff;
