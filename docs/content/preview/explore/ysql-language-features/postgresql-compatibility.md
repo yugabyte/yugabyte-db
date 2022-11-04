@@ -21,7 +21,6 @@ Because YugabyteDB is a distributed database, supporting all PostgreSQL features
 
 The following PostgreSQL features are not supported in YugabyteDB:
 
-- Pessimistic locking (except Read Committed, which is in beta, _supports_ [pessimistic locking](../../../architecture/transactions/read-committed/#cross-feature-interaction))
 - Table locks
 - [Inheritance](https://www.postgresql.org/docs/11/tutorial-inheritance.html)
 - Exclusion Constraints

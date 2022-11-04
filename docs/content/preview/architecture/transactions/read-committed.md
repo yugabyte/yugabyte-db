@@ -333,7 +333,12 @@ The following ways can be used to start a Read Committed transaction after setti
 3. `BEGIN [TRANSACTION]; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494))
 4. `BEGIN [TRANSACTION]; SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;` (this will be supported after #12494)
 
-Read Committed on YSQL will have pessimistic locking behavior; in other words, a Read Committed transaction will wait for other Read Committed transactions to commit or rollback in case of a conflict. Two or more transactions could be waiting on each other in a cycle. Hence, to avoid a deadlock, be sure to configure a statement timeout (by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup). Statement timeouts will help avoid deadlocks (see [Avoid deadlocks in Read Committed transactions](#avoid-deadlocks-in-read-committed-transactions)). This limitation will be resolved with [#13211](https://github.com/yugabyte/yugabyte-db/issues/13211)
+Semantics of Read Committed isolation make sense only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) conflict mangagement policy. This is because a Read Committed transaction has to wait for other Read Committed transactions to commit or rollback in case of a conflict, and then perform the Recheck steps to make progress.
+
+Since the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster, transactions in Read Committed isolation provide `Wait-on-Conflict` semantics. This is done even without wait queues i.e., even when `enable_wait_queues=false`, by relying on a indefinite retry-backoff mechanism with exponential delays when conflicts are detected. However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist -
+1. there might be a need to manually tune the exponential backoff parameters for performance as explained [here](../read-committed/#performance-tuning).
+1. the app will have to [rely on statement timeouts to avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+1. there can be unfairness and high P99 latencies during contention due to the retry-backoff mechanism.
 
 ## Examples
 
@@ -345,7 +350,7 @@ create table test (k int primary key, v int);
 
 ### Avoid deadlocks in Read Committed transactions
 
-You can avoid deadlocks in Read Committed transactions by relying on statement timeout.
+When wait queues are not enabled i.e., `enable_wait_queues=false`, be sure to configure a statement timeout to avoid deadlocks (by setting the `statement_timeout` parameter in `ysql_pg_conf_csv` YB-TServer gflag on cluster startup).
 
 ```sql
 truncate table test;
@@ -1542,8 +1547,6 @@ This feature interacts with the following features:
 
 1. **Follower reads (integration in progress):** When follower reads is turned on, the read point for each statement in a Read Committed transaction will be picked as _Now()_ - _yb_follower_read_staleness_ms_ (if the transaction/statement is known to be explicitly/implicitly read only).
 
-2. **Pessimistic locking:** Read Committed has a dependency on pessimistic locking to work fully. Pessimistic locking means: on facing a conflict, a transaction has to wait for the conflicting transaction(s) to rollback/commit before resuming and making progress appropriately. Pessimistic locking behavior can already be seen for Read Committed isolation level, because without pessimistic locking, the semantics of read committed isolation can't be fulfilled. An optimized wait-queue based version of pessimistic locking will be available in the near future ([#5680](https://github.com/yugabyte/yugabyte-db/issues/5680)), which will provide better performance and will also work for REPEATABLE READ and SERIALIZABLE isolation levels. The optimized version will also help detect deadlocks proactively instead of relying on statement timeouts for deadlock avoidance (see example 1).
-
 ## Limitations
 
 Refer to [#13557](https://github.com/yugabyte/yugabyte-db/issues/13557) for limitations.
@@ -1564,4 +1567,4 @@ If a statement in the Read Committed isolation level faces a conflict, it will b
 
 You can set these parameters on a per-session basis, or in the `ysql_pg_conf_csv` YB-TServer gflag on cluster startup.
 
-After the optimized version of pessimistic locking (as described in [Cross-feature interaction](#cross-feature-interaction)) is completed, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.
+If the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy is enabled, there won't be a need to manually tune these parameters for performance. Statements will restart only when all conflicting transactions have committed or rolled back, instead of retrying with an exponential backoff.
