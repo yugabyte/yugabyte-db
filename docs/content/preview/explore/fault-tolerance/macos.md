@@ -1,8 +1,8 @@
 ---
-title: Explore fault tolerance on macOS
+title: Explore fault tolerance
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
-description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on macOS.
+description: Simulate fault tolerance and resilience in a local three-node YugabyteDB database cluster.
 aliases:
   - /explore/fault-tolerance/
   - /preview/explore/fault-tolerance/
@@ -59,9 +59,9 @@ Run the `SqlInserts` workload against the local universe using the following com
 
 ```sh
 java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                                 --nodes 127.0.0.1:5433 \
-                                 --num_threads_write 1 \
-                                 --num_threads_read 4
+                               --nodes 127.0.0.1:5433 \
+                               --num_threads_write 1 \
+                               --num_threads_read 4
 ```
 
 The `SqlInserts` workload prints some statistics while running as follows:
@@ -102,15 +102,11 @@ Optionally, you can shut down the local cluster you created as follows:
 
 ```sh
 ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd1
-```
+                --base_dir=/tmp/ybd1
 
-```sh
 ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd2
-```
+                --base_dir=/tmp/ybd2
 
-```sh
 ./bin/yugabyted destroy \
-                  --base_dir=/tmp/ybd3
+                --base_dir=/tmp/ybd3
 ```
