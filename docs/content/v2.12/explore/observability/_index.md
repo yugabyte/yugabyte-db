@@ -18,7 +18,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="prometheus-integration/macos/">
       <div class="head">
-        <div class="icon"><i class="fas fa-chart-line"></i></div>
+        <div class="icon"><i class="fa-solid fa-chart-line"></i></div>
         <div class="title">Prometheus integration</div>
       </div>
       <div class="body">
@@ -30,7 +30,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="grafana-dashboard/grafana/">
       <div class="head">
-        <div class="icon"><i class="fas fa-chart-bar"></i></div>
+        <div class="icon"><i class="fa-solid fa-chart-bar"></i></div>
         <div class="title">Grafana dashboard</div>
       </div>
       <div class="body">

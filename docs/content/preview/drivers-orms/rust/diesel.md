@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="/preview/drivers-orms/rust/diesel/" class="nav-link active">
-      <i class="fab fa-rust" aria-hidden="true"></i>
+      <i class="fa-brands fa-rust" aria-hidden="true"></i>
       Diesel
     </a>
   </li>
