@@ -229,6 +229,7 @@ export default class ClusterFields extends Component {
           getReadOnlyCluster(this.props.universe.currentUniverse.data.universeDetails.clusters)
         )
       ) {
+        // Case: Async Operation AND async cluster already exists.
         this.state = {
           ...initialState,
           isReadOnlyExists: true,
@@ -237,6 +238,7 @@ export default class ClusterFields extends Component {
           gcpInstanceWithEphemeralStorage: false
         };
       } else {
+        // Case: Async Operation AND async cluster does not exist.
         const {
           universe: {
             currentUniverse: {
@@ -245,23 +247,27 @@ export default class ClusterFields extends Component {
           }
         } = this.props;
 
-        const { userIntent } = getPrimaryCluster(universeDetails.clusters);
+        const { userIntent: primaryClusterUserIntent } = getPrimaryCluster(
+          universeDetails.clusters
+        );
 
+        // Get default form values by copying from the primary cluster
         this.state = {
           ...initialState,
-          enableYSQL: userIntent.enableYSQL,
-          enableYSQLAuth: userIntent.enableYSQLAuth,
-          enableYCQL: userIntent.enableYCQL,
-          enableYCQLAuth: userIntent.enableYCQLAuth,
+          enableYSQL: primaryClusterUserIntent.enableYSQL,
+          enableYSQLAuth: primaryClusterUserIntent.enableYSQLAuth,
+          enableYCQL: primaryClusterUserIntent.enableYCQL,
+          enableYCQLAuth: primaryClusterUserIntent.enableYCQLAuth,
           isReadOnlyExists: false,
           editNotAllowed: false,
-          useSystemd: userIntent.useSystemd,
+          useSystemd: primaryClusterUserIntent.useSystemd,
           enableEncryptionAtRest:
             universeDetails.encryptionAtRestConfig &&
             universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled
         };
       }
     } else {
+      // Case: Create OR Edit operation on the primary cluster.
       let tempState = this.props.formValues[this.props.clusterType];
       if (tempState) {
         tempState = {
@@ -1719,8 +1725,8 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const authEnforcedObject = (this.props.runtimeConfigs?.data?.configEntries?.find(
-      (c) => c.key === 'yb.universe.create.is_auth_enforced')
+    const authEnforcedObject = this.props.runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.universe.create.is_auth_enforced'
     );
     // Runtime config sends value as string, so need to parse it
     // TODO: Ask server team to do a future improvement to send boolean
@@ -3009,7 +3015,7 @@ export default class ClusterFields extends Component {
                     <Field
                       name={`${clusterType}.useSystemd`}
                       component={YBToggle}
-                      defaultChecked={true}
+                      defaultChecked={this.state.useSystemd}
                       disableOnChange={disableToggleOnChange}
                       checkedVal={this.state.useSystemd}
                       onToggle={this.toggleUseSystemd}
@@ -3027,7 +3033,7 @@ export default class ClusterFields extends Component {
                     <Field
                       name={`${clusterType}.customizePorts`}
                       component={YBToggle}
-                      defaultChecked={false}
+                      defaultChecked={this.state.customizePorts}
                       disableOnChange={disableToggleOnChange}
                       checkedVal={this.state.customizePorts}
                       onToggle={this.toggleCustomizePorts}
