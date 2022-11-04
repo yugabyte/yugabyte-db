@@ -13,7 +13,11 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, CurrentTableReplicationLag, adaptTableUUID } from '../ReplicationUtils';
+import {
+  formatBytes,
+  CurrentTableReplicationLag,
+  augmentTablesWithXClusterDetails
+} from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -24,7 +28,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable, XClusterTableDetails } from '../XClusterTypes';
+import { XClusterConfig, XClusterTable } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -46,7 +50,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
     dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
   };
 
-  const sourceUniverseTableQuery = useQuery<YBTable[]>(
+  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((respone) => respone.data)
   );
@@ -86,19 +90,19 @@ export function ReplicationTables({ xClusterConfig }: props) {
   );
 
   if (
-    sourceUniverseTableQuery.isLoading ||
-    sourceUniverseTableQuery.isIdle ||
+    sourceUniverseTablesQuery.isLoading ||
+    sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
-  if (sourceUniverseTableQuery.isError || sourceUniverseQuery.isError) {
+  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
     return <YBErrorIndicator />;
   }
 
-  const tablesInReplication = getTablesInReplication(
-    sourceUniverseTableQuery.data,
+  const tablesInConfig = augmentTablesWithXClusterDetails(
+    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails
   );
   const isActiveTab = window.location.search === '?tab=tables';
@@ -118,10 +122,10 @@ export function ReplicationTables({ xClusterConfig }: props) {
       </div>
       <div className={styles.replicationTable}>
         <BootstrapTable
-          data={tablesInReplication}
+          data={tablesInConfig}
           tableBodyClass={styles.table}
           trClassName="tr-row-style"
-          pagination={tablesInReplication && tablesInReplication.length > TABLE_MIN_PAGE_SIZE}
+          pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
         >
           <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
           <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
@@ -143,7 +147,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
-            dataFormat={(cell: XClusterTableStatus, row: YBTable) => (
+            dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
               <XClusterTableStatusLabel
                 status={cell}
                 tableUUID={row.tableUUID}
@@ -232,28 +236,4 @@ export function ReplicationTables({ xClusterConfig }: props) {
       />
     </div>
   );
-}
-
-function getTablesInReplication(
-  ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[]
-): XClusterTable[] {
-  const ybTableMap = new Map<string, YBTable>();
-  ybTable.forEach((table) => {
-    const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = adaptTableUUID(table.tableUUID);
-    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
-  });
-  return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
-    const ybTableDetails = ybTableMap.get(table.tableId);
-    if (ybTableDetails) {
-      const { tableId, ...xClusterTableDetails } = table;
-      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
-    } else {
-      console.error(
-        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
-      );
-    }
-    return tables;
-  }, []);
 }

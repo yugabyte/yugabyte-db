@@ -453,10 +453,10 @@ export function ReplicationDetails({
         )}
         {isRestartConfigModalVisible && (
           <RestartConfigModal
-            onHide={hideModal}
+            configTableType={configTableType}
             isVisible={isRestartConfigModalVisible}
-            currentUniverseUUID={currentUniverseUUID}
-            xClusterConfigUUID={xClusterConfigUUID}
+            onHide={hideModal}
+            xClusterConfig={xClusterConfig}
           />
         )}
       </div>
