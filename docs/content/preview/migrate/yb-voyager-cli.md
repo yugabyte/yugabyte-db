@@ -354,7 +354,7 @@ Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$OR
 
 Enable using orafce extension in export schema.
 
-Default : true
+Default: true
 
 ### --yes
 
