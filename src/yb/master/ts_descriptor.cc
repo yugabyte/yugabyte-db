@@ -45,7 +45,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
 DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,

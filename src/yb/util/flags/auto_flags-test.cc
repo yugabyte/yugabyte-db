@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 

@@ -53,7 +53,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

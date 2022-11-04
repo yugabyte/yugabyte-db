@@ -31,7 +31,7 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/crypt.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"

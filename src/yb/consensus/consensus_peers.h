@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
@@ -417,4 +417,3 @@ Status SetPermanentUuidForRemotePeer(
 
 }  // namespace consensus
 }  // namespace yb
-

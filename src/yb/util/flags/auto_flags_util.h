@@ -14,7 +14,7 @@
 #pragma once
 
 #include <map>
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/status.h"
 
 namespace yb {

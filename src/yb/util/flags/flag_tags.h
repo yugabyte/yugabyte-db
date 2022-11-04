@@ -132,8 +132,8 @@
 
 #include <string>
 #include <unordered_set>
-
 #include <boost/preprocessor/cat.hpp>
+#include <gflags/gflags.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/enums.h"
@@ -261,4 +261,3 @@ class FlagTagger {
 
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
   DEFINE_string(name, default_value, description);
-

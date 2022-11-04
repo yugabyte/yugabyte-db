@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -347,6 +348,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               isMultiAz,
               nodePrefix,
               azName,
+              // TODO(bhavin192): it is not guaranteed that the config
+              // we get here is an azConfig.
               config,
               u.getUniverseDetails().useNewHelmNamingStyle,
               taskParams().isReadOnlyCluster);
@@ -406,12 +409,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             String helmFullNameWithSuffix = podVals.get("helmFullNameWithSuffix").asText();
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
+            String podAddressTemplate =
+                AvailabilityZone.get(azUUID)
+                    .getUnmaskedConfig()
+                    .getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
                   PlacementInfoUtil.formatPodAddress(
-                      provider.getK8sPodAddrTemplate(),
+                      podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-masters",
                       namespace,
@@ -421,7 +428,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
                   PlacementInfoUtil.formatPodAddress(
-                      provider.getK8sPodAddrTemplate(),
+                      podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-tservers",
                       namespace,

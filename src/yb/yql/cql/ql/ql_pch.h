@@ -119,8 +119,7 @@
 #include <boost/version.hpp>
 #undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
 #include <ev++.h>
-#include <gflags/gflags.h>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
@@ -197,7 +196,7 @@
 #include "yb/util/ev_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"

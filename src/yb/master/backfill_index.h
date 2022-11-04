@@ -24,7 +24,7 @@
 #include <vector>
 
 #include <boost/mpl/and.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -404,4 +404,3 @@ class BackfillChunk : public RetryingTSRpcTask {
 
 }  // namespace master
 }  // namespace yb
-

@@ -17,7 +17,7 @@
 #include <string>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/flags_callback.h"
+#include "yb/util/flags.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -158,4 +158,3 @@ class PgSupervisor {
 
 }  // namespace pgwrapper
 }  // namespace yb
-

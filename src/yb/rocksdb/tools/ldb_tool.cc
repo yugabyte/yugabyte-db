@@ -21,7 +21,7 @@
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/tools/ldb_cmd.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using std::string;
 

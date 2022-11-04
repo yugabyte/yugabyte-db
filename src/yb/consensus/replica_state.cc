@@ -32,8 +32,6 @@
 
 #include "yb/consensus/replica_state.h"
 
-#include <gflags/gflags.h>
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
@@ -47,7 +45,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"

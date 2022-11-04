@@ -29,7 +29,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
