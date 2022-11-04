@@ -63,8 +63,9 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName \ #Not applicable for MySQL.
-        --use-orafce
+        --source-db-schema schemaName \ # Not applicable for MySQL
+        --use-orafce \
+        --start-clean
 
 ```
 
@@ -108,10 +109,9 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-password password \
         --source-db-name dbname \
         --source-db-schema schemaName \ # Not applicable for MySQL
-        --oracle-db-sid string \ # Oracle only
-        --oracle-home string \ #Applicable only for Oracle
-        --table-list string \
-        --exclude-table-list string
+        --oracle-home string \ # Oracle only
+        --exclude-table-list string \
+        --start-clean
 ```
 
 ### export data status
@@ -136,6 +136,8 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 Import schema to the target YugabyteDB.
 
+During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../migrate-steps/#import-data) is complete.
+
 #### Syntax
 
 ```sh
@@ -152,7 +154,8 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema # MySQL and Oracle only
+        --target-db-schema schemaName \ # MySQL and Oracle only
+        --start-clean
 ```
 
 ### import data
@@ -175,9 +178,10 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema \ # MySQL and Oracle only
+        --target-db-schema schemaName \ # MySQL and Oracle only
         --parallel-jobs connectionCount \
-        --batch-size size
+        --batch-size size \
+        --start-clean
 ```
 
 ### import data file
@@ -201,13 +205,14 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema \ # MySQL and Oracle only
+        --target-db-schema schemaName \ # MySQL and Oracle only
         --data-dir "/path/to/files/dir/" \
         --file-table-map "filename1:table1,filename2:table2" \
         --delimiter "|" \
         --has-header \
-        --file-opts string \
-        --format format
+        --file-opts "escape_char=\",quote_char=\"" \
+        --format format \
+        --start-clean
 
 ```
 
@@ -289,9 +294,9 @@ Specifies the count to increase the number of connections.
 
 ### --batch-size
 
-Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
+Specifies the size of batches generated for ingestion during [import data](../migrate-steps/#import-data).
 
-Default: 100,000
+Default: 20,000
 
 ### --data-dir
 
@@ -339,8 +344,8 @@ Default: CSV
 
 ### --post-import-data
 
-Run this argument with [import schema](#import-schema) command to import indexes and triggers after data import is complete.
-The `--post-import-data` argument assumes that data import is already done and imports only indexes and triggers.
+Run this argument with [import schema](#import-schema) command to import indexes and triggers in the target YugabyteDB database after data import is complete.
+The `--post-import-data` argument assumes that data import is already done and imports only indexes and triggers in the target YugabyteDB database.
 
 ### --oracle-db-sid
 
@@ -348,7 +353,7 @@ Oracle System Identifier (SID) you can use while exporting data from Oracle inst
 
 ### --oracle-home
 
-Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`.
+Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema.
 
 ### --use-orafce
 
@@ -362,7 +367,15 @@ By default, answer yes to all questions during migration.
 
 ### --start-clean
 
-Clean the project's data directory for already existing files before starting migration.
+Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
+
+### --table-list
+
+Comma-separated list of the tables for which data is exported. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
+
+### --exclude-table-list
+
+Comma-separated list of tables to exclude while exporting data.
 
 ---
 

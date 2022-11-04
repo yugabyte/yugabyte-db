@@ -61,8 +61,9 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName \ #Not applicable for MySQL.
-        --use-orafce
+        --source-db-schema schemaName \ # Not applicable for MySQL
+        --use-orafce \
+        --start-clean
 
 ```
 
@@ -105,11 +106,10 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName \ #Not applicable for MySQL.
-        --oracle-db-sid string \ #Applicable only for Oracle
-        --oracle-home string \ #Applicable only for Oracle
-        --table-list string \
-        --exclude-table-list string
+        --source-db-schema schemaName \ # Not applicable for MySQL
+        --oracle-home string \ # Oracle only
+        --exclude-table-list string \
+        --start-clean
 ```
 
 ### export data status
@@ -134,6 +134,8 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 Import schema to the target YugabyteDB.
 
+During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../migrate-steps/#import-data) is complete.
+
 #### Syntax
 
 ```sh
@@ -150,7 +152,8 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema schemaName \ # MySQL and Oracle only
+        --start-clean
 ```
 
 ### import data
@@ -173,14 +176,15 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema schemaName \ # MySQL and Oracle only
         --parallel-jobs connectionCount \
-        --batch-size size
+        --batch-size size \
+        --start-clean
 ```
 
 ### import data file
 
-Load all your data files in CSV format directly to the target YugabyteDB.
+Load all your data files in CSV or text format directly to the target YugabyteDB.
 
 #### Syntax
 
@@ -199,13 +203,15 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema schemaName \ # MySQL and Oracle only
         --data-dir "/path/to/files/dir/" \
         --file-table-map "filename1:table1,filename2:table2" \
         --delimiter "|" \
         --has-header \
-        --file-opts string \
-        --format format
+        --file-opts "escape_char=\",quote_char=\"" \
+        --format format \
+        --start-clean
+
 ```
 
 ### import data status
@@ -286,11 +292,11 @@ Specifies the count to increase the number of connections.
 
 ### --batch-size
 
-Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
+Specifies the size of batches generated for ingestion during [import data](../migrate-steps/#import-data).
 
-Default : 100,000
+Default: 20,000
 
-### –-data-dir
+### --data-dir
 
 Path to the directory containing the data files to import.
 
@@ -306,13 +312,13 @@ Example : `filename1:tablename1,filename2:tablename2[,...]`
 
 Default: '\t' (tab); can be changed to comma(,), pipe(|) or any other character.
 
-### –-has-header
+### --has-header
 
 This argument is to be specified only for CSV file type.
 
 Default: false; change to true if the CSV file contains column names as a header.
 
-**Note**: Boolean flags takes arguments in the format `--flag-name=[true|false]`, and not `--flag-name [true|false]`.
+**Note**: Boolean flags take arguments in the format `--flag-name=[true|false]`, and not `--flag-name [true|false]`.
 
 ### --file-opts
 
@@ -322,7 +328,7 @@ Comma-separated string options for CSV file format. The options can include the 
 
 - `quote_char`: character used to quote the values
 
-Default : double quotes (") for both escape and quote characters
+Default: double quotes (") for both escape and quote characters
 
 Note that `escape_char` and `quote_char` are only valid and required for CSV file format.
 
@@ -332,12 +338,12 @@ Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_ch
 
 Specifies the format of your data file with CSV or text as the supported formats.
 
-Default : CSV
+Default: CSV
 
 ### --post-import-data
 
-Run this argument with [import schema](#import-schema) command to import indexes and triggers after data import is complete.
-The `--post-import-data` argument assumes that data import is already done and imports only indexes and triggers.
+Run this argument with [import schema](#import-schema) command to import indexes and triggers in the target YugabyteDB database after data import is complete.
+The `--post-import-data` argument assumes that data import is already done and imports only indexes and triggers in the target YugabyteDB database.
 
 ### --oracle-db-sid
 
@@ -345,13 +351,13 @@ Oracle System Identifier (SID) you can use while exporting data from Oracle inst
 
 ### --oracle-home
 
-Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`.
+Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema.
 
 ### --use-orafce
 
 Enable using orafce extension in export schema.
 
-Default : true
+Default: true
 
 ### --yes
 
@@ -359,9 +365,18 @@ By default, answer yes to all questions during migration.
 
 ### --start-clean
 
-Clean the project's data directory for already existing files before starting migration.
+Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
+
+### --table-list
+
+Comma-separated list of the tables for which data is exported. Do not use in conjunction with [--exclude-table-list](#exclude-table-list).
+
+### --exclude-table-list
+
+Comma-separated list of tables to exclude while exporting data.
 
 ---
+
 
 ## SSL Connectivity
 
