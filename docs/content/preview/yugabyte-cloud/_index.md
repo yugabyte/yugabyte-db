@@ -31,7 +31,7 @@ resources:
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span>Create a <strong>Sandbox</strong> cluster</span>
+          <span>Sign Up to create a <strong>Sandbox</strong> cluster</span>
         </div>
         <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
         <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup" title="Sign Up">Sign up</a>
@@ -46,7 +46,7 @@ resources:
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span><strong>Dedicated</strong> clusters</span>
+          <span><strong>Deploy on dedicated</strong> clusters</span>
         </div>
         <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
         <a class="text-link" href="cloud-basics/" title="Learn more">Learn more</a>
@@ -157,11 +157,11 @@ resources:
 <div class="three-box-row">
   <div class="row">
     <h2 class="col-12">Continue learning</h2>
-    <div class="col-12 col-md-6 col-lg-4">
+    <div class="col-12 col-md-6 col-lg-4"> 
       <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Build Applications</div>
-          <div class="tag-line">FROM EXAMPLES</div>
+          <div class="tag-line">FROM EXAMPLES</div> 
           <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
           <a class="text-link" href="../develop/build-apps/" title="Get Started">Get Started</a>
         </div>
