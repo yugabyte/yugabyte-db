@@ -12,16 +12,16 @@
         <aside class="td-sidebar d-print-none">
           {{ partial "sidebar.html" . }}
         </aside>
-        <div class="row flex-xl-nowrap {{- if  (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
+        <div class="row flex-xl-nowrap {{- if (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
           <div class="content-child">
               {{ if .Params.showRightNav }}
-              <aside class="d-none d-xl-block   td-sidebar-toc d-print-none">
+              <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
                 {{ partial "toc.html" . }}
               </aside>
               {{ end }}
               <main class="content-area col-xl-12" role="main">
                 {{ partial "version-banner.html" . }}
-                {{ if not .Site.Params.ui.breadcrumb_disable }}{{ partial "breadcrumb.html" . }}{{ end }}
+                {{ if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) }}{{ partial "breadcrumb.html" . }}{{ end }}
                 {{ block "main" . }}{{ end }}
               </main>
           </div>

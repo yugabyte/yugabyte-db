@@ -1,4 +1,3 @@
-
 .td-content {
   h1 {
     .tag-beta {
@@ -30,7 +29,7 @@
   p {
     margin: 0 0 24px 0;
 
-    + div {
+    + div:has(iframe) {
       margin: 20px 0;
     }
   }

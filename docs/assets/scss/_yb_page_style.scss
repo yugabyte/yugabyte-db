@@ -21,7 +21,8 @@ html.no-js {
       }
 
       .body {
-        padding: 12px;
+        padding: 24px;
+        padding-right: 0;
         width: 97%;
         display: flex;
         flex-flow: wrap;
@@ -74,8 +75,17 @@ html.no-js {
     .three-box-row {
       margin-top: 28px;
 
-      .col-12 {
-        padding-bottom: 14px;
+      .row {
+        @media (min-width: 992px) {
+          & {
+            margin-right: -8px;
+            margin-left: -8px;
+          }
+
+          [class^=col] {
+            padding: 0 8px;
+          }
+        }
       }
 
       .text-link {
@@ -116,37 +126,19 @@ html.no-js {
     .box-top {
       display: flex;
       align-items: center;
-      margin-bottom: 13px;
+      margin-bottom: 16px;
 
       > span {
         color: #0b1117;
-        font-size: 18px;
-      }
-    }
-
-    .button-style {
-      height: 32px;
-      background: #7879f1;
-      border-radius: 8px;
-      position: static;
-      font-weight: 600;
-      font-size: 13px;
-      line-height: 16px;
-      display: flex;
-      margin-right: 16px;
-      align-items: center;
-      color: #fff;
-      padding: 8px 15px 8px 12px;
-      min-width: 0;
-
-      &:hover {
-        background: #5d5fef;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 24px;
       }
     }
 
     .body-content {
       font-size: 14px;
-      line-height: 22px;
+      line-height: 20px;
       color: #25323d;
       max-width: 332px;
       margin-bottom: 16px;
@@ -161,12 +153,6 @@ html.no-js {
         background: #f2f6ff;
         border: 1px solid #cbdbff !important;
         border-radius: 8px;
-
-        .body,
-        .detail-copy {
-          font-weight: 600;
-          letter-spacing: -0.1px;
-        }
       }
 
       .image {
@@ -229,16 +215,16 @@ html.no-js {
 
     .tag-line {
       font-weight: 600;
-      font-size: 11.5px;
+      font-size: 12px;
       line-height: 21px;
       color: #97a5b0;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
     }
 
-    nav-tabs-yb .detail-copy {
+    .detail-copy {
       font-weight: 400;
       font-size: 14px;
-      line-height: 22px;
+      line-height: 20px;
       display: flex;
       align-items: center;
       color: #25323d;
@@ -246,7 +232,7 @@ html.no-js {
     }
 
     .icon {
-      margin-bottom: 10px;
+      margin-bottom: 16px;
       width: 40px;
       height: 40px;
     }

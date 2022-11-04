@@ -57,6 +57,16 @@ main {
       margin: 20px 0;
     }
 
+    > .highlight + pre,
+    .highlight + .highlight {
+      //margin-top: 24px;
+    }
+
+    p + pre,
+    p + .highlight {
+      //margin-top: -8px;
+    }
+
     li > p + pre,
     li > p + .highlight {
       margin-top: 16px;
@@ -79,10 +89,6 @@ main {
       margin-top: 20px;
       margin-bottom: 20px;
 
-      &:has(code > span:only-child) {
-        margin-bottom: -35px;
-      }
-
       > code {
         font-size: 100%;
         display: block;
@@ -90,7 +96,7 @@ main {
         line-height: inherit;
         border-radius: 7px;
         padding: 11px 47px 11px 15px;
-        margin: 0;
+        margin: 0 0 0 0;
         border-width: 1px;
         border-style: solid;
         background: #f7fafc !important;
@@ -154,6 +160,7 @@ main {
             border-radius: 8px;
             position: absolute;
             top: calc(100% + 4px);
+            //top:92%;
             left: 0;
             z-index: 9999999;
             width: 49px;
@@ -203,6 +210,10 @@ main {
       max-width: none;
       min-height: 85px;
 
+      &:has(code > span:only-child) {
+        margin-bottom: -35px;
+      }
+
       &::after {
         content: "";
         display: inline-block;
@@ -218,6 +229,12 @@ main {
 
       button.copy {
         right: 27px;
+
+        &:active {
+          color: transparent;
+          background-color: transparent;
+          transform: none;
+        }
       }
     }
   }

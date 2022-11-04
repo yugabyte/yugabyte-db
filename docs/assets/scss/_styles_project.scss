@@ -43,40 +43,44 @@
 }
 
 /******* Variables for Color Theme Switcher **********/
-ol.breadcrumb {
-  padding-bottom: 0;
+.td-breadcrumbs {
+  margin-bottom: 20px;
 
-  .breadcrumb-item {
-    font-size: 12px;
-    line-height: 28px;
-    display: flex;
-    align-items: center;
+  ol.breadcrumb {
+    padding-bottom: 0;
 
-    &:only-child {
-      visibility: hidden;
-    }
+    .breadcrumb-item {
+      font-size: 12px;
+      line-height: 28px;
+      display: flex;
+      align-items: center;
 
-    .td-breadcrumbs &.active a {
-      color: $yb-font-gray;
-    }
-
-    a {
-      color: $yb-font-blue;
-      line-height: 18px;
-
-      &:hover {
-        color: #21313c;
+      &:only-child {
+        visibility: hidden;
       }
-    }
 
-    + .breadcrumb-item {
-      padding-left: 0.25rem;
+      .td-breadcrumbs &.active a {
+        color: $yb-font-gray;
+      }
 
-      &::before {
-        padding-right: 0.25rem;
-        color: #5d6c74;
-        font-size: 13px;
-        line-height: 22px;
+      a {
+        color: $yb-font-blue;
+        line-height: 18px;
+
+        &:hover {
+          color: #21313c;
+        }
+      }
+
+      + .breadcrumb-item {
+        padding-left: 0.25rem;
+
+        &::before {
+          padding-right: 0.25rem;
+          color: #5d6c74;
+          font-size: 13px;
+          line-height: 22px;
+        }
       }
     }
   }
@@ -186,8 +190,13 @@ ol.breadcrumb {
 .td-main {
   .td-content {
     [class^=col] {
-      padding: 0 16px;
       margin-bottom: 16px;
+    }
+
+    @media (min-width: 992px) {
+      [class^=col] {
+        padding: 0 16px;
+      }
     }
 
     td a,
@@ -227,10 +236,6 @@ ol.breadcrumb {
         background: #f2f6ff;
         border: 1px solid #cbdbff;
         border-radius: 8px;
-
-        .body {
-          font-weight: 600;
-        }
       }
 
       .head {
@@ -294,6 +299,7 @@ ol.breadcrumb {
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 3;
+        //max-height: 59px;
         position: relative;
         z-index: 2;
 
