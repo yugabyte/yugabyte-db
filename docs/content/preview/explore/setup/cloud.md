@@ -1,3 +1,4 @@
+
 Examples requiring a single-node cluster can be run using the free Sandbox cluster.
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
