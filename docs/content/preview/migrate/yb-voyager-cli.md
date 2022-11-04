@@ -107,8 +107,8 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-user username \
         --source-db-password password \
         --source-db-name dbname \
-        --source-db-schema schemaName \ #Not applicable for MySQL.
-        --oracle-db-sid string \ #Applicable only for Oracle
+        --source-db-schema schemaName \ # Not applicable for MySQL
+        --oracle-db-sid string \ # Oracle only
         --oracle-home string \ #Applicable only for Oracle
         --table-list string \
         --exclude-table-list string
@@ -152,7 +152,7 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema # MySQL and Oracle only
 ```
 
 ### import data
@@ -175,7 +175,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema \ #Applicable only for MySQL and Oracle
+        --target-db-schema \ # MySQL and Oracle only
         --parallel-jobs connectionCount \
         --batch-size size
 ```
@@ -201,7 +201,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema \ # MySQL and Oracle only
         --data-dir "/path/to/files/dir/" \
         --file-table-map "filename1:table1,filename2:table2" \
         --delimiter "|" \
@@ -291,7 +291,7 @@ Specifies the count to increase the number of connections.
 
 Specifies the number of records that the [export directory](../install-yb-voyager/#create-an-export-directory) can contain.
 
-Default : 100,000
+Default: 100,000
 
 ### --data-dir
 
@@ -315,7 +315,7 @@ This argument is to be specified only for CSV file type.
 
 Default: false; change to true if the CSV file contains column names as a header.
 
-**Note**: Boolean flags takes arguments in the format `--flag-name=[true|false]`, and not `--flag-name [true|false]`.
+**Note**: Boolean flags take arguments in the format `--flag-name=[true|false]`, and not `--flag-name [true|false]`.
 
 ### --file-opts
 
@@ -325,7 +325,7 @@ Comma-separated string options for CSV file format. The options can include the 
 
 - `quote_char`: character used to quote the values
 
-Default : double quotes (") for both escape and quote characters
+Default: double quotes (") for both escape and quote characters
 
 Note that `escape_char` and `quote_char` are only valid and required for CSV file format.
 
@@ -335,7 +335,7 @@ Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_ch
 
 Specifies the format of your data file with CSV or text as the supported formats.
 
-Default : CSV
+Default: CSV
 
 ### --post-import-data
 
@@ -354,7 +354,7 @@ Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$OR
 
 Enable using orafce extension in export schema.
 
-Default : true
+Default: true
 
 ### --yes
 
