@@ -152,7 +152,7 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        --target-db-schema #Applicable only for MySQL and Oracle
+        --target-db-schema # MySQL and Oracle only
 ```
 
 ### import data
