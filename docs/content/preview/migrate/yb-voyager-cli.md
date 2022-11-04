@@ -325,7 +325,7 @@ Comma-separated string options for CSV file format. The options can include the 
 
 - `quote_char`: character used to quote the values
 
-Default : double quotes (") for both escape and quote characters
+Default: double quotes (") for both escape and quote characters
 
 Note that `escape_char` and `quote_char` are only valid and required for CSV file format.
 
