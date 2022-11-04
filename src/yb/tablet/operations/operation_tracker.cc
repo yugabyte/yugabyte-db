@@ -42,7 +42,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"

@@ -33,7 +33,6 @@
 
 #include "yb/server/monitored_task.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"

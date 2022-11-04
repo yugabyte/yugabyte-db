@@ -36,7 +36,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 

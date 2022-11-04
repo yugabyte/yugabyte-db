@@ -34,7 +34,6 @@
 #include <memory>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/tools/fs_tool.h"

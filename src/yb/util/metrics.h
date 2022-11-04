@@ -246,7 +246,7 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include <gtest/gtest_prod.h>
 
@@ -1214,4 +1214,3 @@ class OwningHistogramPrototype : public OwningMetricCtorArgs, public HistogramPr
 void EscapeMetricNameForPrometheus(std::string *id);
 
 } // namespace yb
-

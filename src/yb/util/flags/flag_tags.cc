@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 
 #include <map>
 #include <string>

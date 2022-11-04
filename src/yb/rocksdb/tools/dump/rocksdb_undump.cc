@@ -33,7 +33,7 @@ int main() {
 
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db_dump_tool.h"
 

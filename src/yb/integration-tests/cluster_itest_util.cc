@@ -404,8 +404,10 @@ Status WaitForServerToBeQuite(const MonoDelta& timeout,
           const auto op_ids = VERIFY_RESULT(
               itest::GetLastOpIdForEachReplica(tablet_id, tablet_servers, op_id_type, timeout));
           for (auto op_id : op_ids) {
-            if (op_id > agreed_opid) {
-              agreed_opid = op_id;
+            if (op_id.empty() || (op_id != agreed_opid)) {
+              if (op_id > agreed_opid) {
+                agreed_opid = op_id;
+              }
               return false;
             }
           }

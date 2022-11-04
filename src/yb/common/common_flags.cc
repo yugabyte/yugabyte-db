@@ -17,7 +17,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -48,8 +47,7 @@ DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_RUNTIME_bool(disable_hybrid_scan, false, "If true, hybrid scan will be disabled");
-
+DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022")
 DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);

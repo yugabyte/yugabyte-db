@@ -19,7 +19,7 @@
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"

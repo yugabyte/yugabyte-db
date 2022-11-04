@@ -15,8 +15,12 @@ models/model_cluster_response.go
 models/model_cluster_spec.go
 models/model_cluster_table.go
 models/model_cluster_table_list_response.go
+models/model_cluster_tablet.go
+models/model_cluster_tablet_list_response.go
 models/model_encryption_info.go
 models/model_entity_metadata.go
+models/model_health_check_info.go
+models/model_health_check_response.go
 models/model_live_query_response_data.go
 models/model_live_query_response_schema.go
 models/model_live_query_response_ycql_data.go

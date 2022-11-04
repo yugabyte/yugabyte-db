@@ -81,7 +81,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"

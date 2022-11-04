@@ -37,7 +37,6 @@
 #include <mutex>
 
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 
@@ -66,7 +65,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"

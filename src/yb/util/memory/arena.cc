@@ -39,7 +39,7 @@
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using std::copy;
 using std::max;

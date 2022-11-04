@@ -53,7 +53,7 @@
 #include <boost/version.hpp>
 
 #include <ev++.h>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -283,4 +283,3 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
 }  // namespace rpc
 }  // namespace yb
-

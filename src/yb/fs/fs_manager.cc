@@ -55,7 +55,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"

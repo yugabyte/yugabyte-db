@@ -30,7 +30,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"

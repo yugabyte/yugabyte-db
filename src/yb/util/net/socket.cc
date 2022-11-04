@@ -45,7 +45,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

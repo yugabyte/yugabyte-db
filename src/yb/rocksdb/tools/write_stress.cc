@@ -69,7 +69,7 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
