@@ -132,6 +132,7 @@ GET     /customers_uuids                                                       c
 GET     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/metrics                                              com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 
 # Customer features API
