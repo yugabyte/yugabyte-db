@@ -33,7 +33,6 @@
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 
 #include "yb/common/hybrid_time.h"

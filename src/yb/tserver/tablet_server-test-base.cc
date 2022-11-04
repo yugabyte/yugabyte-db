@@ -40,7 +40,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"

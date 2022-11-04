@@ -80,7 +80,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -603,13 +602,17 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    GetTserverCatalogVersionInfoResponsePB *resp) const {
+    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (const auto it : ysql_db_catalog_version_map_) {
-    auto* entry = resp->add_entries();
-    entry->set_db_oid(it.first);
-    entry->set_shm_index(it.second.shm_index);
-    entry->set_current_version(it.second.current_version);
+  if (size_only) {
+    resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
+  } else {
+    for (const auto it : ysql_db_catalog_version_map_) {
+      auto* entry = resp->add_entries();
+      entry->set_db_oid(it.first);
+      entry->set_shm_index(it.second.shm_index);
+      entry->set_current_version(it.second.current_version);
+    }
   }
   return Status::OK();
 }

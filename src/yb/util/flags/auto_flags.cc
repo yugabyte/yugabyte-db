@@ -14,7 +14,7 @@
 #include <map>
 
 #include "yb/gutil/singleton.h"
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags.h"
 
 using std::string;

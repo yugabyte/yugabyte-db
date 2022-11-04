@@ -36,7 +36,6 @@
 #include <iostream>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/util/flags.h"

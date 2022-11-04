@@ -94,6 +94,21 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 void
 YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
+	if (YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * In per database catalog version mode, disallow create database
+		 * if we come too close to the limit.
+		 */
+		int64_t num_databases = YbGetNumberOfDatabases();
+		int64_t num_reserved =
+			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
+		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("too many databases")));
+	}
+
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,

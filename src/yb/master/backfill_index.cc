@@ -63,7 +63,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"

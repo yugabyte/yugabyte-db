@@ -23,7 +23,7 @@
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 
 using std::string;

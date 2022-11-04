@@ -103,7 +103,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -458,7 +458,8 @@ Tablet::Tablet(const TabletInitData& data)
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_));
+        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL));
     }
   }
 

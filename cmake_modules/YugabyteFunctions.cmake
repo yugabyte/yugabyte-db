@@ -430,8 +430,7 @@ macro(YB_SETUP_SANITIZER)
     if(IS_CLANG AND
        "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
        NOT APPLE)
-      # TODO: see if we can use static libasan instead (requires third-party changes).
-      ADD_CXX_FLAGS("-shared-libasan")
+      ADD_CXX_FLAGS("-mllvm -asan-use-private-alias=1")
       ADD_LINKER_FLAGS("-lunwind")
 
       # TODO: this is mostly needed because we depend on the ASAN runtime shared library and that

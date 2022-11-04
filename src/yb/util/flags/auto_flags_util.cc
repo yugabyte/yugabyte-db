@@ -15,7 +15,7 @@
 #include <string>
 
 #include "yb/common/json_util.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"

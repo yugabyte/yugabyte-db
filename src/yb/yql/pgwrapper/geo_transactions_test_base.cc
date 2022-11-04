@@ -64,7 +64,7 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "rack1";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
   // Put everything in the same cloud.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 14;
   // Reduce time spent waiting for tablespace refresh.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
   // We wait for the load balancer whenever it gets triggered anyways, so there's

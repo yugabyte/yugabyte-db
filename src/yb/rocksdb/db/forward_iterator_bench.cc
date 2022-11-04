@@ -43,7 +43,7 @@ int main() { return 0; }
 #include <queue>
 #include <random>
 #include <thread>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"

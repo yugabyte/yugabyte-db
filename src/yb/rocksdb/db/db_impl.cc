@@ -52,7 +52,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/atomic.h"
 

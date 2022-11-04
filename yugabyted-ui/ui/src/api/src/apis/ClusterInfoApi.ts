@@ -22,6 +22,8 @@ import type {
   ApiError,
   ClusterNodesResponse,
   ClusterTableListResponse,
+  ClusterTabletListResponse,
+  HealthCheckResponse,
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
@@ -40,6 +42,81 @@ export interface GetClusterTablesForQuery {
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
 }
+
+/**
+ * Get health information about the cluster
+ * Get health information about the cluster
+ */
+
+export const getClusterHealthCheckAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<HealthCheckResponse>(
+    {
+      url: '/health-check',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getClusterHealthCheckQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/health-check`,
+  pageParam,
+];
+
+
+export const useGetClusterHealthCheckInfiniteQuery = <T = HealthCheckResponse, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<HealthCheckResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getClusterHealthCheckQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<HealthCheckResponse, Error, T>(
+    queryKey,
+    () => getClusterHealthCheckAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetClusterHealthCheckQuery = <T = HealthCheckResponse, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<HealthCheckResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getClusterHealthCheckQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<HealthCheckResponse, Error, T>(
+    queryKey,
+    () => getClusterHealthCheckAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
 
 /**
  * Get metrics for a Yugabyte cluster
@@ -271,6 +348,81 @@ export const useGetClusterTablesQuery = <T = ClusterTableListResponse, Error = A
   const query = useQuery<ClusterTableListResponse, Error, T>(
     queryKey,
     () => getClusterTablesAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get list of tablets
+ * Get list of tablets
+ */
+
+export const getClusterTabletsAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<ClusterTabletListResponse>(
+    {
+      url: '/tablets',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getClusterTabletsQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/tablets`,
+  pageParam,
+];
+
+
+export const useGetClusterTabletsInfiniteQuery = <T = ClusterTabletListResponse, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<ClusterTabletListResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getClusterTabletsQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<ClusterTabletListResponse, Error, T>(
+    queryKey,
+    () => getClusterTabletsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetClusterTabletsQuery = <T = ClusterTabletListResponse, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<ClusterTabletListResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getClusterTabletsQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<ClusterTabletListResponse, Error, T>(
+    queryKey,
+    () => getClusterTabletsAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

@@ -26,7 +26,7 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

@@ -21,7 +21,7 @@
 #include "yb/rpc/connection.h"
 
 #include "yb/util/date_time.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
 

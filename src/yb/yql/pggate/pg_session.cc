@@ -37,7 +37,7 @@
 
 #include "yb/tserver/pg_client.messages.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -334,28 +334,32 @@ Status PgSession::CreateSequencesDataTable() {
 Status PgSession::InsertSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
                                       uint64_t ysql_catalog_version,
+                                      bool is_db_catalog_version_mode,
                                       int64_t last_val,
                                       bool is_called) {
   return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
 }
 
 Result<bool> PgSession::UpdateSequenceTuple(int64_t db_oid,
                                             int64_t seq_oid,
                                             uint64_t ysql_catalog_version,
+                                            bool is_db_catalog_version_mode,
                                             int64_t last_val,
                                             bool is_called,
                                             std::optional<int64_t> expected_last_val,
                                             std::optional<bool> expected_is_called) {
   return pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
-      expected_is_called);
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
+      expected_last_val, expected_is_called);
 }
 
 Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               int64_t seq_oid,
-                                                              uint64_t ysql_catalog_version) {
-  return pg_client_.ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version);
+                                                              uint64_t ysql_catalog_version,
+                                                              bool is_db_catalog_version_mode) {
+  return pg_client_.ReadSequenceTuple(
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode);
 }
 
 Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {

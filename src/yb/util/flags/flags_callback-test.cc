@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/util/flags_callback.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 

@@ -160,10 +160,10 @@ arch=$( uname -m )
 test_set_cmake_build_type_and_compiler_type   asan       darwin    auto       fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   asan       darwin    clang      fastdebug  clang   0
 test_set_cmake_build_type_and_compiler_type   asan       darwin    gcc        N/A        N/A     1
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang12    fastdebug  clang12 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang14    fastdebug  clang14 0
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc11      N/A        gcc11   1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang12    fastdebug  clang12 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang14    fastdebug  clang14 0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc11      N/A        gcc11   1
 test_set_cmake_build_type_and_compiler_type   debug      darwin    auto       debug      clang   0
@@ -180,23 +180,11 @@ test_set_cmake_build_type_and_compiler_type   release    darwin    clang      re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      release    clang   0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
-
-# Test cases where there is difference between architectures.
-clangN=clang15
-if [[ $arch == "x86_64" ]]; then
-  # clangA is the version used for ASAN.
-  clangA=clang13
-else
-  # We don't really run ASAN on aarch64 as of 10/21/2022, but let's say we would use the same
-  # version.
-  clangA=$clangN
-fi
-
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      $clangN 0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  $clangN 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    $clangN 0
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  $clangN 0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  $clangA 0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang15 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang15 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang15 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang15 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang15 0
 
 # -------------------------------------------------------------------------------------------------
 

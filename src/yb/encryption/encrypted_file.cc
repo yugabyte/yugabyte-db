@@ -20,7 +20,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/cast.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 DEFINE_bool(encryption_counter_overflow_read_path_workaround, true,
             "Enable a read-path workaround for the encryption counter overflow bug #3707. "

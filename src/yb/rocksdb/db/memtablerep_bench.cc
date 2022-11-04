@@ -40,7 +40,7 @@ int main() {
 #include <type_traits>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"

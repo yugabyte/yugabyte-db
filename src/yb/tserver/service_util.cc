@@ -26,7 +26,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_types.messages.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 

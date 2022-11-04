@@ -19,7 +19,7 @@
 #include <mutex>
 #include <type_traits>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"
@@ -101,4 +101,3 @@ class RunningTransactionContext {
 
 } // namespace tablet
 } // namespace yb
-
