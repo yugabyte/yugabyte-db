@@ -294,6 +294,10 @@ THREAD_POOL_METRICS_DEFINE(
 THREAD_POOL_METRICS_DEFINE(
     server, admin_triggered_compaction_pool, "Thread pool for tablet compaction jobs.");
 
+THREAD_POOL_METRICS_DEFINE(
+    server, wait_queue_resume_waiter_pool,
+    "Thread pool for wait queue to resume waiting operations.");
+
 ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
 
 using consensus::ConsensusMetadata;
@@ -418,6 +422,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                    server_->metric_entity(), admin_triggered_compaction_pool))
                .Build(&admin_triggered_compaction_pool_));
+  CHECK_OK(ThreadPoolBuilder("wait-queue")
+              .set_min_threads(1)
+              .unlimited_threads()
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), wait_queue_resume_waiter_pool))
+              .Build(&wait_queue_pool_));
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_post_split_compaction_added_ =
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
@@ -1500,6 +1510,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         return server->TransactionManager();
       },
       .waiting_txn_registry = waiting_txn_registry_.get(),
+      .wait_queue_pool = wait_queue_pool_.get(),
       .post_split_compaction_pool = post_split_trigger_compaction_pool_.get(),
       .post_split_compaction_added = ts_post_split_compaction_added_
     };
@@ -1699,6 +1710,9 @@ void TSTabletManager::CompleteShutdown() {
   }
   if (admin_triggered_compaction_pool_) {
     admin_triggered_compaction_pool_->Shutdown();
+  }
+  if (wait_queue_pool_) {
+    wait_queue_pool_->Shutdown();
   }
 
   {
