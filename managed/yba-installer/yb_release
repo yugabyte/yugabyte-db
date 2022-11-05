@@ -46,6 +46,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+
+echo Starting yb_release for yba-installer > /dev/stderr
+
 # verify that the destination directory exists
 if [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"
@@ -60,8 +63,12 @@ GOOS="linux"
 GOARCH="amd64"
 PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-make VERSION="${VERSION}" PACKAGE_NAME=${PACKAGE_NAME} GOOS=${GOOS} GOARCH=${GOARCH}
+echo Starting make  > /dev/stderr
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+echo Completed make  > /dev/stderr
 
 command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
+echo "Invoking yb_release.py" > /dev/stderr
 "$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py $command
+echo Completed yb_release.py > /dev/stderr
