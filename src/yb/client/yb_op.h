@@ -43,6 +43,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -134,6 +135,22 @@ class YBOperation {
   // Resets tablet, so it will be re-resolved on applying this operation.
   void ResetTablet();
 
+  std::optional<RetryableRequestId> request_id() const {
+    return request_id_;
+  }
+
+  void set_request_id(RetryableRequestId id) {
+    request_id_ = id;
+  }
+
+  std::optional<RetryableRequestId> min_running_request_id() const {
+    return min_running_request_id_;
+  }
+
+  void set_min_running_request_id(RetryableRequestId id) {
+    min_running_request_id_ = id;
+  }
+
   // Returns the partition key of the operation.
   virtual Status GetPartitionKey(std::string* partition_key) const = 0;
 
@@ -171,6 +188,9 @@ class YBOperation {
   scoped_refptr<internal::RemoteTablet> tablet_;
 
   boost::optional<PartitionListVersion> partition_list_version_;
+
+  std::optional<RetryableRequestId> request_id_;
+  std::optional<RetryableRequestId> min_running_request_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
