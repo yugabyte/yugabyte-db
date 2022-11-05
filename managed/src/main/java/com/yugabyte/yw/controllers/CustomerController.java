@@ -370,13 +370,6 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Customer,
-            customerUUID.toString(),
-            Audit.ActionType.AddMetrics,
-            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 

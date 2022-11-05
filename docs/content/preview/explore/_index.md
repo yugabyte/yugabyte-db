@@ -54,7 +54,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="transactions/">
       <div class="head">
-        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
         <div class="title">Transactions</div>
       </div>
       <div class="body">
@@ -66,7 +66,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="indexes-constraints/">
       <div class="head">
-        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
         <div class="title">Indexes and constraints</div>
       </div>
       <div class="body">
@@ -78,7 +78,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
       <div class="head">
-        <div class="icon"><i class="far fa-file-code"></i></div>
+        <div class="icon"><i class="fa-regular fa-file-code"></i></div>
         <div class="title">JSON support</div>
       </div>
       <div class="body">
