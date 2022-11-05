@@ -875,5 +875,23 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPart
       )#"));
 }
 
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreSimpleKeyspaceToKeyspaceWithHyphen)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte", "yugabyte-restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreKeyspaceWithHyphenToKeyspaceWithHyphen)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte-restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte_restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

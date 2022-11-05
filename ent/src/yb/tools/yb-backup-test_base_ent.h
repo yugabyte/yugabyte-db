@@ -70,6 +70,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
+  void DoTestYSQLKeyspaceWithHyphenBackupRestore(
+      const string& backup_db, const string& restore_db);
 
   client::TableHandle table_;
   TmpDirProvider tmp_dir_;
