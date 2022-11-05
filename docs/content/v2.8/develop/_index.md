@@ -77,7 +77,7 @@ type: indexpage
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">
     <div class="icon">
-      <i class="fas fa-sign-in" aria-hidden="true"></i>
+      <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
     </div>
     <div class="text">
       Port Existing Apps

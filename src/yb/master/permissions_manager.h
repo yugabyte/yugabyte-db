@@ -19,7 +19,7 @@
 #include <type_traits>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/common/entity_ids.h"
@@ -200,4 +200,3 @@ class PermissionsManager final {
 
 }  // namespace master
 }  // namespace yb
-

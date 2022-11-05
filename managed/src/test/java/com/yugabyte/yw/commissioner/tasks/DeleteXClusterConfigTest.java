@@ -141,33 +141,6 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     return null;
   }
 
-  public void initTargetUniverseClusterConfig(String replicationGroupName) {
-    CdcConsumer.ProducerEntryPB.Builder fakeProducerEntry =
-        CdcConsumer.ProducerEntryPB.newBuilder();
-    CdcConsumer.StreamEntryPB.Builder fakeStreamEntry2 =
-        CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID2);
-    fakeProducerEntry.putStreamMap(exampleStreamID2, fakeStreamEntry2.build());
-    CdcConsumer.StreamEntryPB.Builder fakeStreamEntry1 =
-        CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID1);
-    fakeProducerEntry.putStreamMap(exampleStreamID1, fakeStreamEntry1.build());
-
-    CdcConsumer.ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
-        CdcConsumer.ConsumerRegistryPB.newBuilder()
-            .putProducerMap(replicationGroupName, fakeProducerEntry.build());
-
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
-            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
-
-    GetMasterClusterConfigResponse fakeClusterConfigResponse =
-        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
-
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
-    }
-  }
-
   public void setupAlertConfigurations() {
     AlertConfiguration alertConfiguration =
         alertConfigurationService
@@ -208,8 +181,6 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
-
     try {
       DeleteUniverseReplicationResponse mockDeleteResponse =
           new DeleteUniverseReplicationResponse(0, "", null, null);
@@ -243,7 +214,6 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
     HighAvailabilityConfig.create("test-cluster-key");
 
     try {
@@ -279,7 +249,6 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
     String deleteErrMsg = "failed to run delete rpc";
     try {
       AppStatusPB.Builder appStatusBuilder =

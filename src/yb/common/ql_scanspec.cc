@@ -20,8 +20,6 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-DECLARE_bool(disable_hybrid_scan);
-
 namespace yb {
 
 using std::vector;
@@ -189,7 +187,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_LESS_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
@@ -210,7 +208,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_GREATER_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
@@ -253,7 +251,7 @@ void QLScanRange::Init(const Cond& condition) {
           }
 
           // We can only process strict inequalities if we're using hybridscan
-          if (operands.size() == 5 && !FLAGS_disable_hybrid_scan) {
+          if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
               lower_bound_inclusive = it->value().bool_value();

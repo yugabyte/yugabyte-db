@@ -103,7 +103,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -458,7 +458,8 @@ Tablet::Tablet(const TabletInitData& data)
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_));
+        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
+        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL));
     }
   }
 
@@ -1912,16 +1913,17 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     const Schema& projection, const ReadHybridTime& time, const string& next_key) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
-  Slice next_slice;
+  docdb::KeyBytes encoded_next_key;
   if (!next_key.empty()) {
     SubDocKey start_sub_doc_key;
     docdb::KeyBytes start_key_bytes(next_key);
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    next_slice = start_sub_doc_key.doc_key().Encode().AsSlice();
-    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << next_key;
+    encoded_next_key = start_sub_doc_key.doc_key().Encode();
+    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
   }
   return NewRowIterator(
-      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse, next_slice);
+      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
+      encoded_next_key);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
@@ -3583,6 +3585,29 @@ Result<int64_t> Tablet::CountIntents() {
     intent_iter->Next();
   }
   return num_intents;
+}
+
+Status Tablet::ReadIntents(std::vector<std::string>* intents) {
+  auto pending_op = CreateNonAbortableScopedRWOperation();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options;
+  auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
+      intents_db_->NewIterator(read_options));
+  intent_iter->SeekToFirst();
+  docdb::SchemaPackingStorage schema_packing_storage;
+
+  for (; intent_iter->Valid(); intent_iter->Next()) {
+    auto item = EntryToString(intent_iter->key(), intent_iter->value(),
+      schema_packing_storage, docdb::StorageDbType::kIntents);
+    intents->push_back(item);
+  }
+
+  return Status::OK();
 }
 
 void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {

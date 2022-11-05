@@ -83,7 +83,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"

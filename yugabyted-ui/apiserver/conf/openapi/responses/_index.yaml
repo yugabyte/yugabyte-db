@@ -77,3 +77,25 @@ ClusterResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/ClusterData'
+HealthCheckResponse:
+      description: Successful health check response
+      content:
+        application/json:
+          schema:
+            title: Health Check Response
+            type: object
+            properties:
+              data:
+                $ref: '../schemas/_index.yaml#/HealthCheckInfo'
+ClusterTabletListResponse:
+  description: List of cluster tablets
+  content:
+    application/json:
+      schema:
+        title: Cluster tablet list response
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/ClusterTabletData'
+        required:
+          - data

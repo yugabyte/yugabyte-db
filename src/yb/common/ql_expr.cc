@@ -826,7 +826,8 @@ Result<const QLTableColumn&> QLTableRow::Column(ColumnIdRep col_id) const {
   const auto* column = FindColumn(col_id);
   if (column == nullptr) {
     // Does not exist.
-    return STATUS(InternalError, "Column unexpectedly not found in cache");
+    return STATUS_FORMAT(
+        InternalError, "Column ($0) unexpectedly not found in cache", col_id);
   }
 
   return *column;

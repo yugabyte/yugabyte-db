@@ -21,7 +21,6 @@
 #include <vector>
 
 #include <boost/range/iterator_range_core.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -31,7 +30,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"

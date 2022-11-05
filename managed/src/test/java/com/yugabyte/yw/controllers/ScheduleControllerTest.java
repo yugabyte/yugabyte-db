@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.models.Customer;
@@ -44,7 +45,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
   private CustomerConfig customerConfig;
   private Users defaultUser;
   private Schedule defaultSchedule;
+  private Schedule defaultIncrementalSchedule;
   private BackupTableParams backupTableParams;
+  private BackupRequestParams backupRequestParams;
 
   @Before
   public void setUp() {
@@ -184,6 +187,41 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditIncrementalBackupScheduleFrequency() {
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
+    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
+    defaultIncrementalSchedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 3600 * 1000L;
+    params.status = State.Active;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
+    params.incrementalBackupFrequency = 1800 * 1000L;
+    params.incrementalBackupFrequencyTimeUnit = TimeUnit.DAYS;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(
+        result, "Cannot assign incremental backup frequency to a non-incremental schedule");
+    result =
+        editSchedule(defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson);
+    assertOk(result);
+    Schedule schedule =
+        Schedule.getOrBadRequest(
+            defaultIncrementalSchedule.getCustomerUUID(), defaultIncrementalSchedule.scheduleUUID);
+    assertEquals(params.frequency.longValue(), schedule.getFrequency());
+    assertEquals(params.status, schedule.getStatus());
+    assertEquals(
+        params.incrementalBackupFrequency.longValue(),
+        schedule.getTaskParams().get("incrementalBackupFrequency").asLong());
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
   public void testEditScheduleUpdateFrequencyWithoutTimeUnit() {
     EditBackupScheduleParams params = new EditBackupScheduleParams();
     params.frequency = 2 * 86400L * 1000L;
@@ -193,6 +231,62 @@ public class ScheduleControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> editSchedule(defaultSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
     assertBadRequest(result, "Please provide time unit for frequency");
+  }
+
+  @Test
+  public void testEditIncrementalBackupScheduleFrequencyWithoutTimeUint() {
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
+    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
+    defaultIncrementalSchedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 3600 * 1000L;
+    params.status = State.Active;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
+    params.incrementalBackupFrequency = 1800 * 1000L;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () ->
+                editSchedule(
+                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(result, "Please provide time unit for incremental backup frequency");
+  }
+
+  @Test
+  public void testEditInvalidIncrementalBackupScheduleFrequency() {
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.universeUUID = defaultUniverse.universeUUID;
+    backupRequestParams.storageConfigUUID = customerConfig.configUUID;
+    backupRequestParams.incrementalBackupFrequency = 1900 * 1000L;
+    defaultIncrementalSchedule =
+        Schedule.create(
+            defaultCustomer.uuid, backupRequestParams, TaskType.CreateBackup, 3600 * 1000L, null);
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 3600 * 1000L;
+    params.status = State.Active;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
+    params.incrementalBackupFrequency = 180000 * 1000L;
+    params.incrementalBackupFrequencyTimeUnit = TimeUnit.DAYS;
+    JsonNode requestJson = Json.toJson(params);
+    Result result =
+        assertPlatformException(
+            () ->
+                editSchedule(
+                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(
+        result, "Incremental backup frequency should be lower than full backup frequency.");
+    params.cronExpression = "0 * * * *";
+    result =
+        assertPlatformException(
+            () ->
+                editSchedule(
+                    defaultIncrementalSchedule.scheduleUUID, defaultCustomer.uuid, requestJson));
+    assertBadRequest(
+        result, "Incremental backup frequency should be lower than full backup frequency.");
   }
 
   @Test

@@ -100,6 +100,8 @@ namespace master {
 using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
+ public:
+  string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
 
 TEST_F(MasterTest, TestPingServer) {
@@ -125,7 +127,7 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
 }
 
 TEST_F(MasterTest, TestCallHome) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
       webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
@@ -134,9 +136,14 @@ TEST_F(MasterTest, TestCallHome) {
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(MasterTest, TestCallHomeFlag) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHomeFlag<Master, MasterCallHome>(webserver_dir, mini_master_->master());
+}
+
+TEST_F(MasterTest, TestGFlagsCallHome) {
+  CHECK_OK(env_->CreateDir(GetWebserverDir()));
+  TestGFlagsCallHome<Master, MasterCallHome>(mini_master_->master());
 }
 
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {

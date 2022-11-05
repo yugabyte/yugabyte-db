@@ -20,7 +20,6 @@
 #include <memory>
 #include <utility>
 
-#include <boost/unordered_map.hpp>
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
@@ -52,11 +51,6 @@ namespace yb {
 namespace pggate {
 
 namespace {
-
-template<class Key, class Value, class CompatibleKey>
-auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key) {
-  return map.find(key, boost::hash<CompatibleKey>(), std::equal_to<CompatibleKey>());
-}
 
 class DocKeyBuilder {
  public:
@@ -729,7 +723,7 @@ Status PgDmlRead::MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB
     if (value) {
       *out = *value;
     }
-    expr_binds_.erase(Find(expr_binds_, &expr));
+    expr_binds_.erase(expr_binds_.find(&expr));
   }
   return Status::OK();
 }
@@ -738,7 +732,7 @@ Result<LWQLValuePB*> PgDmlRead::GetBoundValue(
     const PgColumn& col, const LWPgsqlExpressionPB& src) const {
   // 'src' expression has no value yet,
   // it is used as the key to find actual source in 'expr_binds_'.
-  const auto it = Find(expr_binds_, &src);
+  const auto it = expr_binds_.find(&src);
   if (it == expr_binds_.end()) {
     return STATUS_FORMAT(IllegalState, "Bind value not found for $0", col.id());
   }

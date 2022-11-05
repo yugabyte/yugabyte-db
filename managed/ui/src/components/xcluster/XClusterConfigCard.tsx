@@ -85,7 +85,7 @@ export const XClusterConfigCard = ({
         ) ? (
           <div className={styles.viewTasksPrompt}>
             <span>View progress on </span>
-            <a href={`/universes/${xClusterConfig.targetUniverseUUID}/tasks`}>Tasks</a>.
+            <a href={`/universes/${xClusterConfig.sourceUniverseUUID}/tasks`}>Tasks</a>.
           </div>
         ) : (
           <div className={styles.configMetricsContainer}>

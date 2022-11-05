@@ -86,9 +86,6 @@
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
-#include <boost/optional.hpp>
-#include <boost/optional/optional.hpp>
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/config/config.hpp>
 #include <boost/preprocessor/expr_if.hpp>
@@ -108,7 +105,6 @@
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
-#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/version.hpp>
 #undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
@@ -194,7 +190,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"

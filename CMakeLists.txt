@@ -723,14 +723,12 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
   if(APPLE)
     # See https://bit.ly/3DrOibC on this Apple Clang specific flag.
     ADD_LINKER_FLAGS("-undefined dynamic_lookup")
-    if("$ENV{YB_TARGET_ARCH}" STREQUAL "arm64")
-      # To get rid of the following warning during linking on macOS arm64:
-      #
-      # -undefined dynamic_lookup may not work with chained fixups
-      #
-      # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
-      ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
-    endif()
+    # To get rid of the following warning during linking on macOS:
+    #
+    # -undefined dynamic_lookup may not work with chained fixups
+    #
+    # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
+    ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
   else()
     ADD_LINKER_FLAGS("-Wl,--allow-shlib-undefined")
   endif()

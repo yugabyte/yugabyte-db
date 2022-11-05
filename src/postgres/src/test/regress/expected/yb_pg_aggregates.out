@@ -579,7 +579,7 @@ FROM bool_test;
 -- Basic cases
 explain (costs off)
   select min(unique1) from tenk1;
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
@@ -594,7 +594,7 @@ select min(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1;
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
@@ -609,12 +609,13 @@ select max(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1 where unique1 < 42;
-           QUERY PLAN
---------------------------------
- Aggregate
+              QUERY PLAN
+---------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on tenk1
-         Filter: (unique1 < 42)
-(3 rows)
+         Remote Filter: (unique1 < 42)
+         Partial Aggregate: true
+(4 rows)
 
 select max(unique1) from tenk1 where unique1 < 42;
  max
@@ -624,12 +625,13 @@ select max(unique1) from tenk1 where unique1 < 42;
 
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
-           QUERY PLAN
---------------------------------
- Aggregate
+              QUERY PLAN
+---------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on tenk1
-         Filter: (unique1 > 42)
-(3 rows)
+         Remote Filter: (unique1 > 42)
+         Partial Aggregate: true
+(4 rows)
 
 select max(unique1) from tenk1 where unique1 > 42;
  max
@@ -645,12 +647,13 @@ begin;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42000;
-            QUERY PLAN
------------------------------------
- Aggregate
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on tenk1
-         Filter: (unique1 > 42000)
-(3 rows)
+         Remote Filter: (unique1 > 42000)
+         Partial Aggregate: true
+(4 rows)
 
 select max(unique1) from tenk1 where unique1 > 42000;
  max
@@ -662,12 +665,13 @@ rollback;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off)
   select max(tenthous) from tenk1 where thousand = 33;
-           QUERY PLAN
----------------------------------
- Aggregate
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on tenk1
-         Filter: (thousand = 33)
-(3 rows)
+         Remote Filter: (thousand = 33)
+         Partial Aggregate: true
+(4 rows)
 
 select max(tenthous) from tenk1 where thousand = 33;
  max
@@ -677,12 +681,13 @@ select max(tenthous) from tenk1 where thousand = 33;
 
 explain (costs off)
   select min(tenthous) from tenk1 where thousand = 33;
-           QUERY PLAN
----------------------------------
- Aggregate
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on tenk1
-         Filter: (thousand = 33)
-(3 rows)
+         Remote Filter: (thousand = 33)
+         Partial Aggregate: true
+(4 rows)
 
 select min(tenthous) from tenk1 where thousand = 33;
  min
@@ -694,14 +699,15 @@ select min(tenthous) from tenk1 where thousand = 33;
 explain (costs off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
-                   QUERY PLAN
--------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Seq Scan on int4_tbl
    SubPlan 1
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  Seq Scan on tenk1
-                 Filter: (unique1 > int4_tbl.f1)
-(5 rows)
+                 Remote Filter: (unique1 > int4_tbl.f1)
+                 Partial Aggregate: true
+(6 rows)
 
 -- TODO(jayden): Non-deterministic, so commenting out.
 -- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
@@ -709,7 +715,7 @@ explain (costs off)
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
   select distinct max(unique2) from tenk1;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Unique
    ->  Sort
@@ -727,7 +733,7 @@ select distinct max(unique2) from tenk1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by 1;
-              QUERY PLAN               
+              QUERY PLAN
 ---------------------------------------
  Sort
    Sort Key: (max(unique2))
@@ -744,7 +750,7 @@ select max(unique2) from tenk1 order by 1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2);
-              QUERY PLAN               
+              QUERY PLAN
 ---------------------------------------
  Sort
    Sort Key: (max(unique2))
@@ -761,7 +767,7 @@ select max(unique2) from tenk1 order by max(unique2);
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2)+1;
-              QUERY PLAN               
+              QUERY PLAN
 ---------------------------------------
  Sort
    Sort Key: ((max(unique2) + 1))
@@ -778,7 +784,7 @@ select max(unique2) from tenk1 order by max(unique2)+1;
 
 explain (costs off)
   select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3)) DESC
@@ -837,7 +843,7 @@ insert into minmaxtest values(11), (12);
 -- insert into minmaxtest3 values(17), (18);
 explain (costs off)
   select min(f1), max(f1) from minmaxtest;
-           QUERY PLAN            
+           QUERY PLAN
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on minmaxtest
@@ -853,7 +859,7 @@ select min(f1), max(f1) from minmaxtest;
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
 explain (costs off)
   select distinct min(f1), max(f1) from minmaxtest;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Unique
    ->  Sort
@@ -911,7 +917,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.y,t2.z;
 ------------------------------------------------------
  HashAggregate
    Group Key: t1.a, t1.b, t2.x, t2.y
-   ->  Hash Join   
+   ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
          ->  Hash
@@ -926,7 +932,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
 ------------------------------------------------------
  HashAggregate
    Group Key: t1.a, t1.b, t2.x, t2.z
-   ->  Hash Join   
+   ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
          ->  Hash
@@ -1366,13 +1372,13 @@ select aggfns(distinct a,b,c order by a,c using ~<~,b) filter (where a > 1)
 
 -- check handling of bare boolean Var in FILTER
 select max(0) filter (where b1) from bool_test;
- max 
+ max
 -----
    0
 (1 row)
 
 select (select max(0) filter (where b1)) from bool_test;
- max 
+ max
 -----
    0
 (1 row)

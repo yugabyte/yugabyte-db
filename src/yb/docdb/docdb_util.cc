@@ -448,9 +448,9 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
-void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
+void DocDBRocksDBUtil::DocDBDebugDumpToConsole(const SchemaPackingStorage& schema_packing_storage) {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, schema_packing_storage, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {

@@ -132,11 +132,6 @@
           <checkStaleness>true</checkStaleness>
           <protoSourceRoot>${project.basedir}/../../src</protoSourceRoot>
           <protocExecutable>${project.basedir}/dev-support/build-proto.sh</protocExecutable>
-          <additionalProtoPathElements>
-            <additionalProtoPathElement>
-              ${yb.thirdparty.dir}/installed/uninstrumented/include
-            </additionalProtoPathElement>
-          </additionalProtoPathElements>
           <excludes>
             <exclude>**/*test*.proto</exclude>
           </excludes>

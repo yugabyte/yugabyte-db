@@ -18,7 +18,7 @@
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/master/master_cluster.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 

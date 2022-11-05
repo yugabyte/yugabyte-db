@@ -26,7 +26,7 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/histogram.h"

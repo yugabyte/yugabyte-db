@@ -789,12 +789,9 @@ class YBClient {
 
   const CloudInfoPB& cloud_info() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
-      const TabletId& tablet_id);
-  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  void MaybeUpdateMinRunningRequestId(
-      const TabletId& tablet_id, RetryableRequestId min_running_request_id);
+  void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
 
   void Shutdown();
 

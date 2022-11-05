@@ -18,7 +18,7 @@
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics.h"

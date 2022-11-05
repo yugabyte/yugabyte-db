@@ -32,7 +32,7 @@
 
 #include "yb/master/master_defaults.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"

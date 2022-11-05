@@ -17,7 +17,7 @@ type: docs
 
   <li >
     <a href="/preview/reference/drivers/java/yugabyte-jdbc-reference/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB JDBC Driver
     </a>
   </li>

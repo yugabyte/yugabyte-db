@@ -30,25 +30,25 @@ The local cluster setup on a single host is intended for development and learnin
   <ul class="tabs-name">
     <li class="active">
       <a href="../quick-start/" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
+        <i class="fa-brands fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
     <li>
       <a href="../quick-start/linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
+        <i class="fa-brands fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
       <a href="../quick-start/docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
+        <i class="fa-brands fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
       <a href="../quick-start/kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
+        <i class="fa-solid fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
     </li>
@@ -63,7 +63,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+1. <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 1. Python 3. To check the version, execute the following command:
 
