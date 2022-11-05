@@ -10,7 +10,7 @@ GOARCH ?= amd64
 
 
 # build requirements
-BIN_NAME ?= yba-cli
+BIN_NAME ?= yba-ctl
 
 BIN_DIR := ${TOP_BUILDDIR}/bin
 PACKAGE_DIR := ${TOP_BUILDDIR}/yba_installer-${VERSION}-${GOOS}-${GOARCH}
@@ -34,7 +34,7 @@ PEM_TO_KEYSTORE_BINARY_URL ?= https://github.com/jimmidyson/pemtokeystore/releas
 
 
 
-all: prereqs test yba-cli package
+all: prereqs test yba-ctl package
 
 prereqs: postgres pem_to_keystore jdk
 
@@ -59,13 +59,13 @@ ${PREREQS_DIR}/${PEM_TO_KEYSTORE_BINARY_NAME}:
 	@echo downloaded $@
 
 
-yba-cli: test ${BIN_DIR}/${BIN_NAME}
+yba-ctl: test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@
 
 
 package: ${PACKAGE_NAME}
-${PACKAGE_NAME}: prereqs yba-cli
+${PACKAGE_NAME}: prereqs yba-ctl
 	mkdir $(PACKAGE_DIR)
 	cp -RL ${BIN_DIR}/${BIN_NAME} ${PREREQS_DIR}/* ${CONFIG_FILE_FOLDER} ${CRONTAB_SCRIPT_FOLDER} ${CONFIG_INPUT_FILE_NAME} ${VERSION_METADATA_JSON} ${VERSION_TXT} ${PACKAGE_DIR}
 	chmod u+x ${PACKAGE_DIR}/${PEM_TO_KEYSTORE_BINARY_NAME}
