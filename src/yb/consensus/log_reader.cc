@@ -46,7 +46,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 
 #include "yb/util/env_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"

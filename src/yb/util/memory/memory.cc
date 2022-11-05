@@ -40,7 +40,7 @@
 #include <cstdlib>
 
 #include "yb/util/alignment.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 

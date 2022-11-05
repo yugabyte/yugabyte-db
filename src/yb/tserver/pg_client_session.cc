@@ -32,8 +32,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -964,8 +962,8 @@ Status PgClientSession::InsertSequenceTuple(
   auto psql_write(client::YBPgsqlWriteOp::NewInsert(table));
 
   auto write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgInsertSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
@@ -992,8 +990,8 @@ Status PgClientSession::UpdateSequenceTuple(
   std::shared_ptr<client::YBPgsqlWriteOp> psql_write(client::YBPgsqlWriteOp::NewUpdate(table));
 
   auto write_request = psql_write->mutable_request();
-  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgUpdateSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
@@ -1055,8 +1053,8 @@ Status PgClientSession::ReadSequenceTuple(
   std::shared_ptr<client::YBPgsqlReadOp> psql_read(client::YBPgsqlReadOp::NewSelect(table));
 
   auto read_request = psql_read->mutable_request();
-  read_request->set_ysql_catalog_version(req.ysql_catalog_version());
-
+  RETURN_NOT_OK(
+      (SetCatalogVersion<PgReadSequenceTupleRequestPB, PgsqlReadRequestPB>(req, read_request)));
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 

@@ -74,8 +74,8 @@ import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.*;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 
@@ -338,6 +338,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
+  public void restartClusterWithFlagsAndEnv(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags,
+      Map<String, String> additionalEnvironmentVars) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags, additionalEnvironmentVars);
     pgInitialized = false;
     initPostgresBefore();
   }

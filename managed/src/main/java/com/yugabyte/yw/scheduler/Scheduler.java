@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
@@ -253,7 +254,17 @@ public class Scheduler {
     }
 
     for (Backup backup : backupsToDelete) {
-      this.runDeleteBackupTask(customer, backup);
+      if (BackupUtil.checkIfStorageConfigExists(backup)) {
+        this.runDeleteBackupTask(customer, backup);
+      } else {
+        log.error(
+            "Cannot delete expired backup {} as storage config {} does not exists",
+            backup.backupUUID,
+            backup.storageConfigUUID);
+        if (!backup.state.equals(BackupState.FailedToDelete)) {
+          backup.transitionState(BackupState.FailedToDelete);
+        }
+      }
     }
   }
 

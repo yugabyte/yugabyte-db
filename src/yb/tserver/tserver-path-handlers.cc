@@ -63,6 +63,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -92,6 +93,8 @@ using std::string;
 using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
+
+DEFINE_bool(enable_intentsdb_page, false, "Enable displaying the contents of intentsdb page.");
 
 namespace {
 
@@ -422,6 +425,12 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
       true /* is_on_nav_bar */, "fa fa-dashboard");
+#ifndef NDEBUG
+  server->RegisterPathHandler(
+      "/intentsdb", "IntentsDB",
+      std::bind(&TabletServerPathHandlers::HandleIntentsDBPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */, "fa fa-lock");
+#endif
   server->RegisterPathHandler(
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
@@ -757,6 +766,51 @@ void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest&
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
                               "List of operations that are currently running and those "
                               "that are registered.");
+}
+
+void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& req,
+                                                   Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  if (!FLAGS_enable_intentsdb_page) {
+    (*output) << "Intentsdb is disabled, please set the gflag enable_intentsdb_page to true "
+                 "to show the content of intentsdb.";
+    return;
+  }
+
+  TSTabletManager::TabletPtrs tablet_ptrs;
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+
+  auto it = req.parsed_args.find("tablet_id");
+  if (it != req.parsed_args.end()) {
+    auto tablet_id = it->second;
+    auto tablet_peer = LookupTabletPeer(tserver_->tablet_peer_lookup(), tablet_id);
+    if (!tablet_peer.ok()) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    auto tablet = tablet_peer.get().tablet;
+    if (tablet == nullptr) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    tablet_ptrs.push_back(std::move(tablet));
+  } else {
+    tablet_peers = tserver_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
+  }
+
+  std::vector<std::string> intents;
+  for (const auto& tablet : tablet_ptrs) {
+    auto res = tablet->ReadIntents(&intents);
+    if (!res.ok()) {
+      (*output) << "Got an error when reading intents";
+      return;
+    }
+  }
+
+  (*output) << Format("Intents size: $0<br>", intents.size()) << "\n";
+  for (const auto& item : intents) {
+    (*output) << Format("$0<br>", item);
+  }
 }
 
 string TabletServerPathHandlers::GetDashboardLine(const std::string& link,

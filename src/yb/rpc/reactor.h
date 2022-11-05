@@ -48,7 +48,7 @@
 #include <boost/intrusive/list.hpp>
 #include <boost/utility.hpp>
 #include <ev++.h> // NOLINT
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/bind.h"
@@ -526,4 +526,3 @@ class Reactor {
 
 }  // namespace rpc
 }  // namespace yb
-

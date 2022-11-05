@@ -60,7 +60,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
                                    uint64_t* last_breaking_version) const override;
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
   client::TransactionPool& TransactionPool() override;
 

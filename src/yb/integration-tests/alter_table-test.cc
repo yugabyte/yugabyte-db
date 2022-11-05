@@ -34,7 +34,7 @@
 #include <string>
 #include <utility>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"

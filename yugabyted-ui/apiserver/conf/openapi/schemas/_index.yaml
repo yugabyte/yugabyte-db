@@ -401,14 +401,22 @@ ClusterNodeInfo:
       default: 0
     disk_size_gb:
       description: The total size of disk (GB)
-      type: integer
-      minimum: 10
-      maximum: 4096
-      default: 256
+      type: number
+      format: double
+      default: 0
+    disk_size_used_gb:
+      description: The total size of used disk space (GB)
+      type: number
+      format: double
+      default: 0
     cpu_usage:
       description: The average CPU usage over all nodes
       type: number
       format: double
+      default: 0
+    num_cores:
+      description: The number of CPU cores per node
+      type: integer
       default: 0
   required:
     - num_cores
@@ -481,3 +489,63 @@ EntityMetadata:
       description: Timestamp when the entity was last updated (UTC)
       type: string
       nullable: true
+HealthCheckInfo:
+  title: Health Check Info
+  type: object
+  properties:
+    dead_nodes:
+      type: array
+      description: UUIDs of dead nodes
+      items:
+        type: string
+        format: uuid
+    most_recent_uptime:
+      type: integer
+      format: int64
+      minimum: 0
+    under_replicated_tablets:
+      type: array
+      description: UUIDs of under-replicated tablets
+      items:
+        type: string
+        format: uuid
+    leaderless_tablets:
+      type: array
+      description: UUIDs of leaderless tablets
+      items:
+        type: string
+        format: uuid
+  required:
+    - dead_nodes
+    - most_recent_uptime
+    - under_replicated_tablets
+    - leaderless_tablets
+ClusterTabletData:
+  title: Cluster Tablet Data
+  description: List of cluster tablets
+  type: array
+  additionalProperties:
+    $ref: '#/ClusterTablet'
+ClusterTablet:
+  title: Cluster Tablet Object
+  description: Model representing a tablet
+  type: object
+  properties:
+    namespace:
+      type: string
+    table_name:
+      type: string
+    table_uuid:
+      type: string
+      format: uuid
+    tablet_id:
+      type: string
+      format: uuid
+    has_leader:
+      type: boolean
+  required:
+    - namespace
+    - table_name
+    - table_uuid
+    - table_id
+    - has_leader

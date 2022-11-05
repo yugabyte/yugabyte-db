@@ -90,7 +90,8 @@ public class TestPgSelectLimit extends BasePgSQLTest {
       // I.e. default prefetch limit + prefetch next portion of data after returning first one.
       executeQueryWithMetricCheck(
           stmt,
-          String.format("SELECT * FROM %s WHERE k != 10 LIMIT %d", kTableName, kLimit),
+          String.format("SELECT * FROM %s WHERE CASE k WHEN 10 THEN false ELSE true END LIMIT %d",
+                        kTableName, kLimit),
           (kDefaultPrefetchLimit + 1) * 2);
     }
   }

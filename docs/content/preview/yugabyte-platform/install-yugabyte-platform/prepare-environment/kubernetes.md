@@ -17,14 +17,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -38,21 +38,21 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -86,7 +86,7 @@ version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d41
 
 To be able to make use of the YugabeteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9 add-on in your Kubernetes cluster.
 
-Since this add-on might already be installed and running, you should perform a check by executing the following command: 
+Since this add-on might already be installed and running, you should perform a check by executing the following command:
 
 ```sh
 kubectl get svc kube-state-metrics -n kube-system
@@ -101,4 +101,3 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 ```sh
 helm install -n kube-system --version 2.13.2 kube-state-metrics prometheus-community/kube-state-metrics
 ```
-

@@ -21,7 +21,7 @@
 
 #include "yb/rpc/periodic.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

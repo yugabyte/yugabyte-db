@@ -35,11 +35,13 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/cast.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -94,6 +96,9 @@ DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 DECLARE_bool(collect_end_to_end_traces);
 
+DEFINE_test_flag(bool, asyncrpc_finished_set_timedout, false,
+                 "Whether to reset asyncrpc response status to Timedout.");
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -125,7 +130,16 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
+void FillRequestIds(const RetryableRequestId request_id,
+                    const RetryableRequestId min_running_request_id,
+                    InFlightOps* ops) {
+  for (auto& op : *ops) {
+    op.yb_op->set_request_id(request_id);
+    op.yb_op->set_min_running_request_id(min_running_request_id);
+  }
 }
+
+} // namespace
 
 AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
     : remote_write_rpc_time(METRIC_handler_latency_yb_client_write_remote.Instantiate(entity)),
@@ -211,6 +225,15 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
 
 void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
+  if (status.ok()) {
+    if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_asyncrpc_finished_set_timedout))) {
+      new_status = STATUS(
+          TimedOut, "Fake TimedOut for testing due to FLAGS_TEST_asyncrpc_finished_set_timedout");
+      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
+      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
+    }
+
+  }
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
         ClientError(new_status) == ClientErrorCode::kTablePartitionListIsStale) {
@@ -518,18 +541,20 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
     auto temp = client_id.ToUInt64Pair();
     req_.set_client_id1(temp.first);
     req_.set_client_id2(temp.second);
-    auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId(data.tablet->tablet_id());
-    req_.set_request_id(request_pair.first);
-    req_.set_min_running_request_id(request_pair.second);
+    const auto& first_yb_op = ops_.begin()->yb_op;
+    if (first_yb_op->request_id().has_value()) {
+      req_.set_request_id(first_yb_op->request_id().value());
+      req_.set_min_running_request_id(first_yb_op->min_running_request_id().value());
+    } else {
+      const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
+      req_.set_request_id(request_pair.first);
+      req_.set_min_running_request_id(request_pair.second);
+    }
+    FillRequestIds(req_.request_id(), req_.min_running_request_id(), &ops_);
   }
 }
 
 WriteRpc::~WriteRpc() {
-  // Check that we sent request id info, i.e. (client_id, request_id, min_running_request_id).
-  if (req_.has_client_id1()) {
-    batcher_->RequestFinished(tablet().tablet_id(), req_.request_id());
-  }
-
   if (async_rpc_metrics_) {
     scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
                                               async_rpc_metrics_->local_write_rpc_time :
@@ -637,10 +662,6 @@ void WriteRpc::SwapResponses() {
 
 void WriteRpc::NotifyBatcher(const Status& status) {
   batcher_->ProcessWriteResponse(*this, status);
-}
-
-bool WriteRpc::ShouldRetryExpiredRequest() {
-  return req_.min_running_request_id() == kInitializeFromMinRunning;
 }
 
 ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level)

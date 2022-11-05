@@ -26,25 +26,25 @@ type: docs
   <ul class="tabs-name">
     <li class="active">
       <a href="../quick-start/" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
+        <i class="fa-brands fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
     <li>
       <a href="../quick-start/linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
+        <i class="fa-brands fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
       <a href="../quick-start/docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
+        <i class="fa-brands fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
       <a href="../quick-start/kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
+        <i class="fa-solid fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
     </li>
@@ -55,7 +55,7 @@ type: docs
 
 ### Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+1. <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 1. Verify that you have Python 2 or 3 installed.
 

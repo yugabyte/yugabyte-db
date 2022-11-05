@@ -41,7 +41,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/source_location.h"

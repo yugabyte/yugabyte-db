@@ -2668,19 +2668,19 @@ public class PlacementInfoUtil {
       String nodePrefix,
       Provider provider,
       int masterRpcPort,
-      boolean newNamingStyle,
-      String podAddressTemplate) {
+      boolean newNamingStyle) {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
+      Map<String, String> azConfig = az.getUnmaskedConfig();
       String namespace =
           getKubernetesNamespace(
               isMultiAZ,
               nodePrefix,
               az.code,
-              az.getUnmaskedConfig(),
+              azConfig,
               newNamingStyle,
               false /*isReadOnlyCluster*/);
       String domain = azToDomain.get(entry.getKey());
@@ -2689,7 +2689,7 @@ public class PlacementInfoUtil {
       for (int idx = 0; idx < entry.getValue(); idx++) {
         String masterIP =
             formatPodAddress(
-                podAddressTemplate,
+                azConfig.getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE),
                 String.format("%syb-master-%d", helmFullName, idx),
                 helmFullName + "yb-masters",
                 namespace,

@@ -179,7 +179,8 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
-  void DocDBDebugDumpToConsole();
+  void DocDBDebugDumpToConsole(
+      const SchemaPackingStorage& schema_packing_storage = SchemaPackingStorage());
 
   Status FlushRocksDbAndWait();
 

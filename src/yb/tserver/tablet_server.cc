@@ -80,7 +80,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -157,7 +156,6 @@ DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshott
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
 
 DECLARE_int32(num_concurrent_backfills_allowed);
-DECLARE_int32(svc_queue_length_default);
 
 constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
@@ -604,13 +602,17 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    GetTserverCatalogVersionInfoResponsePB *resp) const {
+    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (const auto it : ysql_db_catalog_version_map_) {
-    auto* entry = resp->add_entries();
-    entry->set_db_oid(it.first);
-    entry->set_shm_index(it.second.shm_index);
-    entry->set_current_version(it.second.current_version);
+  if (size_only) {
+    resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
+  } else {
+    for (const auto it : ysql_db_catalog_version_map_) {
+      auto* entry = resp->add_entries();
+      entry->set_db_oid(it.first);
+      entry->set_shm_index(it.second.shm_index);
+      entry->set_current_version(it.second.current_version);
+    }
   }
   return Status::OK();
 }

@@ -29,7 +29,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
@@ -440,12 +440,6 @@ bool TabletInvoker::Done(Status* status) {
       if (tablet_ != nullptr && current_ts_ != nullptr) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
-    }
-    if (status->IsExpired() && rpc_->ShouldRetryExpiredRequest()) {
-      client_->MaybeUpdateMinRunningRequestId(
-          tablet_->tablet_id(), MinRunningRequestIdStatusData(*status).value());
-      *status = STATUS(
-          TryAgain, status->message(), ClientError(ClientErrorCode::kExpiredRequestToBeRetried));
     }
     std::string current_ts_string;
     if (current_ts_) {
