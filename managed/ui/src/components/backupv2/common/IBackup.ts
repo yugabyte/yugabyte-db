@@ -37,6 +37,7 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
 };
 
 export interface Keyspace_Table {
+  allTables: boolean;
   keyspace: string;
   tablesList: string[];
   storageLocation?: string;
