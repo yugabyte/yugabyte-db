@@ -355,6 +355,32 @@ paths:
       summary: Get list of tablets
       tags:
       - cluster-info
+  /version:
+    get:
+      description: Get YugabyteDB version
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionInfo'
+          description: Version info for YugabyteDB
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get YugabyteDB version
+      tags:
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -418,6 +444,12 @@ components:
           schema:
             $ref: '#/components/schemas/Cluster_tablet_list_response'
       description: List of cluster tablets
+    VersionInfo:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionInfo'
+      description: Version info for YugabyteDB
   schemas:
     CloudEnum:
       default: MANUAL
@@ -1320,6 +1352,15 @@ components:
         $ref: '#/components/schemas/ClusterTablet'
       description: List of cluster tablets
       title: Cluster Tablet Data
+      type: object
+    VersionInfo:
+      description: YugabyteDB version info
+      example:
+        version: version
+      properties:
+        version:
+          type: string
+      title: YugabyteDB Version Info
       type: object
     Cluster_Response:
       example:
