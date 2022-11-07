@@ -274,7 +274,6 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   size_t total_leaders = 0;
   *total_entries = 0;
   bool result = true;
-  size_t replicated_limit = FLAGS_detect_duplicates_for_retryable_requests ? 1 : 0;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
@@ -294,9 +293,13 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       *total_entries += tablet_entries;
       ++total_leaders;
     }
-    // Last write request could be rejected as duplicate, so followers would not be able to
-    // cleanup replicated requests.
-    if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
+
+    // When duplicates detection is enabled, we use the global min running request id shared by
+    // all tablets for the client so that cleanup of requests on one tablet can be withheld by
+    // requests on a different tablet. The upper bound of residual requests is not deterministic.
+    if (request_counts.running != 0 ||
+        (!FLAGS_detect_duplicates_for_retryable_requests &&
+         leader && request_counts.replicated > 0)) {
       result = false;
     }
   }

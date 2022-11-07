@@ -18,7 +18,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"

@@ -165,6 +165,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
   ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+  ThreadPool* wait_queue_pool() const { return wait_queue_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -611,6 +612,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for admin triggered compactions for tablets.
   std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
+
+  std::unique_ptr<ThreadPool> wait_queue_pool_;
 
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 

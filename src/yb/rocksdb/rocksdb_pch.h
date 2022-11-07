@@ -141,7 +141,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/file_system_mem.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"

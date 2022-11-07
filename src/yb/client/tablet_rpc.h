@@ -19,7 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
@@ -53,8 +53,6 @@ class TabletRpc {
 
   // attempt_num starts with 1.
   virtual void SendRpcToTserver(int attempt_num) = 0;
-
-  virtual bool ShouldRetryExpiredRequest() { return false; }
 
  protected:
   ~TabletRpc() {}
@@ -192,4 +190,3 @@ HybridTime GetPropagatedHybridTime(const Response& response) {
 } // namespace internal
 } // namespace client
 } // namespace yb
-

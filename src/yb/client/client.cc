@@ -93,7 +93,7 @@
 #include "yb/rpc/rpc.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -1903,41 +1903,28 @@ const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
-    const TabletId& tablet_id) {
+std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  if (tablet.request_id_seq == kInitializeFromMinRunning) {
-    return std::make_pair(kInitializeFromMinRunning, kInitializeFromMinRunning);
-  }
-  auto id = tablet.request_id_seq++;
-  tablet.running_requests.insert(id);
-  return std::make_pair(id, *tablet.running_requests.begin());
+  auto& requests = data_->requests_;
+  auto id = requests.request_id_seq++;
+  requests.running_requests.insert(id);
+  return std::make_pair(id, *requests.running_requests.begin());
 }
 
-void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
-  if (request_id == kInitializeFromMinRunning) {
+void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
+  if (request_ids.empty()) {
     return;
   }
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  auto it = tablet.running_requests.find(request_id);
-  if (it != tablet.running_requests.end()) {
-    tablet.running_requests.erase(it);
-  } else {
-    LOG_WITH_PREFIX(DFATAL) << "RequestFinished called for an unknown request: "
-                << tablet_id << ", " << request_id;
-  }
-}
-
-void YBClient::MaybeUpdateMinRunningRequestId(
-    const TabletId& tablet_id, RetryableRequestId min_running_request_id) {
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  if (tablet.request_id_seq == kInitializeFromMinRunning) {
-    tablet.request_id_seq = min_running_request_id + (1 << 24);
-    VLOG_WITH_PREFIX(1) << "Set request_id_seq for tablet " << tablet_id << " to "
-                        << tablet.request_id_seq;
+  for (RetryableRequestId id : request_ids) {
+    auto& requests = data_->requests_.running_requests;
+    auto it = requests.find(id);
+    if (it != requests.end()) {
+      requests.erase(it);
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "RequestsFinished called for an unknown request: "
+                              << id;
+    }
   }
 }
 

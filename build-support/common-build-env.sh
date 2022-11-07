@@ -178,8 +178,6 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc11
   gcc12
   clang
-  clang12
-  clang13
   clang14
   clang15
 )
@@ -196,7 +194,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -489,11 +486,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
-        YB_COMPILER_TYPE=clang13
-      else
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi

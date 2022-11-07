@@ -3679,13 +3679,34 @@ static uint64_t
 YbPreloadRelCacheHelper()
 {
 	uint64_t catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	/*
+	 * In per-db catalog version mode, do not include pg_yb_catalog_version
+	 * in the set of prefetched tables. This is because prefetching will
+	 * read all the rows of pg_yb_catalog_version, not just the row that
+	 * matches the primary key MyDatabaseId. Because the first row in the
+	 * result set is returned as catalog_version, if there all the rows
+	 * were returned, we would set catalog_version to that of template1,
+	 * not MyDatabaseId.
+	 * Also we should call YbGetMasterCatalogVersion() prior to prefetching
+	 * other catalog tables so that catalog_version is not newer than
+	 * catalog cache loaded to ensure correctness. Most likely they are
+	 * consistent. In rare cases catalog_version is stale and this can be
+	 * detected later and fixed by a new catalog cache refresh.
+	 */
+	if (YBIsDBCatalogVersionMode())
+	{
+		Assert(OidIsValid(MyDatabaseId));
+		catalog_version = YbGetMasterCatalogVersion();
+	}
 	YBCPgResetCatalogReadTime();
 	YBCStartSysTablePrefetching();
 	PG_TRY();
 	{
-		YbTryRegisterCatalogVersionTableForPrefetching();
+		if (!YBIsDBCatalogVersionMode())
+			YbTryRegisterCatalogVersionTableForPrefetching();
 		YBPreloadRelCache();
-		catalog_version = YbGetMasterCatalogVersion();
+		if (!YBIsDBCatalogVersionMode())
+			catalog_version = YbGetMasterCatalogVersion();
 	}
 	PG_CATCH();
 	{
@@ -3708,6 +3729,8 @@ YbPreloadRelCacheHelper()
  */
 static void YBRefreshCache()
 {
+	Assert(OidIsValid(MyDatabaseId));
+
 	/*
 	 * Check that we are not already inside a transaction or we might end up
 	 * leaking cache references for any open relations (i.e. relations in-use by

@@ -118,13 +118,12 @@ using std::set;
 
 using strings::Substitute;
 
-DEFINE_int32(cdc_state_table_num_tablets, 0,
-             "Number of tablets to use when creating the CDC state table. "
-             "0 to use the same default num tablets as for regular tables.");
+DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
+    "Number of tablets to use when creating the CDC state table. "
+    "0 to use the same default num tablets as for regular tables.");
 
-DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
-             "WAL retention time in seconds to be used for tables for which a CDC stream was "
-             "created.");
+DEFINE_RUNTIME_int32(cdc_wal_retention_time_secs, 4 * 3600,
+    "WAL retention time in seconds to be used for tables for which a CDC stream was created.");
 DECLARE_int32(master_rpc_timeout_ms);
 
 DEFINE_RUNTIME_bool(enable_transaction_snapshots, true,
@@ -143,8 +142,8 @@ DEFINE_RUNTIME_bool(xcluster_skip_schema_compatibility_checks_on_alter, false,
 
 DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 
-DEFINE_bool(check_bootstrap_required, false,
-            "Is it necessary to check whether bootstrap is required for Universe Replication.");
+DEFINE_RUNTIME_bool(check_bootstrap_required, false,
+    "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
 DEFINE_test_flag(bool, exit_unfinished_deleting, false,
                  "Whether to exit part way through the deleting universe process.");
@@ -157,30 +156,29 @@ DEFINE_RUNTIME_bool(disable_universe_gc, false,
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
-DEFINE_bool(enable_replicate_transaction_status_table, false,
-            "Whether to enable xCluster replication of the transaction status table.");
+DEFINE_RUNTIME_bool(enable_replicate_transaction_status_table, false,
+    "Whether to enable xCluster replication of the transaction status table.");
 
-DEFINE_int32(
-    cdc_parent_tablet_deletion_task_retry_secs, 30,
+DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
     "Frequency at which the background task will verify parent tablets retained for xCluster or "
     "CDCSDK replication and determine if they can be cleaned up.");
 
-DEFINE_int32(wait_replication_drain_retry_timeout_ms, 2000,
-             "Timeout in milliseconds in between CheckReplicationDrain calls to tservers "
-             "in case of retries.");
+DEFINE_RUNTIME_int32(wait_replication_drain_retry_timeout_ms, 2000,
+    "Timeout in milliseconds in between CheckReplicationDrain calls to tservers "
+    "in case of retries.");
 DEFINE_test_flag(bool, hang_wait_replication_drain, false,
                  "Used in tests to temporarily block WaitForReplicationDrain.");
 DEFINE_test_flag(bool, import_snapshot_failed, false,
                  "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
-DEFINE_int32(ns_replication_sync_retry_secs, 5,
-             "Frequency at which the bg task will try to sync with producer and add tables to "
-             "the current NS-level replication, when there are non-replicated consumer tables.");
-DEFINE_int32(ns_replication_sync_backoff_secs, 60,
+DEFINE_RUNTIME_int32(ns_replication_sync_retry_secs, 5,
+    "Frequency at which the bg task will try to sync with producer and add tables to "
+    "the current NS-level replication, when there are non-replicated consumer tables.");
+DEFINE_RUNTIME_int32(ns_replication_sync_backoff_secs, 60,
              "Frequency of the add table task for a NS-level replication, when there are no "
              "non-replicated consumer tables.");
-DEFINE_int32(ns_replication_sync_error_backoff_secs, 300,
-             "Frequency of the add table task for a NS-level replication, when there are too "
-             "many consecutive errors happening for the replication.");
+DEFINE_RUNTIME_int32(ns_replication_sync_error_backoff_secs, 300,
+    "Frequency of the add table task for a NS-level replication, when there are too "
+    "many consecutive errors happening for the replication.");
 
 DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
@@ -199,8 +197,7 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_int32(
-    cdcsdk_table_processing_limit_per_run, 2,
+DEFINE_RUNTIME_int32(cdcsdk_table_processing_limit_per_run, 2,
     "The number of newly added tables we will add to CDCSDK streams, per run of the background "
     "task.");
 
@@ -3996,6 +3993,14 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         LOG(WARNING) << "Encountered error while trying to update sys_catalog of stream: "
                      << stream->id() << ", with table: " << table_id;
         continue;
+      }
+
+      // Add the table/ stream pair details to 'cdcsdk_tables_to_stream_map_', so that parent
+      // tablets on which tablet split is successful will be hidden rather than deleted straight
+      // away, as needed.
+      {
+        LockGuard lock(mutex_);
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->id());
       }
 
       stream_lock.Commit();

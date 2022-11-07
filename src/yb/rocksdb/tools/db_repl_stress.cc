@@ -30,7 +30,7 @@ int main() {
 #include <atomic>
 #include <memory>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"

@@ -10,6 +10,14 @@ type: docs
 
 ## Releases
 
+### November 4, 2022
+
+**New Features**
+
+- Ability to reset slow queries for faster debugging of slow-running queries.
+- Ability to set a preferred region to tune the read and write latency for specific regions. Designating one region as preferred can reduce the number of network hops needed to process requests. The preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Ability to view details of task progress for cluster edit operations for better monitoring.
+
 ### October 24, 2022
 
 **New Features**

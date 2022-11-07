@@ -35,7 +35,7 @@
 
 #include <string.h>
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 
 DEFINE_bool(suicide_on_eio, true,

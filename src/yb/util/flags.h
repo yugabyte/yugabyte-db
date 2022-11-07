@@ -32,9 +32,11 @@
 #pragma once
 
 #include <gflags/gflags.h>
-#include "yb/util/auto_flags.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/flags_callback.h"
+#include <gflags/gflags_declare.h>
+
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/flags/auto_flags.h"
 
 // Redefine the macro from gflags.h with an unused attribute.
 #ifdef DEFINE_validator

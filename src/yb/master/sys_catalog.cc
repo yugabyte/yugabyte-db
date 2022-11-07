@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <rapidjson/document.h>
 
@@ -91,7 +90,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"

@@ -70,7 +70,7 @@
 #include "yb/gutil/strings/strip.h"
 
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"

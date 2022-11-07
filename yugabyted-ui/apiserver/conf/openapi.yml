@@ -209,6 +209,34 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /health-check:
+    get:
+      description: Get health information about the cluster
+      operationId: getClusterHealthCheck
+      summary: Get health information about the cluster
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthCheckResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /tablets:
+    get:
+      description: Get list of tablets
+      operationId: getClusterTablets
+      summary: Get list of tablets
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/ClusterTabletListResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
 components:
   schemas:
     CloudEnum:
@@ -256,14 +284,22 @@ components:
           default: 0
         disk_size_gb:
           description: The total size of disk (GB)
-          type: integer
-          minimum: 10
-          maximum: 4096
-          default: 256
+          type: number
+          format: double
+          default: 0
+        disk_size_used_gb:
+          description: The total size of used disk space (GB)
+          type: number
+          format: double
+          default: 0
         cpu_usage:
           description: The average CPU usage over all nodes
           type: number
           format: double
+          default: 0
+        num_cores:
+          description: The number of CPU cores per node
+          type: integer
           default: 0
       required:
         - num_cores
@@ -694,6 +730,66 @@ components:
       nullable: false
       items:
         $ref: '#/components/schemas/ClusterTable'
+    HealthCheckInfo:
+      title: Health Check Info
+      type: object
+      properties:
+        dead_nodes:
+          type: array
+          description: UUIDs of dead nodes
+          items:
+            type: string
+            format: uuid
+        most_recent_uptime:
+          type: integer
+          format: int64
+          minimum: 0
+        under_replicated_tablets:
+          type: array
+          description: UUIDs of under-replicated tablets
+          items:
+            type: string
+            format: uuid
+        leaderless_tablets:
+          type: array
+          description: UUIDs of leaderless tablets
+          items:
+            type: string
+            format: uuid
+      required:
+        - dead_nodes
+        - most_recent_uptime
+        - under_replicated_tablets
+        - leaderless_tablets
+    ClusterTablet:
+      title: Cluster Tablet Object
+      description: Model representing a tablet
+      type: object
+      properties:
+        namespace:
+          type: string
+        table_name:
+          type: string
+        table_uuid:
+          type: string
+          format: uuid
+        tablet_id:
+          type: string
+          format: uuid
+        has_leader:
+          type: boolean
+      required:
+        - namespace
+        - table_name
+        - table_uuid
+        - table_id
+        - has_leader
+    ClusterTabletData:
+      title: Cluster Tablet Data
+      description: List of cluster tablets
+      type: array
+      additionalProperties:
+        $ref: '#/components/schemas/ClusterTablet'
   requestBodies:
     ClusterSpec:
       description: DB Cluster to be updated
@@ -779,6 +875,28 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/ClusterTableData'
+            required:
+              - data
+    HealthCheckResponse:
+      description: Successful health check response
+      content:
+        application/json:
+          schema:
+            title: Health Check Response
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/HealthCheckInfo'
+    ClusterTabletListResponse:
+      description: List of cluster tablets
+      content:
+        application/json:
+          schema:
+            title: Cluster tablet list response
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/ClusterTabletData'
             required:
               - data
   securitySchemes:

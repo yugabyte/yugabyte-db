@@ -44,7 +44,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/common_types.pb.h"
@@ -245,4 +245,3 @@ class MasterTestBase : public YBTest {
 
 } // namespace master
 } // namespace yb
-

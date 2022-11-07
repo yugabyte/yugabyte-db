@@ -20,7 +20,7 @@
 #include <memory>
 #include <type_traits>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/integral_types.h"
 
@@ -118,4 +118,3 @@ class TrackedSharedPtr : public std::shared_ptr<T> {
 };
 
 }  // namespace yb
-

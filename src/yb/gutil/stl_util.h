@@ -50,6 +50,7 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/integral_types.h"
@@ -1018,6 +1019,24 @@ struct StringHash {
 
   size_t operator()(const std::string& str) const {
     return HashType()(str);
+  }
+};
+
+template<class T>
+struct PointerEqual {
+  using is_transparent = void;
+
+  bool operator()(const T* l, const T* r) const {
+    return std::equal_to<const T*>{}(l, r);
+  }
+};
+
+template<class T>
+struct PointerHash {
+  using is_transparent = void;
+
+  size_t operator()(const T* value) const {
+    return std::hash<const T*>{}(value);
   }
 };
 

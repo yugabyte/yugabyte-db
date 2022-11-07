@@ -41,7 +41,7 @@
 #include "yb/master/tablet_split_manager.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"

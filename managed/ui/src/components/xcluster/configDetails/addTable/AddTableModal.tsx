@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 
 import { api } from '../../../../redesign/helpers/api';
-import { TableTypeLabel, Universe } from '../../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase } from '../../../../utils/ErrorUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
@@ -18,9 +18,11 @@ import {
   editXClusterConfigTables,
   fetchUniverseDiskUsageMetric,
   fetchTaskUntilItCompletes,
-  isBootstrapRequired
+  isBootstrapRequired,
+  fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
 import { TableSelect } from '../../common/tableSelect/TableSelect';
+import { YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { XClusterConfig, XClusterTableType } from '../..';
 
@@ -93,6 +95,11 @@ export const AddTableModal = ({
   const sourceUniverseQuery = useQuery<Universe>(
     ['universe', xClusterConfig.sourceUniverseUUID],
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  );
+
+  const sourceUniverseTablesQuery = useQuery<YBTable[]>(
+    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
+    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((response) => response.data)
   );
 
   const configTablesMutation = useMutation(
@@ -201,7 +208,12 @@ export const AddTableModal = ({
     isBootstrapStepRequired,
     isTableSelectionValidated
   );
-  if (sourceUniverseQuery.isLoading || sourceUniverseQuery.isIdle) {
+  if (
+    sourceUniverseQuery.isLoading ||
+    sourceUniverseQuery.isIdle ||
+    sourceUniverseTablesQuery.isLoading ||
+    sourceUniverseTablesQuery.isIdle
+  ) {
     return (
       <YBModal
         size="large"
@@ -217,7 +229,7 @@ export const AddTableModal = ({
     );
   }
 
-  if (sourceUniverseQuery.isError) {
+  if (sourceUniverseQuery.isError || sourceUniverseTablesQuery.isError) {
     return (
       <YBModal
         size="large"
@@ -232,6 +244,29 @@ export const AddTableModal = ({
     );
   }
 
+  const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
+  const ysqlTableUUIDToKeyspace = new Map<string, string>();
+  const sourceUniverseTables = sourceUniverseTablesQuery.data;
+  sourceUniverseTables.forEach((table) => {
+    if (
+      table.tableType !== TableType.PGSQL_TABLE_TYPE ||
+      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+    ) {
+      // Ignore all index tables and non-YSQL tables.
+      return;
+    }
+    const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
+    if (tableUUIDs !== undefined) {
+      tableUUIDs.add(adaptTableUUID(table.tableUUID));
+    } else {
+      ysqlKeyspaceToTableUUIDs.set(
+        table.keySpace,
+        new Set<string>([adaptTableUUID(table.tableUUID)])
+      );
+    }
+    ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
+  });
+
   const sourceUniverse = sourceUniverseQuery.data;
   return (
     <YBModalForm
@@ -243,7 +278,10 @@ export const AddTableModal = ({
           values,
           currentStep,
           sourceUniverse,
+          ysqlKeyspaceToTableUUIDs,
+          ysqlTableUUIDToKeyspace,
           isTableSelectionValidated,
+          configTableType,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -310,7 +348,10 @@ const validateForm = async (
   values: AddTableFormValues,
   currentStep: FormStep,
   sourceUniverse: Universe,
+  ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
+  ysqlTableUUIDToKeyspace: Map<string, string>,
   isTableSelectionValidated: boolean,
+  configTableType: XClusterTableType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -332,29 +373,14 @@ const validateForm = async (
           body: 'Select at least 1 table to proceed'
         };
       }
-
-      // Check if bootstrap is required, for each selected table
-      const bootstrapTests = await isBootstrapRequired(
+      const bootstrapTableUUIDs = await getBootstrapTableUUIDs(
+        configTableType,
+        values.tableUUIDs,
         sourceUniverse.universeUUID,
-        values.tableUUIDs.map(adaptTableUUID)
+        ysqlKeyspaceToTableUUIDs,
+        ysqlTableUUIDToKeyspace
       );
 
-      const bootstrapTableUUIDs = bootstrapTests.reduce(
-        (bootstrapTableUUIDs: string[], bootstrapTest) => {
-          // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
-          // Until the backend supports multiple tableUUIDs per request, the response object
-          // will only contain one tableUUID.
-          // Note: Once backend does support multiple tableUUIDs per request, we will replace this
-          //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
-          const tableUUID = Object.keys(bootstrapTest)[0];
-
-          if (bootstrapTest[tableUUID]) {
-            bootstrapTableUUIDs.push(tableUUID);
-          }
-          return bootstrapTableUUIDs;
-        },
-        []
-      );
       setBootstrapRequiredTableUUIDs(bootstrapTableUUIDs);
 
       // If some tables require bootstrapping, we need to validate the source universe has enough
@@ -397,6 +423,57 @@ const validateForm = async (
       throw errors;
     }
   }
+};
+
+/**
+ * Return the UUIDs for tables which require bootstrapping.
+ */
+const getBootstrapTableUUIDs = async (
+  configTableType: XClusterTableType,
+  selectedTableUUIDs: string[],
+  sourceUniverseUUID: string,
+  ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
+  ysqlTableUUIDToKeyspace: Map<string, string>
+) => {
+  // Check if bootstrap is required, for each selected table
+  const bootstrapTests = await isBootstrapRequired(
+    sourceUniverseUUID,
+    selectedTableUUIDs.map(adaptTableUUID)
+  );
+  const bootstrapTableUUIDs = new Set<string>();
+
+  bootstrapTests.forEach((bootstrapTest) => {
+    // Each bootstrapTest response is of the form {<tableUUID>: boolean}.
+    // Until the backend supports multiple tableUUIDs per request, the response object
+    // will only contain one tableUUID.
+    // Note: Once backend does support multiple tableUUIDs per request, we will replace this
+    //       logic with one that simply filters on the keys (tableUUIDs) of the returned object.
+    const tableUUID = Object.keys(bootstrapTest)[0];
+
+    if (bootstrapTest[tableUUID]) {
+      switch (configTableType) {
+        case TableType.YQL_TABLE_TYPE:
+          bootstrapTableUUIDs.add(tableUUID);
+          return;
+        case TableType.PGSQL_TABLE_TYPE: {
+          bootstrapTableUUIDs.add(tableUUID);
+          // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
+          //            for bootstrapping.
+          const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
+          if (keyspace !== undefined) {
+            const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
+            if (tableUUIDs !== undefined) {
+              tableUUIDs.forEach((tableUUID) => bootstrapTableUUIDs.add(tableUUID));
+            }
+          }
+          return;
+        }
+        default:
+          assertUnreachableCase(configTableType);
+      }
+    }
+  });
+  return Array.from(bootstrapTableUUIDs);
 };
 
 const getFormSubmitLabel = (

@@ -28,6 +28,10 @@
 #include "yb/util/monotime.h"
 
 // This file contains utility functions that can be shared between client and master code.
+static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
+static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
+static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 
 namespace yb {
 

@@ -47,7 +47,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"

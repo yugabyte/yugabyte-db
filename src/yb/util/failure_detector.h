@@ -40,7 +40,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
@@ -199,4 +199,3 @@ class RandomizedFailureMonitor {
 };
 
 }  // namespace yb
-

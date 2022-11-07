@@ -3860,7 +3860,6 @@ ConstraintAttr:
 TableLikeClause:
 			LIKE qualified_name TableLikeOptionList
 				{
-					parser_ybc_signal_unsupported(@1, "LIKE clause", 1129);
 					TableLikeClause *n = makeNode(TableLikeClause);
 					n->relation = $2;
 					n->options = $3;
@@ -3875,41 +3874,15 @@ TableLikeOptionList:
 		;
 
 TableLikeOption:
-			COMMENTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE COMMENTS", 1129);
-					$$ = CREATE_TABLE_LIKE_COMMENTS;
-				}
-			| CONSTRAINTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE CONSTRAINTS", 1129);
-					$$ = CREATE_TABLE_LIKE_CONSTRAINTS;
-				}
-			| DEFAULTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE DEFAULTS", 1129);
-					$$ = CREATE_TABLE_LIKE_DEFAULTS;
-				}
-			| IDENTITY_P
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE IDENTITY", 1129);
-					$$ = CREATE_TABLE_LIKE_IDENTITY;
-				}
-			| INDEXES
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE INDEXES", 1129);
-					$$ = CREATE_TABLE_LIKE_INDEXES;
-				}
-			| STATISTICS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE STATISTICS", 1129);
-					$$ = CREATE_TABLE_LIKE_STATISTICS;
-				}
-			| STORAGE
-				{ parser_ybc_signal_unsupported(@1, "LIKE STORAGE", 1129); $$ = CREATE_TABLE_LIKE_STORAGE; }
-			| ALL { parser_ybc_signal_unsupported(@1, "LIKE ALL", 1129); $$ = CREATE_TABLE_LIKE_ALL; }
+				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
+				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
+				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
+				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
+				| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
+				| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
+				| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
+				| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
 		;
-
 
 /* ConstraintElem specifies constraint syntax which is not embedded into
  *	a column definition. ColConstraintElem specifies the embedded form.

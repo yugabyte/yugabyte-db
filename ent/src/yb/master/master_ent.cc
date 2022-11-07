@@ -20,7 +20,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/secure.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/result.h"
 

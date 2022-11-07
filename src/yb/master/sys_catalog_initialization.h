@@ -16,7 +16,7 @@
 #include <vector>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/master/master_fwd.h"
 
@@ -70,4 +70,3 @@ Status MakeYsqlSysCatalogTablesTransactional(
 
 }  // namespace master
 }  // namespace yb
-

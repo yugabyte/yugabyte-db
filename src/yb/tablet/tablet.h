@@ -64,6 +64,8 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
 
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
@@ -662,6 +664,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
+
+  // Get all the entries of intent db.
+  // Potentially takes a long time. Used for testing/debugging.
+  Status ReadIntents(std::vector<std::string>* resp);
 
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);

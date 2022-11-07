@@ -250,3 +250,15 @@ export const addIncrementalBackup = (backup: IBackup) => {
 
   return axios.post(requestUrl, payload);
 };
+
+export function deleteIncrementalBackup(incrementalBackup: ICommonBackupInfo) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
+    deleteBackupInfos: [
+      {
+        backupUUID: incrementalBackup.backupUUID,
+        storageConfigUUID: incrementalBackup.storageConfigUUID
+      }
+    ]
+  });
+}
