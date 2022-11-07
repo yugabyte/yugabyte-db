@@ -3576,7 +3576,12 @@ class YsqlProxy(object):
     def try_update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
         cmd = self.cmd_with_password + \
             ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
-        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
+        encrypted_password = "*" * len(new_password)
+        encrypted_cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, encrypted_password)]
+
+        out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
+                env_vars=self.env)
         if (retcode != 0):
             raise RetryableError
 
@@ -3652,7 +3657,12 @@ class YcqlProxy(object):
     def try_update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
                 "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
-        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=os.environ.copy())
+        encrypted_password = "*" * len(new_password)
+        encrypted_cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
+                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, encrypted_password)]
+
+        out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
+                env_vars=os.environ.copy())
         if (retcode != 0):
             raise RetryableError
 
@@ -4176,16 +4186,23 @@ def get_kv(map):
     else:
         return map.items()
 
-def run_process(cmd, timeout=None, log_cmd=False, env_vars=None, shell=False):
+def run_process(cmd, encrypted_cmd=None, timeout=None, log_cmd=False, env_vars=None, shell=False):
     if log_cmd:
-        Output.log("run_process: cmd: {}".format(str(cmd)))
+        if encrypted_cmd:
+            Output.log("run_process: cmd: {}".format(str(encrypted_cmd)))
+        else:
+            Output.log("run_process: cmd: {}".format(str(cmd)))
+
     proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                             env=env_vars, shell=shell)
     if PY_VERSION >= 3:
         try:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as e:
-            Output.log("run_process: {} timeout expired for command: ".format(cmd))
+            if encrypted_cmd:
+                Output.log("run_process: {} timeout expired for command: ".format(encrypted_cmd))
+            else:
+                Output.log("run_process: {} timeout expired for command: ".format(cmd))
             return None, str(e), -1
     else:
         out, err = proc.communicate()
