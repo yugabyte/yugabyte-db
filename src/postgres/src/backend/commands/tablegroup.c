@@ -82,6 +82,8 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
+Oid binary_upgrade_next_tablegroup_oid = InvalidOid;
+
 /*
  * Create a table group.
  */
@@ -173,6 +175,25 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
 
 	tuple = heap_form_tuple(rel->rd_att, values, nulls);
+
+	/*
+	 * If YB binary restore mode is set, we want to use the specified tablegroup
+	 * oid stored in binary_upgrade_next_tablegroup_oid instead of generating
+	 * an oid when inserting the tuple into pg_yb_tablegroup catalog.
+	 * YB binary restore mode is similar to PG binary upgrade mode. However, in
+	 * YB binary restore mode, we only expecte oids of few types of DB objects
+	 * (tablegroup, type, etc) to be set.
+	 */
+	if (yb_binary_restore)
+	{
+		if (!OidIsValid(binary_upgrade_next_tablegroup_oid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("pg_yb_tablegroup OID value not set when in binary upgrade mode")));
+
+		HeapTupleSetOid(tuple, binary_upgrade_next_tablegroup_oid);
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+	}
 
 	tablegroupoid = CatalogTupleInsert(rel, tuple);
 

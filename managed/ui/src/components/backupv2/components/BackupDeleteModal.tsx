@@ -11,7 +11,7 @@ import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { cancelBackup, deleteBackup, IBackup } from '..';
+import { cancelBackup, deleteBackup, IBackup, Backup_States } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
@@ -22,6 +22,12 @@ interface BackupDeleteProps {
   visible: boolean;
   onHide: () => void;
 }
+
+const isIncrementalBackupInProgress = (backupList: IBackup[]) => {
+  return backupList.some(
+    (b) => b.hasIncrementalBackups && b.lastBackupState === Backup_States.IN_PROGRESS
+  );
+};
 
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
   const queryClient = useQueryClient();
@@ -44,8 +50,12 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
       showCancelButton={true}
       onHide={onHide}
       onFormSubmit={async (_values: any, { setSubmitting }: { setSubmitting: Function }) => {
-        await delBackup.mutateAsync(backupsList);
         setSubmitting(false);
+        if (isIncrementalBackupInProgress(backupsList)) {
+          toast.error('Unable to delete backup while incremental backup is in progress');
+          return;
+        }
+        await delBackup.mutateAsync(backupsList);
         onHide();
       }}
       submitLabel={

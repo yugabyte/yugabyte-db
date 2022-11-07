@@ -36,7 +36,7 @@
 
 #include "yb/master/master.h"
 #include "yb/server/server_base_options.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 
 namespace yb {

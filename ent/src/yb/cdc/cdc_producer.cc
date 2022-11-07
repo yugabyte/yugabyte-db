@@ -41,7 +41,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"

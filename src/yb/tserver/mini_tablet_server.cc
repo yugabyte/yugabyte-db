@@ -63,7 +63,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"

@@ -16,13 +16,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../oidc-authentication/" class="nav-link active">
-      <i class="fas fa-cubes"></i>
+      <i class="fa-solid fa-cubes"></i>
       OIDC
     </a>
   </li>
   <li>
     <a href="../ldap-authentication/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       LDAP
     </a>
   </li>

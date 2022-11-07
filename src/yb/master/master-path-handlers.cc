@@ -70,7 +70,7 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/util/curl_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"

@@ -542,12 +542,12 @@ const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComp
  * Group tables by {@link TableType} and then by keyspace/database name.
  */
 function getReplicationItemsFromTables(
-  sourceTables: YBTable[],
+  sourceUniverseTables: YBTable[],
   targetUniverseTables: YBTable[],
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): ReplicationItems {
-  return sourceTables.reduce(
+  return sourceUniverseTables.reduce(
     (items: ReplicationItems, sourceTable) => {
       const tableEligibility = getXClusterTableEligibilityDetails(
         sourceTable,

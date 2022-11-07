@@ -19,7 +19,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
 
 using std::string;

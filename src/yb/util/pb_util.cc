@@ -65,7 +65,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"

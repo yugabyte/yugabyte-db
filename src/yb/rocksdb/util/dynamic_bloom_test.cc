@@ -36,7 +36,7 @@ int main() {
 #include <memory>
 #include <thread>
 #include <vector>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/arena.h"

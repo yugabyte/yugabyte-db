@@ -44,7 +44,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"
@@ -156,4 +156,3 @@ class GetLeaderMasterRpc : public rpc::Rpc {
 
 } // namespace master
 } // namespace yb
-

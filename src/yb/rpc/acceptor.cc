@@ -44,7 +44,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest_prod.h>
 
@@ -53,7 +52,7 @@
 
 #include "yb/rpc/reactor.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"

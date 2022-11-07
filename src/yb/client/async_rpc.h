@@ -21,6 +21,7 @@
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/retryable_request.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -170,7 +171,6 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   void SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
-  bool ShouldRetryExpiredRequest() override;
 };
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {

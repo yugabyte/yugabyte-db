@@ -32,7 +32,7 @@ int main() {
 #include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/cache.h"

@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -64,11 +66,11 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
   Status StartTabletServersByRegion(int region);
   Status ShutdownTabletServersByRegion(int region);
   Status StartTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str);
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str);
   Status ShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str);
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str);
   Status StartShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str,
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown);
 
   std::unique_ptr<YBClient> client_;

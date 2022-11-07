@@ -34,7 +34,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"

@@ -25,7 +25,9 @@
 #include "yb/docdb/doc_key.h"
 
 #include "yb/master/master_client.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/master/master_util.h"
+
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
 using std::string;
@@ -602,6 +604,60 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
   checkpoint->set_write_id(write_id);
 }
 
+void FillBeginRecord(
+    const TransactionId& transaction_id,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, GetChangesResponsePB* resp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+    row_message->set_op(RowMessage_Op_BEGIN);
+    row_message->set_transaction_id(transaction_id.ToString());
+    row_message->set_table(table_name);
+  }
+}
+
+void FillCommitRecord(
+    const OpId& op_id, const TransactionId& transaction_id,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    CDCSDKCheckpointPB* checkpoint, GetChangesResponsePB* resp) {
+  for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
+    auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+      continue;
+    }
+    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
+    RowMessage* row_message = proto_record->mutable_row_message();
+
+    row_message->set_op(RowMessage_Op_COMMIT);
+    row_message->set_transaction_id(transaction_id.ToString());
+    row_message->set_table(table_name);
+
+    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
+    SetKeyWriteId("", 0, checkpoint);
+  }
+}
+
 Status ProcessIntents(
     const OpId& op_id,
     const TransactionId& transaction_id,
@@ -619,11 +675,7 @@ Status ProcessIntents(
     SchemaVersion* cached_schema_version) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   if (stream_state->key.empty() && stream_state->write_id == 0) {
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
-    row_message->set_op(RowMessage_Op_BEGIN);
-    row_message->set_transaction_id(transaction_id.ToString());
-    row_message->set_table(tablet->metadata()->table_name());
+    FillBeginRecord(transaction_id, tablet_peer, resp);
   }
 
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
@@ -691,16 +743,7 @@ Status ProcessIntents(
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
   if (stream_state->key.empty() && stream_state->write_id == 0) {
-    CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
-    RowMessage* row_message = proto_record->mutable_row_message();
-
-    row_message->set_op(RowMessage_Op_COMMIT);
-    row_message->set_transaction_id(transaction_id.ToString());
-    row_message->set_table(tablet->metadata()->table_name());
-
-    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-    SetCDCSDKOpId(op_id.term, op_id.index, 0, "", cdc_sdk_op_id_pb);
-    SetKeyWriteId("", 0, checkpoint);
+    FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp);
   } else {
     SetKeyWriteId(reverse_index_key, write_id, checkpoint);
   }
@@ -756,6 +799,7 @@ Status PopulateCDCSDKSnapshotRecord(
 void FillDDLInfo(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const Schema& current_schema,
     const SchemaVersion current_schema_version, GetChangesResponsePB* resp) {
+  SchemaVersion schema_version;
   for (auto const& table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
     auto tablet_result = tablet_peer->shared_tablet_safe();
     if (!tablet_result.ok()) {
@@ -764,8 +808,19 @@ void FillDDLInfo(
     }
     auto tablet = *tablet_result;
     auto table_name = tablet->metadata()->table_name(table_id);
+    // Ignore the DDL information of the parent table.
+    if (tablet->metadata()->colocated() &&
+        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+      continue;
+    }
     SchemaPB schema_pb;
-    SchemaToPB(current_schema, &schema_pb);
+    if (tablet->metadata()->colocated()) {
+       schema_version = tablet_peer->tablet()->metadata()->schema_version(table_id);
+       SchemaToPB(*tablet->metadata()->schema(table_id).get(), &schema_pb);
+    } else {
+      schema_version = current_schema_version;
+      SchemaToPB(current_schema, &schema_pb);
+    }
     CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
     RowMessage* row_message = proto_record->mutable_row_message();
     row_message->set_op(RowMessage_Op_DDL);
@@ -776,7 +831,7 @@ void FillDDLInfo(
       SetColumnInfo(column, column_info);
     }
 
-    row_message->set_schema_version(current_schema_version);
+    row_message->set_schema_version(schema_version);
     row_message->set_pgschema_name(schema_pb.pgschema_name());
     CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
         row_message->mutable_schema()->mutable_tab_info();
@@ -842,11 +897,13 @@ Status GetChangesForCDCSDK(
   bool checkpoint_updated = false;
   bool report_tablet_split = false;
   OpId split_op_id = OpId::Invalid();
+  bool snapshot_operation = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
+    snapshot_operation = true;
     auto txn_participant = tablet_ptr->transaction_participant();
     ReadHybridTime time;
     std::string nextKey;
@@ -1171,8 +1228,8 @@ Status GetChangesForCDCSDK(
             nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
-      if (!checkpoint_updated) {
-        LOG_WITH_FUNC(INFO)
+      if (!checkpoint_updated && VLOG_IS_ON(1)) {
+        VLOG_WITH_FUNC(1)
             << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
             << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
             << ". Will retry and get another batch";
@@ -1184,7 +1241,8 @@ Status GetChangesForCDCSDK(
   // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
   // know that after the split there are no more actionable messages, and this confirms that the
   // SPLIT OP was succesfull.
-  if (split_op_id.term == checkpoint.term() && split_op_id.index == checkpoint.index()) {
+  if (!snapshot_operation && split_op_id.term == checkpoint.term() &&
+      split_op_id.index == checkpoint.index()) {
     report_tablet_split = true;
   }
 

@@ -54,11 +54,11 @@ class ScanChoices {
       DocKeyDecoder* decoder, size_t num_cols);
 
   static ScanChoicesPtr Create(
-      bool prefer_hybrid_scan, const Schema& schema, const DocQLScanSpec& doc_spec,
+      const Schema& schema, const DocQLScanSpec& doc_spec,
       const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
 
   static ScanChoicesPtr Create(
-      bool prefer_hybrid_scan, const Schema& schema, const DocPgsqlScanSpec& doc_spec,
+      const Schema& schema, const DocPgsqlScanSpec& doc_spec,
       const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
 
  protected:

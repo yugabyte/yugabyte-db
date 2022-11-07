@@ -14,7 +14,7 @@ type: docs
 
   <li >
     <a href="../django/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>

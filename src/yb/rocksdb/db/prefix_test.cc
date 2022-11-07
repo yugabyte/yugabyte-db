@@ -32,7 +32,7 @@ int main() {
 #include <iostream>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/filter_policy.h"

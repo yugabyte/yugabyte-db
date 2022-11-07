@@ -29,7 +29,7 @@
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 

@@ -44,7 +44,6 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"

@@ -115,7 +115,6 @@ func createPgClient(log logger.Logger) *pgx.Conn {
                 }
                 url = fmt.Sprintf("%s?%s", url, secureOptions)
         }
-        println("ysql connection url - " + url)
 
         log.Debugf("Initializing pgx client.")
         conn, err := pgx.Connect(context.Background(), url)
@@ -219,6 +218,9 @@ func main() {
         // GetClusterNodes - Get the nodes for a cluster
         e.GET("/api/nodes", c.GetClusterNodes)
 
+        // GetHealthCheck - Get health information about the cluster
+        e.GET("/api/health-check", c.GetClusterHealthCheck)
+
         // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
         e.GET("/api/tables", c.GetClusterTables)
 
@@ -227,6 +229,12 @@ func main() {
 
         // GetSlowQueries - Get the slow queries in a cluster
         e.GET("/api/slow_queries", c.GetSlowQueries)
+
+        // GetClusterTablets - Get list of tablets
+        e.GET("/api/tablets", c.GetClusterTablets)
+
+        // GetVersion - Get YugabyteDB version
+        e.GET("/api/version", c.GetVersion)
 
         render_htmls := templates.NewTemplate()
 

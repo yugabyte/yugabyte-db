@@ -27,7 +27,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/background_task.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status_log.h"

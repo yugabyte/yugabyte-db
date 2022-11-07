@@ -19,7 +19,6 @@ import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -30,18 +29,13 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CommonBackupInfo;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Backup.BackupCategory;
-import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -90,6 +84,7 @@ public class BackupUtil {
   public static final int UUID_LENGTH = 36;
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
+  public static final long MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS = 1800000L;
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
   public static final String YBC_BACKUP_IDENTIFIER = "ybc_backup";
   public static final String YB_CLOUD_COMMAND_TYPE = "table";
@@ -202,6 +197,18 @@ public class BackupUtil {
     }
   }
 
+  public static void validateIncrementalScheduleFrequency(
+      long frequency, long fullBackupFrequency) {
+    if (frequency < MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Minimum incremental backup schedule duration is 30 mins");
+    }
+    if (frequency >= fullBackupFrequency) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Incremental backup frequency should be lower than full backup frequency.");
+    }
+  }
+
   public static long extractBackupSize(JsonNode backupResponse) {
     long backupSize = 0L;
     JsonNode backupSizeJsonNode = backupResponse.get(BACKUP_SIZE_FIELD);
@@ -216,19 +223,8 @@ public class BackupUtil {
   public static BackupResp toBackupResp(
       Backup backup, CustomerConfigService customerConfigService) {
 
-    Boolean isStorageConfigPresent = true;
-    Boolean isUniversePresent = true;
-    try {
-      customerConfigService.getOrBadRequest(
-          backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
-    } catch (PlatformServiceException e) {
-      isStorageConfigPresent = false;
-    }
-    try {
-      Universe.getOrBadRequest(backup.universeUUID);
-    } catch (PlatformServiceException e) {
-      isUniversePresent = false;
-    }
+    Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
+    Boolean isUniversePresent = checkIfUniverseExists(backup);
     List<Backup> backupChain =
         Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
     Date lastIncrementDate = null;
@@ -661,5 +657,13 @@ public class BackupUtil {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
         .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
+  }
+
+  public static boolean checkIfStorageConfigExists(Backup backup) {
+    return CustomerConfig.get(backup.customerUUID, backup.storageConfigUUID) != null;
+  }
+
+  public static boolean checkIfUniverseExists(Backup backup) {
+    return Universe.maybeGet(backup.universeUUID).isPresent();
   }
 }
