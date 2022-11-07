@@ -27,6 +27,7 @@ import type {
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
+  VersionInfo,
 } from '../models';
 
 export interface GetClusterMetricForQuery {
@@ -579,6 +580,81 @@ export const useGetSlowQueriesQuery = <T = SlowQueryResponseSchema, Error = ApiE
   const query = useQuery<SlowQueryResponseSchema, Error, T>(
     queryKey,
     () => getSlowQueriesAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get YugabyteDB version
+ * Get YugabyteDB version
+ */
+
+export const getVersionAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<VersionInfo>(
+    {
+      url: '/version',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getVersionQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/version`,
+  pageParam,
+];
+
+
+export const useGetVersionInfiniteQuery = <T = VersionInfo, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<VersionInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getVersionQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<VersionInfo, Error, T>(
+    queryKey,
+    () => getVersionAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetVersionQuery = <T = VersionInfo, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<VersionInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getVersionQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<VersionInfo, Error, T>(
+    queryKey,
+    () => getVersionAxiosRequest(customAxiosInstance),
     queryOptions
   );
 

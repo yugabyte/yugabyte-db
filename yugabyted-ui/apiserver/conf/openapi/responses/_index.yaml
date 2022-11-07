@@ -99,3 +99,9 @@ ClusterTabletListResponse:
             $ref: '../schemas/_index.yaml#/ClusterTabletData'
         required:
           - data
+VersionInfo:
+  description: Version info for YugabyteDB
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VersionInfo'
