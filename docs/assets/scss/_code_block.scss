@@ -233,6 +233,10 @@ main {
   }
 }
 
+body .tab-content .tab-pane li .highlight {
+  margin: 20px 0;
+}
+
 @media (min-width: 992px) {
   .td-content > pre {
     max-width: 100%;
