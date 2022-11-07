@@ -145,10 +145,6 @@ public class UniverseControllerRequestBinder {
         paramsJson.remove("clusters");
       }
       T result = mergeWithUniverse(paramsJson, universe, paramsClass);
-      if (universe.isYbcEnabled()) {
-        result.installYbc = true;
-        result.enableYbc = true;
-      }
       return result;
     } catch (JsonProcessingException e) {
       throw new PlatformServiceException(
@@ -171,6 +167,10 @@ public class UniverseControllerRequestBinder {
     }
     result.universeUUID = universe.universeUUID;
     result.expectedUniverseVersion = universe.version;
+    if (universe.isYbcEnabled()) {
+      result.installYbc = true;
+      result.enableYbc = true;
+    }
     return result;
   }
 
