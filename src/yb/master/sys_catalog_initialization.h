@@ -28,7 +28,6 @@
 #include "yb/util/status_fwd.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(use_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 

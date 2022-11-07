@@ -35,11 +35,7 @@ DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
 
-DEFINE_bool(use_initial_sys_catalog_snapshot, false,
-    "DEPRECATED: use --enable_ysql instead. "
-    "Initialize sys catalog tablet from a pre-existing snapshot instead of running initdb. "
-    "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be "
-    "auto-detected.");
+DEPRECATE_FLAG(bool, use_initial_sys_catalog_snapshot, "11_2022");
 
 DEFINE_bool(enable_ysql, true,
     "Enable YSQL on cluster. This will initialize sys catalog tablet from a pre-existing snapshot "
@@ -173,13 +169,12 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
   if (env_var_value && strcmp(env_var_value, "0") == 0) {
     LOG(INFO) << "Disabling the use of initial sys catalog snapshot: env var "
               << kUseInitialSysCatalogSnapshotEnvVar << " is set to 0";
-    FLAGS_use_initial_sys_catalog_snapshot = 0;
     FLAGS_enable_ysql = 0;
   }
 
   if (FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot &&
-      (FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql)) {
+      FLAGS_enable_ysql) {
     const char* kStaticDataParentDir = "share";
     const std::string search_for_dir = JoinPathSegments(
         kStaticDataParentDir, kDefaultInitialSysCatalogSnapshotDir,
@@ -212,8 +207,6 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << FLAGS_initial_sys_catalog_snapshot_path << ", "
         << "FLAGS_create_initial_sys_catalog_snapshot="
         << FLAGS_create_initial_sys_catalog_snapshot << ", "
-        << "FLAGS_use_initial_sys_catalog_snapshot="
-        << FLAGS_use_initial_sys_catalog_snapshot << ", "
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }

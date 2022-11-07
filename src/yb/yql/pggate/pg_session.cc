@@ -53,9 +53,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
-             "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
-TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
+DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
