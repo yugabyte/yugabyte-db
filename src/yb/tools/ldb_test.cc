@@ -148,5 +148,21 @@ TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   ASSERT_NE(output.find("Keys in range: 1"), string::npos);
 }
 
+TEST_F(YBTabletUtilTest, DumpManifestFile) {
+    string output;
+  ASSERT_OK(WriteData());
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  string db_path = ASSERT_RESULT(GetTabletDbPath());
+
+  vector<string> argv = {
+    GetToolPath(kTabletUtilToolName),
+    "manifest_dump",
+    "--db=" + db_path
+  };
+
+  // Make sure LDB is not crashing
+  ASSERT_OK(Subprocess::Call(argv, &output));
+}
+
 } // namespace tools
 } // namespace yb
