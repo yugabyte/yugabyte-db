@@ -13,6 +13,12 @@ type: docs
 
 This document describes how to use triggers when performing data manipulation and definition.
 
+{{< note title="Setup" >}}
+
+Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
+
+{{< /note >}}
+
 ## Overview
 
 In YSQL, a function invoked automatically when an event associated with a table occurs is called a trigger. The event is typically caused by modification of data during `INSERT`, `UPDATE`, and `DELETE`. The even can also be caused by schema changes.

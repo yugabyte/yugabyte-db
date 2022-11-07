@@ -13,6 +13,12 @@ type: docs
 
 This section describes how to manipulate data in YugabyteDB using the YSQL `INSERT`, `UPDATE`, and `DELETE` statements.
 
+{{< note title="Setup" >}}
+
+Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
+
+{{< /note >}}
+
 ## Insert rows
 
 Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time.

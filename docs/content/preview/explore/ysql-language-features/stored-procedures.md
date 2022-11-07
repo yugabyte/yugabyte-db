@@ -13,13 +13,15 @@ type: docs
 
 This section describes how to use stored procedures to perform transactions.
 
-## Overview
+{{< note title="Setup" >}}
 
-Stored procedures, in large part, are just functions that support transactions. PostgreSQL 11 introduced stored procedures, and Yugabyte supports them as well.
+Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
+
+{{< /note >}}
 
 ## Create a stored procedure
 
-To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
+Stored procedures, in large part, are just functions that support transactions. To create a stored procedure in YSQL, use the [`CREATE PROCEDURE`](../../../api/ysql/the-sql-language/statements/ddl_create_procedure/) statement, which has the following syntax:
 
 ```sql
 CREATE [OR REPLACE] PROCEDURE procedure_name(parameter_list)
