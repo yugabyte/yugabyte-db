@@ -564,7 +564,7 @@ INSERT INTO test_temp_tab VALUES (3) RETURNING cmax;
 INSERT INTO test_temp_tab VALUES (4) RETURNING xmin;
  xmin
 ------
-   13
+    7
 (1 row)
 
 INSERT INTO test_temp_tab VALUES (5) RETURNING xmax;
@@ -641,11 +641,11 @@ SELECT cmax FROM test_temp_tab;
 SELECT xmin FROM test_temp_tab;
  xmin
 ------
-   10
-   11
-   12
-   13
-   14
+    4
+    5
+    6
+    7
+    8
 (5 rows)
 
 SELECT xmax FROM test_temp_tab;
@@ -719,7 +719,7 @@ SELECT cmax FROM test_temp_tab WHERE id = 3;
 SELECT xmin FROM test_temp_tab WHERE id = 4;
  xmin
 ------
-   13
+    7
 (1 row)
 
 SELECT xmax FROM test_temp_tab WHERE id = 5;
