@@ -37,4 +37,5 @@ models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go
 models/model_slow_query_response_ysql_query_item.go
+models/model_version_info.go
 models/model_yb_api_enum.go

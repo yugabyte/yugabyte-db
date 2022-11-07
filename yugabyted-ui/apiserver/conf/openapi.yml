@@ -237,6 +237,20 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /version:
+    get:
+      summary: Get YugabyteDB version
+      description: Get YugabyteDB version
+      tags:
+        - cluster-info
+      operationId: getVersion
+      responses:
+        '200':
+          $ref: '#/components/responses/VersionInfo'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
 components:
   schemas:
     CloudEnum:
@@ -790,6 +804,13 @@ components:
       type: array
       additionalProperties:
         $ref: '#/components/schemas/ClusterTablet'
+    VersionInfo:
+      title: YugabyteDB Version Info
+      description: YugabyteDB version info
+      type: object
+      properties:
+        version:
+          type: string
   requestBodies:
     ClusterSpec:
       description: DB Cluster to be updated
@@ -899,6 +920,12 @@ components:
                 $ref: '#/components/schemas/ClusterTabletData'
             required:
               - data
+    VersionInfo:
+      description: Version info for YugabyteDB
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionInfo'
   securitySchemes:
     BearerAuthToken:
       type: http
