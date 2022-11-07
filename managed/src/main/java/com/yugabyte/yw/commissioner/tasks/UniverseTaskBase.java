@@ -3080,8 +3080,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createDeleteBootstrapIdsTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
-    // If target universe is destroyed, ignore creating this subtask.
-    if (xClusterConfig.targetUniverseUUID != null) {
+    // If target universe is destroyed or is a K8s universe, ignore creating this subtask.
+    if (xClusterConfig.targetUniverseUUID != null
+        && !Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes)) {
       File sourceRootCertDirPath =
           Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
               .getUniverseDetails()
