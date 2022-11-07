@@ -234,7 +234,7 @@ do { \
 	if (shared) \
 	{ \
 		snprintf(filename, sizeof(filename), "global/%s", \
-				 RELCACHE_INIT_FILENAME); \
+		         RELCACHE_INIT_FILENAME); \
 	} \
 	else \
 	{ \
@@ -6432,15 +6432,6 @@ load_relcache_init_file(bool shared)
 	int			i;
 	uint64      ybc_stored_cache_version = 0;
 
-	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * MyDatabaseId isn't known yet and different databases have different
-	 * catalog versions of their own. At this time we cannot compose the
-	 * correct init file name for the to-be-resolved MyDatabaseId.
-	 */
-	if (shared && YBIsDBCatalogVersionMode())
-		return false;
-
 	RelCacheInitFileName(initfilename, shared);
 
 	fp = AllocateFile(initfilename, PG_BINARY_R);
@@ -6861,13 +6852,6 @@ write_relcache_init_file(bool shared)
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
 	int			i;
-
-	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * it will never be read in load_relcache_init_file.
-	 */
-	if (shared && YBIsDBCatalogVersionMode())
-		return;
 
 	/*
 	 * If we have already received any relcache inval events, there's no
