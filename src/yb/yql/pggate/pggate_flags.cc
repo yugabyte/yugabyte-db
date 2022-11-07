@@ -137,10 +137,3 @@ DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, f
 
 DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
                  "Fail a refresh on a matview after the creation of a new relation.");
-
-DEFINE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
-             "In per database catalog version mode, if the number of existing databases "
-             "are within this number to the maximum number of databases allowed, then "
-             "fail the create database statement.");
-TAG_FLAG(ysql_num_databases_reserved_in_db_catalog_version_mode, advanced);
-TAG_FLAG(ysql_num_databases_reserved_in_db_catalog_version_mode, hidden);

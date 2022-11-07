@@ -19,8 +19,6 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/docdb/doc_key.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -81,7 +79,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   bool log_versions = false;
   std::optional<uint32_t> db_oid;
   for (const auto& pg_req : req->pgsql_write_batch()) {
-    if (pg_req.is_ysql_catalog_change_using_protobuf()) {
+    if (pg_req.is_ysql_catalog_change()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
       if (!res.ok()) {
         context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
@@ -89,25 +87,12 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
-      if (FLAGS_TEST_enable_db_catalog_version_mode) {
-        // The contents of req->pgsql_write_batch() are freed after the next call to
-        // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
-
-        // The write op to increment the catalog version number is special and may not have
-        // set any of ysql_catalog_version, ysql_db_catalog_version, and ysql_db_oid. Therefore
-        // we need to get db oid by decoding from ybctid.
-        docdb::DocKey doc_key;
-        if (!pg_req.has_ybctid_column_value() ||
-            !doc_key.FullyDecodeFrom(pg_req.ybctid_column_value().value().binary_value()).ok() ||
-            doc_key.range_group().size() != 1) {
-          context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
-              STATUS(InternalError, "Failed to get db oid"));
+      // The contents of req->pgsql_write_batch() are freed after the next call to
+      // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
+      for (const auto& pg_req : req->pgsql_write_batch()) {
+        if (!db_oid && pg_req.has_ysql_db_oid()) {
+          db_oid = pg_req.ysql_db_oid();
         }
-
-        // We do not expect to see more than one write ops that write to the table
-        // kPgYbCatalogVersionTableId.
-        DCHECK(!db_oid);
-        db_oid = doc_key.range_group()[0].GetUInt32();
       }
     }
   }

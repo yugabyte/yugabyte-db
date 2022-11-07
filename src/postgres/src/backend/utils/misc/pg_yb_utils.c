@@ -2787,10 +2787,6 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			db_id = TemplateDbOid;
 			break;
 
-		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
-			db_id = TemplateDbOid;
-			break;
-
 		// MyDb tables
 		case AccessMethodProcedureRelationId:             // pg_amproc
 			sys_table_index_id = AccessMethodProcedureIndexId;
@@ -2841,6 +2837,10 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case CastRelationId:        switch_fallthrough(); // pg_cast
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
+
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			db_id = YbMasterCatalogVersionTableDBOid();
+			break;
 
 		default:
 		{
@@ -2922,13 +2922,4 @@ uint64_t YbGetSharedCatalogVersion()
 		? YBCGetSharedDBCatalogVersion(MyDatabaseId, &version)
 		: YBCGetSharedCatalogVersion(&version));
 	return version;
-}
-
-uint32_t YbGetNumberOfDatabases()
-{
-	Assert(YBIsDBCatalogVersionMode());
-	uint32_t num_databases = 0;
-	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
-	Assert(num_databases > 0);
-	return num_databases;
 }
