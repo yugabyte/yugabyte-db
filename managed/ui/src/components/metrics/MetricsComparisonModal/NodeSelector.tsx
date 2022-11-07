@@ -42,12 +42,12 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     selectedUniverse.universeDetails.nodeDetailsSet
   ) {
     nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.nodeName === null) {
+      if (a.cloudInfo.az === null) {
         return -1;
-      } else if (b.nodeName === null) {
+      } else if (b.cloudInfo.az === null) {
         return 1;
       } else {
-        return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
       }
     });
   }
