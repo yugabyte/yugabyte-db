@@ -96,7 +96,7 @@ public class TestReadReplica extends BaseMiniClusterTest {
       Collections.emptyMap(),
       cb -> {
         cb.perTServerFlags(perTserverFlags);
-      });
+      }, Collections.emptyMap());
     YBClient client = miniCluster.getClient();
     List<PlacementBlockPB> placementBlocksLive = new ArrayList<PlacementBlockPB>();
     for(int i = 0 ; i < 3; i++){
