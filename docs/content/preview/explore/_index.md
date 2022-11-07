@@ -37,7 +37,7 @@ Explore assumes that you have either [created an account](https://cloud.yugabyte
 
 ## Set up your environment
 
-To run the examples in explore, you'll need to create a single- or multi-node cluster.
+The examples in Explore can be run on your local machine, or in the cloud using a cluster in YugabyteDB Managed.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -59,7 +59,7 @@ To run the examples in explore, you'll need to create a single- or multi-node cl
 <div class="tab-content">
   <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
-To run Explore examples in YugabyteDB Managed, do the following:
+To run the Explore examples in YugabyteDB Managed, create a single- or multi-node cluster as follows:
 
 - Single node
 
@@ -92,7 +92,9 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
   </div>
   <div id="local" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
 
-For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) cluster management utility.
+To run the examples in Explore, you'll need to create a single- or multi-node cluster.
+
+For testing and learning YugabyteDB on your computer, use the [yugabyted](../reference/configuration/yugabyted/) cluster management utility to create and manage clusters.
 
 {{< tabpane text=true >}}
 
