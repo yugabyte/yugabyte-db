@@ -213,17 +213,19 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
     const backup: Partial<IBackup & Record<string, any>> = {
       backupType: (values['api_type'].value as unknown) as TableType,
-      storageConfigUUID: values['storage_config'].value,
-      sse: values['storage_config'].name === 'S3',
-      responseList: [
-        {
-          keyspace: values['should_rename_keyspace']
-            ? values['new_keyspace_name']
-            : values['keyspace_name'],
-          tablesList: [],
-          storageLocation: values['backup_location']
-        }
-      ]
+      commonBackupInfo: {
+        storageConfigUUID: values['storage_config'].value,
+        sse: values['storage_config'].name === 'S3',
+        responseList: [
+          {
+            keyspace: values['should_rename_keyspace']
+              ? values['new_keyspace_name']
+              : values['keyspace_name'],
+            tablesList: [],
+            storageLocation: values['backup_location']
+          }
+        ]
+      } as any
     };
     restore.mutateAsync({ backup_details: backup as any, values });
   };
