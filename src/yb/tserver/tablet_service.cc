@@ -1814,6 +1814,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       auto status = catalog_version_checker(pg_req);
       if (!status.ok()) {
         SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
+        return;
       }
     }
   }
