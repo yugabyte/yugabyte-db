@@ -11,8 +11,10 @@ const $ = window.jQuery;
  */
 function yugabyteIsElementInViewport(el) {
   // Special bonus for those using jQuery.
-  if (typeof $ === 'function' && el instanceof $) {
+  if (typeof $ === 'function' && el instanceof $ && el.length > 0) {
     el = el[0];
+  } else {
+    return true;
   }
 
   const rect = el.getBoundingClientRect();
@@ -149,6 +151,12 @@ $(document).ready(() => {
           );
         });
         container.after(button);
+        if (container.parentElement) {
+          container.parentElement.classList.add('can-be-copied');
+          if (container.children && container.children.length > 0) {
+            container.parentElement.setAttribute('data-code', container.children.length);
+          }
+        }
         let text;
         const clip = new Clipboard(button, {
           text: (trigger) => {

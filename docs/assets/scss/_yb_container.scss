@@ -20,11 +20,21 @@
     width: 100%;
     justify-content: center;
 
+    &.search-content {
+      .content-area {
+        flex-grow: 1;
+      }
+    }
+
     .content-child {
       width: 1080px;
       max-width: 100%;
       display: flex;
       min-height: 100vh;
+
+      @media (max-width: 1380px) {
+        width: 95%;
+      }
     }
   }
 
@@ -55,6 +65,10 @@
       padding: 0 0 0 11px !important;
       flex: none;
       max-width: none !important;
+
+      @media (max-width: 1380px) {
+        width: 280px;
+      }
 
       + {
         main {
@@ -137,6 +151,13 @@
         max-width: 828px;
       }
     }
+  }
+}
+
+@media (max-width: 991px) {
+  .td-content .row .col-md-6 {
+    flex: 0 0 100%;
+    max-width: 100%;
   }
 }
 

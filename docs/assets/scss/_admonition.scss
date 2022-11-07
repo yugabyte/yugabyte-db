@@ -47,7 +47,6 @@ main {
       }
 
       &::after {
-        //content: "";
         position: absolute;
         width: 3px;
         background-color: #4e5f6d;
@@ -127,60 +126,11 @@ main {
           text-transform: uppercase;
         }
       }
-
-      code {
-        /*
-        &:not([class*=language]) {
-          background-color: #f2f6ff !important;
-          box-shadow: 0 0 1px 1px #cbdbff;
-          margin: 0 3px;
-          border-radius: 4px;
-          display: inline-flex;
-          flex-direction: row;
-          align-items: flex-start;
-          padding: 1px 6px;
-          gap: 4px;
-          color: #4e5f6d !important;
-          font-style: normal;
-          font-weight: 400;
-          font-size: 13px !important;
-          line-height: 16px;
-        }
-		*/
-      }
-
-      p {
-        >code {
-          /*
-          &:not([class*=language]) {
-            background-color: #f2f6ff !important;
-            box-shadow: 0 0 1px 1px #cbdbff;
-            margin: 0 3px;
-            border-radius: 4px;
-            display: inline-flex;
-            flex-direction: row;
-            align-items: flex-start;
-            padding: 1px 6px;
-            gap: 4px;
-            color: #4e5f6d !important;
-            font-style: normal;
-            font-weight: 400;
-            font-size: 13px !important;
-            line-height: 16px;
-          }
-		  */
-        }
-      }
     }
 
     .admonition.note {
       &::before {
         background-size: 19px 20px;
-      }
-
-      code {
-        //background-color: #fff !important;
-        //box-shadow: 0 0 1px 0 #507ce1;
       }
 
       p {

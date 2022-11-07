@@ -318,7 +318,7 @@ aside.td-sidebar {
     display: flex;
     flex-flow: column;
     transition: width 0.5s linear, opacity 0.2s 0.3s linear;
-    min-width: 220px;
+    min-width: 268px;
 
     &.collapse {
       width: 0;
@@ -1222,6 +1222,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
 
 @media (max-width: 947px) and (min-width: 768px) {
   .td-main main {
+    //max-width: calc(100% - 237px) !important;
     padding-left: 1rem !important;
   }
 }

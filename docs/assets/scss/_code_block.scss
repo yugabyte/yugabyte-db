@@ -57,16 +57,6 @@ main {
       margin: 20px 0;
     }
 
-    > .highlight + pre,
-    .highlight + .highlight {
-      //margin-top: 24px;
-    }
-
-    p + pre,
-    p + .highlight {
-      //margin-top: -8px;
-    }
-
     li > p + pre,
     li > p + .highlight {
       margin-top: 16px;
@@ -160,7 +150,6 @@ main {
             border-radius: 8px;
             position: absolute;
             top: calc(100% + 4px);
-            //top:92%;
             left: 0;
             z-index: 9999999;
             width: 49px;
@@ -204,14 +193,18 @@ main {
       }
     }
 
-    pre:has(.copy) {
+    pre.can-be-copied {
       width: calc(100% + 20px);
       padding-right: 20px !important;
       max-width: none;
       min-height: 85px;
 
-      &:has(code > span:only-child) {
+      &[data-code="1"] {
         margin-bottom: -35px;
+      }
+
+      &[data-code="2"] {
+        margin-bottom: -13px;
       }
 
       &::after {
@@ -238,15 +231,6 @@ main {
       }
     }
   }
-}
-
-.highlight:has(pre>code>span:nth-child(2):last-child) {
-  margin-bottom: 6px;
-}
-
-.highlight:has(pre>code>span:nth-child(2):last-child) + .highlight,
-.highlight:has(pre>code>span:nth-child(2):last-child) + pre {
-  margin-top: 0;
 }
 
 @media (min-width: 992px) {
