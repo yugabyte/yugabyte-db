@@ -152,7 +152,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     nodeData = (
       <div className="node-picker">
         <Dropdown
-          id="node-filter-dropdown"
+          id="nodeFilterDropdown"
+          className="node-filter-dropdown"
           disabled={isDisabled}
           title={isDisabled ? "Select a specific universe to view the zones and nodes" : ""}
         >
