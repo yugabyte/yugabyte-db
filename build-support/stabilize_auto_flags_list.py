@@ -20,7 +20,7 @@ import sys
 import ruamel.yaml  # type: ignore
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
-from yb.common_util import YB_SRC_ROOT, create_temp_dir, init_logging  # noqa: E402
+from yb.common_util import YB_SRC_ROOT, create_temp_dir, init_logging, shlex_join  # noqa: E402
 
 
 def main() -> None:
@@ -32,7 +32,7 @@ def main() -> None:
         "--write-build-descriptor", build_desc_path,
         "--skip-java"
     ]
-    logging.info("Running build step:\n%s", ' '.join(build_cmd_list))
+    logging.info("Running build step:\n%s", shlex_join(build_cmd_list))
     try:
         subprocess.run(build_cmd_list, capture_output=True, check=True)
     except subprocess.CalledProcessError as e:
