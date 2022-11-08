@@ -68,13 +68,28 @@ function yugabyteResizeHeaderMenu() {
 
 /**
  * Active left navigation depending on the tabs.
- *
- * @param {object} element DOM element
  */
-function activeLeftNav(element) {
+function activeLeftNav() {
   const currentUrl = location.pathname;
   const splittedUrl = currentUrl.split('/');
+
+  let element = '';
   let leftNavLink = '';
+
+  // Open left navigation w.r.t old tab
+  if ($('.td-content .nav-tabs-yb .active').length > 0 && $('.td-content .nav-tabs-yb .active').attr('href') !== '') {
+    element = '.td-content .nav-tabs-yb li';
+  }
+
+  // Open left navigation w.r.t new style2 tab
+  if ($('.td-content .tabs-style-2 .active').length > 0 && $('.td-content .tabs-style-2 .active').attr('href') !== '') {
+    element = '.td-content .tabs-style-2 li';
+  }
+
+  // Open left navigation w.r.t new style1 tab
+  if ($('.td-content .tabs-style-1 .active').length > 0 && $('.td-content .tabs-style-1 .active').attr('href') !== '') {
+    element = '.td-content .tabs-style-1 li';
+  }
 
   $(element).each(function () {
     const tabLink = $('a', this).attr('href');
@@ -109,6 +124,14 @@ $(document).ready(() => {
 
   ((document) => {
     const $codes = document.querySelectorAll('pre');
+    const containerChanges = container => {
+      if (container.parentElement) {
+        container.parentElement.classList.add('can-be-copied');
+        if (container.children && container.children.length > 0) {
+          container.parentElement.setAttribute('data-code', container.children.length);
+        }
+      }
+    };
     const addCopyButton = element => {
       const container = element.getElementsByTagName('code')[0];
       if (!container) {
@@ -150,13 +173,9 @@ $(document).ready(() => {
             }, 1500,
           );
         });
+
         container.after(button);
-        if (container.parentElement) {
-          container.parentElement.classList.add('can-be-copied');
-          if (container.children && container.children.length > 0) {
-            container.parentElement.setAttribute('data-code', container.children.length);
-          }
-        }
+        containerChanges(container);
         let text;
         const clip = new Clipboard(button, {
           text: (trigger) => {
@@ -175,20 +194,7 @@ $(document).ready(() => {
     }
   })(document);
 
-  // Open left navigation w.r.t old tab
-  if ($('.td-content .nav-tabs-yb .active').length > 0 && $('.td-content .nav-tabs-yb .active').attr('href') !== '') {
-    activeLeftNav('.td-content .nav-tabs-yb li');
-  }
-
-  // Open left navigation w.r.t new style2 tab
-  if ($('.td-content .tabs-style-2 .active').length > 0 && $('.td-content .tabs-style-2 .active').attr('href') !== '') {
-    activeLeftNav('.td-content .tabs-style-2 li');
-  }
-
-  // Open left navigation w.r.t new style1 tab
-  if ($('.td-content .tabs-style-1 .active').length > 0 && $('.td-content .tabs-style-1 .active').attr('href') !== '') {
-    activeLeftNav('.td-content .tabs-style-1 li');
-  }
+  activeLeftNav();
 
   // Change the version dropdown text with the selected version text.
   if ($('#navbarDropdown') && $('.dropdown-menu')) {
