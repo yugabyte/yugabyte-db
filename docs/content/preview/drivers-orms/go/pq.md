@@ -225,7 +225,7 @@ Run the project `QuickStartApp.go` using the following command:
 go run QuickStartApp.go
 ```
 
-You should output similar to the following:
+You should see output similar to the following:
 
 ```output
 Created table employee
