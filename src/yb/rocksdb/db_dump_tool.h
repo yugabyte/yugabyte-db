@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include <string>
 
@@ -57,4 +56,3 @@ class DbUndumpTool {
            rocksdb::Options options = rocksdb::Options());
 };
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

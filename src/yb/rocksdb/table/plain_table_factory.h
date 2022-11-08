@@ -19,7 +19,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <memory>
 #include <string>
@@ -191,4 +190,3 @@ class PlainTableFactory : public TableFactory {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

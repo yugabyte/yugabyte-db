@@ -84,7 +84,7 @@ your make commands, like this: `PORTABLE=1 make static_lib`
     * run `brew install rocksdb`
 
 * **iOS**:
-  * Run: `TARGET_OS=IOS make static_lib`. When building the project which uses rocksdb iOS library, make sure to define two important pre-processing macros: `ROCKSDB_LITE` and `IOS_CROSS_COMPILE`.
+  * Run: `TARGET_OS=IOS make static_lib`. When building the project which uses rocksdb iOS library, make sure to define one important pre-processing macro: `IOS_CROSS_COMPILE`.
 
 * **Windows**:
   * For building with MS Visual Studio 13 you will need Update 4 installed.
