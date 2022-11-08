@@ -249,7 +249,7 @@ public class CustomerTaskController extends AuthenticatedController {
     TaskType taskType = taskInfo.getTaskType();
     LOG.info(
         "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
-    if (!Commissioner.isTaskRetryable(taskType)) {
+    if (!commissioner.isTaskRetryable(taskType)) {
       String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
