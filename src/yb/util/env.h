@@ -171,13 +171,15 @@ class Env {
  public:
   // Governs if/how the file is created.
   //
-  // enum value                      | file exists       | file does not exist
-  // --------------------------------+-------------------+--------------------
-  // CREATE_IF_NON_EXISTING_TRUNCATE | opens + truncates | creates
-  // CREATE_NON_EXISTING             | fails             | creates
-  // OPEN_EXISTING                   | opens             | fails
+  // enum value                      | file exists        | file does not exist
+  // --------------------------------+--------------------+--------------------
+  // CREATE_IF_NON_EXISTING_TRUNCATE | opens + truncates  | creates
+  // CREATE_NONBLOCK_IF_NON_EXISTING | opens (O_NONBLOCK) | creates (O_NONBLOCK)
+  // CREATE_NON_EXISTING             | fails              | creates
+  // OPEN_EXISTING                   | opens              | fails
   enum CreateMode {
     CREATE_IF_NON_EXISTING_TRUNCATE,
+    CREATE_NONBLOCK_IF_NON_EXISTING,
     CREATE_NON_EXISTING,
     OPEN_EXISTING
   };
