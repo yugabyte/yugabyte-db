@@ -4,6 +4,7 @@
     background: rgb(246, 246, 248);
     margin-top: 129px;
     height: calc(100vh - 129px);
+    scrollbar-width: thin;
 
     &::-webkit-scrollbar {
       height: 5px;

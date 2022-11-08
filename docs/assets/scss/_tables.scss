@@ -8,6 +8,10 @@ main {
       margin: 1em 0;
       width: 100%;
 
+      @media (max-width: 1199px) {
+        display: block;
+      }
+
       &.no-alter-colors {
         display: block;
         overflow-x: auto;
@@ -84,7 +88,6 @@ main {
     .td-content {
       table {
         max-width: 828px;
-        table-layout: fixed;
         margin-left: 0 !important;
         overflow: hidden;
       }

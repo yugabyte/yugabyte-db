@@ -6,8 +6,11 @@
     margin: 32px 0;
 
     li {
-      width: calc(33.3% - 8px);
       margin: 0 !important;
+
+      &:not(:nth-child(1):nth-last-child(2),:nth-child(2):nth-last-child(1),:only-child) {
+        width: calc(33.3% - 8px);
+      }
 
       @media (max-width: 1199px) {
         width: calc(50% - 8px);

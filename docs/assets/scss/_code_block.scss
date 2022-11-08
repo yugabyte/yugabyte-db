@@ -193,6 +193,14 @@ main {
       }
     }
 
+    table {
+      pre {
+        > code {
+          white-space: pre-line !important;
+        }
+      }
+    }
+
     pre.can-be-copied {
       width: calc(100% + 20px);
       padding-right: 20px !important;

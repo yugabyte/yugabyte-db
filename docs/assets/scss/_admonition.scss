@@ -82,18 +82,18 @@ main {
         left: 16px;
       }
 
-      >* {
+      >*:not(code) {
         margin: 1em 0;
 
-        &:first-child {
+        &:first-child:not(code) {
           margin: 0 !important;
         }
 
-        &:nth-child(2) {
+        &:nth-child(2):not(code) {
           margin-top: 0 !important;
         }
 
-        &:last-child {
+        &:last-child:not(code) {
           margin-bottom: 0 !important;
         }
       }

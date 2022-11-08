@@ -37,10 +37,20 @@
           }
 
           > {
+            i {
+              width: 24px;
+              height: 24px;
+              font-size: 24px;
+              margin: 0 10px 0 0;
+              text-align: center;
+            }
+
             img {
               border: none;
-              margin: 0 5px 0 0;
+              margin: 0 10px 0 0;
               border-radius: 0;
+              width: 24px;
+              height: 24px;
             }
 
             .fa-icon,
@@ -82,6 +92,14 @@
 
           a {
             > {
+              img,
+              i {
+                margin-right: 10px;
+                width: 16px;
+                height: 16px;
+                font-size: 16px;
+              }
+
               i.fa,
               .fa-icon,
               i.fas,
@@ -172,6 +190,7 @@
 
 .tab-content .tab-pane {
   max-width: 100%;
+  border: 0;
 
   pre {
     border: none;
