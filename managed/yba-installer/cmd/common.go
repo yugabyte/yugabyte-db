@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 )
 
@@ -356,17 +357,24 @@ func (com Common) extractPlatformSupportPackageAndYugabundle(vers string) {
 		LogError("Error in starting the File Extraction process.")
 	}
 
-	Untar(rExtract1, INSTALL_VERSION_DIR)
+	err := tar.Untar(rExtract1, INSTALL_VERSION_DIR, tar.WithMaxUntarSize(-1))
+	if err != nil {
+		LogError(fmt.Sprintf("failed to extract file %s, error: %s", path0, err.Error()))
+	}
 
 	path1 := INSTALL_VERSION_DIR + "/yugabyte-" + vers +
 		"/yugabundle_support-" + vers + "-centos-x86_64.tar.gz"
 
 	rExtract2, errExtract2 := os.Open(path1)
 	if errExtract2 != nil {
+		fmt.Println(errExtract2.Error())
 		LogError("Error in starting the File Extraction process.")
 	}
 
-	Untar(rExtract2, INSTALL_VERSION_DIR)
+	err = tar.Untar(rExtract2, INSTALL_VERSION_DIR, tar.WithMaxUntarSize(-1))
+	if err != nil {
+		LogError(fmt.Sprintf("failed to extract file %s, error: %s", path1, err.Error()))
+	}
 
 	LogDebug(path1 + " successfully extracted.")
 
@@ -386,8 +394,12 @@ func (com Common) renameThirdPartyDependencies() {
 	//Remove any thirdparty directories if they already exist, so
 	//that the install action is idempotent.
 	os.RemoveAll(INSTALL_VERSION_DIR + "/thirdparty")
+	// TODO: make path a variable here
 	rExtract, _ := os.Open(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz")
-	Untar(rExtract, INSTALL_VERSION_DIR)
+	if err := tar.Untar(rExtract, INSTALL_VERSION_DIR, tar.WithMaxUntarSize(-1)); err != nil {
+		LogError(fmt.Sprintf("failed to extract file %s, error: %s",
+			INSTALL_VERSION_DIR+"/packages/thirdparty-deps.tar.gz", err.Error()))
+	}
 	LogDebug(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz successfully extracted.")
 	MoveFileGolang(INSTALL_VERSION_DIR+"/thirdparty", INSTALL_VERSION_DIR+"/third-party")
 	ExecuteBashCommand("bash", []string{"-c",
