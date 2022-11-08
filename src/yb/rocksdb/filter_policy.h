@@ -215,4 +215,3 @@ extern const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                                     double error_rate,
                                                     Logger* logger);
 }  // namespace rocksdb
-

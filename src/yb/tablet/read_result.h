@@ -33,4 +33,3 @@ struct PgsqlReadRequestResult {
 
 } // namespace tablet
 } // namespace yb
-

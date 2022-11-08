@@ -161,4 +161,3 @@ class PgDmlRead : public PgDml {
 
 }  // namespace pggate
 }  // namespace yb
-

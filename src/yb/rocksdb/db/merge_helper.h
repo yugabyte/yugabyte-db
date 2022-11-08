@@ -176,4 +176,3 @@ class MergeOutputIterator {
 };
 
 } // namespace rocksdb
-

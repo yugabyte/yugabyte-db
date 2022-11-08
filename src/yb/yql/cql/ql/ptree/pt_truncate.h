@@ -83,4 +83,3 @@ class PTTruncateStmt : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

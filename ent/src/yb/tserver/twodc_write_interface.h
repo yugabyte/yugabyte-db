@@ -58,5 +58,3 @@ void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-
-

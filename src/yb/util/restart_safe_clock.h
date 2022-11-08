@@ -121,4 +121,3 @@ class RestartSafeCoarseMonoClock {
 };
 
 } // namespace yb
-

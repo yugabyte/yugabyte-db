@@ -65,4 +65,3 @@ void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
 
 } // namespace tools
 } // namespace yb
-

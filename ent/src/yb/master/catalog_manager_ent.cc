@@ -2165,13 +2165,24 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         // For YSQL, the table must be created via external call. Therefore, continue the search for
         // the table, this time checking for name matches rather than id matches.
 
-        // TODO(alex): Handle tablegroups in #11632
         if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
           // For the parent colocated table we need to generate the new_table_id ourselves
           // since the names will not match.
           // For normal colocated tables, we are still able to follow the normal table flow, so no
           // need to generate the new_table_id ourselves.
           table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
+          is_parent_colocated_table = true;
+        } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
+          // Since we preserve tablegroup oid in ysql_dump, for the parent tablegroup table, if we
+          // didn't find a match by id in the previous step, then we need to generate the
+          // new_table_id ourselves because the namespace id of the namespace where this tablegroup
+          // was created changes.
+          uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
+          uint32_t tablegroup_oid =
+              VERIFY_RESULT(GetPgsqlTablegroupOid(
+                  GetTablegroupIdFromParentTableId(table_data->old_table_id)));
+          table_data->new_table_id =
+              GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {
@@ -3993,6 +4004,14 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         LOG(WARNING) << "Encountered error while trying to update sys_catalog of stream: "
                      << stream->id() << ", with table: " << table_id;
         continue;
+      }
+
+      // Add the table/ stream pair details to 'cdcsdk_tables_to_stream_map_', so that parent
+      // tablets on which tablet split is successful will be hidden rather than deleted straight
+      // away, as needed.
+      {
+        LockGuard lock(mutex_);
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->id());
       }
 
       stream_lock.Commit();

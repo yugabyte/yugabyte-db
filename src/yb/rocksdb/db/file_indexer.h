@@ -155,4 +155,3 @@ class FileIndexer {
 };
 
 }  // namespace rocksdb
-

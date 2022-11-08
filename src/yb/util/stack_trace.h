@@ -151,4 +151,3 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
 Status SetStackTraceSignal(int signum);
 
 }  // namespace yb
-

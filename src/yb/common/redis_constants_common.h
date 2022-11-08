@@ -21,4 +21,3 @@ static constexpr const char* const kRedisKeyspaceName = "system_redis";
 
 }  // namespace common
 }  // namespace yb
-

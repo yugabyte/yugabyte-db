@@ -380,4 +380,3 @@ CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
                                    const bool enable_compression = true);
 
 }  // namespace rocksdb
-

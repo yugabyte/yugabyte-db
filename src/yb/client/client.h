@@ -230,16 +230,16 @@ class YBClient {
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress.
   Status IsCreateTableInProgress(const YBTableName& table_name,
-                                         bool *create_in_progress);
+                                 bool *create_in_progress);
 
   // Wait for create table to finish.
   Status WaitForCreateTableToFinish(const YBTableName& table_name);
   Status WaitForCreateTableToFinish(const YBTableName& table_name,
-                                            const CoarseTimePoint& deadline);
+                                    const CoarseTimePoint& deadline);
 
   Status WaitForCreateTableToFinish(const std::string& table_id);
   Status WaitForCreateTableToFinish(const std::string& table_id,
-                                            const CoarseTimePoint& deadline);
+                                    const CoarseTimePoint& deadline);
 
   // Wait for delete table to finish.
   Status WaitForDeleteTableToFinish(const std::string& table_id);
@@ -253,7 +253,7 @@ class YBClient {
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   Status BackfillIndex(const TableId& table_id, bool wait = true,
-                               CoarseTimePoint deadline = CoarseTimePoint());
+                       CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -264,45 +264,45 @@ class YBClient {
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteIndexTable(const YBTableName& table_name,
-                                  YBTableName* indexed_table_name = nullptr,
-                                  bool wait = true);
+                          YBTableName* indexed_table_name = nullptr,
+                          bool wait = true);
 
   Status DeleteIndexTable(const std::string& table_id,
-                                  YBTableName* indexed_table_name = nullptr,
-                                  bool wait = true,
-                                  CoarseTimePoint deadline = CoarseTimePoint());
+                          YBTableName* indexed_table_name = nullptr,
+                          bool wait = true,
+                          CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
   Status FlushTables(const std::vector<TableId>& table_ids,
-                             bool add_indexes,
-                             int timeout_secs,
-                             bool is_compaction);
+                     bool add_indexes,
+                     int timeout_secs,
+                     bool is_compaction);
   Status FlushTables(const std::vector<YBTableName>& table_names,
-                             bool add_indexes,
-                             int timeout_secs,
-                             bool is_compaction);
+                     bool add_indexes,
+                     int timeout_secs,
+                     bool is_compaction);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   Status IsAlterTableInProgress(const YBTableName& table_name,
-                                        const std::string& table_id,
-                                        bool *alter_in_progress);
+                                const std::string& table_id,
+                                bool *alter_in_progress);
 
   Status GetTableSchema(const YBTableName& table_name,
-                                YBSchema* schema,
-                                PartitionSchema* partition_schema);
+                        YBSchema* schema,
+                        PartitionSchema* partition_schema);
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
-                                    StatusCallback callback);
+                            StatusCallback callback);
 
   Status GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
-                                         std::shared_ptr<std::vector<YBTableInfo>> info,
-                                         StatusCallback callback);
+                                 std::shared_ptr<std::vector<YBTableInfo>> info,
+                                 StatusCallback callback);
 
   Status GetColocatedTabletSchemaByParentTableId(
       const TableId& parent_colocated_table_id,
@@ -344,65 +344,65 @@ class YBClient {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   Status CreateNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type = boost::none,
-                                 const std::string& creator_role_name = "",
-                                 const std::string& namespace_id = "",
-                                 const std::string& source_namespace_id = "",
-                                 const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 const TransactionMetadata* txn = nullptr,
-                                 const bool colocated = false,
-                                 CoarseTimePoint deadline = CoarseTimePoint());
+                         const boost::optional<YQLDatabase>& database_type = boost::none,
+                         const std::string& creator_role_name = "",
+                         const std::string& namespace_id = "",
+                         const std::string& source_namespace_id = "",
+                         const boost::optional<uint32_t>& next_pg_oid = boost::none,
+                         const TransactionMetadata* txn = nullptr,
+                         const bool colocated = false,
+                         CoarseTimePoint deadline = CoarseTimePoint());
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   Status CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            const boost::optional<YQLDatabase>& database_type =
-                                            boost::none,
-                                            const std::string& creator_role_name = "",
-                                            const std::string& namespace_id = "",
-                                            const std::string& source_namespace_id = "",
-                                            const boost::optional<uint32_t>& next_pg_oid =
-                                            boost::none,
-                                            const bool colocated = false);
+                                    const boost::optional<YQLDatabase>& database_type =
+                                    boost::none,
+                                    const std::string& creator_role_name = "",
+                                    const std::string& namespace_id = "",
+                                    const std::string& source_namespace_id = "",
+                                    const boost::optional<uint32_t>& next_pg_oid =
+                                    boost::none,
+                                    const bool colocated = false);
 
   // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
   Status IsCreateNamespaceInProgress(const std::string& namespace_name,
-                                             const boost::optional<YQLDatabase>& database_type,
-                                             const std::string& namespace_id,
-                                             bool *create_in_progress);
+                                     const boost::optional<YQLDatabase>& database_type,
+                                     const std::string& namespace_id,
+                                     bool *create_in_progress);
 
   // Delete namespace with the given name.
   Status DeleteNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type = boost::none,
-                                 const std::string& namespace_id = "",
-                                 CoarseTimePoint deadline = CoarseTimePoint());
+                         const boost::optional<YQLDatabase>& database_type = boost::none,
+                         const std::string& namespace_id = "",
+                         CoarseTimePoint deadline = CoarseTimePoint());
 
   // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
   Status IsDeleteNamespaceInProgress(const std::string& namespace_name,
-                                             const boost::optional<YQLDatabase>& database_type,
-                                             const std::string& namespace_id,
-                                             bool *delete_in_progress);
+                                     const boost::optional<YQLDatabase>& database_type,
+                                     const std::string& namespace_id,
+                                     bool *delete_in_progress);
 
   YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
                                           const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   Status ReservePgsqlOids(const std::string& namespace_id,
-                                  uint32_t next_oid, uint32_t count,
-                                  uint32_t* begin_oid, uint32_t* end_oid);
+                          uint32_t next_oid, uint32_t count,
+                          uint32_t* begin_oid, uint32_t* end_oid);
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
   // Grant permission with given arguments.
   Status GrantRevokePermission(GrantRevokeStatementType statement_type,
-                                       const PermissionType& permission,
-                                       const ResourceType& resource_type,
-                                       const std::string& canonical_resource,
-                                       const char* resource_name,
-                                       const char* namespace_name,
-                                       const std::string& role_name);
+                               const PermissionType& permission,
+                               const ResourceType& resource_type,
+                               const std::string& canonical_resource,
+                               const char* resource_name,
+                               const char* namespace_name,
+                               const std::string& role_name);
 
   // List all namespace identifiers.
   Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
@@ -411,9 +411,9 @@ class YBClient {
 
   // Get namespace information.
   Status GetNamespaceInfo(const std::string& namespace_id,
-                                  const std::string& namespace_name,
-                                  const boost::optional<YQLDatabase>& database_type,
-                                  master::GetNamespaceInfoResponsePB* ret);
+                          const std::string& namespace_name,
+                          const boost::optional<YQLDatabase>& database_type,
+                          master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -423,9 +423,9 @@ class YBClient {
                                  const boost::optional<YQLDatabase>& database_type = boost::none);
 
   Status CreateTablegroup(const std::string& namespace_name,
-                                  const std::string& namespace_id,
-                                  const std::string& tablegroup_id,
-                                  const std::string& tablespace_id);
+                          const std::string& namespace_id,
+                          const std::string& tablegroup_id,
+                          const std::string& tablespace_id);
 
   Status DeleteTablegroup(const std::string& tablegroup_id);
 
@@ -439,16 +439,16 @@ class YBClient {
   // Authentication and Authorization
   // Create a new role.
   Status CreateRole(const RoleName& role_name,
-                            const std::string& salted_hash,
-                            const bool login, const bool superuser,
-                            const RoleName& creator_role_name);
+                    const std::string& salted_hash,
+                    const bool login, const bool superuser,
+                    const RoleName& creator_role_name);
 
   // Alter an existing role.
   Status AlterRole(const RoleName& role_name,
-                           const boost::optional<std::string>& salted_hash,
-                           const boost::optional<bool> login,
-                           const boost::optional<bool> superuser,
-                           const RoleName& current_role_name);
+                   const boost::optional<std::string>& salted_hash,
+                   const boost::optional<bool> login,
+                   const boost::optional<bool> superuser,
+                   const RoleName& current_role_name);
 
   // Delete a role.
   Status DeleteRole(const std::string& role_name, const std::string& current_role_name);
@@ -463,8 +463,8 @@ class YBClient {
 
   // Grants a role to another role, or revokes a role from another role.
   Status GrantRevokeRole(GrantRevokeStatementType statement_type,
-                                 const std::string& granted_role_name,
-                                 const std::string& recipient_role_name);
+                         const std::string& granted_role_name,
+                         const std::string& recipient_role_name);
 
   // Get all the roles' permissions from the master only if the master's permissions version is
   // greater than permissions_cache->version().s
@@ -474,17 +474,17 @@ class YBClient {
 
   // Create a new (user-defined) type.
   Status CreateUDType(const std::string &namespace_name,
-                              const std::string &type_name,
-                              const std::vector<std::string> &field_names,
-                              const std::vector<std::shared_ptr<QLType>> &field_types);
+                      const std::string &type_name,
+                      const std::vector<std::string> &field_names,
+                      const std::vector<std::shared_ptr<QLType>> &field_types);
 
   // Delete a (user-defined) type by name.
   Status DeleteUDType(const std::string &namespace_name, const std::string &type_name);
 
   // Retrieve a (user-defined) type by name.
   Status GetUDType(const std::string &namespace_name,
-                           const std::string &type_name,
-                           std::shared_ptr<QLType> *ql_type);
+                   const std::string &type_name,
+                   std::shared_ptr<QLType> *ql_type);
 
   // CDC Stream related methods.
 
@@ -501,14 +501,14 @@ class YBClient {
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
-                                 bool force_delete = false,
-                                 bool ignore_errors = false,
-                                 master::DeleteCDCStreamResponsePB* resp = nullptr);
+                         bool force_delete = false,
+                         bool ignore_errors = false,
+                         master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
   Status DeleteCDCStream(const CDCStreamId& stream_id,
-                                 bool force_delete = false,
-                                 bool ignore_errors = false);
+                         bool force_delete = false,
+                         bool ignore_errors = false);
 
   void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 
@@ -524,9 +524,9 @@ class YBClient {
 
   // Retrieve a CDC stream.
   Status GetCDCStream(const CDCStreamId &stream_id,
-                              NamespaceId* ns_id,
-                              std::vector<TableId>* table_ids,
-                              std::unordered_map<std::string, std::string>* options);
+                      NamespaceId* ns_id,
+                      std::vector<TableId>* table_ids,
+                      std::unordered_map<std::string, std::string>* options);
 
   void GetCDCStream(const CDCStreamId& stream_id,
                     std::shared_ptr<TableId> table_id,
@@ -544,8 +544,8 @@ class YBClient {
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                               const TableId& table_id,
-                                               const master::ProducerSplitTabletInfoPB& split_info);
+                                       const TableId& table_id,
+                                       const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(const std::string& producer_id,
@@ -626,7 +626,7 @@ class YBClient {
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   Status GetTabletLocation(const TabletId& tablet_id,
-                                   master::TabletLocationsPB* tablet_location);
+                           master::TabletLocationsPB* tablet_location);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
@@ -664,7 +664,7 @@ class YBClient {
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const YBTableName& table_name, YBTablePtr* table);
   Status OpenTable(const TableId& table_id, YBTablePtr* table,
-                           master::GetTableSchemaResponsePB* resp = nullptr);
+                   master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
   Result<YBTablePtr> OpenTable(const YBTableName& name);

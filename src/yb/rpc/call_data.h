@@ -69,4 +69,3 @@ struct CallData {
 
 } // namespace rpc
 } // namespace yb
-

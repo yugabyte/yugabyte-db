@@ -189,4 +189,3 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
 }  // namespace internal
 }  // namespace client
 }  // namespace yb
-

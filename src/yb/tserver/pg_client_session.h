@@ -32,7 +32,6 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-#include "yb/gutil/casts.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -40,8 +39,6 @@
 #include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/locks.h"
-
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 class ConsistentReadPoint;
@@ -129,30 +126,6 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   Status UpdateReadPointForXClusterConsistentReads(
       const PgPerformOptionsPB& options, ConsistentReadPoint* read_point);
 
-  template <class InRequestPB, class OutRequestPB>
-  Status SetCatalogVersion(const InRequestPB& in_req, OutRequestPB* out_req) const {
-    // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
-    // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
-    // That's why we must use in_req as the source of truth. Unlike the older version google
-    // protobuf, this protobuf of in_req (google proto3) does not have has_ysql_catalog_version()
-    // and has_ysql_db_catalog_version() member functions so we use invalid version 0 as an
-    // alternative.
-    // For now we either use global catalog version or db catalog version but not both.
-    // So it is an error if both are set.
-    // It is possible that neither is set during initdb.
-    SCHECK(in_req.ysql_catalog_version() == 0 || in_req.ysql_db_catalog_version() == 0,
-           InvalidArgument, "Wrong catalog versions: $0 and $1",
-           in_req.ysql_catalog_version(), in_req.ysql_db_catalog_version());
-    if (in_req.ysql_db_catalog_version()) {
-      CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
-      out_req->set_ysql_db_catalog_version(in_req.ysql_db_catalog_version());
-      out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
-    } else if (in_req.ysql_catalog_version()) {
-      out_req->set_ysql_catalog_version(in_req.ysql_catalog_version());
-    }
-    return Status::OK();
-  }
-
   struct SessionData {
     client::YBSessionPtr session;
     client::YBTransactionPtr transaction;
@@ -174,4 +147,3 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
 }  // namespace tserver
 }  // namespace yb
-

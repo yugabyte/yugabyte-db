@@ -84,4 +84,3 @@ extern const unsigned char kAsciiToLower[256];
 static inline char ascii_tolower(unsigned char c) { return kAsciiToLower[c]; }
 extern const unsigned char kAsciiToUpper[256];
 static inline char ascii_toupper(unsigned char c) { return kAsciiToUpper[c]; }
-

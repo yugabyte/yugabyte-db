@@ -68,4 +68,3 @@
 #define IOSTATS_TIMER_GUARD(metric)
 
 #endif  // IOS_CROSS_COMPILE
-

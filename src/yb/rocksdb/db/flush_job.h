@@ -117,4 +117,3 @@ class FlushJob {
 };
 
 }  // namespace rocksdb
-

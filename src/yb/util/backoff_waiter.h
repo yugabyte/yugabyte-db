@@ -156,4 +156,3 @@ Status LoggedWaitFor(
     MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
 
 } // namespace yb
-

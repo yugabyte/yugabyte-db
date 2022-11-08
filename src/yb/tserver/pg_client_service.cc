@@ -370,14 +370,7 @@ class PgClientServiceImpl::Impl {
       PgGetTserverCatalogVersionInfoResponsePB* resp,
       rpc::RpcContext* context) {
     GetTserverCatalogVersionInfoResponsePB info;
-    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(req.size_only(), &info));
-    if (req.size_only()) {
-      // We only ask for the size of catalog version map in tserver and should not need to
-      // populate any entries.
-      DCHECK_EQ(info.entries_size(), 0);
-      resp->set_num_entries(info.num_entries());
-      return Status::OK();
-    }
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(&info));
     resp->mutable_entries()->Reserve(info.entries_size());
     for (const auto& src : info.entries()) {
       auto* dst = resp->add_entries();

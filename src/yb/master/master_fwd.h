@@ -140,4 +140,3 @@ class CatalogManager;
 
 } // namespace master
 } // namespace yb
-

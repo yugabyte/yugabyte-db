@@ -58,4 +58,3 @@ inline BoundType UpperBound(bool exclusive) {
 
 } // namespace docdb
 } // namespace yb
-

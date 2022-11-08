@@ -435,4 +435,3 @@ bool is_heap(RandomAccessIterator begin,
 
 }  // namespace gtl
 }  // namespace util
-

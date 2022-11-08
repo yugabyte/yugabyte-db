@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METADATA_H
-#define YB_TABLET_TABLET_METADATA_H
 
 #pragma once
 
@@ -560,7 +558,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Update state of metadata to that of the given superblock PB.
   Status LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
-                                    bool local_superblock);
+                            bool local_superblock);
 
   Status ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
 
@@ -655,5 +653,3 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
 } // namespace tablet
 } // namespace yb
-
-#endif /* YB_TABLET_TABLET_METADATA_H */

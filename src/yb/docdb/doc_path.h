@@ -104,4 +104,3 @@ inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {
 
 }  // namespace docdb
 }  // namespace yb
-

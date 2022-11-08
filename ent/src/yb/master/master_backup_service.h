@@ -43,4 +43,3 @@ class MasterBackupServiceImpl : public MasterBackupIf,
 
 } // namespace master
 } // namespace yb
-

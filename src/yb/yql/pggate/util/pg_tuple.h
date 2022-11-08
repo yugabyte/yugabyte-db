@@ -52,4 +52,3 @@ class PgTuple {
 
 }  // namespace pggate
 }  // namespace yb
-

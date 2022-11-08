@@ -20,18 +20,26 @@
     font-size: 13px;
   }
 
-  .dropdown-menu .active a {
-    color: #2B59C3;
-  }
-
-  #customer-runtime-config-dropdown,
-  #universe-runtime-config-dropdown,
-  #provider-runtime-config-dropdown {
+  .customer-runtime-config-dropdown,
+  .universe-runtime-config-dropdown,
+  .provider-runtime-config-dropdown {
     width: 180px;
     background-color: #fff;
-    border: 1px solid #E5E5E9;
-    border-style: solid;
-    height: 42px;
+
+    .dropdown-menu .active a {
+      color: #2B59C3;
+    }
+
+    .dropdown-toggle {
+      width: 100%;
+      border-radius: 8px;
+      height: 42px;
+    }
+
+    .dropdown-menu {
+      max-height: 500px;
+      overflow-y: scroll;
+    }
 
     .caret {
       float: right;

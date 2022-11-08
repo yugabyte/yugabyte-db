@@ -55,16 +55,16 @@ class YBPartitionGenerator {
   // object where we first have the hash keys, then the range keys and finally the regular
   // columns of the table.
   Status LookupTabletId(const std::string &row,
-                                std::string *tablet_id,
-                                std::string* partition_key);
+                        std::string *tablet_id,
+                        std::string* partition_key);
   Status LookupTabletId(const std::string &row,
-                                const std::set<int>& skipped_cols,
-                                std::string *tablet_id,
-                                std::string* partition_key);
+                        const std::set<int>& skipped_cols,
+                        std::string *tablet_id,
+                        std::string* partition_key);
   Status LookupTabletIdWithTokenizer(const CsvTokenizer& tokenizer,
-                                             const std::set<int>& skipped_cols,
-                                             std::string *tablet_id,
-                                             std::string* partition_key);
+                                     const std::set<int>& skipped_cols,
+                                     std::string *tablet_id,
+                                     std::string* partition_key);
 
  private:
   Status BuildTabletMap(

@@ -67,4 +67,3 @@ typedef StatusErrorCodeImpl<TabletServerDelayTag> TabletServerDelay;
 
 } // namespace tserver
 } // namespace yb
-

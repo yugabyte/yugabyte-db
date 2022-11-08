@@ -248,4 +248,3 @@ class TransactionParticipant : public TransactionStatusManager {
 
 } // namespace tablet
 } // namespace yb
-

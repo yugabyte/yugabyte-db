@@ -238,4 +238,3 @@ inline void EncodeThreeSharedPartsSizes(
 }
 
 }  // namespace rocksdb
-

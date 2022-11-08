@@ -47,4 +47,3 @@ using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
 
 }  // namespace log
 }  // namespace yb
-

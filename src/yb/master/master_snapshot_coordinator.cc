@@ -1217,6 +1217,7 @@ class MasterSnapshotCoordinator::Impl {
           // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
           if (!table_info_result.ok()) {
             LOG(WARNING) << "Table " << table_id << " does not exist";
+            continue;
           }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }

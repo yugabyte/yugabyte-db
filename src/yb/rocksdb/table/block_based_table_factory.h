@@ -96,4 +96,3 @@ inline const char* ToBlockBasedTablePropertyValue(bool value) {
 }
 
 }  // namespace rocksdb
-

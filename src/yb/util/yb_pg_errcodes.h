@@ -387,4 +387,3 @@ inline std::string ToString(YBPgErrorCode code) {
 }
 
 }  // namespace yb
-

@@ -43,4 +43,3 @@ class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvid
 
 } // namespace tserver
 } // namespace yb
-

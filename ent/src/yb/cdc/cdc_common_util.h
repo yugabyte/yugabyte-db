@@ -99,4 +99,3 @@ Result<TxnStatusMap> BuildTxnStatusMap(
 
 }  // namespace cdc
 }  // namespace yb
-

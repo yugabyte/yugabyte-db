@@ -180,4 +180,3 @@ Status BootstrapTablet(
 
 }  // namespace tablet
 }  // namespace yb
-

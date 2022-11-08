@@ -99,4 +99,3 @@ extern ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     bool prefix_same_as_start = false, bool pin_data = false);
 
 }  // namespace rocksdb
-

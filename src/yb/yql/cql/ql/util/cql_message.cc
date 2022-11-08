@@ -68,8 +68,8 @@ constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
 Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
-                                                                 const size_t pos,
-                                                                 const Value** value) const {
+                                                         const size_t pos,
+                                                         const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {

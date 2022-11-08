@@ -76,4 +76,3 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
 
 } // namespace encryption
 } // namespace yb
-

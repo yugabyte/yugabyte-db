@@ -183,4 +183,3 @@ class CompactionJob {
 };
 
 }  // namespace rocksdb
-

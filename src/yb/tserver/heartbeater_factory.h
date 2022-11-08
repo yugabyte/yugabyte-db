@@ -25,4 +25,3 @@ std::unique_ptr<Heartbeater> CreateHeartbeater(
 
 } // namespace tserver
 } // namespace yb
-

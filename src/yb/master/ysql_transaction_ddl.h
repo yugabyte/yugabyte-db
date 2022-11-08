@@ -66,4 +66,3 @@ class YsqlTransactionDdl {
 
 }  // namespace master
 }  // namespace yb
-

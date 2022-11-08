@@ -101,4 +101,3 @@ Status GetChangesForXCluster(const std::string& stream_id,
                              const CoarseTimePoint deadline = CoarseTimePoint::max());
 }  // namespace cdc
 }  // namespace yb
-

@@ -87,4 +87,3 @@ YB_STRONGLY_TYPED_BOOL(PreElection);
 } // namespace consensus
 
 } // namespace yb
-

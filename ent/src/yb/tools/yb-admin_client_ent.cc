@@ -1619,7 +1619,7 @@ Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
 }
 
 Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
-                                                                 bool is_enabled) {
+                                                         bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
   req.set_producer_id(producer_id);

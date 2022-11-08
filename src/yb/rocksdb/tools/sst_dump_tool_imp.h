@@ -95,4 +95,3 @@ class SstFileReader {
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-

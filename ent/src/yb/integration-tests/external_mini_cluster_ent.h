@@ -29,4 +29,3 @@ void StartSecure(
   const std::vector<std::string>& master_flags = std::vector<std::string>());
 
 } // namespace yb
-

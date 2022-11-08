@@ -167,7 +167,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   Reactor* reactor() const { return reactor_; }
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req,
-                        RpcConnectionPB* resp);
+                RpcConnectionPB* resp);
 
   // Do appropriate actions after adding outbound call.
   void OutboundQueued();

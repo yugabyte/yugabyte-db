@@ -109,4 +109,3 @@ std::string DebugIntentKeyToString(Slice intent_key);
 
 } // namespace docdb
 } // namespace yb
-

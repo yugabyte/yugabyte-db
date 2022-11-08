@@ -56,4 +56,3 @@ using port::closedir;
 }  // namespace rocksdb
 
 #endif  // OS_WIN
-

@@ -115,4 +115,3 @@ class FilteringIterator : public InternalIterator {
 };
 
 } // namespace rocksdb
-

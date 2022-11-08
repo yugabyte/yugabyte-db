@@ -136,4 +136,3 @@ class QLRowBlock {
 };
 
 } // namespace yb
-

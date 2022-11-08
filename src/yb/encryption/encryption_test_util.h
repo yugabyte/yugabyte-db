@@ -54,4 +54,3 @@ void TestSequentialReads(Readable* file, const Slice& data) {
 
 } // namespace encryption
 } // namespace yb
-

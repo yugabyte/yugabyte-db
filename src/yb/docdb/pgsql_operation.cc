@@ -96,8 +96,8 @@ namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
 Status CreateProjection(const Schema& schema,
-                                const PgsqlColumnRefsPB& column_refs,
-                                Schema* projection) {
+                        const PgsqlColumnRefsPB& column_refs,
+                        Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;

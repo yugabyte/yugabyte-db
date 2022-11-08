@@ -22,4 +22,3 @@ class ClusterAdminClient;
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
-

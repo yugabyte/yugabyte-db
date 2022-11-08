@@ -79,4 +79,3 @@ class DocWriteBatchCache {
 
 }  // namespace docdb
 }  // namespace yb
-

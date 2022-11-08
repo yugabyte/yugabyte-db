@@ -117,4 +117,3 @@ class RemoteBootstrapSessionTest : public YBTabletTest {
 
 }  // namespace tserver
 }  // namespace yb
-

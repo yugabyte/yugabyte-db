@@ -38,4 +38,3 @@ struct TableProperties;
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 } // namespace rocksdb
-
