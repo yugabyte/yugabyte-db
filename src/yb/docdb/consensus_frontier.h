@@ -147,4 +147,3 @@ void AddTableSchemaVersion(
 
 } // namespace docdb
 } // namespace yb
-

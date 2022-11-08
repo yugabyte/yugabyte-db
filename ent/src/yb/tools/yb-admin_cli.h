@@ -38,4 +38,3 @@ class ClusterAdminCli : public yb::tools::ClusterAdminCli {
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
-

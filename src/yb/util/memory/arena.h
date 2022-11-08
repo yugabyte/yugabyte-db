@@ -543,4 +543,3 @@ template<class Traits>
 void* operator new(size_t bytes, yb::internal::ArenaBase<Traits>* arena) noexcept {
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
-

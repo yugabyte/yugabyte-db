@@ -55,4 +55,3 @@ extern symbol * slice_to(struct SN_env * z, symbol * p);
 extern symbol * assign_to(struct SN_env * z, symbol * p);
 
 extern void debug(struct SN_env * z, int number, int line_count);
-

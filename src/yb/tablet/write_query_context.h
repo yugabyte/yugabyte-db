@@ -31,4 +31,3 @@ class WriteQueryContext {
 
 }  // namespace tablet
 }  // namespace yb
-

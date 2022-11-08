@@ -48,4 +48,3 @@ class StronglyTypedString {
 };
 
 }  // namespace yb
-

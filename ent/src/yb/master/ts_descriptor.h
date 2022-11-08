@@ -68,4 +68,3 @@ class TSDescriptor : public yb::master::TSDescriptor {
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-

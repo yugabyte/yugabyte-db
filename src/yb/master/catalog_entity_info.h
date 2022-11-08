@@ -991,4 +991,3 @@ class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTim
 
 }  // namespace master
 }  // namespace yb
-

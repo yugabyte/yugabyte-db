@@ -197,4 +197,3 @@ class CDCSDKTestBase : public YBTest {
 } // namespace enterprise
 } // namespace cdc
 } // namespace yb
-

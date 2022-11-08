@@ -63,7 +63,8 @@ export const ProviderRuntimeConfig: FC<ProviderRuntimeConfigProps> = ({
         <span className="provider-runtime-config-container__label"> {"Select Provider:"}</span>
         &nbsp;&nbsp;
         <Dropdown
-          id="provider-runtime-config-dropdown"
+          id="providerRuntimeConfigDropdown"
+          className="provider-runtime-config-dropdown"
         >
           <Dropdown.Toggle>
             <span className="provider-config-dropdown-value">{providerDropdownValue}</span>

@@ -888,3 +888,27 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
     }
     return ctx.JSON(http.StatusOK, tabletListResponse)
 }
+
+// GetVersion - Get YugabyteDB version
+func (c *Container) GetVersion(ctx echo.Context) error {
+    tabletServersFuture := make(chan helpers.TabletServersFuture)
+    go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+
+    // Get response from tabletServersFuture
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+            return ctx.String(http.StatusInternalServerError,
+                    tabletServersResponse.Error.Error())
+    }
+    nodeList := helpers.GetNodesList(tabletServersResponse)
+    versionInfoFutures := []chan helpers.VersionInfoFuture{}
+    for _, nodeHost := range nodeList {
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoFutures = append(versionInfoFutures, versionInfoFuture)
+        go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
+    }
+    smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
+    return ctx.JSON(http.StatusOK, models.VersionInfo{
+        Version: smallestVersion,
+    })
+}

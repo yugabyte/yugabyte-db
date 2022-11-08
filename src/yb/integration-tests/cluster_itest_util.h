@@ -544,4 +544,3 @@ Status GetLastOpIdForMasterReplica(
 
 } // namespace itest
 } // namespace yb
-

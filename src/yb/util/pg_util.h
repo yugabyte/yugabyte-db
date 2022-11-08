@@ -22,4 +22,3 @@ namespace yb {
 std::string PgDeriveSocketDir(const HostPort& host_port);
 
 } // namespace yb
-

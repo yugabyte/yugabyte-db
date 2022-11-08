@@ -130,4 +130,3 @@ class Value {
 
 }  // namespace docdb
 }  // namespace yb
-

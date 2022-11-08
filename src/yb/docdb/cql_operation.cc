@@ -97,7 +97,7 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
 Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
-                                 Schema* static_projection, Schema* non_static_projection) {
+                         Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb.
   unordered_set<ColumnId> static_columns, non_static_columns;
 
@@ -128,8 +128,8 @@ Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& colu
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
-                           const size_t begin_idx, const size_t col_count,
-                           QLRow* row, size_t *col_idx) {
+                   const size_t begin_idx, const size_t col_count,
+                   QLRow* row, size_t *col_idx) {
   for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
     RETURN_NOT_OK(table_row.GetValue(schema.column_id(i), row->mutable_column((*col_idx)++)));
   }
@@ -137,7 +137,7 @@ Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& projection,
-                           QLRow* row, size_t* col_idx) {
+                   QLRow* row, size_t* col_idx) {
   return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
 
@@ -204,12 +204,12 @@ bool JoinNonStaticRow(
 }
 
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
-                                  int index,
-                                  rapidjson::Value* document,
-                                  rapidjson::Value::MemberIterator* memberit,
-                                  rapidjson::Value::ValueIterator* valueit,
-                                  bool* last_elem_object,
-                                  IsInsert is_insert) {
+                          int index,
+                          rapidjson::Value* document,
+                          rapidjson::Value::MemberIterator* memberit,
+                          rapidjson::Value::ValueIterator* valueit,
+                          bool* last_elem_object,
+                          IsInsert is_insert) {
   *last_elem_object = false;
 
   int64_t array_index;

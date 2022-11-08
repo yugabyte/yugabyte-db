@@ -418,4 +418,3 @@ class Splitter {
 }  // namespace internal
 
 }  // namespace strings
-

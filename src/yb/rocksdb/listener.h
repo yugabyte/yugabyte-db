@@ -258,4 +258,3 @@ class EventListener {
 #endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
-

@@ -49,4 +49,3 @@ inline std::string MakeTabletLogPrefix(const std::string& tablet_id, const std::
 
 }  // namespace consensus
 }  // namespace yb
-

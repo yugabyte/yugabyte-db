@@ -80,4 +80,3 @@ Status FindOpcode(const std::string& ql_name,
 }
 } // namespace bfpg
 } // namespace yb
-

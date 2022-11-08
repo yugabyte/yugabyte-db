@@ -76,4 +76,3 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
 
 }  // namespace client
 }  // namespace yb
-

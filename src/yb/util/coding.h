@@ -124,4 +124,3 @@ inline const uint8_t *GetVarint32Ptr(const uint8_t *p,
 }
 
 }  // namespace yb
-

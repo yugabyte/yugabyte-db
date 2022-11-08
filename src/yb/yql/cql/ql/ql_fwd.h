@@ -31,4 +31,3 @@ using QLSessionPtr = std::shared_ptr<QLSession>;
 
 } // namespace ql
 } // namespace yb
-

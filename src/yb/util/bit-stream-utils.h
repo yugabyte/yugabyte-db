@@ -173,4 +173,3 @@ class BitReader {
 };
 
 } // namespace yb
-

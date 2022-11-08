@@ -54,4 +54,3 @@ class PgSysTablePrefetcher {
 
 } // namespace pggate
 } // namespace yb
-

@@ -74,4 +74,3 @@ Status GetThreadStats(int64_t tid, ThreadStats* stats);
 bool RunShellProcess(const std::string& cmd, std::string* msg);
 
 } // namespace yb
-

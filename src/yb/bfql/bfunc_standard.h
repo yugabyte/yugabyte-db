@@ -443,4 +443,3 @@ Status ListFrozen(const std::vector<PTypePtr>& params, RTypePtr result) {
 
 } // namespace bfql
 } // namespace yb
-

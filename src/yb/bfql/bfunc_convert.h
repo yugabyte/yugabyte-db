@@ -63,7 +63,7 @@ static constexpr size_t kHexBase = 16;
 //--------------------------------------------------------------------------------------------------
 template<typename SetResult, typename PTypePtr, typename RTypePtr>
 Status SetNumericResult(SetResult set_result, PTypePtr source, DataType target_datatype,
-                                RTypePtr target) {
+                        RTypePtr target) {
   auto source_datatype = InternalToDataType(source->value_case());
   if (!QLType::IsExplicitlyConvertible(target_datatype, source_datatype)) {
     return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
@@ -245,7 +245,7 @@ Status SetDateResult(PTypePtr source, RTypePtr target) {
 
 template<typename RTypePtr, typename StrToNum, typename SetTarget>
 Status StringToNumeric(const std::string& str_val, RTypePtr target, StrToNum strToNum,
-                               SetTarget setTarget) {
+                       SetTarget setTarget) {
   auto result = strToNum(str_val);
   RETURN_NOT_OK(result);
   return setTarget(*result, target);
@@ -1298,7 +1298,7 @@ Status ToDouble(double val, RTypePtr target) {
 
 template<typename RTypePtr, typename PTypePtr, typename StrToNum, typename ToNumeric>
 Status ConvertToNumeric(PTypePtr source, RTypePtr target, const DataType& data_type,
-                                StrToNum strToNum, ToNumeric toNumeric) {
+                        StrToNum strToNum, ToNumeric toNumeric) {
   if (IsNull(*source)) {
     SetNull(&*target);
     return Status::OK();
@@ -1466,4 +1466,3 @@ Status ConvertToDate(PTypePtr source, RTypePtr target) {
 
 } // namespace bfql
 } // namespace yb
-

@@ -1783,7 +1783,7 @@ typedef struct JoinState
 } JoinState;
 
 
-/* 
+/*
  * Batch state of batched NL Join. These are explained in the comment for
  * ExecYbBatchedNestLoop in nodeYbBatchedNestLoop.c.
  */
@@ -1853,7 +1853,7 @@ typedef struct YbBatchedNestLoopState
 	NLBatchStatus bnl_currentstatus;
 	List *bnl_batchMatchedInfo;
 	int bnl_batchTupNo;
-	
+
 	/* State for hashing batch strategy */
 
 	/*

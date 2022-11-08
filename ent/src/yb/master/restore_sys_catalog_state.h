@@ -179,4 +179,3 @@ class RestoreSysCatalogState {
 
 }  // namespace master
 }  // namespace yb
-

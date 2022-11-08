@@ -240,4 +240,3 @@ class StopOnFailure {
 #define TEST_F_EX(test_case_name, test_name, parent_class) \
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())
-

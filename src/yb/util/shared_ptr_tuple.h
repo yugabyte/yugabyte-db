@@ -105,4 +105,3 @@ struct SharedPtrTuple : public TypeIndexer<Types ...> {
 
 } // namespace util
 } // namespace yb
-

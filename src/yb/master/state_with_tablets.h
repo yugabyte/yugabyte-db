@@ -205,4 +205,3 @@ class StateWithTablets {
 
 } // namespace master
 } // namespace yb
-

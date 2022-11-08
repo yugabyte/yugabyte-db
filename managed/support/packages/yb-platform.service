@@ -24,6 +24,7 @@ Environment="YB_OIDC_DISCOVERY_URI=<OIDC Discovery URI>"
 Environment="YW_URL=<IP of the Platform>"
 Environment="YB_OIDC_SCOPE=openid <any additional scopes>"
 Environment="YB_OIDC_EMAIL_ATTR=<attribute of the email field>"
+Environment="YB_USE_VIRTUAL_ENV=1"
 
 ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
 

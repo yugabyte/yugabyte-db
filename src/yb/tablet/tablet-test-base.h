@@ -333,4 +333,3 @@ class TabletTestBase : public TabletTestPreBase {
 
 } // namespace tablet
 } // namespace yb
-

@@ -179,4 +179,3 @@ class LongAdder : Striped64 {
 };
 
 } // namespace yb
-

@@ -150,4 +150,3 @@ class ForwardIterator : public InternalIterator {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

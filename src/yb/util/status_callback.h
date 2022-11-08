@@ -61,4 +61,3 @@ typedef Callback<Status(void)> StatusClosure;
 extern Status DoNothingStatusClosure();
 
 } // namespace yb
-

@@ -125,4 +125,3 @@ class ThreadPool {
 
 } // namespace rpc
 } // namespace yb
-

@@ -153,4 +153,3 @@ static void Destroy(void* t) {
 } // namespace internal
 } // namespace threadlocal
 } // namespace yb
-

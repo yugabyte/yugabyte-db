@@ -53,4 +53,3 @@ class SSTDumpTool {
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-

@@ -86,4 +86,3 @@ class BFOperator {
 
 } // namespace bfql
 } // namespace yb
-

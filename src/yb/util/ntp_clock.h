@@ -44,4 +44,3 @@ class NtpClock : public PhysicalClock {
 };
 
 } // namespace yb
-

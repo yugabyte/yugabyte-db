@@ -139,4 +139,3 @@ inline std::string RandomString(Random* rnd, int len) {
 Slice CompressibleString(Random* rnd, double compressed_fraction, int len, std::string* dst);
 
 }  // namespace rocksdb
-

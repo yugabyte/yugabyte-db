@@ -32,4 +32,3 @@
 #elif defined(OS_WIN)
 #include "yb/rocksdb/port/win/win_logger.h"
 #endif
-

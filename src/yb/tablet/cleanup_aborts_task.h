@@ -58,4 +58,3 @@ class CleanupAbortsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-

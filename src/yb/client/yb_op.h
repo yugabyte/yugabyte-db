@@ -621,4 +621,3 @@ Status GetRangePartitionBounds(
 
 }  // namespace client
 }  // namespace yb
-

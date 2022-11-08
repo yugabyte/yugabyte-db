@@ -28,4 +28,3 @@ StreamFactoryPtr CompressedStreamFactory(
 
 }  // namespace rpc
 }  // namespace yb
-

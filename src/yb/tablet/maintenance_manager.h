@@ -319,4 +319,3 @@ class ScopedMaintenanceOpRun {
 };
 
 } // namespace yb
-

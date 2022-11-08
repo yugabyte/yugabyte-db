@@ -960,7 +960,7 @@ class AtomicMillisLag : public MillisLag {
   }
 
   Status WriteAsJson(JsonWriter* w,
-                             const MetricJsonOptions& opts) const override;
+                     const MetricJsonOptions& opts) const override;
 
   Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,

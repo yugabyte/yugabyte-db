@@ -994,8 +994,8 @@ class PosixEnv : public Env {
   }
 
   Status GetChildren(const std::string& dir,
-                             ExcludeDots exclude_dots,
-                             std::vector<std::string>* result) override {
+                     ExcludeDots exclude_dots,
+                     std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
     ThreadRestrictions::AssertIOAllowed();
     result->clear();
@@ -1091,7 +1091,7 @@ class PosixEnv : public Env {
   }
 
   Status LinkFile(const std::string& src,
-                          const std::string& target) override {
+                  const std::string& target) override {
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
         return STATUS(NotSupported, "No cross FS links allowed");

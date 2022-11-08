@@ -129,4 +129,3 @@ Result<docdb::KeyBytes> EncodedSnapshotKey(
 
 } // namespace master
 } // namespace yb
-

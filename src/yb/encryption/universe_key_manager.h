@@ -57,4 +57,3 @@ class UniverseKeyManager {
 
 } // namespace encryption
 } // namespace yb
-

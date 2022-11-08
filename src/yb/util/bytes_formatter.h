@@ -61,4 +61,3 @@ std::string FormatSliceAsStr(
     size_t max_length = std::numeric_limits<size_t>::max());
 
 }  // namespace yb
-

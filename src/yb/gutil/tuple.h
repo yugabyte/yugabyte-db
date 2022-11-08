@@ -1301,4 +1301,3 @@ inline void DispatchToMethod(ObjT* obj, Method method,
                  &out->d,
                  &out->e);
 }
-

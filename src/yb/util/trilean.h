@@ -37,4 +37,3 @@ inline std::ostream& operator << (std::ostream& out, Trilean trilean) {
 }
 
 } // namespace yb
-
