@@ -120,7 +120,7 @@ import play.api.Play;
 public class TaskExecutor {
 
   // This is a map from the task types to the classes.
-  private static final BiMap<TaskType, Class<? extends ITask>> TASK_TYPE_TO_CLASS_MAP;
+  private final BiMap<TaskType, Class<? extends ITask>> taskTypeClassBiMap;
 
   // Task futures are waited for this long before checking abort status.
   private static final long TASK_SPIN_WAIT_INTERVAL_MS = 2000;
@@ -167,11 +167,12 @@ public class TaskExecutor {
           KnownAlertLabels.TASK_TYPE.labelName(),
           KnownAlertLabels.RESULT.labelName());
 
-  static {
+  private Map<TaskType, Class<? extends ITask>> buildTaskTypesMap() {
     // Initialize the map which holds the task types to their task class.
     Map<TaskType, Class<? extends ITask>> typeMap = new HashMap<>();
 
     for (TaskType taskType : TaskType.filteredValues()) {
+      // TODO: switch to guice map binder instead of this reflection usage.
       String className = "com.yugabyte.yw.commissioner.tasks." + taskType.toString();
       Class<? extends ITask> taskClass;
       try {
@@ -183,8 +184,8 @@ public class TaskExecutor {
         throw new RuntimeException(e);
       }
     }
-    TASK_TYPE_TO_CLASS_MAP = ImmutableBiMap.copyOf(typeMap);
     log.debug("Done loading tasks.");
+    return typeMap;
   }
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
@@ -212,9 +213,9 @@ public class TaskExecutor {
         .observe(getDurationSeconds(startTime, endTime));
   }
 
-  static Class<? extends ITask> getTaskClass(TaskType taskType) {
+  Class<? extends ITask> getTaskClass(TaskType taskType) {
     checkNotNull(taskType, "Task type must be non-null");
-    return TASK_TYPE_TO_CLASS_MAP.get(taskType);
+    return taskTypeClassBiMap.get(taskType);
   }
 
   // It looks for the annotation starting from the current class to its super classes until it
@@ -241,9 +242,9 @@ public class TaskExecutor {
    * @param taskClass the given task class.
    * @return task type for the task class.
    */
-  public static TaskType getTaskType(Class<? extends ITask> taskClass) {
+  public TaskType getTaskType(Class<? extends ITask> taskClass) {
     checkNotNull(taskClass, "Task class must be non-null");
-    return TASK_TYPE_TO_CLASS_MAP.inverse().get(taskClass);
+    return taskTypeClassBiMap.inverse().get(taskClass);
   }
 
   @Inject
@@ -261,6 +262,7 @@ public class TaskExecutor {
           taskExecutor.shutdown(Duration.ofMinutes(5));
         },
         100 /* weight */);
+    taskTypeClassBiMap = ImmutableBiMap.copyOf(buildTaskTypesMap());
   }
 
   // Shuts down the task executor.
@@ -302,12 +304,11 @@ public class TaskExecutor {
    *
    * @param taskType the task type.
    * @param taskParams the task parameters.
-   * @return
    */
   public RunnableTask createRunnableTask(TaskType taskType, ITaskParams taskParams) {
     checkNotNull(taskType, "Task type must be set");
     checkNotNull(taskParams, "Task params must be set");
-    ITask task = Play.current().injector().instanceOf(TASK_TYPE_TO_CLASS_MAP.get(taskType));
+    ITask task = Play.current().injector().instanceOf(taskTypeClassBiMap.get(taskType));
     task.initialize(taskParams);
     return createRunnableTask(task);
   }
@@ -316,7 +317,6 @@ public class TaskExecutor {
    * Creates a RunnableTask instance for the given task.
    *
    * @param task the task.
-   * @return
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
@@ -332,7 +332,6 @@ public class TaskExecutor {
    *
    * @param runnableTask the RunnableTask instance.
    * @param taskExecutorService the ExecutorService for this task.
-   * @return
    */
   public UUID submit(RunnableTask runnableTask, ExecutorService taskExecutorService) {
     checkTaskExecutorState();
@@ -429,7 +428,6 @@ public class TaskExecutor {
    *
    * @param name the name of the group.
    * @param executorService the executorService to run the tasks for this group.
-   * @return
    */
   public SubTaskGroup createSubTaskGroup(String name, ExecutorService executorService) {
     return createSubTaskGroup(name, executorService, false);
@@ -442,7 +440,6 @@ public class TaskExecutor {
    * @param executorService the executorService to run the tasks for this group.
    * @param ignoreErrors ignore individual subtask error until the all the subtasks in the group are
    *     executed if it is set.
-   * @return
    */
   public SubTaskGroup createSubTaskGroup(
       String name, ExecutorService executorService, boolean ignoreErrors) {
@@ -482,7 +479,6 @@ public class TaskExecutor {
    * this instance and run. It throws IllegalStateException if the task is not present.
    *
    * @param taskUUID the task UUID.
-   * @return
    */
   public RunnableTask getRunnableTask(UUID taskUUID) {
     Optional<RunnableTask> optional = maybeGetRunnableTask(taskUUID);
@@ -565,11 +561,7 @@ public class TaskExecutor {
       return name;
     }
 
-    /**
-     * Returns the optional ExecutorService for the subtasks in this group.
-     *
-     * @return
-     */
+    /** Returns the optional ExecutorService for the subtasks in this group. */
     private ExecutorService getSubTaskExecutorService() {
       return executorService;
     }
