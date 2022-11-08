@@ -10,8 +10,6 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-
-	"github.com/fluxcd/pkg/tar"
 )
 
 // Component 3: Platform
@@ -104,7 +102,7 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			tar.Untar(rExtract, packageFolderPath+"/devops")
+			Untar(rExtract, packageFolderPath+"/devops")
 
 		} else if strings.Contains(f.Name(), "yugaware") {
 
@@ -115,7 +113,7 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			tar.Untar(rExtract, packageFolderPath+"/yugaware")
+			Untar(rExtract, packageFolderPath+"/yugaware")
 
 		}
 	}
