@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
+#include <unistd.h>
 #include <uuid/uuid.h>
 
 #include <algorithm>
@@ -29,6 +30,7 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstddef>
@@ -186,10 +188,13 @@
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/bitmap.h"
+#include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/capabilities.h"
 #include "yb/util/cast.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
@@ -214,7 +219,11 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
 #include "yb/util/file_util.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
@@ -246,6 +255,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.messages.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
