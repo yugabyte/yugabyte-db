@@ -30,24 +30,21 @@ type: docs
 
 </ul>
 
-[YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
+[YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features.
 
-- It is **cluster-aware**, which eliminates the need for an external load balancer.
-- It is **topology-aware**, which is essential for geographically-distributed applications.
-
-## Load balancing
+## Connection load balancing
 
 The YugabyteDB node-postgres smart driver has the following load balancing features:
 
-- Uniform load balancing
+- Cluster-aware (uniform)
 
-   In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using a smart driver.
+    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server.
 
-- Topology-aware load balancing
+- Topology-aware
 
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the smart driver is topology-aware. The driver uses servers that are part of a set of geo-locations specified by topology keys. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+    Because YugabyteDB clusters can have servers in different regions and availability zones, the driver can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-The YugabyteDB node-postgres smart driver can be configured with pooling as well.
+The driver can be configured with pooling as well.
 
 ## Fundamentals
 
@@ -110,7 +107,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB node-postgres smart Driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
 
 Next, you use a Node.js application to demonstrate the driver's load balancing features.
 
@@ -118,7 +115,7 @@ Next, you use a Node.js application to demonstrate the driver's load balancing f
 The driver requires YugabyteDB version 2.7.2.0 or higher.
 {{< /note>}}
 
-### Install YugabyteDB and create a local cluster
+### Create a local cluster
 
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
@@ -250,6 +247,7 @@ When you're done experimenting, run the following command to destroy the local c
 ./bin/yb-ctl destroy
 ```
 
-## Learn more
+## Further reading
 
-To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

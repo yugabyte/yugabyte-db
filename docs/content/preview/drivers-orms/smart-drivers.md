@@ -70,7 +70,7 @@ In both cases, the driver attempts to connect to the least loaded server from th
 
 With cluster-aware (also referred to as uniform) connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
-For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the smart driver.
+For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using a smart driver.
 
 To enable cluster-aware load balancing, you set the load balance connection parameter to true in the connection URL or the connection string (DSN style).
 
@@ -93,7 +93,7 @@ The application must use the same connection URL to create every connection it n
 
 ### Topology-aware connection load balancing
 
-With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. If no servers are available, the request may return with a failure.
+With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial for client applications that need to connect to the geographically nearest regions and zones for lower latency. If no servers are available, the request may return with a failure.
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
@@ -105,6 +105,10 @@ For example, using the Go driver, you would set the parameters as follows:
 ```
 
 You still need to specify load balance as true to enable the topology-aware connection load balancing.
+
+## Connection pooling
+
+Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to talk to a completely different region.
 
 ## Using smart drivers with YugabyteDB Managed
 
