@@ -132,7 +132,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
             .put("provider", p.uuid.toString())
             .put("ycqlPassword", "@123Byte")
             .put("enableYSQL", "false")
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
