@@ -226,6 +226,9 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
     case Env::CREATE_IF_NON_EXISTING_TRUNCATE:
       flags |= O_CREAT | O_TRUNC;
       break;
+    case Env::CREATE_NONBLOCK_IF_NON_EXISTING:
+      flags |= O_CREAT | O_NONBLOCK;
+      break;
     case Env::CREATE_NON_EXISTING:
       flags |= O_CREAT | O_EXCL;
       break;
@@ -439,6 +442,22 @@ class PosixWritableFile : public WritableFile {
   const string& filename() const override { return filename_; }
 
  protected:
+    void UnwrittenRemaining(struct iovec** remaining_iov, ssize_t written, int* remaining_count) {
+      size_t bytes_to_consume = written;
+      do {
+        if (bytes_to_consume >= (*remaining_iov)->iov_len) {
+          bytes_to_consume -= (*remaining_iov)->iov_len;
+          (*remaining_iov)++;
+          (*remaining_count)--;
+        } else {
+          (*remaining_iov)->iov_len -= bytes_to_consume;
+          (*remaining_iov)->iov_base =
+              static_cast<uint8_t*>((*remaining_iov)->iov_base) + bytes_to_consume;
+          bytes_to_consume = 0;
+        }
+      } while (bytes_to_consume > 0);
+    }
+
     const std::string filename_;
     int fd_;
     bool sync_on_close_;
@@ -461,19 +480,29 @@ class PosixWritableFile : public WritableFile {
       nbytes += data.size();
     }
 
-    ssize_t written = writev(fd_, iov, narrow_cast<int>(n));
+    struct iovec* remaining_iov = iov;
+    int remaining_count = narrow_cast<int>(n);
+    ssize_t total_written = 0;
 
-    if (PREDICT_FALSE(written == -1)) {
-      int err = errno;
-      return STATUS_IO_ERROR(filename_, err);
+    while (remaining_count > 0) {
+      ssize_t written = writev(fd_, remaining_iov, remaining_count);
+      if (PREDICT_FALSE(written == -1)) {
+        if (errno == EINTR || errno == EAGAIN) {
+          continue;
+        }
+        return STATUS_IO_ERROR(filename_, errno);
+      }
+
+      UnwrittenRemaining(&remaining_iov, written, &remaining_count);
+      total_written += written;
     }
 
-    filesize_ += written;
+    filesize_ += total_written;
 
-    if (PREDICT_FALSE(written != nbytes)) {
+    if (PREDICT_FALSE(total_written != nbytes)) {
       return STATUS_FORMAT(
           IOError, "writev error: expected to write $0 bytes, wrote $1 bytes instead",
-          nbytes, written);
+          nbytes, total_written);
     }
 
     return Status::OK();
@@ -644,23 +673,34 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
       iov[j].iov_len = block_size_;
     }
     ssize_t bytes_to_write = blocks_to_write * block_size_;
-    ssize_t written = pwritev(fd_, iov, narrow_cast<int>(blocks_to_write), next_write_offset_);
 
-    if (PREDICT_FALSE(written == -1)) {
-      int err = errno;
-      return STATUS_IO_ERROR(filename_, err);
+    struct iovec* remaining_iov = iov;
+    int remaining_blocks = narrow_cast<int>(blocks_to_write);
+    ssize_t total_written = 0;
+
+    while (remaining_blocks > 0) {
+      ssize_t written = pwritev(
+          fd_, remaining_iov, remaining_blocks, next_write_offset_);
+      if (PREDICT_FALSE(written == -1)) {
+        if (errno == EINTR || errno == EAGAIN) {
+          continue;
+        }
+        return STATUS_IO_ERROR(filename_, errno);
+      }
+      next_write_offset_ += written;
+
+      UnwrittenRemaining(&remaining_iov, written, &remaining_blocks);
+      total_written += written;
     }
 
-    if (PREDICT_FALSE(written != bytes_to_write)) {
+    if (PREDICT_FALSE(total_written != bytes_to_write)) {
       return STATUS(IOError,
                     Substitute("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
-                               bytes_to_write, written));
+                               bytes_to_write, total_written));
     }
 
-    filesize_ = next_write_offset_ + written;
+    filesize_ = next_write_offset_;
     CHECK_EQ(filesize_, align_up(filesize_, block_size_));
-
-    next_write_offset_ = filesize_;
 
     if (last_block_used_bytes_ != block_size_) {
       // Next write will happen at filesize_ - block_size_ offset in the file if the last block is
