@@ -61,4 +61,3 @@ class RemoteBootstrapSnapshotsSource : public RemoteBootstrapSource {
 
 } // namespace tserver
 } // namespace yb
-

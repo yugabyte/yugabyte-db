@@ -147,4 +147,3 @@ size_t pg_encoding_mbcliplen(const char *mbstr, size_t len, size_t limit);
 
 }  // namespace ql
 }  // namespace yb
-

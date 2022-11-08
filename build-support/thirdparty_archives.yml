@@ -1,20 +1,6 @@
 sha_for_local_checkout: efbc29b551c909fb648b0a3d19d1220bd5715605
 archives:
   - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang15
-    is_linuxbrew: false
-    sha: efbc29b551c909fb648b0a3d19d1220bd5715605
-    lto_type:
-    tag: v20221029203423-efbc29b551-almalinux8-aarch64-clang15
-  - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang15
-    is_linuxbrew: false
-    sha: efbc29b551c909fb648b0a3d19d1220bd5715605
-    lto_type: full
-    tag: v20221029203414-efbc29b551-almalinux8-aarch64-clang15-full-lto
-  - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang13
     is_linuxbrew: false
@@ -28,13 +14,6 @@ archives:
     sha: efbc29b551c909fb648b0a3d19d1220bd5715605
     lto_type:
     tag: v20221029203216-efbc29b551-almalinux8-x86_64-clang15
-  - os_type: almalinux8
-    architecture: x86_64
-    compiler_type: clang15
-    is_linuxbrew: false
-    sha: efbc29b551c909fb648b0a3d19d1220bd5715605
-    lto_type: full
-    tag: v20221029203213-efbc29b551-almalinux8-x86_64-clang15-full-lto
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang15
@@ -112,13 +91,6 @@ archives:
     sha: efbc29b551c909fb648b0a3d19d1220bd5715605
     lto_type:
     tag: v20221029203339-efbc29b551-macos-x86_64
-  - os_type: ubuntu20.04
-    architecture: aarch64
-    compiler_type: clang15
-    is_linuxbrew: false
-    sha: efbc29b551c909fb648b0a3d19d1220bd5715605
-    lto_type:
-    tag: v20221029203351-efbc29b551-ubuntu2004-aarch64-clang15
   - os_type: ubuntu20.04
     architecture: x86_64
     compiler_type: clang13

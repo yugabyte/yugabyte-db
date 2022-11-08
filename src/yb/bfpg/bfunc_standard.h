@@ -162,4 +162,3 @@ Status NowTimeUuid(RTypePtr result) {
 
 } // namespace bfpg
 } // namespace yb
-

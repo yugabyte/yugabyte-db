@@ -26,4 +26,3 @@ SnapshotId StringToSnapshotId(const std::string& str);
 
 }  // namespace tools
 }  // namespace yb
-

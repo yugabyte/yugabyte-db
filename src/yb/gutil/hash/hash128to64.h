@@ -34,4 +34,3 @@ inline uint64 Hash128to64(const uint128& x) {
   b *= kMul;
   return b;
 }
-

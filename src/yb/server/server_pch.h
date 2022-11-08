@@ -32,6 +32,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstddef>
@@ -165,7 +166,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/bytes_formatter.h"
@@ -188,8 +188,10 @@
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"

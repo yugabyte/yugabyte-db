@@ -249,7 +249,7 @@ class FsManager {
 
   // Creates filesystem roots, writing new on-disk instances using 'metadata'.
   Status CreateFileSystemRoots(const InstanceMetadataPB& metadata,
-                                       bool create_lock = false);
+                               bool create_lock = false);
 
   std::set<std::string> GetAncillaryDirs() const;
 

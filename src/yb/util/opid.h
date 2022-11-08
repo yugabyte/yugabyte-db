@@ -125,4 +125,3 @@ struct OpIdHash {
 typedef std::vector<OpId> OpIds;
 
 } // namespace yb
-

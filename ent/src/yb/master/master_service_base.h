@@ -23,4 +23,3 @@ class CatalogManager;
 } // namespace yb
 
 #include "../../../../src/yb/master/master_service_base.h"
-

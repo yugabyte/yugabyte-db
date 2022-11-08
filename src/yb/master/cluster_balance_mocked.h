@@ -123,4 +123,3 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
 } // namespace master
 } // namespace yb
-

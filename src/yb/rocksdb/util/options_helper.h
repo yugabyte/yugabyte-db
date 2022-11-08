@@ -646,4 +646,3 @@ static std::unordered_map<std::string, InfoLogLevel> info_log_level_string_map =
 }  // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
-

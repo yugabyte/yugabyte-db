@@ -216,4 +216,3 @@ class PgOperator : public PgExpr {
 
 }  // namespace pggate
 }  // namespace yb
-

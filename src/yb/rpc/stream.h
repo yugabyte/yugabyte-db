@@ -171,4 +171,3 @@ class Protocol {
 
 } // namespace rpc
 } // namespace yb
-

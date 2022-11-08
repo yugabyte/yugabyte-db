@@ -115,4 +115,3 @@ class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
 
 } // namespace tserver
 } // namespace yb
-

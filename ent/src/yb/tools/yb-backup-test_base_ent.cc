@@ -38,9 +38,9 @@ namespace tools {
 namespace helpers {
 
 Status RedisGet(std::shared_ptr<client::YBSession> session,
-                        const std::shared_ptr<client::YBTable> table,
-                        const string& key,
-                        const string& value) {
+                const std::shared_ptr<client::YBTable> table,
+                const string& key,
+                const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
   RETURN_NOT_OK(session->TEST_ReadSync(get_op));
@@ -58,9 +58,9 @@ Status RedisGet(std::shared_ptr<client::YBSession> session,
 }
 
 Status RedisSet(std::shared_ptr<client::YBSession> session,
-                        const std::shared_ptr<client::YBTable> table,
-                        const string& key,
-                        const string& value) {
+                const std::shared_ptr<client::YBTable> table,
+                const string& key,
+                const string& value) {
   auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
   RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
                                       redisserver::RedisClientCommand({"set", key, value})));

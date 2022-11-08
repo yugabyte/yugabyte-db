@@ -119,4 +119,3 @@ class PosixDirectory : public Directory {
 };
 
 }  // namespace rocksdb
-

@@ -810,4 +810,3 @@ void __asan_set_death_callback(void (*callback)(void));
 /* Undefine the macros intended only in this file. */
 #undef ANNOTALYSIS_STATIC_INLINE
 #undef ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
-

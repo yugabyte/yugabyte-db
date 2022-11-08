@@ -30,4 +30,3 @@ Result<std::string> DocDBValueToDebugStr(
 
 }  // namespace docdb
 }  // namespace yb
-

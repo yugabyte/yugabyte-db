@@ -70,4 +70,3 @@ inline bool DecodeRowId(Slice *s, rowid_t *rowid) {
 }
 
 } // namespace yb
-

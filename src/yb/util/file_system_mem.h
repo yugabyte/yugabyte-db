@@ -110,4 +110,3 @@ class InMemoryRandomAccessFile : public RandomAccessFile {
 };
 
 } // namespace yb
-

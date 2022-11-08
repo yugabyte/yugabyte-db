@@ -151,4 +151,3 @@ Status WaitForBackfillSafeTimeOn(
 }
 
 }  // namespace yb
-

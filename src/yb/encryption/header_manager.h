@@ -52,4 +52,3 @@ class HeaderManager {
 
 } // namespace encryption
 } // namespace yb
-

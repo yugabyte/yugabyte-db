@@ -242,4 +242,3 @@ class PlainTableIndexBuilder {
 };  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-

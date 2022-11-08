@@ -188,4 +188,3 @@ typename base::enable_if<IsMoveOnlyType<T>::value, T>::type CallbackForward(T& t
 
 }  // namespace internal
 }  // namespace yb
-

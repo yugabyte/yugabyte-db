@@ -22,11 +22,6 @@
     margin: 0 8px 0 3px;
   }
 
-  .metrics-picker {
-    border: 1px solid #E5E5E9;
-    margin-right: 8px;
-  }
-
   #all-divider {
     width: auto;
     top: 50px;
@@ -104,27 +99,39 @@
     color: #44518B;
   }
 
-  #node-filter-dropdown {
-    border-radius: 0px 8px 8px 0px;
+  .node-filter-dropdown {
+    .dropdown-toggle-button {
+      border-radius: 0px 8px 8px 0px;
+    }
   }
 
-  .metrics-picker,
-  #universe-filter-dropdown {
-    border-radius: 8px 0px 0px 8px;
+  .universe-filter-dropdown {
+    .dropdown-toggle-button {
+      border-radius: 8px 0px 0px 8px;
+    }
   }
 
-  #region-filter-dropdown {
-    border-radius: 0px 0px 0px 0px;
+  .region-filter-dropdown {
+    .dropdown-toggle-button {
+      border-radius: 0px 0px 0px 0px;
+    }
   }
 
-  #universe-filter-dropdown,
-  #node-filter-dropdown,
-  #region-filter-dropdown {
+  .universe-filter-dropdown,
+  .node-filter-dropdown,
+  .region-filter-dropdown {
     width: 240px;
     background-color: #fff;
-    border: 1px solid #E5E5E9;
-    border-style: solid;
-    height: 42px;
+
+    .dropdown-toggle-button {
+      width: 100%;
+      height: 42px;
+    }
+
+    .dropdown-menu {
+      max-height: 800px;
+      overflow-y: scroll;
+    }
 
     .default-universe-value,
     .default-node-value,

@@ -116,4 +116,3 @@ class PgWireDataHeader {
 
 }  // namespace pggate
 }  // namespace yb
-

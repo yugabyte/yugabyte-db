@@ -134,4 +134,3 @@ OpIdPB MakeOpIdPB(const yb::OpId& op_id);
 using consensus::operator<<;
 
 }  // namespace yb
-

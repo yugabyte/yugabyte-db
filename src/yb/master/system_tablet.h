@@ -45,36 +45,36 @@ class SystemTablet : public tablet::AbstractTablet {
   }
 
   Status HandleRedisReadRequest(CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        const RedisReadRequestPB& redis_read_request,
-                                        RedisResponsePB* response) override {
+                                const ReadHybridTime& read_time,
+                                const RedisReadRequestPB& redis_read_request,
+                                RedisResponsePB* response) override {
     return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
   }
 
   Status HandleQLReadRequest(CoarseTimePoint deadline,
-                                     const ReadHybridTime& read_time,
-                                     const QLReadRequestPB& ql_read_request,
-                                     const TransactionMetadataPB& transaction_metadata,
-                                     tablet::QLReadRequestResult* result) override;
+                             const ReadHybridTime& read_time,
+                             const QLReadRequestPB& ql_read_request,
+                             const TransactionMetadataPB& transaction_metadata,
+                             tablet::QLReadRequestResult* result) override;
 
   Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                          const size_t row_count,
-                                          QLResponsePB* response) const override;
+                                  const size_t row_count,
+                                  QLResponsePB* response) const override;
 
   Status HandlePgsqlReadRequest(CoarseTimePoint deadline,
-                                        const ReadHybridTime& read_time,
-                                        bool is_explicit_request_read_time,
-                                        const PgsqlReadRequestPB& pgsql_read_request,
-                                        const TransactionMetadataPB& transaction_metadata,
-                                        const SubTransactionMetadataPB& subtransaction_metadata,
-                                        tablet::PgsqlReadRequestResult* result,
-                                        size_t* num_rows_read) override {
+                                const ReadHybridTime& read_time,
+                                bool is_explicit_request_read_time,
+                                const PgsqlReadRequestPB& pgsql_read_request,
+                                const TransactionMetadataPB& transaction_metadata,
+                                const SubTransactionMetadataPB& subtransaction_metadata,
+                                tablet::PgsqlReadRequestResult* result,
+                                size_t* num_rows_read) override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 
   Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
-                                          const size_t row_count,
-                                          PgsqlResponsePB* response) const override {
+                                  const size_t row_count,
+                                  PgsqlResponsePB* response) const override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 

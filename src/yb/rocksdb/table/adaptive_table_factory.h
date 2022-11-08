@@ -74,4 +74,3 @@ class AdaptiveTableFactory : public TableFactory {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

@@ -338,7 +338,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
-  const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
@@ -391,13 +390,8 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
-// In per database catalog version mode, this puts a limit on the maximum
-// number of databases that can exist in a cluster.
-static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
-

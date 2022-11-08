@@ -14,6 +14,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -21,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.time.Duration;
+import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -31,6 +35,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
+@Slf4j
 public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
@@ -173,9 +178,9 @@ public class TokenAuthenticator extends Action.Simple {
     return delegate.call(ctx);
   }
 
-  public boolean superAdminAuthentication(Http.Context ctx) {
+  public boolean checkAuthentication(Http.Context ctx, Set<Role> roles) {
     String token = fetchToken(ctx, true);
-    Users user;
+    Users user = null;
     if (token != null) {
       user = Users.authWithApiToken(token);
     } else {
@@ -183,16 +188,33 @@ public class TokenAuthenticator extends Action.Simple {
       user = Users.authWithToken(token, getAuthTokenExpiry());
     }
     if (user != null) {
-      boolean isSuperAdmin = user.getRole() == Role.SuperAdmin;
-      if (isSuperAdmin) {
+      boolean foundRole = false;
+      if (roles.contains(user.getRole())) {
         // So we can audit any super admin actions.
         // If there is a use case also lookup customer and put it in context
-        UserWithFeatures superAdmin = new UserWithFeatures().setUser(user);
-        ctx.args.put("user", superAdmin);
+        UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
+        ctx.args.put("user", userWithFeatures);
+        foundRole = true;
       }
-      return isSuperAdmin;
+      return foundRole;
     }
     return false;
+  }
+
+  public boolean superAdminAuthentication(Http.Context ctx) {
+    return checkAuthentication(ctx, new HashSet<>(Collections.singletonList(Role.SuperAdmin)));
+  }
+
+  // Calls that require admin authentication should allow
+  // both admins and super-admins.
+  public boolean adminAuthentication(Http.Context ctx) {
+    return checkAuthentication(ctx, new HashSet<>(Arrays.asList(Role.Admin, Role.SuperAdmin)));
+  }
+
+  public void adminOrThrow(Http.Context ctx) {
+    if (!adminAuthentication(ctx)) {
+      throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
+    }
   }
 
   // TODO: Consider changing to a method annotation

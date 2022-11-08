@@ -41,4 +41,3 @@ namespace yb {
 Result<std::string> GetLoggedInUser();
 
 } // namespace yb
-

@@ -118,4 +118,3 @@ class SnapshotTestUtil {
 
 } // namespace client
 } // namespace yb
-

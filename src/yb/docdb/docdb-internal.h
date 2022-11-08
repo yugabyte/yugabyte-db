@@ -75,4 +75,3 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
 
 } // namespace docdb
 } // namespace yb
-

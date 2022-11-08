@@ -83,4 +83,3 @@ class LogicalClock : public Clock {
 
 }  // namespace server
 }  // namespace yb
-

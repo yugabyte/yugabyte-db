@@ -108,4 +108,3 @@ class ConsistentReadPoint {
 };
 
 } // namespace yb
-

@@ -31,4 +31,3 @@ class SCOPED_CAPABILITY SharedLock {
 };
 
 } // namespace yb
-

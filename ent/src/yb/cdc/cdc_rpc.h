@@ -64,4 +64,3 @@ MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
 
 } // namespace cdc
 } // namespace yb
-

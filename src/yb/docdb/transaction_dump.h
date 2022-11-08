@@ -86,4 +86,3 @@ void TransactionDump(TransactionDumpOp op, Args&&... args) {
 
 } // namespace docdb
 } // namespace yb
-

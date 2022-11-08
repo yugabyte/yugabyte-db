@@ -216,4 +216,3 @@ class MvccManager {
 
 }  // namespace tablet
 }  // namespace yb
-

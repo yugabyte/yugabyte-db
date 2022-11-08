@@ -224,4 +224,3 @@ class MultiLevelIndexReader : public IndexReader {
 };
 
 } // namespace rocksdb
-

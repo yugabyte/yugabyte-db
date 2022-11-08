@@ -573,4 +573,3 @@ class ReplicaState {
 
 }  // namespace consensus
 }  // namespace yb
-

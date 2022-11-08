@@ -171,4 +171,3 @@ class RpcController {
 
 } // namespace rpc
 } // namespace yb
-

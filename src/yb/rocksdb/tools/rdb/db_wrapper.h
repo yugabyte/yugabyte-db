@@ -66,4 +66,3 @@ class DBWrapper : public node::ObjectWrap {
     std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>
         columnFamilies_;
 };
-

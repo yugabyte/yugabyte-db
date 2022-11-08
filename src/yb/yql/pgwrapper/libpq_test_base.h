@@ -40,4 +40,3 @@ class LibPqTestBase : public PgWrapperTestBase {
 
 } // namespace pgwrapper
 } // namespace yb
-

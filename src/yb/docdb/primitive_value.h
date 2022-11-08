@@ -311,4 +311,3 @@ size_t EncodedValueSize(const QLValuePB& value);
 
 }  // namespace docdb
 }  // namespace yb
-

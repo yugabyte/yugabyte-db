@@ -42,12 +42,12 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     selectedUniverse.universeDetails.nodeDetailsSet
   ) {
     nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.nodeName === null) {
+      if (a.cloudInfo.az === null) {
         return -1;
-      } else if (b.nodeName === null) {
+      } else if (b.cloudInfo.az === null) {
         return 1;
       } else {
-        return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
       }
     });
   }
@@ -152,7 +152,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     nodeData = (
       <div className="node-picker">
         <Dropdown
-          id="node-filter-dropdown"
+          id="nodeFilterDropdown"
+          className="node-filter-dropdown"
           disabled={isDisabled}
           title={isDisabled ? "Select a specific universe to view the zones and nodes" : ""}
         >

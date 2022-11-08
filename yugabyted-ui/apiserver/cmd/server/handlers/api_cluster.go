@@ -209,17 +209,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
             freeDiskGb = float64(value) / helpers.BYTES_IN_GB
         }
         // Get software version
-        smallestVersion := ""
-        for _, versionInfoFuture := range versionInfoFutures {
-                versionInfo := <-versionInfoFuture
-                if versionInfo.Error == nil {
-                        versionNumber := versionInfo.VersionInfo.VersionNumber
-                        if smallestVersion == "" ||
-                                helpers.CompareVersions(smallestVersion, versionNumber) > 0 {
-                                smallestVersion = versionNumber
-                        }
-                }
-        }
+        smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
 
     response := models.ClusterResponse{
         Data: models.ClusterData{

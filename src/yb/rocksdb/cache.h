@@ -203,4 +203,3 @@ class Cache {
 };
 
 }  // namespace rocksdb
-

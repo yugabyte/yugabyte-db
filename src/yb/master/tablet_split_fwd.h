@@ -29,4 +29,3 @@ YB_STRONGLY_TYPED_BOOL(ManualSplit);
 
 } // namespace master
 } // namespace yb
-

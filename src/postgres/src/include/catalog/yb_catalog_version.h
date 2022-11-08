@@ -10,8 +10,7 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef YB_CATALOG_VERSION_H
-#define YB_CATALOG_VERSION_H
+#pragma once
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -53,5 +52,3 @@ YbCatalogVersionType YbGetCatalogVersionType();
 
 /* Get actual db_oid for pg_yb_catalog_version */
 Oid YbMasterCatalogVersionTableDBOid();
-
-#endif							/* YB_CATALOG_VERSION_H */
