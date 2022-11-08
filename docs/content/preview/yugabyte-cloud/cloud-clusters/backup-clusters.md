@@ -32,7 +32,7 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 ## Limitations
 
-If some cluster operations are run during a scheduled backup, the backup may be prevented from running.
+If some cluster operations are already running during a scheduled backup window, the backup may be prevented from running.
 
 The following operations lock the cluster and only one can happen at the same time:
 
