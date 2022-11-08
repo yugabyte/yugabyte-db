@@ -126,4 +126,3 @@ class RefinedStreamFactory : public StreamFactory {
 
 }  // namespace rpc
 }  // namespace yb
-

@@ -23,4 +23,3 @@ extern struct SN_env * SN_create_env(int S_size, int I_size, int B_size);
 extern void SN_close_env(struct SN_env * z, int S_size);
 
 extern int SN_set_current(struct SN_env * z, int size, const symbol * s);
-

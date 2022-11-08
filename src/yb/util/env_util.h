@@ -120,4 +120,3 @@ class ScopedFileDeleter {
 
 } // namespace env_util
 } // namespace yb
-

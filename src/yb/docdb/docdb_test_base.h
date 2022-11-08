@@ -67,4 +67,3 @@ class DocDBTestBase : public YBTest, public DocDBRocksDBFixture {
 
 }  // namespace docdb
 }  // namespace yb
-

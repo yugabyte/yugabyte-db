@@ -297,4 +297,3 @@ auto ToRepeatedPtrField(const ArenaList<T>& list) {
 
 } // namespace rpc
 } // namespace yb
-

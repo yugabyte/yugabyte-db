@@ -94,4 +94,3 @@ class SingleThreadedAtomic {
 };
 
 }  // namespace yb
-

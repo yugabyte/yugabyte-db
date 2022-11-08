@@ -1129,4 +1129,3 @@ class TestLoadBalancerBase {
 
 } // namespace master
 } // namespace yb
-

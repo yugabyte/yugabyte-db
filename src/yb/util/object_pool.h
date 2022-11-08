@@ -256,4 +256,3 @@ class ThreadSafeObjectPool {
 };
 
 } // namespace yb
-

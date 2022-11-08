@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_SCAN_CHOICES_H_
-#define YB_DOCDB_SCAN_CHOICES_H_
+#pragma once
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
@@ -72,5 +71,3 @@ class ScanChoices {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_SCAN_CHOICES_H_

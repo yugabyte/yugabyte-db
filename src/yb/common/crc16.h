@@ -102,4 +102,3 @@ inline uint16_t crc16(const uint8_t* buf, size_t len) {
 }
 
 } // namespace yb
-

@@ -133,4 +133,3 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
 }
 
 }  // namespace yb
-

@@ -841,4 +841,3 @@ class VersionSet {
 };
 
 }  // namespace rocksdb
-

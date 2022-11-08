@@ -34,7 +34,7 @@ class Tunnel {
   // If address_checker is specified, we use it to check whether we originating address of
   // connection is acceptable.
   Status Start(const Endpoint& local, const Endpoint& remote,
-                       AddressChecker address_checker = AddressChecker());
+               AddressChecker address_checker = AddressChecker());
   void Shutdown();
 
  private:
@@ -43,4 +43,3 @@ class Tunnel {
 };
 
 } // namespace yb
-

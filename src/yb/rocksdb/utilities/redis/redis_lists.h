@@ -126,4 +126,3 @@ class RedisLists {
 
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

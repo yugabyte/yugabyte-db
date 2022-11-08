@@ -43,9 +43,9 @@ namespace master {
 class MiniMaster;
 
 Status WaitForRunningTabletCount(MiniMaster* mini_master,
-                                         const client::YBTableName& table_name,
-                                         int expected_count,
-                                         GetTableLocationsResponsePB* resp);
+                                 const client::YBTableName& table_name,
+                                 int expected_count,
+                                 GetTableLocationsResponsePB* resp);
 
 void CreateTabletForTesting(MiniMaster* mini_master,
                             const client::YBTableName& table_name,
@@ -55,4 +55,3 @@ void CreateTabletForTesting(MiniMaster* mini_master,
 
 } // namespace master
 } // namespace yb
-

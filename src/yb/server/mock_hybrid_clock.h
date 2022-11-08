@@ -29,4 +29,3 @@ class MockHybridClock : public HybridClock {
 
 } // namespace server
 } // namespace yb
-

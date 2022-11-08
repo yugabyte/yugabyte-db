@@ -184,4 +184,3 @@ extern Status SyncManifest(Env* env, const DBOptions* db_options,
                            WritableFileWriter* file);
 
 }  // namespace rocksdb
-

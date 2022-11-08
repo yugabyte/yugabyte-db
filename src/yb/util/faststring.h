@@ -273,4 +273,3 @@ class faststring {
 };
 
 }  // namespace yb
-

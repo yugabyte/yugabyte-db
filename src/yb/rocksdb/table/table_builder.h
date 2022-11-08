@@ -136,4 +136,3 @@ class TableBuilder {
 };
 
 }  // namespace rocksdb
-

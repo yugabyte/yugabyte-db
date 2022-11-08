@@ -97,4 +97,3 @@ class Webserver : public WebCallbackRegistry {
 };
 
 } // namespace yb
-

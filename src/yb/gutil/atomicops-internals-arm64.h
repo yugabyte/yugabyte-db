@@ -350,4 +350,3 @@ inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
 
 }  // namespace subtle
 }  // namespace base
-

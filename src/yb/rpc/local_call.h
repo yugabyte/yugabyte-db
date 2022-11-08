@@ -127,4 +127,3 @@ auto HandleCall(InboundCallPtr call, F f) {
 
 } // namespace rpc
 } // namespace yb
-

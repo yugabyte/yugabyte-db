@@ -334,4 +334,3 @@ extern MemTableRepFactory* NewHashLinkListRepFactory(
 
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
-

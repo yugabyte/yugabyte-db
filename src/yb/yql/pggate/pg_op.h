@@ -185,4 +185,3 @@ bool PrepareNextRequest(PgsqlReadOp* read_op);
 
 }  // namespace pggate
 }  // namespace yb
-

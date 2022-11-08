@@ -1498,8 +1498,8 @@ Status Tablet::HandleQLReadRequest(
 }
 
 Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
-                                                const size_t row_count,
-                                                QLResponsePB* response) const {
+                                        const size_t row_count,
+                                        QLResponsePB* response) const {
 
   // If the response does not have a next partition key, it means we are done reading the current
   // tablet. But, if the request does not have the hash columns set, this must be a table-scan,
@@ -1698,8 +1698,8 @@ void SetBackfillSpecForYsqlBackfill(
 }  // namespace
 
 Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
-                                                const size_t row_count,
-                                                PgsqlResponsePB* response) const {
+                                        const size_t row_count,
+                                        PgsqlResponsePB* response) const {
   // If there is no hash column in the read request, this is a full-table query. And if there is no
   // paging state in the response, we are done reading from the current tablet. In this case, we
   // should return the exclusive end partition key of this tablet if not empty which is the start

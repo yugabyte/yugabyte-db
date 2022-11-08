@@ -40,4 +40,3 @@ Status CorrectlyPollingAllTablets(
     MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout);
 } // namespace cdc
 } // namespace yb
-

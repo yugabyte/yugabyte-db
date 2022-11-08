@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCCMDS_H
-#define YBCCMDS_H
+#pragma once
 
 #include "access/htup.h"
 #include "catalog/dependency.h"
@@ -98,5 +97,3 @@ extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, Att
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
-
-#endif

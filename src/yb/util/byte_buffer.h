@@ -286,4 +286,3 @@ struct ByteBufferHash {
 };
 
 } // namespace yb
-

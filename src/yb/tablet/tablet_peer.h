@@ -284,7 +284,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   }
 
   Status UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
-                             const std::string& error_message);
+                     const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
@@ -443,7 +443,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
   Status StartPendingOperations(PeerRole my_role,
-                                        const consensus::ConsensusBootstrapInfo& bootstrap_info);
+                                const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
 
@@ -555,4 +555,3 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
 }  // namespace tablet
 }  // namespace yb
-

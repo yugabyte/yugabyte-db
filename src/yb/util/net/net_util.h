@@ -145,8 +145,8 @@ struct HostPortHash {
 //
 // Any elements which do not include a port will be assigned 'default_port'.
 Status ParseAddressList(const std::string& addr_list,
-                                uint16_t default_port,
-                                std::vector<Endpoint>* addresses);
+                        uint16_t default_port,
+                        std::vector<Endpoint>* addresses);
 
 // Return true if the given port is likely to need root privileges to bind to.
 bool IsPrivilegedPort(uint16_t port);

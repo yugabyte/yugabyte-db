@@ -52,4 +52,3 @@ struct Expiration {
 
 }  // namespace docdb
 }  // namespace yb
-

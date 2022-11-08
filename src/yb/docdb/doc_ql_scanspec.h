@@ -162,4 +162,3 @@ class DocQLScanSpec : public QLScanSpec {
 
 }  // namespace docdb
 }  // namespace yb
-

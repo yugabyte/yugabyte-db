@@ -150,4 +150,3 @@ class PermissionsCache {
 } // namespace namespace internal
 } // namespace client
 } // namespace yb
-

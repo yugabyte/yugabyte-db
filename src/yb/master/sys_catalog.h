@@ -180,8 +180,8 @@ class SysCatalogTable {
   // 'database_oid' and load this information into 'table_to_tablespace_map'.
   // 'is_colocated' indicates whether this database is colocated or not.
   Status ReadPgClassInfo(const uint32_t database_oid,
-                                 const bool is_colocated,
-                                 TableToTablespaceIdMap* table_to_tablespace_map);
+                         const bool is_colocated,
+                         TableToTablespaceIdMap* table_to_tablespace_map);
 
   Status ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t database_oid,
@@ -220,8 +220,8 @@ class SysCatalogTable {
 
   // Copy the content of co-located tables in sys catalog as a batch.
   Status CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
-                                 const std::vector<TableId>& target_table_ids,
-                                 int64_t leader_term);
+                         const std::vector<TableId>& target_table_ids,
+                         int64_t leader_term);
 
   // Drop YSQL table by removing the table metadata in sys-catalog.
   Status DeleteYsqlSystemTable(const std::string& table_id, int64_t term);
@@ -265,7 +265,7 @@ class SysCatalogTable {
   // Use the master options to generate a new consensus configuration.
   // In addition, resolve all UUIDs of this consensus configuration.
   Status SetupConfig(const MasterOptions& options,
-                             consensus::RaftConfigPB* committed_config);
+                     consensus::RaftConfigPB* committed_config);
 
   std::string tablet_id() const;
 
@@ -347,4 +347,3 @@ class SysCatalogTable {
 } // namespace yb
 
 #include "yb/master/sys_catalog-internal.h"
-

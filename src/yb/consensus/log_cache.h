@@ -140,8 +140,8 @@ class LogCache {
   //
   // Returns non-OK if the Log append itself fails.
   Status AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
-                                  RestartSafeCoarseTimePoint batch_mono_time,
-                                  const StatusCallback& callback);
+                          RestartSafeCoarseTimePoint batch_mono_time,
+                          const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through the cache. The
   // operation may not necessarily be durable yet -- it could still be en route to the log.

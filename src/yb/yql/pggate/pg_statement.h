@@ -101,4 +101,3 @@ class PgStatement : public PgMemctx::Registrable {
 
 }  // namespace pggate
 }  // namespace yb
-

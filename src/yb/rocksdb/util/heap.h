@@ -144,4 +144,3 @@ class BinaryHeap {
 };
 
 }  // namespace rocksdb
-

@@ -25,4 +25,3 @@ void AssertRunningTransactionsCountLessOrEqualTo(
     MiniCluster* cluster, size_t max_remaining_txns_per_tablet);
 
 } // namespace yb
-

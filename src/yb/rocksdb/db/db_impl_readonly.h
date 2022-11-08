@@ -130,4 +130,3 @@ class DBImplReadOnly : public DBImpl {
 } // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
-

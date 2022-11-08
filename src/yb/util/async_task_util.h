@@ -80,4 +80,3 @@ class DynamicAsyncTaskThrottler : public AsyncTaskThrottlerBase {
 };
 
 } // namespace yb
-

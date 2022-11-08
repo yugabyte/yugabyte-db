@@ -260,4 +260,3 @@ class YBOutboundConnectionContext : public YBConnectionContext {
 
 } // namespace rpc
 } // namespace yb
-

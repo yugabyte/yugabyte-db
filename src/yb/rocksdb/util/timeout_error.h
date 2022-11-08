@@ -33,4 +33,3 @@ typedef yb::StatusErrorCodeImpl<TimeoutErrorTag> TimeoutError;
 
 
 } // namespace rocksdb
-

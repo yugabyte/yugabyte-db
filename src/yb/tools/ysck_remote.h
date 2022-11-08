@@ -121,4 +121,3 @@ class RemoteYsckMaster : public YsckMaster {
 
 } // namespace tools
 } // namespace yb
-

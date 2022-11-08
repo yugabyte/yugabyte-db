@@ -85,4 +85,3 @@ std::string EncodeAsArrayOfEncodedElements(const Container& encoded_elements) {
 
 }  // namespace redisserver
 }  // namespace yb
-

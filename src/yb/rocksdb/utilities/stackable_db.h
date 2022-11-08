@@ -359,4 +359,3 @@ class StackableDB : public DB {
 };
 
 } //  namespace rocksdb
-

@@ -295,4 +295,3 @@ class VersionEdit {
 };
 
 }  // namespace rocksdb
-

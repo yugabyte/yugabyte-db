@@ -337,4 +337,3 @@ class TtlMergeOperator : public MergeOperator {
 };
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

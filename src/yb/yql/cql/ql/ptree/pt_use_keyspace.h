@@ -61,4 +61,3 @@ class PTUseKeyspace : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

@@ -164,9 +164,9 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          const TableHandle& table,
-                          int32_t key,
-                          const std::string& value) {
+                  const TableHandle& table,
+                  int32_t key,
+                  const std::string& value) {
     auto op = InsertRow(session, table, key, value);
     RETURN_NOT_OK(session->TEST_Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -208,8 +208,8 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          int32_t key,
-                          const std::string& value) {
+                  int32_t key,
+                  const std::string& value) {
     return QLStressTest::WriteRow(session, table_, key, value);
   }
 

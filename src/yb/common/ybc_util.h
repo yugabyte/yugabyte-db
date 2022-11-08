@@ -179,4 +179,3 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 #ifdef __cplusplus
 } // extern "C"
 #endif
-

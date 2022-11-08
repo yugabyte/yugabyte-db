@@ -110,4 +110,3 @@ class NODISCARD_CLASS CountDownOnScopeExit {
 };
 
 } // namespace yb
-

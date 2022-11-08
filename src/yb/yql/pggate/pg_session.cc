@@ -176,9 +176,9 @@ class PgSession::RunHelper {
   }
 
   Status Apply(const PgTableDesc& table,
-                       const PgsqlOpPtr& op,
-                       uint64_t* in_txn_limit,
-                       bool force_non_bufferable) {
+               const PgsqlOpPtr& op,
+               uint64_t* in_txn_limit,
+               bool force_non_bufferable) {
     auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).

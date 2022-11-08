@@ -164,4 +164,3 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
 }  // namespace docdb
 }  // namespace yb
-
