@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include <vector>
 #include <string>
 
@@ -112,4 +111,3 @@ class CompactedDBImpl : public DBImpl {
   void operator=(const CompactedDBImpl&);
 };
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

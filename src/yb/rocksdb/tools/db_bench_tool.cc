@@ -645,9 +645,7 @@ DEFINE_int32(max_grandparent_overlap_factor, 10, "Control maximum bytes of "
              "overlaps in grandparent (i.e., level+2) before we stop building a"
              " single file in a level->level+1 compaction.");
 
-#ifndef ROCKSDB_LITE
 DEFINE_bool(readonly, false, "Run read only benchmarks.");
-#endif  // ROCKSDB_LITE
 
 DEFINE_bool(disable_auto_compactions, false, "Do not auto trigger compactions");
 
@@ -2303,7 +2301,6 @@ class Benchmark {
         options.memtable_factory.reset(new SkipListFactory(
             FLAGS_skip_list_lookahead));
         break;
-#ifndef ROCKSDB_LITE
       case kPrefixHash:
         options.memtable_factory.reset(
             NewHashSkipListRepFactory(FLAGS_hash_bucket_count));
@@ -2317,14 +2314,8 @@ class Benchmark {
           new VectorRepFactory
         );
         break;
-#else
-      default:
-        fprintf(stderr, "Only skip list is supported in lite mode\n");
-        exit(1);
-#endif  // ROCKSDB_LITE
     }
     if (FLAGS_use_plain_table) {
-#ifndef ROCKSDB_LITE
       if (FLAGS_rep_factory != kPrefixHash &&
           FLAGS_rep_factory != kHashLinkedList) {
         fprintf(stderr, "Waring: plain table is used with skipList\n");
@@ -2345,10 +2336,6 @@ class Benchmark {
       plain_table_options.hash_table_ratio = 0.75;
       options.table_factory = std::shared_ptr<TableFactory>(
           NewPlainTableFactory(plain_table_options));
-#else
-      fprintf(stderr, "Plain table is not supported in lite mode\n");
-      exit(1);
-#endif  // ROCKSDB_LITE
     } else {
       BlockBasedTableOptions block_based_options;
       if (FLAGS_use_hash_search) {
@@ -2515,16 +2502,12 @@ class Benchmark {
         column_families.push_back(ColumnFamilyDescriptor(
               ColumnFamilyName(i), ColumnFamilyOptions(options)));
       }
-#ifndef ROCKSDB_LITE
       if (FLAGS_readonly) {
         s = DB::OpenForReadOnly(options, db_name, column_families,
             &db->cfh, &db->db);
       } else {
         s = DB::Open(options, db_name, column_families, &db->cfh, &db->db);
       }
-#else
-      s = DB::Open(options, db_name, column_families, &db->cfh, &db->db);
-#endif  // ROCKSDB_LITE
       db->cfh.resize(FLAGS_num_column_families);
       db->num_created = num_hot;
       db->num_hot = num_hot;

@@ -18,7 +18,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include <vector>
 #include <string>
 
@@ -47,4 +46,3 @@ class UtilityDB {
 };
 
 } //  namespace rocksdb
-#endif  // ROCKSDB_LITE

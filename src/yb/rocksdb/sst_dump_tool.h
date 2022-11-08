@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #pragma once
 
 #include <glog/logging.h>
@@ -51,5 +50,3 @@ class SSTDumpTool {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

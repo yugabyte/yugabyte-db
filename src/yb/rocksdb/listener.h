@@ -76,7 +76,6 @@ enum class CompactionReason {
   kFilesMarkedForCompaction,
 };
 
-#ifndef ROCKSDB_LITE
 
 struct TableFileDeletionInfo {
   // The name of the database where the file was deleted.
@@ -250,11 +249,5 @@ class EventListener {
   virtual ~EventListener() {}
 };
 
-#else
-
-class EventListener {
-};
-
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
