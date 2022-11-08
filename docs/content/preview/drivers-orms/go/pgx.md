@@ -100,11 +100,11 @@ conn, err := pgx.Connect(context.Background(), url)
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte |
-| password | password for connecting to the database | yugabyte |
-| host | hostname of the YugabyteDB instance | localhost |
-| port | Listen port for YSQL | 5433 |
-| dbname | database name | yugabyte |
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
+| host | Hostname of the YugabyteDB instance | localhost
+| port |  Listen port for YSQL | 5433
+| dbname | Database name | yugabyte
 
 #### Use SSL
 
@@ -184,8 +184,6 @@ func main() {
     // The pgx driver automatically prepares and caches statements by default, so you don't have to.
 
     // Query data using the conn.Query() function with the SELECT statements.
-    // Results are returned in pgx.Rows which can be iterated using the pgx.Rows.next() method.
-    // Then read the data using pgx.rows.Scan().
     var name string
     var age int
     var language string
@@ -195,7 +193,9 @@ func main() {
     }
     defer rows.Close()
     fmt.Printf("Query for id=1 returned: ");
+    // Results are returned in pgx.Rows which can be iterated using the pgx.Rows.next() method.
     for rows.Next() {
+        // Read the data using pgx.rows.Scan().
         err := rows.Scan(&name, &age, &language)
         if err != nil {
            log.Fatal(err)
@@ -237,4 +237,4 @@ Query for id=1 returned: Row[John, 35, Go]
 - [YugabyteDB PGX driver reference](../../../reference/drivers/go/pgx-reference/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Build Go applications using [GORM](../gorm/)
-- Build Go applications using [PG](../gorm)
+- Build Go applications using [PG](../pg/)

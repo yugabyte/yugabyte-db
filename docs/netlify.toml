@@ -440,6 +440,10 @@
    to = "/preview/drivers-orms/go/pgx/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pq/"
+   to = "/preview/drivers-orms/go/pq/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
 

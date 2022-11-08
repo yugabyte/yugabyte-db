@@ -247,8 +247,6 @@ func createTable(url string) {
     // The pgx driver automatically prepares and caches statements by default, so you don't have to.
 
     // Query data using the conn.Query() function with the SELECT statements.
-    // Results are returned in pgx.Rows which can be iterated using the pgx.Rows.next() method.
-    // Then read the data using pgx.rows.Scan().
     var name, language string
     var age int
     rows, err := conn.Query(context.Background(), "SELECT name, age, language FROM employee WHERE id = 1")
@@ -256,7 +254,9 @@ func createTable(url string) {
         log.Fatal(err)
     }
     defer rows.Close()
+    // Results are returned in pgx.Rows which can be iterated using the pgx.Rows.next() method.
     for rows.Next() {
+        // Read the data using pgx.rows.Scan().
         err := rows.Scan(&name, &age, &language)
         if err != nil {
             log.Fatal(err)
@@ -623,4 +623,4 @@ Closing the application ...
 - [YugabyteDB PGX smart driver reference](../../../reference/drivers/go/yb-pgx-reference/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - Build Go applications using [GORM](../gorm/)
-- Build Go applications using [PG](../gorm)
+- Build Go applications using [PG](../pg/)
