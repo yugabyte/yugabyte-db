@@ -36,6 +36,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
@@ -195,7 +196,10 @@
 #include "yb/util/ev_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
