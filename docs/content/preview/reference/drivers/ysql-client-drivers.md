@@ -116,7 +116,7 @@ connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoadin
 
 The [Go PostgreSQL driver package (pq)](https://pkg.go.dev/github.com/lib/pq?tab=doc) is a Go PostgreSQL driver for the `database/sql` package. pq is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with pq, see [Build a Go application](../../../develop/build-apps/go/ysql-pq/).
+For a tutorial on building a sample Go application with pq, see [Connect an application](../../../drivers-orms/go/pq/).
 
 #### Install the pq driver
 
