@@ -19,7 +19,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include "yb/rocksdb/options.h"
@@ -73,4 +72,3 @@ class AdaptiveTableFactory : public TableFactory {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

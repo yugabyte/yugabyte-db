@@ -30,7 +30,6 @@
 // existing, stable Env, like the default POSIX one).
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <iostream>
 #include <algorithm>
@@ -90,5 +89,3 @@ class EnvMirror : public EnvWrapper {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

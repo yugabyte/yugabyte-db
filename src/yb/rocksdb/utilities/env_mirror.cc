@@ -21,7 +21,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include <glog/logging.h>
 
@@ -415,4 +414,3 @@ Status EnvMirror::UnlockFile(FileLock* l) {
 }
 
 }  // namespace rocksdb
-#endif

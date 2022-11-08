@@ -19,7 +19,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <unordered_map>
 #include <memory>
@@ -250,4 +249,3 @@ class PlainTableReader: public TableReader {
   void operator=(const TableReader&) = delete;
 };
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

@@ -260,7 +260,6 @@ class StackableDB : public DB {
     return db_->SyncWAL();
   }
 
-#ifndef ROCKSDB_LITE
 
   virtual Status DisableFileDeletions() override {
     return db_->DisableFileDeletions();
@@ -300,7 +299,6 @@ class StackableDB : public DB {
     db_->GetColumnFamiliesOptions(column_family_names, column_family_options);
   }
 
-#endif  // ROCKSDB_LITE
 
   virtual Status GetLiveFiles(std::vector<std::string>& vec, uint64_t* mfs,
                               bool flush_memtable = true) override {

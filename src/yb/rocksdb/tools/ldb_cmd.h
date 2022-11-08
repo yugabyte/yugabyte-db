@@ -20,7 +20,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -927,5 +926,3 @@ class CheckConsistencyCommand : public LDBCommand {
 };
 
 } // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

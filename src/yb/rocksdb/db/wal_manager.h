@@ -48,7 +48,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 class WalManager {
  public:
   WalManager(const DBOptions& db_options, const EnvOptions& env_options)
@@ -108,5 +107,4 @@ class WalManager {
   static const uint64_t kDefaultIntervalToDeleteObsoleteWAL = 600;
 };
 
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb
