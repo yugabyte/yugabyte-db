@@ -210,10 +210,7 @@ public class UserTaskDetails {
     UpdatingKubernetesOverrides,
 
     // Fetch PVC and StorageClass information
-    KubernetesVolumeInfo,
-
-    // Install Third Party Packages
-    InstallingThirdPartySoftware
+    KubernetesVolumeInfo
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -492,10 +489,6 @@ public class UserTaskDetails {
       case KubernetesVolumeInfo:
         title = "Fetching Kubernetes Volume information";
         description = "Fetching Volume and storage information";
-        break;
-      case InstallingThirdPartySoftware:
-        title = "Install Third Party Software Packages";
-        description = "Installing Third party Software packages";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

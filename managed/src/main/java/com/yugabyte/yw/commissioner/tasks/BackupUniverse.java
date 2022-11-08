@@ -15,7 +15,6 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -96,7 +95,6 @@ public class BackupUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
 
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -120,14 +118,6 @@ public class BackupUniverse extends UniverseTaskBase {
         createLoadBalancerStateChangeTask(false)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
-
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(taskParams().universeUUID, universe)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
-      }
-
       try {
         UserTaskDetails.SubTaskGroupType groupType;
         if (taskParams().actionType == BackupTableParams.ActionType.CREATE) {

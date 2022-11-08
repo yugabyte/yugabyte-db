@@ -89,8 +89,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean ignoreUseCustomImageConfig = false;
 
     public boolean updatePackages = false;
-
-    public boolean installThirdPartyPackages = false;
   }
 
   @Override
