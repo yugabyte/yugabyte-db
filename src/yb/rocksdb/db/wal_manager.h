@@ -110,4 +110,3 @@ class WalManager {
 
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
-

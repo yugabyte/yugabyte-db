@@ -102,4 +102,3 @@ class HistogramMetricWatcher {
 
 } // namespace pgwrapper
 } // namespace yb
-

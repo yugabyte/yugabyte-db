@@ -83,4 +83,3 @@ class YQLRowwiseIteratorIf {
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -44,4 +44,3 @@ class SnapshotCoordinator {
 
 } // namespace tablet
 } // namespace yb
-

@@ -116,4 +116,3 @@ Status SetValueFromQLBinaryHelper(
 
 } // namespace docdb
 } // namespace yb
-

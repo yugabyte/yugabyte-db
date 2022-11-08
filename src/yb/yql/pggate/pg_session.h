@@ -147,10 +147,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status CreateSequencesDataTable();
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
@@ -173,7 +173,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   Status DropTablegroup(const PgOid database_oid,
-                                PgOid tablegroup_oid);
+                        PgOid tablegroup_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
@@ -372,4 +372,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
 }  // namespace pggate
 }  // namespace yb
-

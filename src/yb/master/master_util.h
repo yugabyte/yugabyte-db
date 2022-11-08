@@ -110,4 +110,3 @@ BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master
 } // namespace yb
-

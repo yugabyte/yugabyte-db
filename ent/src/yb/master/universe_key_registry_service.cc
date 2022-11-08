@@ -44,10 +44,10 @@ Result<std::string> EncryptUniverseKeyRegistry(const Slice& s, const Slice& univ
 }
 
 Status RotateUniverseKey(const Slice& old_universe_key,
-                                 const Slice& new_universe_key,
-                                 const encryption::UniverseKeyId& new_key_version_id,
-                                 bool enable,
-                                 EncryptionInfoPB* encryption_info) {
+                         const Slice& new_universe_key,
+                         const encryption::UniverseKeyId& new_key_version_id,
+                         bool enable,
+                         EncryptionInfoPB* encryption_info) {
   bool prev_enabled = encryption_info->encryption_enabled();
 
   LOG(INFO) << Format("RotateUniverseKey: prev_enabled: $0, enable: $1, new_key_version_id: $2",

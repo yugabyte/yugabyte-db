@@ -22,4 +22,3 @@ const char *const kCqlCastFuncName = "cql_cast";
 
 } // namespace bfql
 } // namespace yb
-

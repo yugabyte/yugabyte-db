@@ -44,4 +44,3 @@ class YBPartition {
 };
 
 } // namespace yb
-

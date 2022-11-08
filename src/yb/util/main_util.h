@@ -59,4 +59,3 @@ Status ToStatus(const Result<T>& result) {
 }
 
 } // namespace yb
-

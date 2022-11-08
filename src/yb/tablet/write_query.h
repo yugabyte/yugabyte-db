@@ -228,4 +228,3 @@ class WriteQuery {
 
 }  // namespace tablet
 }  // namespace yb
-

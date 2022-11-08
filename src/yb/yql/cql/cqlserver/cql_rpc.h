@@ -178,4 +178,3 @@ using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;
 
 } // namespace cqlserver
 } // namespace yb
-

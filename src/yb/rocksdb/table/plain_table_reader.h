@@ -251,4 +251,3 @@ class PlainTableReader: public TableReader {
 };
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

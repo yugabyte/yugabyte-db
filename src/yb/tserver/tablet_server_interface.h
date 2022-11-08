@@ -79,4 +79,3 @@ class TabletServerIf : public LocalTabletServer {
 
 } // namespace tserver
 } // namespace yb
-

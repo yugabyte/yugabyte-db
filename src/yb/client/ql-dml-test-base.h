@@ -181,4 +181,3 @@ Status CheckOp(YBqlOp* op);
 
 }  // namespace client
 }  // namespace yb
-

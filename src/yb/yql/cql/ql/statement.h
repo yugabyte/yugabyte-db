@@ -44,11 +44,11 @@ class Statement {
 
   // Prepare the statement for execution. Optionally return prepared result if requested.
   Status Prepare(QLProcessor *processor, const MemTrackerPtr& mem_tracker = nullptr,
-                         const bool internal = false, PreparedResult::UniPtr *result = nullptr);
+                 const bool internal = false, PreparedResult::UniPtr *result = nullptr);
 
   // Execute the prepared statement.
   Status ExecuteAsync(QLProcessor* processor, const StatementParameters& params,
-                              StatementExecutedCallback cb) const;
+                      StatementExecutedCallback cb) const;
 
   // Validate and return the parse tree.
   Result<const ParseTree&> GetParseTree() const;
@@ -88,4 +88,3 @@ class Statement {
 
 }  // namespace ql
 }  // namespace yb
-

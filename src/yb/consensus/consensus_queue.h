@@ -660,4 +660,3 @@ Status ValidateFlags();
 
 }  // namespace consensus
 }  // namespace yb
-

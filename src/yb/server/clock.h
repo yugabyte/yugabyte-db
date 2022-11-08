@@ -91,4 +91,3 @@ void UpdateClock(const Request& request, Clock* clock) {
 
 } // namespace server
 } // namespace yb
-

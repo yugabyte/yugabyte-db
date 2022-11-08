@@ -1662,4 +1662,3 @@ struct CompactRangeOptions {
   bool skip_flush = false;
 };
 }  // namespace rocksdb
-

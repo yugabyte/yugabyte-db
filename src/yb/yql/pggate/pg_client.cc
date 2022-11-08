@@ -111,8 +111,8 @@ class PgClient::Impl {
   }
 
   Status Start(rpc::ProxyCache* proxy_cache,
-                       rpc::Scheduler* scheduler,
-                       const tserver::TServerSharedObject& tserver_shared_object) {
+               rpc::Scheduler* scheduler,
+               const tserver::TServerSharedObject& tserver_shared_object) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -261,10 +261,10 @@ class PgClient::Impl {
   }
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called) {
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);

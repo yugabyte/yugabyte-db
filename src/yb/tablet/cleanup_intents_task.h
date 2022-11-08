@@ -48,4 +48,3 @@ class CleanupIntentsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-

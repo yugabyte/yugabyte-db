@@ -58,4 +58,3 @@ class Analyzer {
 
 }  // namespace ql
 }  // namespace yb
-

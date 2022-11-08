@@ -309,4 +309,3 @@ class MultiLevelIndexBuilder : public IndexBuilder {
 };
 
 } // namespace rocksdb
-

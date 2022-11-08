@@ -100,4 +100,3 @@ class CPU {
 };
 
 }  // namespace base
-

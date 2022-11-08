@@ -65,8 +65,8 @@ class PgClient {
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
-                       rpc::Scheduler* scheduler,
-                       const tserver::TServerSharedObject& tserver_shared_object);
+               rpc::Scheduler* scheduler,
+               const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -104,10 +104,10 @@ class PgClient {
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
@@ -148,4 +148,3 @@ class PgClient {
 
 }  // namespace pggate
 }  // namespace yb
-

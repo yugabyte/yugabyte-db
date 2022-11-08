@@ -242,4 +242,3 @@ class PTCreateRole : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

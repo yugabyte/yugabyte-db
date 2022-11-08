@@ -69,4 +69,3 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
 };
 
 } // namespace yb
-

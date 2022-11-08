@@ -110,7 +110,7 @@ struct TransactionData {
 };
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                                  const char* reason, Counter* conflicts_metric) {
+                          const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
   return (STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
@@ -228,7 +228,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   // Reads conflicts for specified intent from DB.
   Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix,
-                                     WaitPolicy wait_policy) {
+                             WaitPolicy wait_policy) {
     EnsureIntentIteratorCreated();
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
@@ -1055,7 +1055,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   Status CheckPriority(ConflictResolver* resolver,
-                               boost::iterator_range<TransactionData*> transactions) override {
+                       boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
                                  metadata_.priority);
   }
@@ -1188,7 +1188,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   }
 
   Status CheckPriority(ConflictResolver* resolver,
-                               boost::iterator_range<TransactionData*> transactions) override {
+                       boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver,
                                  transactions,
                                  TransactionId::Nil(),

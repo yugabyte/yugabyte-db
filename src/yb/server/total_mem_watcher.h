@@ -63,4 +63,3 @@ class TotalMemWatcher {
 
 }  // namespace server
 }  // namespace yb
-

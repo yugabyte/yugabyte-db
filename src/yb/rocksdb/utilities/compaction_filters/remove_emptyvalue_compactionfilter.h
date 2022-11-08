@@ -41,4 +41,3 @@ class RemoveEmptyValueCompactionFilter : public CompactionFilter {
 };
 }  // namespace rocksdb
 #endif // !ROCKSDB_LITE
-

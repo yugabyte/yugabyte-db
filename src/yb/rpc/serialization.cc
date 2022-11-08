@@ -211,8 +211,8 @@ namespace {
 
 template <class Header>
 Status DoParseYBMessage(const Slice& buf,
-                                Header* parsed_header,
-                                Slice* parsed_main_message) {
+                        Header* parsed_header,
+                        Slice* parsed_main_message) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
   SetupLimit(&in);
 

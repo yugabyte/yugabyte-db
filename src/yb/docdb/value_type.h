@@ -307,4 +307,3 @@ inline bool IsMergeRecord(const Slice& value) {
 
 }  // namespace docdb
 }  // namespace yb
-

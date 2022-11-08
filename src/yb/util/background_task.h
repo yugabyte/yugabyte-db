@@ -62,4 +62,3 @@ class BackgroundTask {
 };
 
 } // namespace yb
-

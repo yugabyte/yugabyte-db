@@ -93,4 +93,3 @@ class HistoryCutoffPropagationDisabler {
 
 }  // namespace tablet
 }  // namespace yb
-

@@ -434,4 +434,3 @@ class InternalStats {
 #endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb
-

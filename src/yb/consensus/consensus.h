@@ -420,4 +420,3 @@ Status MoveStatus(LeaderState&& state);
 
 } // namespace consensus
 } // namespace yb
-

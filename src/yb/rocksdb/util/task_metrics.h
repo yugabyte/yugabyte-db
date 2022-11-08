@@ -142,4 +142,3 @@ struct RocksDBPriorityThreadPoolMetrics {
     }
 
 }  // namespace rocksdb
-

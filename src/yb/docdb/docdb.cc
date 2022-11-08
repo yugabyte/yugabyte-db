@@ -88,8 +88,8 @@ namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 Status ApplyIntent(RefCntPrefix key,
-                           const IntentTypeSet intent_types,
-                           LockBatchEntries *keys_locked) {
+                   const IntentTypeSet intent_types,
+                   LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   size_t size = key.size();

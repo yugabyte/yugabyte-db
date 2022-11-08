@@ -24,4 +24,3 @@ class SharedLockManager;
 
 }  // namespace docdb
 }  // namespace yb
-

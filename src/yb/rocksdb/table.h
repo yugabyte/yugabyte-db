@@ -444,4 +444,3 @@ extern TableFactory* NewAdaptiveTableFactory(
 #endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
-

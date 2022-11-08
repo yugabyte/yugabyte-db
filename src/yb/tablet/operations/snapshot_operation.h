@@ -77,4 +77,3 @@ class SnapshotOperation :
 
 }  // namespace tablet
 }  // namespace yb
-

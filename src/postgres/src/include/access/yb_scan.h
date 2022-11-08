@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YB_SCAN_H
-#define YB_SCAN_H
+#pragma once
 
 #include "postgres.h"
 
@@ -230,5 +229,3 @@ bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 TupleTableSlot *ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid);
-
-#endif							/* YB_SCAN_H */

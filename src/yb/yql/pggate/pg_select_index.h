@@ -60,4 +60,3 @@ class PgSelectIndex : public PgSelect {
 
 }  // namespace pggate
 }  // namespace yb
-

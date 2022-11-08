@@ -98,4 +98,3 @@ class TServerSharedData {
 
 }  // namespace tserver
 }  // namespace yb
-

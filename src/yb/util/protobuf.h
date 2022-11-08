@@ -28,4 +28,3 @@ google::protobuf::RepeatedPtrField<T> ToRepeatedPtrField(const std::vector<T> &i
 
 }  // namespace util
 }  // namespace yb
-

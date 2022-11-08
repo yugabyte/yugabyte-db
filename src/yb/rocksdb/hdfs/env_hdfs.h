@@ -386,4 +386,3 @@ class HdfsEnv : public Env {
 } // namespace rocksdb
 
 #endif // USE_HDFS
-

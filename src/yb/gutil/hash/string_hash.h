@@ -94,4 +94,3 @@ inline size_t HashStringThoroughlyWithSeeds(const char* s, size_t len,
   mix(a, b, c);
   return c;
 }
-

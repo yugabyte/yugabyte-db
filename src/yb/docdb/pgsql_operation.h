@@ -196,12 +196,12 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool *has_paging_state);
 
   Status PopulateResultSet(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+                           faststring *result_buffer);
 
   Status EvalAggregate(const QLTableRow& table_row);
 
   Status PopulateAggregate(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+                           faststring *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
@@ -224,4 +224,3 @@ class PgsqlReadOperation : public DocExprExecutor {
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -152,4 +152,3 @@ using RpcCallParamsPtr = std::shared_ptr<RpcCallParams>;
 
 } // namespace rpc
 } // namespace yb
-

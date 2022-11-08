@@ -36,4 +36,3 @@ void SimulateTimeoutIfTesting(CoarseTimePoint* deadline);
 
 } // namespace docdb
 } // namespace yb
-

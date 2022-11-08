@@ -398,4 +398,3 @@ void StrAppend(std::string *dest,      const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &g = gEmptyAlphaNum,
                const AlphaNum &h = gEmptyAlphaNum,
                const AlphaNum &i = gEmptyAlphaNum);
-

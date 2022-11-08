@@ -36,4 +36,3 @@ class PgTypeInfo {
 
 }  // namespace pggate
 }  // namespace yb
-

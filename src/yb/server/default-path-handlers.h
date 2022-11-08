@@ -66,4 +66,3 @@ void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);
 void RegisterTlsHandler(Webserver* webserver, server::RpcServerBase* server);
 
 } // namespace yb
-

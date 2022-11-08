@@ -61,4 +61,3 @@ bool IsAggregateOpcode(TSOpcode op);
 
 } // namespace bfql
 } // namespace yb
-

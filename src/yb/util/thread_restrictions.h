@@ -133,4 +133,3 @@ class ThreadRestrictions {
 };
 
 } // namespace yb
-

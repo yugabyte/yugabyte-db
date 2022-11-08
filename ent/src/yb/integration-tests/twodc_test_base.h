@@ -244,4 +244,3 @@ class TwoDCTestBase : public YBTest {
 
 } // namespace enterprise
 } // namespace yb
-

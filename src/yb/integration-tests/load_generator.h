@@ -412,4 +412,3 @@ class RedisSingleThreadedReader : public SingleThreadedReader {
 
 }  // namespace load_generator
 }  // namespace yb
-
