@@ -97,9 +97,33 @@ postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
     sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
+Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+
+#### Use SSL with YugabyeDB Managed
+
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the ssl object with the following parameters:
+
+| Parameter | Description | Setting |
+| :-------- | :---------- | :------ |
+| rejectUnauthorized | If true, the server certificate is verified against the CA specified by the `ca` parameter  | true |
+| ca | the root certificate on your computer | fs.readFileSync('path/to/root.crt') |
+| servername | Hostname of the YugabyteDB instance | |
+
+For example:
+
+```javascript
+async function createConnection(i){
+        const config = {
+               connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.cloudportal.yugabyte.com:5433/yugabyte?loadBalance=true",
+        ssl: {
+        rejectUnauthorized: true,
+            ca: fs.readFileSync('./root.crt').toString(),
+            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.cloudportal.yugabyte.com',
+        },
+      }
+```
 
 ### Step 3: Write your application
 

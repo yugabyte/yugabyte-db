@@ -118,7 +118,18 @@ Applications using smart drivers must be deployed in a VPC that has been peered 
 
 For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
 
-YugabyteDB Managed requires TLS/SSL. For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+### SSL/TLS verify-full support
+
+YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Managed and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for Yugabyte smart drivers.
+
+| Smart Driver | Support | Notes |
+| :--- | :--- | :--- |
+| Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
+| Python | No | Verify-full is not currently supported; use verify-ca or the upstream psycopg2 driver. |
+| Go | Yes | |
+| Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
+
+For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 
