@@ -97,18 +97,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     EDIT
   }
 
-  // Enum for specifying the server type.
-  public enum ServerType {
-    MASTER,
-    TSERVER,
-    CONTROLLER,
-    // TODO: Replace all YQLServer with YCQLserver
-    YQLSERVER,
-    YSQLSERVER,
-    REDISSERVER,
-    EITHER
-  }
-
   public enum PortType {
     HTTP,
     RPC
@@ -2129,42 +2117,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    AnsibleConfigureServers.Params params =
+        getBaseAnsibleServerTaskParams(userIntent, node, processType, type, taskSubType);
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
-    // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
-    // Add the node name.
-    params.nodeName = node.nodeName;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
-    // Add the az uuid.
-    params.azUuid = node.azUuid;
-    // Add in the node placement uuid.
-    params.placementUuid = node.placementUuid;
-    // Sets the isMaster field
-    params.isMaster = node.isMaster;
-    params.enableYSQL = userIntent.enableYSQL;
-    params.enableYCQL = userIntent.enableYCQL;
-    params.enableYCQLAuth = userIntent.enableYCQLAuth;
-    params.enableYSQLAuth = userIntent.enableYSQLAuth;
-
-    // The software package to install for this cluster.
-    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
 
     params.enableYbc = taskParams().enableYbc;
     params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
     params.installYbc = taskParams().installYbc;
     params.ybcInstalled = taskParams().ybcInstalled;
 
-    // Set the InstanceType
-    params.instanceType = node.cloudInfo.instance_type;
-    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
     params.allowInsecure = taskParams().allowInsecure;
     params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
-    params.enableYEDIS = userIntent.enableYEDIS;
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UUID custUUID = Customer.get(universe.customerId).uuid;
@@ -2175,14 +2142,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
-    // Add task type
-    params.type = type;
-    params.setProperty("processType", processType.toString());
-    params.setProperty("taskSubType", taskSubType.toString());
     params.gflags = gflags;
-    if (userIntent.providerType.equals(CloudType.onprem)) {
-      params.instanceType = node.cloudInfo.instance_type;
-    }
 
     return params;
   }

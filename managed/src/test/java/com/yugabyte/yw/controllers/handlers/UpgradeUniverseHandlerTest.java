@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;

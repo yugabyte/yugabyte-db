@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.CONTROLLER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
@@ -38,8 +38,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -1985,8 +1985,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
@@ -2259,8 +2258,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = GFlags;
       params.isMasterInShellMode = true;
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
@@ -2902,8 +2900,7 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // Master and TServer are valid process types
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
