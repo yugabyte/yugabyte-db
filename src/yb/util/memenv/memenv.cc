@@ -437,6 +437,8 @@ class InMemoryEnv : public EnvWrapper {
     if (ContainsKey(file_map_, fname)) {
       switch (mode) {
         case CREATE_IF_NON_EXISTING_TRUNCATE:
+          FALLTHROUGH_INTENDED;
+        case CREATE_NONBLOCK_IF_NON_EXISTING:
           DeleteFileInternal(fname);
           break; // creates a new file below
         case CREATE_NON_EXISTING:
