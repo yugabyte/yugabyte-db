@@ -19,7 +19,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <deque>
 #include <string>
 #include <vector>
@@ -336,4 +335,3 @@ class TtlMergeOperator : public MergeOperator {
   Env* env_;
 };
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

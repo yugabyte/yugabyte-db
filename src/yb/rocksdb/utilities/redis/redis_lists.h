@@ -24,7 +24,6 @@
  */
 
 
-#ifndef ROCKSDB_LITE
 #pragma once
 
 #include <string>
@@ -125,4 +124,3 @@ class RedisLists {
 };
 
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

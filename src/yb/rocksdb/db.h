@@ -340,7 +340,6 @@ class DB {
   // use "snapshot" after this call.
   virtual void ReleaseSnapshot(const Snapshot* snapshot) = 0;
 
-#ifndef ROCKSDB_LITE
   // Contains all valid property arguments for GetProperty().
   //
   // NOTE: Property names cannot end in numbers since those are interpreted as
@@ -491,7 +490,6 @@ class DB {
     //      specified level "N" at the target column family.
     static const std::string kAggregatedTablePropertiesAtLevel;
   };
-#endif /* ROCKSDB_LITE */
 
   // DB implementations can export properties about their state via this method.
   // If "property" is a valid property understood by this DB implementation (see
@@ -728,7 +726,6 @@ class DB {
   // The sequence number of the most recent transaction.
   virtual SequenceNumber GetLatestSequenceNumber() const = 0;
 
-#ifndef ROCKSDB_LITE
 
   // Prevent file deletions. Compactions will continue to occur,
   // but no obsolete files will be deleted. Calling this multiple
@@ -883,7 +880,6 @@ class DB {
     return AddFile(DefaultColumnFamily(), file_info, move_file);
   }
 
-#endif  // ROCKSDB_LITE
 
   // Sets the globally unique ID created at database creation time by invoking
   // Env::GenerateUniqueId(), in identity. Returns Status::OK if identity could
@@ -893,7 +889,6 @@ class DB {
   // Returns default column family handle
   virtual ColumnFamilyHandle* DefaultColumnFamily() const = 0;
 
-#ifndef ROCKSDB_LITE
   virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
                                           TablePropertiesCollection* props) = 0;
   virtual Status GetPropertiesOfAllTables(TablePropertiesCollection* props) {
@@ -902,7 +897,6 @@ class DB {
   virtual Status GetPropertiesOfTablesInRange(
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) = 0;
-#endif  // ROCKSDB_LITE
 
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
@@ -934,12 +928,10 @@ class DB {
 // Be very careful using this method.
 Status DestroyDB(const std::string& name, const Options& options);
 
-#ifndef ROCKSDB_LITE
 // If a DB cannot be opened, you may attempt to call this method to
 // resurrect as much of the contents of the database as possible.
 // Some data may be lost, so be careful when calling this function
 // on a database that contains important information.
 Status RepairDB(const std::string& dbname, const Options& options);
-#endif
 
 }  // namespace rocksdb

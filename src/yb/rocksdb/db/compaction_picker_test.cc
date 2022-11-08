@@ -399,7 +399,6 @@ TEST_F(CompactionPickerTest, LevelTriggerDynamic4) {
 }
 
 // Universal and FIFO Compactions are not supported in ROCKSDB_LITE
-#ifndef ROCKSDB_LITE
 TEST_F(CompactionPickerTest, NeedsCompactionUniversal) {
   NewVersionStorage(1, kCompactionStyleUniversal);
   UniversalCompactionPicker universal_compaction_picker(
@@ -568,7 +567,6 @@ TEST_F(CompactionPickerTest, NeedsCompactionFIFO) {
               vstorage_->CompactionScore(0) >= 1);
   }
 }
-#endif  // ROCKSDB_LITE
 
 TEST_F(CompactionPickerTest, CompactionPriMinOverlapping1) {
   NewVersionStorage(6, kCompactionStyleLevel);

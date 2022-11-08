@@ -21,7 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ROCKSDB_LITE
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -171,5 +170,3 @@ Status DBImpl::GetSortedWalFiles(VectorLogPtr* files) {
 }
 
 } // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
