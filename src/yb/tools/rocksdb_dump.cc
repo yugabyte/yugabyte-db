@@ -18,18 +18,6 @@
 // under the License.
 //
 
-#if !(defined GFLAGS) || defined(ROCKSDB_LITE)
-
-#include <cstdio>
-int main() {
-#ifndef GFLAGS
-  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
-#endif
-  return 1;
-}
-
-#else
-
 #include "yb/util/flags.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/convenience.h"
@@ -78,4 +66,3 @@ int main(int argc, char** argv) {
   }
   return 0;
 }
-#endif  // !(defined GFLAGS) || defined(ROCKSDB_LITE)

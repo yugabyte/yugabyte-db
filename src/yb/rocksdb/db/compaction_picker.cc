@@ -64,8 +64,6 @@ uint64_t TotalCompensatedFileSize(const std::vector<FileMetaData*>& files) {
   return sum;
 }
 
-// Universal compaction is not supported in ROCKSDB_LITE
-
 // Used in universal compaction when trivial move is enabled.
 // This structure is used for the construction of min heap
 // that contains the file meta data, the level of the file

@@ -107,7 +107,6 @@ std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
   options.min_partial_merge_operands = min_partial_merge_operands;
   Status s;
   CHECK_OK(DestroyDB(dbname, Options()));
-// DBWithTTL is not supported in ROCKSDB_LITE
   if (ttl) {
     std::cout << "Opening database with TTL\n";
     DBWithTTL *db_with_ttl;
@@ -532,7 +531,6 @@ int main(int argc, char *argv[]) {
   FLAGS_never_fsync = true;
   rocksdb::port::InstallStackTraceHandler();
   rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
-// DBWithTTL is not supported in ROCKSDB_LITE
   rocksdb::runTest(argc,
                    rocksdb::test::TmpDir() + "/merge_testdbttl",
                    true); // Run test on TTL database

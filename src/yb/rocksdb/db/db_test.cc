@@ -150,7 +150,6 @@ TEST_F(DBTest, MockEnvTest) {
   ASSERT_TRUE(!iterator->Valid());
   delete iterator;
 
-  // TEST_FlushMemTable() is not supported in ROCKSDB_LITE
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db);
   ASSERT_OK(dbi->TEST_FlushMemTable());
 
@@ -163,8 +162,6 @@ TEST_F(DBTest, MockEnvTest) {
   delete db;
 }
 
-// NewMemEnv returns nullptr in ROCKSDB_LITE since class InMemoryEnv isn't
-// defined.
 TEST_F(DBTest, MemEnvTest) {
   unique_ptr<Env> env{NewMemEnv(Env::Default())};
   Options options;

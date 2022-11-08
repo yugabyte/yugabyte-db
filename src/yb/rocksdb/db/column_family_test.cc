@@ -2035,7 +2035,6 @@ TEST_F(ColumnFamilyTest, FlushAndDropRaceCondition) {
   Destroy();
 }
 
-// skipped as persisting options is not supported in ROCKSDB_LITE
 namespace {
 std::atomic<int> test_stage(0);
 const int kMainThreadStartPersistingOptionsFile = 1;

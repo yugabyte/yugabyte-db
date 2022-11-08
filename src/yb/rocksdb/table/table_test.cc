@@ -689,7 +689,6 @@ class HarnessTest : public RocksDBTest {
             new BlockBasedTableFactory(table_options_));
         constructor_ = new TableConstructor(options_.comparator);
         break;
-// Plain table is not supported in ROCKSDB_LITE
       case PLAIN_TABLE_SEMI_FIXED_PREFIX:
         support_prev_ = false;
         only_support_prefix_seek_ = true;
@@ -2029,7 +2028,6 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   }
 }
 
-// Plain table is not supported in ROCKSDB_LITE
 TEST_F(PlainTableTest, BasicPlainTableProperties) {
   PlainTableOptions plain_table_options;
   plain_table_options.user_key_len = 8;
@@ -2347,7 +2345,6 @@ TEST_F(HarnessTest, FooterTests) {
     ASSERT_EQ(decoded_footer.index_handle().size(), index.size());
     ASSERT_EQ(decoded_footer.version(), 1U);
   }
-// Plain table is not supported in ROCKSDB_LITE
   {
     // upconvert legacy plain table
     std::string encoded;
