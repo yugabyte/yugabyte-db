@@ -33,6 +33,7 @@ import { useQuery } from 'react-query';
 import { getKMSConfigs } from '../common/BackupAPI';
 
 import { BackupCreateModal } from './BackupCreateModal';
+import { YBTag } from '../../common/YBTag';
 import './BackupDetails.scss';
 
 interface BackupDetailsProps {
@@ -260,7 +261,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <YBButton
-                    btnText="Add Incremental Backup"
+                    btnText={<>Add Incremental Backup<YBTag>Beta</YBTag></>}
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
                     disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
