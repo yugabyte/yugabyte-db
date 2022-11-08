@@ -169,6 +169,8 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void Shutdown() override;
 
  private:
+  Status PerformWrite(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext* context);
+
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
     YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
