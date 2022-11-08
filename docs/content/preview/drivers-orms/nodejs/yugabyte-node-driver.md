@@ -107,9 +107,9 @@ With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other S
 
 | Parameter | Description | Setting |
 | :-------- | :---------- | :------ |
-| rejectUnauthorized | If true, the server certificate is verified against the CA specified by the `ca` parameter  | true |
-| ca | the root certificate on your computer | fs.readFileSync('path/to/root.crt') |
-| servername | Hostname of the YugabyteDB instance | |
+| rejectUnauthorized | If true, the server certificate is verified against the CA specified by the `servername` parameter | true |
+| ca | The cluster root certificate on your computer | fs.readFileSync('path/to/root.crt') |
+| servername | Host name of the YugabyteDB instance | |
 
 For example:
 
