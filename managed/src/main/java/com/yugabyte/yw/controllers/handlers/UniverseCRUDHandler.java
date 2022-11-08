@@ -615,6 +615,10 @@ public class UniverseCRUDHandler {
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
+        if (Universe.shouldEnableHttpsUI(
+            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+          universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
+        }
       }
 
       universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));

@@ -22,9 +22,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.LdapUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
@@ -38,6 +41,7 @@ import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -111,19 +115,13 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private Environment environment;
 
-  @Inject private WSClient ws;
-
   @Inject private PlaySessionStore playSessionStore;
-
-  @Inject private ApiHelper apiHelper;
 
   @Inject private PasswordPolicyService passwordPolicyService;
 
   @Inject private AlertConfigurationService alertConfigurationService;
 
   @Inject private AlertDestinationService alertDestinationService;
-
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject private SessionHandler sessionHandler;
 
@@ -133,11 +131,25 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private TokenAuthenticator tokenAuthenticator;
 
+  private final ApiHelper apiHelper;
+
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Integer FOREVER = 2147483647;
   public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
+
+  @Inject
+  public SessionController(
+      CustomWsClientFactory wsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
+    WSClient wsClient =
+        wsClientFactory.forCustomConfig(
+            runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.apiHelper = new ApiHelper(wsClient);
+  }
 
   private CommonProfile getProfile() {
     final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
@@ -677,17 +689,12 @@ public class SessionController extends AbstractPlatformController {
     final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
 
     // Make the request
-    Duration timeout =
-        runtimeConfigFactory.globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
-    WSRequest request =
-        ws.url("http://" + finalRequestUrl)
-            .setRequestTimeout(timeout)
-            .addHeader(play.mvc.Http.HeaderNames.ACCEPT_ENCODING, "gzip");
+    String url = "http://" + finalRequestUrl;
+
     // Accept-Encoding: gzip causes the master/tserver to typically return compressed responses,
     // however Play doesn't return gzipped responses right now
-
-    return request
-        .get()
+    return apiHelper
+        .getSimpleRequest(url, ImmutableMap.of(play.mvc.Http.HeaderNames.ACCEPT_ENCODING, "gzip"))
         .handle(
             (response, ex) -> {
               if (null != ex) {
@@ -697,7 +704,6 @@ public class SessionController extends AbstractPlatformController {
               // Format the response body
               if (null != response && response.getStatus() == 200) {
                 Result result;
-                String url = request.getUrl();
                 if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
                   result = ok(response.getBodyAsBytes().toArray());
                 } else {
@@ -712,7 +718,6 @@ public class SessionController extends AbstractPlatformController {
                     result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
                   }
                 }
-
                 return result.as(response.getContentType());
               } else {
                 String errorMsg = "unknown error processing proxy request " + requestUrl;

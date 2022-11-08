@@ -99,6 +99,8 @@ public class Util {
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
 
+  public static final String YB_NODE_UI_WS_KEY = "yb.node_ui.ws";
+
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
