@@ -63,4 +63,3 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
 };
 
 } // namespace yb
-

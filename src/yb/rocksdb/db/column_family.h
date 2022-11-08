@@ -563,4 +563,3 @@ extern const Comparator* GetColumnFamilyUserComparator(
     ColumnFamilyHandle* column_family);
 
 }  // namespace rocksdb
-

@@ -113,4 +113,3 @@ class CompactedDBImpl : public DBImpl {
 };
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
-

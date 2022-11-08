@@ -30,4 +30,3 @@ class ForwardGenerator {
 
 }  // namespace gen_yrpc
 }  // namespace yb
-

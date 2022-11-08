@@ -128,4 +128,3 @@ class GoogleOnceDynamic {
   Atomic32 state_;
   DISALLOW_COPY_AND_ASSIGN(GoogleOnceDynamic);
 };
-

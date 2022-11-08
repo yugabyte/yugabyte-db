@@ -78,4 +78,3 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/variant.hpp>
-

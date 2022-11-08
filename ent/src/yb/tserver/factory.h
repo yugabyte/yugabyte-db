@@ -100,4 +100,3 @@ class Factory {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-

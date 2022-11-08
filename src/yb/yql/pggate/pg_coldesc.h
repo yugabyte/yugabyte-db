@@ -110,4 +110,3 @@ class ColumnDesc {
 
 }  // namespace pggate
 }  // namespace yb
-

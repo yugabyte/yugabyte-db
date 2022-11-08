@@ -37,4 +37,3 @@ class RandomErrorClock : public PhysicalClock {
 
 } // namespace server
 } // namespace yb
-

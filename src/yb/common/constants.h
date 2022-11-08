@@ -40,4 +40,3 @@ static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
 
 } // namespace yb
-

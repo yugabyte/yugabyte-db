@@ -82,4 +82,3 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
 } // namespace client
 } // namespace yb
-

@@ -156,4 +156,3 @@ class TcpStream : public Stream {
 
 } // namespace rpc
 } // namespace yb
-

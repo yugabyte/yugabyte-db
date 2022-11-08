@@ -231,4 +231,3 @@ struct Comparator {
 
 } // namespace master
 } // namespace yb
-

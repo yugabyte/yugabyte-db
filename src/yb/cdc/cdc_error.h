@@ -55,4 +55,3 @@ typedef StatusErrorCodeImpl<CDCErrorTag> CDCError;
 
 } // namespace cdc
 } // namespace yb
-

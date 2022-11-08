@@ -1515,4 +1515,3 @@ template<typename IDType> class TraceScopedTrackableObject {
 
 } // namespace debug
 } // namespace yb
-

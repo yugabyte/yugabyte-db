@@ -65,4 +65,3 @@ class ExternalTransaction {
 
 } // namespace client
 } // namespace yb
-

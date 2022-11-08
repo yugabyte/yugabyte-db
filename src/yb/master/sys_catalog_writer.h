@@ -53,11 +53,11 @@ class SysCatalogWriter {
 
   // Insert a row into a Postgres sys catalog table.
   Status InsertPgsqlTableRow(const Schema& source_schema,
-                                     const QLTableRow& source_row,
-                                     const TableId& target_table_id,
-                                     const Schema& target_schema,
-                                     const uint32_t target_schema_version,
-                                     bool is_upsert);
+                             const QLTableRow& source_row,
+                             const TableId& target_table_id,
+                             const Schema& target_schema,
+                             const uint32_t target_schema_version,
+                             bool is_upsert);
 
   tserver::WriteRequestPB& req() {
     return *req_;
@@ -132,4 +132,3 @@ Status ReadNextSysCatalogRow(
 
 } // namespace master
 } // namespace yb
-

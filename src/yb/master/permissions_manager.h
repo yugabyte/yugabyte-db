@@ -51,24 +51,24 @@ class PermissionsManager final {
   // The RPC context is provided for logging/tracing purposes.
   // but this function does not itself respond to the RPC.
   Status CreateRole(const CreateRoleRequestPB* req,
-                            CreateRoleResponsePB* resp,
-                            rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                    CreateRoleResponsePB* resp,
+                    rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Alter an existing role for authentication/authorization.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status AlterRole(const AlterRoleRequestPB* req,
-                           AlterRoleResponsePB* resp,
-                           rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                   AlterRoleResponsePB* resp,
+                   rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Delete the role.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status DeleteRole(const DeleteRoleRequestPB* req,
-                            DeleteRoleResponsePB* resp,
-                            rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                    DeleteRoleResponsePB* resp,
+                    rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Generic Create Role function for both default roles and user defined roles.
   Status CreateRoleUnlocked(
@@ -83,18 +83,18 @@ class PermissionsManager final {
 
   // Grant one role to another role.
   Status GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
-                                 GrantRevokeRoleResponsePB* resp,
-                                 rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                         GrantRevokeRoleResponsePB* resp,
+                         rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Grant/Revoke a permission to a role.
   Status GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                       GrantRevokePermissionResponsePB* resp,
-                                       rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                               GrantRevokePermissionResponsePB* resp,
+                               rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   // Get all the permissions granted to resources.
   Status GetPermissions(const GetPermissionsRequestPB* req,
-                                GetPermissionsResponsePB* resp,
-                                rpc::RpcContext* rpc) EXCLUDES(mutex_);
+                        GetPermissionsResponsePB* resp,
+                        rpc::RpcContext* rpc) EXCLUDES(mutex_);
 
   void BuildResourcePermissionsUnlocked() REQUIRES(mutex_);
 
@@ -124,7 +124,7 @@ class PermissionsManager final {
 
   template<class RespClass>
   Status RemoveAllPermissionsForResource(const std::string& canonical_resource,
-                                                 RespClass* resp) EXCLUDES(mutex_);
+                                         RespClass* resp) EXCLUDES(mutex_);
 
   Status PrepareDefaultRoles(int64_t term) EXCLUDES(mutex_);
 

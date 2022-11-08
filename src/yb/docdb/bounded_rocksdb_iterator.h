@@ -82,4 +82,3 @@ class BoundedRocksDbIterator : public rocksdb::Iterator {
 
 } // namespace docdb
 } // namespace yb
-

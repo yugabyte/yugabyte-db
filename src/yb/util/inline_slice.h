@@ -197,4 +197,3 @@ class InlineSlice {
 } PACKED;
 
 } // namespace yb
-

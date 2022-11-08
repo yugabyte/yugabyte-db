@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_H
-#define YB_TABLET_TABLET_H
 
 #pragma once
 
@@ -413,8 +411,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   Status Flush(FlushMode mode,
-                       FlushFlags flags = FlushFlags::kAllDbs,
-                       int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
+               FlushFlags flags = FlushFlags::kAllDbs,
+               int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
 
   Status WaitForFlush();
 
@@ -1137,5 +1135,3 @@ bool IsSchemaVersionCompatible(
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif /* YB_TABLET_TABLET_H */

@@ -68,4 +68,3 @@ class PTExplainStmt : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

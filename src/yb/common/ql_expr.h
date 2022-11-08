@@ -197,8 +197,8 @@ class QLTableRow {
   Status ReadColumn(ColumnIdRep col_id, LWExprResultWriter result_writer) const;
   const QLValuePB* GetColumn(ColumnIdRep col_id) const;
   Status ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
-                                       const QLValuePB& index,
-                                       QLExprResultWriter result_writer) const;
+                               const QLValuePB& index,
+                               QLExprResultWriter result_writer) const;
 
   // For testing only (no status check).
   const QLTableColumn& TestValue(ColumnIdRep col_id) const {
@@ -262,19 +262,19 @@ class QLExprExecutor {
 
   // Evaluate the given QLExpressionPB.
   Status EvalExpr(const QLExpressionPB& ql_expr,
-                          const QLTableRow& table_row,
-                          QLExprResultWriter result_writer,
-                          const Schema *schema = nullptr);
+                  const QLTableRow& table_row,
+                  QLExprResultWriter result_writer,
+                  const Schema *schema = nullptr);
 
   // Evaluate the given QLExpressionPB (if needed) and replace its content with the result.
   Status EvalExpr(QLExpressionPB* ql_expr,
-                          const QLTableRow& table_row,
-                          const Schema *schema = nullptr);
+                  const QLTableRow& table_row,
+                  const Schema *schema = nullptr);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   Status ReadExprValue(const QLExpressionPB& ql_expr,
-                               const QLTableRow& table_row,
-                               QLExprResultWriter result_writer);
+                       const QLTableRow& table_row,
+                       QLExprResultWriter result_writer);
 
   // Evaluate column reference.
   virtual Status EvalColumnRef(ColumnIdRep col_id,
@@ -297,43 +297,43 @@ class QLExprExecutor {
 
   // Evaluate a boolean condition for the given row.
   Status EvalCondition(const QLConditionPB& condition,
-                               const QLTableRow& table_row,
-                               bool* result);
+                       const QLTableRow& table_row,
+                       bool* result);
   Status EvalCondition(const QLConditionPB& condition,
-                               const QLTableRow& table_row,
-                               QLValuePB *result);
+                       const QLTableRow& table_row,
+                       QLValuePB *result);
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
 
   // Evaluate the given QLExpressionPB.
   Status EvalExpr(const PgsqlExpressionPB& ql_expr,
-                          const QLTableRow* table_row,
-                          QLExprResultWriter result_writer,
-                          const Schema *schema = nullptr);
+                  const QLTableRow* table_row,
+                  QLExprResultWriter result_writer,
+                  const Schema *schema = nullptr);
 
   Status EvalExpr(const PgsqlExpressionPB& ql_expr,
-                          const QLTableRow& table_row,
-                          QLExprResultWriter result_writer,
-                          const Schema *schema = nullptr) {
+                  const QLTableRow& table_row,
+                  QLExprResultWriter result_writer,
+                  const Schema *schema = nullptr) {
     return EvalExpr(ql_expr, &table_row, result_writer, schema);
   }
 
   Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                          const QLTableRow* table_row,
-                          LWExprResultWriter result_writer,
-                          const Schema* schema = nullptr);
+                  const QLTableRow* table_row,
+                  LWExprResultWriter result_writer,
+                  const Schema* schema = nullptr);
 
   Status EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                          const QLTableRow& table_row,
-                          LWExprResultWriter result_writer) {
+                  const QLTableRow& table_row,
+                  LWExprResultWriter result_writer) {
     return EvalExpr(ql_expr, &table_row, result_writer);
   }
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   Status ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                               const QLTableRow& table_row,
-                               QLExprResultWriter result_writer);
+                       const QLTableRow& table_row,
+                       QLExprResultWriter result_writer);
 
   // Evaluate call to tablet-server builtin operator.
   virtual Status EvalTSCall(const PgsqlBCallPB& ql_expr,
@@ -352,8 +352,8 @@ class QLExprExecutor {
 
   // Evaluate a boolean condition for the given row.
   Status EvalCondition(const PgsqlConditionPB& condition,
-                               const QLTableRow& table_row,
-                               bool* result);
+                       const QLTableRow& table_row,
+                       bool* result);
 
   template <class PB, class Value>
   Status EvalCondition(
@@ -405,4 +405,3 @@ yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr);
 bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
 
 } // namespace yb
-

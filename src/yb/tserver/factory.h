@@ -36,4 +36,3 @@ class Factory {
 
 } // namespace tserver
 } // namespace yb
-

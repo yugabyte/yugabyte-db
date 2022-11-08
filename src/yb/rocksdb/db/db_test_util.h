@@ -838,4 +838,3 @@ class DBTestBase : public RocksDBTest, public DBHolder {
 };
 
 }  // namespace rocksdb
-

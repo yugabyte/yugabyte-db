@@ -817,4 +817,3 @@ class FlushedFileCollector : public EventListener {
 
 }  // namespace test
 }  // namespace rocksdb
-

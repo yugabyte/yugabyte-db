@@ -634,4 +634,3 @@ void YBCInitPgGateEx(
 } // namespace pggate
 } // namespace yb
 #endif
-

@@ -37,4 +37,3 @@ std::string get_canonical_keyspace(const std::string &keyspace);
 std::string get_canonical_table(const std::string &keyspace, const std::string &table);
 std::string get_canonical_role(const std::string &role);
 } // namespace yb
-

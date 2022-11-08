@@ -244,4 +244,3 @@ std::string TrimDocDbDebugDumpStr(const std::string& debug_dump);
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -60,4 +60,3 @@ class YBNamespaceAlterer {
 
 }  // namespace client
 }  // namespace yb
-

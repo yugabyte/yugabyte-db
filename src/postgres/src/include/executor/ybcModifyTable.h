@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCMODIFYTABLE_H
-#define YBCMODIFYTABLE_H
+#pragma once
 
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
@@ -208,5 +207,3 @@ extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
-
-#endif							/* YBCMODIFYTABLE_H */

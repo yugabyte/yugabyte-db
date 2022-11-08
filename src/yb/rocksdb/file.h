@@ -40,4 +40,3 @@ class File {
 };
 
 }  // namespace rocksdb
-

@@ -217,4 +217,3 @@ class WriteBatchWithIndex : public WriteBatchBase {
 }  // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
-

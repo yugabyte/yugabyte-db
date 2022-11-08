@@ -144,4 +144,3 @@ class LockFreeStack {
 };
 
 } // namespace yb
-

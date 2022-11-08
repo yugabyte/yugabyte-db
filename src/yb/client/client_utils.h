@@ -44,4 +44,3 @@ Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRa
 
 } // namespace client
 } // namespace yb
-

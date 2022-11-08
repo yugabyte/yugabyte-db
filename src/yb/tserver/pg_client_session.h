@@ -147,4 +147,3 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
 }  // namespace tserver
 }  // namespace yb
-

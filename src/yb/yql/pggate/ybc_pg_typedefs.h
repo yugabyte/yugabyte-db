@@ -395,4 +395,3 @@ typedef enum PgBoundType {
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
-

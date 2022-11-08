@@ -27,4 +27,3 @@ struct SourceLocation {
 #define SOURCE_LOCATION() SourceLocation {__FILE__, __LINE__}
 
 }  // namespace yb
-

@@ -26,4 +26,3 @@
 #include "yb/gutil/integral_types.h"
 
 // Include all builtin function templates.
-

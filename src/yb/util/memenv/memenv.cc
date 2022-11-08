@@ -275,8 +275,8 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status GetChildren(const std::string& dir,
-                             ExcludeDots exclude_dots,
-                             vector<std::string>* result) override {
+                     ExcludeDots exclude_dots,
+                     vector<std::string>* result) override {
     MutexLock lock(mutex_);
     result->clear();
 

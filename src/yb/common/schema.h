@@ -555,21 +555,21 @@ class Schema {
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
   Status Reset(const std::vector<ColumnSchema>& cols, size_t key_columns,
-                       const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid::Nil(),
-                       const ColocationId colocation_id = kColocationIdNotSet,
-                       const PgSchemaName pgschema_name = "");
+               const TableProperties& table_properties = TableProperties(),
+               const Uuid& cotable_id = Uuid::Nil(),
+               const ColocationId colocation_id = kColocationIdNotSet,
+               const PgSchemaName pgschema_name = "");
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
   Status Reset(const std::vector<ColumnSchema>& cols,
-                       const std::vector<ColumnId>& ids,
-                       size_t key_columns,
-                       const TableProperties& table_properties = TableProperties(),
-                       const Uuid& cotable_id = Uuid::Nil(),
-                       const ColocationId colocation_id = kColocationIdNotSet,
-                       const PgSchemaName pgschema_name = "");
+               const std::vector<ColumnId>& ids,
+               size_t key_columns,
+               const TableProperties& table_properties = TableProperties(),
+               const Uuid& cotable_id = Uuid::Nil(),
+               const ColocationId colocation_id = kColocationIdNotSet,
+               const PgSchemaName pgschema_name = "");
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -871,7 +871,7 @@ class Schema {
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
   Status CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
-                                         Schema* out, size_t num_key_columns = 0) const;
+                                 Schema* out, size_t num_key_columns = 0) const;
 
   // Create a new schema containing only the selected column IDs.
   //
@@ -880,7 +880,7 @@ class Schema {
   //
   // The resulting schema will have no key columns defined.
   Status CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
-                                                    Schema* out) const;
+                                            Schema* out) const;
 
   // Stringify this Schema. This is not particularly efficient,
   // so should only be used when necessary for output.
@@ -1206,23 +1206,23 @@ class SchemaBuilder {
   Status AddNullableColumn(const std::string& name, DataType type);
 
   Status AddColumn(const std::string& name,
-                           const std::shared_ptr<QLType>& type,
-                           bool is_nullable,
-                           bool is_hash_key,
-                           bool is_static,
-                           bool is_counter,
-                           int32_t order,
-                           yb::SortingType sorting_type);
+                   const std::shared_ptr<QLType>& type,
+                   bool is_nullable,
+                   bool is_hash_key,
+                   bool is_static,
+                   bool is_counter,
+                   int32_t order,
+                   yb::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
   Status AddColumn(const std::string& name,
-                           DataType type,
-                           bool is_nullable,
-                           bool is_hash_key,
-                           bool is_static,
-                           bool is_counter,
-                           int32_t order,
-                           yb::SortingType sorting_type);
+                   DataType type,
+                   bool is_nullable,
+                   bool is_hash_key,
+                   bool is_static,
+                   bool is_counter,
+                   int32_t order,
+                   yb::SortingType sorting_type);
 
   Status RemoveColumn(const std::string& name);
   Status RenameColumn(const std::string& old_name, const std::string& new_name);
@@ -1253,4 +1253,3 @@ struct hash<yb::ColumnId> {
   }
 };
 } // namespace std
-

@@ -631,4 +631,3 @@ extern Status ReadRecordFromWriteBatch(Slice* input, char* tag,
                                        uint32_t* column_family, Slice* key,
                                        Slice* value, Slice* blob);
 }  // namespace rocksdb
-

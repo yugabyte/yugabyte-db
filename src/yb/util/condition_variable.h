@@ -126,4 +126,3 @@ class ConditionVariable {
 };
 
 }  // namespace yb
-

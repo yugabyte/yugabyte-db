@@ -92,4 +92,3 @@ class EnvMirror : public EnvWrapper {
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
-

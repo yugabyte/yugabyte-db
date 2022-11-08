@@ -46,4 +46,3 @@ std::unique_ptr<HeaderManager> GetMockHeaderManager();
 
 } // namespace encryption
 } // namespace yb
-

@@ -275,8 +275,8 @@ class CQLMessage {
 
    private:
     Status GetBindVariableValue(const std::string& name,
-                                        size_t pos,
-                                        const Value** value) const;
+                                size_t pos,
+                                const Value** value) const;
   };
 
   // Accessors for header fields
@@ -398,9 +398,9 @@ class AuthResponseRequest : public CQLRequest {
     AuthQueryParameters() : ql::StatementParameters() {}
 
     Status GetBindVariable(const std::string& name,
-                                   int64_t pos,
-                                   const std::shared_ptr<QLType>& type,
-                                   QLValue* value) const override;
+                           int64_t pos,
+                           const std::shared_ptr<QLType>& type,
+                           QLValue* value) const override;
     std::string username;
     std::string password;
   };
@@ -1026,4 +1026,3 @@ class CQLServerEventList : public rpc::ServerEventList {
 
 }  // namespace ql
 }  // namespace yb
-

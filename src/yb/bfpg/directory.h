@@ -78,4 +78,3 @@ extern const std::vector<BFDecl> kBFDirectory;
 
 } // namespace bfpg
 } // namespace yb
-

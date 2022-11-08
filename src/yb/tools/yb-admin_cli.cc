@@ -84,14 +84,14 @@ constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
 Status GetUniverseConfig(ClusterAdminClientClass* client,
-                                 const ClusterAdminCli::CLIArguments&) {
+                         const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
   return Status::OK();
 }
 
 Status ChangeBlacklist(ClusterAdminClientClass* client,
-                               const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
-                               const std::string& errStr) {
+                       const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
+                       const std::string& errStr) {
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }

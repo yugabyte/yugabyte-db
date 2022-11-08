@@ -134,4 +134,3 @@ class TabletRestorePatch : public RestorePatch {
 
 } // namespace tablet
 } // namespace yb
-

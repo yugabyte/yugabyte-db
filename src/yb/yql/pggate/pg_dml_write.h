@@ -95,4 +95,3 @@ class PgDmlWrite : public PgDml {
 
 }  // namespace pggate
 }  // namespace yb
-

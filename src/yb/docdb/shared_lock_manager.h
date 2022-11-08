@@ -66,4 +66,3 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb
-

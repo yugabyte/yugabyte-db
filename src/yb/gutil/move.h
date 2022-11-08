@@ -228,4 +228,3 @@
   type Pass() { return type(rvalue_type(this)); } \
   typedef void MoveOnlyTypeForCPP03; \
  private:
-

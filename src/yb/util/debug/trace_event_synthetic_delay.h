@@ -172,4 +172,3 @@ TRACE_EVENT_API_CLASS_EXPORT yb::debug::TraceEventSyntheticDelay*
     GetOrCreateDelay(const char* name, AtomicWord* impl_ptr);
 
 }  // namespace trace_event_internal
-

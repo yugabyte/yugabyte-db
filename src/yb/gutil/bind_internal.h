@@ -2705,4 +2705,3 @@ struct BindState<Runnable, RunType, void(P1, P2, P3, P4, P5, P6,
 
 }  // namespace internal
 }  // namespace yb
-
