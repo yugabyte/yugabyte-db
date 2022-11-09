@@ -92,13 +92,9 @@ DEFINE_UNKNOWN_int32(memory_limit_warn_threshold_percentage, 98,
              "consume before WARNING level messages are periodically logged.");
 TAG_FLAG(memory_limit_warn_threshold_percentage, advanced);
 
-
 DEFINE_UNKNOWN_int64(server_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
              "use for the thread cache for tcmalloc across all threads in the tserver/master.");
-DEFINE_UNKNOWN_int64(tserver_tcmalloc_max_total_thread_cache_bytes, -1, "Total number of bytes to "
-             "use for the thread cache for tcmalloc across all threads in the tserver. "
-             "This is being deprecated and is used to fallback/override the value set "
-             "on the tserver by server_tcmalloc_max_total_thread_cache_bytes." );
+DEPRECATE_FLAG(int64, tserver_tcmalloc_max_total_thread_cache_bytes, "11_2022");
 DEFINE_NON_RUNTIME_int32(tcmalloc_max_per_cpu_cache_bytes, -1, "Sets the maximum cache size per "
              "CPU cache, if Google TCMalloc is being used.");
 
@@ -348,16 +344,10 @@ void MemTracker::PrintTCMallocConfigs() {
 
 void MemTracker::SetTCMallocCacheMemory() {
 #ifdef YB_TCMALLOC_ENABLED
-  auto flag_value_to_use =
-      (FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes != -1
-           ? FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes
-           : FLAGS_server_tcmalloc_max_total_thread_cache_bytes);
-  if (flag_value_to_use < 0) {
+  if (FLAGS_server_tcmalloc_max_total_thread_cache_bytes < 0) {
     const auto mem_limit = MemTracker::GetRootTracker()->limit();
     FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
         std::min(std::max(static_cast<size_t>(2.5 * mem_limit / 100), 32_MB), 2_GB);
-  } else {
-    FLAGS_server_tcmalloc_max_total_thread_cache_bytes = flag_value_to_use;
   }
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: "
             << FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
