@@ -782,6 +782,7 @@ run_java_tests=false
 save_log=false
 make_targets=()
 no_tcmalloc=false
+use_google_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -949,6 +950,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+    ;;
+    --use-google-tcmalloc)
+      use_google_tcmalloc=true
     ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
@@ -1655,6 +1659,13 @@ fi
 
 if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+fi
+
+if [[ ${use_google_tcmalloc} == "true" ]]; then
+  if [[ ${is_linux} != "true" ]]; then
+    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+  fi
+  cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
 fi
 
 if [[ $pgo_data_path != "" ]]; then
