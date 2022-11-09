@@ -43,7 +43,7 @@ The examples in Explore can be run on your local machine, or in the cloud using 
 
 This section assumes that you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup) in YugabyteDB Managed or [installed YugabyteDB](../quick-start/linux/) on your local computer.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >
     <a href="#cloud" class="nav-link active" id="cloud-tab" data-toggle="tab"
        role="tab" aria-controls="cloud" aria-selected="true">
