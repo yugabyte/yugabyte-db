@@ -142,7 +142,12 @@ To obtain information about the overall maximum lag, you should check `/metrics`
 You can use `yb-admin` to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
 
 ```sh
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 get_replication_status
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 \
+    get_replication_status
+```
+
+```output
 statuses {
   table_id: "03ee1455f2134d5b914dd499ccad4377"
   stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
