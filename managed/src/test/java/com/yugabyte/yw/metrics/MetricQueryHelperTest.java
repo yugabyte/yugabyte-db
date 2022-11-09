@@ -19,6 +19,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
@@ -51,7 +52,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @InjectMocks MetricQueryHelper metricQueryHelper;
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   MetricConfig validMetric;
 
@@ -61,6 +62,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
   }
 
   @Test
@@ -248,7 +250,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
           allOf(notNullValue(), equalTo(1481147528)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("step").toString()),
-          allOf(notNullValue(), equalTo(1)));
+          allOf(notNullValue(), equalTo(2)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("end").toString()),
           allOf(notNullValue(), equalTo(1481147648)));

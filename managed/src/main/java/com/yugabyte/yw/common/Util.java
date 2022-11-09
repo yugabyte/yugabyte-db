@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -37,6 +38,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
@@ -49,11 +51,13 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -82,6 +86,20 @@ public class Util {
   public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
       "yb.upgrade.blacklist_leader_wait_time_ms";
 
+  private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
+      ImmutableMap.<String, Long>builder()
+          .put("s", TimeUnit.SECONDS.toNanos(1))
+          .put("m", TimeUnit.MINUTES.toNanos(1))
+          .put("h", TimeUnit.HOURS.toNanos(1))
+          .put("d", TimeUnit.DAYS.toNanos(1))
+          .put("ms", TimeUnit.MILLISECONDS.toNanos(1))
+          .put("us", TimeUnit.MICROSECONDS.toNanos(1))
+          .put("\u00b5s", TimeUnit.MICROSECONDS.toNanos(1))
+          .put("ns", 1L)
+          .build();
+
+  private static final Pattern GO_DURATION_REGEX =
+      Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -636,5 +654,25 @@ public class Util {
   // Generate a deterministic node UUID from the universe UUID and the node name.
   public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
     return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
+  }
+
+  public static Duration goDurationToJava(String goDuration) {
+    if (StringUtils.isEmpty(goDuration)) {
+      throw new IllegalArgumentException("Duration string can't be empty");
+    }
+    Matcher m = GO_DURATION_REGEX.matcher(goDuration);
+    boolean found = false;
+    long nanos = 0;
+    while (m.find()) {
+      found = true;
+      long amount = Long.parseLong(m.group(1));
+      String unit = m.group(2);
+      long multiplier = GO_DURATION_UNITS_TO_NANOS.get(unit);
+      nanos += amount * multiplier;
+    }
+    if (!found) {
+      throw new IllegalArgumentException("Duration string " + goDuration + " is invalid");
+    }
+    return Duration.ofNanos(nanos);
   }
 }

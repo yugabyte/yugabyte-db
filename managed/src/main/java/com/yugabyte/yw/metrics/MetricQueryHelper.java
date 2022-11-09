@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.SwamperHelper.getScrapeIntervalSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
@@ -47,7 +49,7 @@ public class MetricQueryHelper {
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
-  @Inject play.Configuration appConfig;
+  @Inject play.Config appConfig;
 
   @Inject ApiHelper apiHelper;
 
@@ -88,6 +90,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
 
+    long scrapeInterval = getScrapeIntervalSeconds(appConfig);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -99,9 +102,22 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    if (params.get("step") == null) {
-      int resolution = Math.round(timeDifference / STEP_SIZE);
+    String step = params.get("step");
+    if (step == null) {
+      if (timeDifference <= STEP_SIZE) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      }
+      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
+    } else {
+      try {
+        if (Integer.parseInt(step) <= 0) {
+          throw new PlatformServiceException(BAD_REQUEST, "Step should not be less than 1 second");
+        }
+      } catch (NumberFormatException nfe) {
+        throw new PlatformServiceException(BAD_REQUEST, "Step should be a valid integer");
+      }
     }
 
     // Adjust the start time so the graphs are consistent for different requests.

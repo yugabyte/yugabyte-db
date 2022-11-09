@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.MetricConfig;
@@ -30,7 +31,7 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class MetricQueryExecutorTest extends FakeDBApplication {
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   @Mock ApiHelper mockApiHelper;
 
