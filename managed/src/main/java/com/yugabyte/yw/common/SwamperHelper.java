@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -73,7 +74,7 @@ public class SwamperHelper {
   private static final String TARGET_PATH_PARAM = "yb.swamper.targetPath";
   private static final String RULES_PATH_PARAM = "yb.swamper.rulesPath";
   public static final String COLLECTION_LEVEL_PARAM = "yb.metrics.collection_level";
-  public static final String SCRAPE_INTERVAL_SECS_PARAM = "yb.metrics.scrape_interval_secs";
+  public static final String SCRAPE_INTERVAL_PARAM = "yb.metrics.scrape_interval";
   public static final String RANGE_PLACEHOLDER = "\\{\\{ range \\}\\}";
 
   private static final String PARAMETER_LABEL_PREFIX = "__param_";
@@ -308,8 +309,7 @@ public class SwamperHelper {
     String fileContent;
     try (InputStream templateStream = environment.resourceAsStream("metric/recording_rules.yml")) {
       fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      long scrapeInterval =
-          runtimeConfigFactory.staticApplicationConf().getLong(SCRAPE_INTERVAL_SECS_PARAM);
+      long scrapeInterval = getScrapeIntervalSeconds(runtimeConfigFactory.staticApplicationConf());
       fileContent =
           fileContent.replaceAll(RANGE_PLACEHOLDER, String.format("%ds", (scrapeInterval * 2)));
     } catch (IOException e) {
@@ -445,5 +445,9 @@ public class SwamperHelper {
     } catch (Exception e) {
       throw new RuntimeException("Failed to read or process params file " + paramsFile, e);
     }
+  }
+
+  public static long getScrapeIntervalSeconds(Config config) {
+    return Util.goDurationToJava(config.getString(SCRAPE_INTERVAL_PARAM)).getSeconds();
   }
 }
