@@ -112,27 +112,10 @@ DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
-using client::YBTable;
-using client::YBTableAlterer;
-using client::YBTableCreator;
 using client::YBTableName;
-using client::YBTableType;
-using master::GetNamespaceInfoResponsePB;
-using master::MiniMaster;
-using tserver::MiniTabletServer;
-using tserver::enterprise::CDCConsumer;
 
-using pgwrapper::GetInt32;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
-using pgwrapper::PgSupervisor;
-using pgwrapper::ToString;
 
 using rpc::RpcController;
 
@@ -1619,6 +1602,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         },
         MonoDelta::FromSeconds(60),
         "Tablets in cdc_state table associated with the stream are not the same as expected"));
+  }
+
+  Result<std::vector<TableId>> GetCDCStreamTableIds(const CDCStreamId& stream_id) {
+    NamespaceId ns_id;
+    std::vector<TableId> stream_table_ids;
+    std::unordered_map<std::string, std::string> options;
+    RETURN_NOT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+    return stream_table_ids;
   }
 };
 
@@ -7390,11 +7381,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
 
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets_2));
   ASSERT_FALSE(resp.has_error());
@@ -7451,11 +7438,7 @@ TEST_F(
   ASSERT_OK(test_cluster_.mini_cluster_->StartMasters());
   LOG(INFO) << "Restarted Master";
 
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
 
   auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_2_id));
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
@@ -7510,11 +7493,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceW
   ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
+  // Wait for a background task cycle to complete.
+  auto result = WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(GetCDCStreamTableIds(stream_id)) == expected_table_ids;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier,
+      "Waiting for background task to update cdc streams.");
+  EXPECT_OK(result);
+  // Extra ASSERT here to get nicely formatted debug information in case of failure.
+  if (!result.ok()) {
+    ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
+  }
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultipleActiveStreams)) {
@@ -7569,16 +7559,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_1);
 
   // Check that both the streams metadata has all the 3 table ids.
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
-
-  options.clear();
-  stream_table_ids.clear();
-  ASSERT_OK(test_client()->GetCDCStream(stream_id_1, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)), expected_table_ids);
 }
 
 TEST_F(
@@ -7643,21 +7625,9 @@ TEST_F(
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_2);
 
   // Check that both the streams metadata has all the 3 table ids.
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
-
-  options.clear();
-  stream_table_ids.clear();
-  ASSERT_OK(test_client()->GetCDCStream(stream_id_1, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
-
-  options.clear();
-  stream_table_ids.clear();
-  ASSERT_OK(test_client()->GetCDCStream(stream_id_2, &ns_id, &stream_table_ids, &options));
-  ASSERT_EQ(stream_table_ids, expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)), expected_table_ids);
+  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_2)), expected_table_ids);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWithActiveStream)) {
@@ -7704,12 +7674,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
 
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
-  NamespaceId ns_id;
-  std::vector<TableId> stream_table_ids;
-  std::unordered_map<std::string, std::string> options;
-  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
   std::unordered_set<TableId> stream_table_ids_set;
-  for (const auto& stream_id : stream_table_ids) {
+  for (const auto& stream_id : ASSERT_RESULT(GetCDCStreamTableIds(stream_id))) {
     stream_table_ids_set.insert(stream_id);
   }
   ASSERT_EQ(stream_table_ids_set, expected_table_ids);
