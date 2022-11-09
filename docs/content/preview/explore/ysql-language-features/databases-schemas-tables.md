@@ -13,11 +13,7 @@ type: docs
 
 This section covers basic topics including how to connect to your cluster using the YSQL shell, and use the shell to manage databases, schemas, and tables.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
+{{% explore-setup-single %}}
 
 ## YSQL shell
 
