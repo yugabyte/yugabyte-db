@@ -11,22 +11,20 @@ rightNav:
   hideH4: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-                <img src="/icons/cloud-icon.svg" alt="Icon">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li class="active">
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+              <img src="/icons/cloud-icon.svg" alt="Icon">
 Use a cloud cluster
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/" class="nav-link">
-                <img src="/icons/server-iconsvg.svg" alt="Icon">
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/" class="nav-link">
+              <img src="/icons/server-iconsvg.svg" alt="Icon">
 Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+    </a>
+  </li>
+</ul>
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
