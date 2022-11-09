@@ -47,7 +47,7 @@ Create a keyspace as follows:
 ycqlsh> CREATE KEYSPACE banking;
 ```
 
-The YCQL table should be created with the `transactions` property enabled. The statement should look something like the following:
+The YCQL table should be created with the `transactions` property enabled. The statement should be similar to the following:
 
 ```sql
 ycqlsh> CREATE TABLE banking.accounts (
@@ -185,7 +185,7 @@ END TRANSACTION;
 
 ## Verify
 
-Verify the transfer was made as we intended, and that the time at which the two accounts were updated are identical by performing the following query:
+Verify that the transfer was made as intended, and that the time at which the two accounts were updated are identical by performing the following query:
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;

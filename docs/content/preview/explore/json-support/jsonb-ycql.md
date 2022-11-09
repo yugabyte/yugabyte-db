@@ -42,7 +42,7 @@ Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See 
 
 JSON functionality in YCQL is **a subset** of the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
-YCQL supports the jsonb data type.
+YCQL supports the JSONB data type.
 
 ## Create a table
 
@@ -116,7 +116,7 @@ ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
 
-Select with condition using on JSONB element:
+Select with condition using JSONB element:
 
 ```sql
 ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
@@ -186,7 +186,7 @@ ycqlsh> SELECT * FROM store.books WHERE id = 4;
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 
-To update a sub-document:
+To update a subdocument:
 
 ```cql
 ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
@@ -224,9 +224,9 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
   6 | {"editors":["Adam","Bryan","Charles"]}
 ```
 
-### Add sub-documents
+### Add subdocuments
 
-Update a missing JSONB document resulting in an insert of a sub-document as follows:
+Update a missing JSONB document resulting in an insert of a subdocument as follows:
 
 ```cql
 ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;

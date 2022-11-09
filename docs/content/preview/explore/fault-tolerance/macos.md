@@ -61,7 +61,7 @@ Note how both the reads and the writes are roughly the same across all the nodes
 
 ## Remove a node and observe continuous write availability
 
-Remove a node from the universe using the following command:
+Remove a node from the cluster using the following command:
 
 ```sh
 ./bin/yugabyted stop \
@@ -70,7 +70,7 @@ Remove a node from the universe using the following command:
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update.
 
-The `Time since heartbeat` value for that node will keep increasing. After that number reaches 60s (1 minute), YugabyteDB changes the status of the removed node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+The `Time since heartbeat` value for that node will keep increasing. When the number reaches 60s (1 minute), YugabyteDB changes the status of the removed node from `ALIVE` to `DEAD`. Note that at this time the cluster is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
 

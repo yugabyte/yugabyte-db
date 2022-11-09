@@ -152,7 +152,7 @@ This is shown diagrammatically in the following illustration.
 
 ![Distributed transaction write path](/images/architecture/txn/distributed_txn_write_path.svg)
 
-After the above transaction succeeds, the table should look as follows.
+After the above transaction succeeds, the table should look as follows:
 
 ```sql
 yugabyte=# SELECT * FROM accounts;
@@ -186,7 +186,7 @@ YugabyteDB currently supports optimistic concurrency control, with pessimistic c
 
 ## Transaction options
 
-You can see the various options supported by transactions by running the `\h BEGIN` meta-command, as shown below.
+You can see the various options supported by transactions by running the following `\h BEGIN` meta-command:
 
 ```sql
 yugabyte=# \h BEGIN
@@ -234,8 +234,8 @@ ERROR: cannot execute CREATE TABLE in a read-only transaction
 
 The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 
-When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
+When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the typical overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
 
 {{< tip title="Tip" >}}
-This mode is well suited for long-running reports or backups without being impacting or impacted by other transactions.
+This mode is well-suited for long-running reports or backups without being impacting or impacted by other transactions.
 {{< /tip >}}

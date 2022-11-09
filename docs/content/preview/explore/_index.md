@@ -15,17 +15,17 @@ type: indexpage
 showRightNav: true
 ---
 
-The Explore section walks you through YugabyteDB's core features, with examples.
+The Explore section introduces you to YugabyteDB's features and provides examples.
 
 Most examples demonstrating database features such as API compatibility can be run on a single-node cluster on your laptop or using the free Sandbox cluster in YugabyteDB Managed. More advanced scenarios use a multi-node deployment. Refer to [Set up your environment](#set-up-your-environment) for instructions on creating clusters to run the examples.
 
-The following table describes the YugabyteDB features you can explore, along with the setup (single node or multi node cluster) required to run the examples.
+The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node cluster).
 
 | Section | Purpose | [Setup](#set-up-your-environment) |
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency with follower reads and moving data closer to users with tablespaces. | Multi-node cluster<br/>Local instance |
-| [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node goes down. | Multi-node cluster<br/>Local instance |
+| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node cluster<br/>Local instance |
+| [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node cluster<br/>Local instance |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node cluster<br/>Local instance |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
 | [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
@@ -71,9 +71,9 @@ To run the Explore examples in YugabyteDB Managed, create a single- or multi-nod
 
   If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
-  Save your cluster credentials in a convenient location, you will use them to connect to your cluster.
+  Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
-- Multi node
+- Multi-node
 
   Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
@@ -158,7 +158,7 @@ Next, join two more nodes with the previous node. By default, [yugabyted](../ref
 
 **Connect to clusters**
 
-To run the examples in your cluster, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB using the YSQL or YCQL API.
+To run the examples in your cluster, you use either the ysqlsh or ycqlsh CLI to interact with YugabyteDB via the YSQL or YCQL API.
 
 To start ysqlsh:
 

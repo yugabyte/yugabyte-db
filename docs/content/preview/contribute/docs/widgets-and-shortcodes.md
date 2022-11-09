@@ -64,7 +64,7 @@ An inline section switcher lets you switch between content sections **without a 
 
 ![Inline section switcher](https://raw.githubusercontent.com/yugabyte/docs/master/contributing/inline-section-switcher.png)
 
-The corresponding code for this widget is shown below. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory; name the subdirectory such that it can be associated with the switcher title.
+The corresponding code for this widget is as follows. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory; name the subdirectory such that it can be associated with the switcher title.
 
 ```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
