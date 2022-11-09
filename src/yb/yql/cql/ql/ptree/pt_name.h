@@ -175,4 +175,3 @@ using PTQualifiedNameListNode = TreeListNode<PTQualifiedName>;
 
 }  // namespace ql
 }  // namespace yb
-

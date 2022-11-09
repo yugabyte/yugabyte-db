@@ -170,4 +170,3 @@ class CompactionIterator {
   std::vector<std::pair<Slice, Slice>> live_key_ranges_stack_;
 };
 }  // namespace rocksdb
-

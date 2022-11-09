@@ -21,7 +21,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include <vector>
@@ -240,6 +239,3 @@ class PlainTableIndexBuilder {
 };
 
 };  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
-

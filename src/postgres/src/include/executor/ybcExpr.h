@@ -25,8 +25,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCEXPR_H
-#define YBCEXPR_H
+#pragma once
 
 #include "postgres.h"
 #include "nodes/execnodes.h"
@@ -62,5 +61,3 @@ extern YbPgExecOutParam *YbCreateExecOutParam();
 
 extern void YbWriteExecOutParam(YbPgExecOutParam *out_param,
 								const YbcPgExecOutParamValue *value);
-
-#endif							/* YBCEXPR_H */

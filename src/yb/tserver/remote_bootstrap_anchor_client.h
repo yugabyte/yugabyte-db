@@ -90,4 +90,3 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 
 }  // namespace tserver
 }  // namespace yb
-

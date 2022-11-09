@@ -299,4 +299,3 @@ class ReverseLock {
 };
 
 } // namespace yb
-

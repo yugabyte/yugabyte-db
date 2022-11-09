@@ -26,4 +26,3 @@ std::string GetDebugQueryString(const PgCallbacks& callbacks);
 
 }  // namespace pggate
 }  // namespace yb
-

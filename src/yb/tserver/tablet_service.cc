@@ -1814,6 +1814,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       auto status = catalog_version_checker(pg_req);
       if (!status.ok()) {
         SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
+        return;
       }
     }
   }
@@ -2466,7 +2467,7 @@ void TabletServiceImpl::GetTserverCatalogVersionInfo(
     const GetTserverCatalogVersionInfoRequestPB* req,
     GetTserverCatalogVersionInfoResponsePB* resp,
     rpc::RpcContext context) {
-  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(req->size_only(), resp);
+  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(resp);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;

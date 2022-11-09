@@ -167,4 +167,3 @@ class RocksDBPatcher {
 
 }  // namespace docdb
 }  // namespace yb
-

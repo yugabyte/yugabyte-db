@@ -337,4 +337,3 @@ class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
 
 } // namespace docdb
 } // namespace yb
-

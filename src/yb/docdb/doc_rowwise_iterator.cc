@@ -359,11 +359,11 @@ namespace {
 
 // Set primary key column values (hashed or range columns) in a QL row value map.
 Status SetQLPrimaryKeyColumnValues(const Schema& schema,
-                                           const size_t begin_index,
-                                           const size_t column_count,
-                                           const char* column_type,
-                                           DocKeyDecoder* decoder,
-                                           QLTableRow* table_row) {
+                                   const size_t begin_index,
+                                   const size_t column_count,
+                                   const char* column_type,
+                                   DocKeyDecoder* decoder,
+                                   QLTableRow* table_row) {
   if (begin_index + column_count > schema.num_columns()) {
     return STATUS_SUBSTITUTE(
         Corruption,

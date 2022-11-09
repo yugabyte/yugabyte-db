@@ -120,4 +120,3 @@ std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b)
 
 } // namespace master
 } // namespace yb
-

@@ -347,4 +347,3 @@ TEST_F(MultiThreadedRpcTest, MemoryLimit) {
 
 } // namespace rpc
 } // namespace yb
-

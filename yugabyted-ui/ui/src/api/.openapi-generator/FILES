@@ -43,6 +43,7 @@ src/models/SlowQueryResponseData.ts
 src/models/SlowQueryResponseSchema.ts
 src/models/SlowQueryResponseYSQLData.ts
 src/models/SlowQueryResponseYSQLQueryItem.ts
+src/models/VersionInfo.ts
 src/models/YbApiEnum.ts
 src/models/index.ts
 src/runtime.ts

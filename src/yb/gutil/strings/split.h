@@ -1189,4 +1189,3 @@ bool SplitStringAndParseToList(
 
 // END DOXYGEN SplitFunctions grouping
 /* @} */
-

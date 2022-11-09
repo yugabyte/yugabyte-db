@@ -74,4 +74,3 @@ class TabletComponent {
 
 } // namespace tablet
 } // namespace yb
-

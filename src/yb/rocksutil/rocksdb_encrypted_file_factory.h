@@ -23,5 +23,3 @@ std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
     std::unique_ptr<encryption::HeaderManager> header_manager);
 
 } // namespace yb
-
-

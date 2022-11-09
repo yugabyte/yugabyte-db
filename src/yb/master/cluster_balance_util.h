@@ -321,9 +321,9 @@ class PerTableLoadState {
   void SortDriveLoad();
 
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts = "",
-                            const TabletServerId& to_ts_path = "");
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts = "",
+                    const TabletServerId& to_ts_path = "");
 
   void SortLeaderLoad();
 
@@ -334,16 +334,16 @@ class PerTableLoadState {
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
-                                  const TabletServerId& ts_uuid,
-                                  const std::string& path);
+                          const TabletServerId& ts_uuid,
+                          const std::string& path);
 
   Status RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddLeaderTablet(const TabletId& tablet_id,
-                                 const TabletServerId& ts_uuid,
-                                 const TabletServerId& ts_path);
+                         const TabletServerId& ts_uuid,
+                         const TabletServerId& ts_path);
 
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
@@ -448,4 +448,3 @@ class PerTableLoadState {
 
 } // namespace master
 } // namespace yb
-

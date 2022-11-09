@@ -41,6 +41,9 @@ SET default_tablespace = '';
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16485'::pg_catalog.oid);
 CREATE TABLEGROUP grp1;
 
 
@@ -50,6 +53,9 @@ ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
 -- Name: grp2; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16486'::pg_catalog.oid);
 CREATE TABLEGROUP grp2;
 
 
@@ -61,6 +67,9 @@ SET default_tablespace = tsp1;
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16487'::pg_catalog.oid);
 CREATE TABLEGROUP grp_with_spc;
 
 

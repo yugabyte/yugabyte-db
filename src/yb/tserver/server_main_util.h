@@ -24,4 +24,3 @@ namespace yb {
 Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc, char*** argv);
 
 }  // namespace yb
-

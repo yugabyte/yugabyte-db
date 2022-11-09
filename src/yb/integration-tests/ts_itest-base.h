@@ -89,11 +89,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   itest::TServerDetails* GetLeaderReplicaOrNull(const std::string& tablet_id);
 
   Status GetLeaderReplicaWithRetries(const std::string& tablet_id,
-                                             itest::TServerDetails** leader,
-                                             int max_attempts = 100);
+                                     itest::TServerDetails** leader,
+                                     int max_attempts = 100);
 
   Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
-                                               std::string* leader_uuid);
+                                       std::string* leader_uuid);
 
   itest::TServerDetails* GetReplicaWithUuidOrNull(const std::string& tablet_id,
                                                   const std::string& uuid);
@@ -157,4 +157,3 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
 }  // namespace tserver
 }  // namespace yb
-

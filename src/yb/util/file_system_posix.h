@@ -111,4 +111,3 @@ class PosixWritableFile : public WritableFile {
 };
 
 } // namespace rocksdb
-

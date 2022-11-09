@@ -112,4 +112,3 @@ void FilterAddresses(const std::string &transform_spec,
                      std::vector<boost::asio::ip::address> *addresses);
 
 } // namespace yb
-

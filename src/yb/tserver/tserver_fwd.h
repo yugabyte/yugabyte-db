@@ -54,4 +54,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 } // namespace tserver
 } // namespace yb
-

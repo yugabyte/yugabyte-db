@@ -38,4 +38,3 @@ using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
 
 } // namespace tserver
 } // namespace yb
-

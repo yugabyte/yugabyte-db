@@ -33,4 +33,3 @@ class PgDocData : public PgWire {
 
 }  // namespace pggate
 }  // namespace yb
-

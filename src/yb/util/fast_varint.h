@@ -110,4 +110,3 @@ inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
 
 }  // namespace util
 }  // namespace yb
-

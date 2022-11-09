@@ -57,7 +57,7 @@
       column-gap: 50px;
       row-gap: 12px;
 
-      & > div {
+      &>div {
         max-width: 200px;
       }
 
@@ -121,5 +121,11 @@
     line-height: 15px;
     color: $YB_TEXT_COLOR;
     margin-top: 10px;
+    display: flex;
+    align-items: center;
+
+    i {
+      margin-right: 4px;
+    }
   }
 }

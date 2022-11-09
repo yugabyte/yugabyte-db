@@ -34,4 +34,3 @@ typedef StatusErrorCodeImpl<MasterErrorTag> MasterError;
 
 } // namespace master
 } // namespace yb
-

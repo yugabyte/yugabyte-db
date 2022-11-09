@@ -1020,8 +1020,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response) {
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions postponed_leader_actions;

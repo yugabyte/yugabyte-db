@@ -851,7 +851,8 @@ class UniversePicker extends Component {
     return (
       <div className="universe-picker-container">
         <Dropdown
-          id="universe-filter-dropdown"
+          id="universeFilterDropdown"
+          className="universe-filter-dropdown"
         >
           <Dropdown.Toggle className="dropdown-toggle-button">
             <span className="default-universe-value">

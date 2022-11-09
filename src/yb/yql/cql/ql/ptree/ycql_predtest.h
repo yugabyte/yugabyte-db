@@ -32,4 +32,3 @@ Result<bool> OpInExpr(const QLExpressionPB& predicate, const ColumnOp& col_op);
 
 }  // namespace ql
 }  // namespace yb
-

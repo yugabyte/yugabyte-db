@@ -344,4 +344,3 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
 }  // namespace tserver
 }  // namespace yb
-

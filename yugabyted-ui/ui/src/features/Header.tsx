@@ -14,7 +14,7 @@ import {  Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { YBDropdown } from '@app/components';
-import { ClusterHeader } from '@app/features/clusters/ClusterHeader';
+import { VersionBadge } from '@app/features/clusters/VersionBadge';
 import HelpIcon from '@app/assets/help.svg';
 import FileIcon from '@app/assets/file.svg';
 import SlackIcon from '@app/assets/slack.svg';
@@ -66,9 +66,9 @@ export const Header: FC = () => {
               {t('common.addAccount')}
             </Typography>
           </Route>
-          <Route path={`/admin`}>
+          <Route path={`/debug`}>
             <Typography variant="h4" color="inherit">
-              {t('common.admin')}
+              {t('common.debug')}
             </Typography>
           </Route>
           <Route path={`${path}/p/:projectId/analytics`}>
@@ -77,9 +77,21 @@ export const Header: FC = () => {
               {t('common.analytics')}
             </Typography>
           </Route>
+          <Route path={`/overview`}>
+            <Typography variant="h4" color="inherit">
+              {t('common.overview')}
+            </Typography>
+          </Route>
+          <Route path={`/databases`}>
+            <Typography variant="h4" color="inherit">
+              {t('common.databases')}
+            </Typography>
+          </Route>
           <Route path={`/cluster`}>
             {/* <ProjectPicker /> */}
-            <ClusterHeader />
+            <Typography variant="h4">
+                {t('common.cluster')}
+            </Typography>
           </Route>
           <Route path={`/performance`}>
             <Typography variant="h4" color="inherit">
@@ -112,6 +124,7 @@ export const Header: FC = () => {
             </Typography>
           </Route>
         </Switch>
+        <VersionBadge/>
         <div className={classes.toRight}>
           <Box display="flex">
             <MUILink className={classes.sendFeedback} href={LINK_SLACK} target="_blank">

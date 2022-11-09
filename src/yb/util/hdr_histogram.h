@@ -380,4 +380,3 @@ class PercentileIterator : public AbstractHistogramIterator {
 };
 
 } // namespace yb
-

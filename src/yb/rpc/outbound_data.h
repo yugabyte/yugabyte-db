@@ -136,4 +136,3 @@ class SingleBufferOutboundData : public OutboundData {
 
 }  // namespace rpc
 }  // namespace yb
-

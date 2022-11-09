@@ -42,4 +42,3 @@ void* YBCCStringToTextWithLen(const char* c, int size);
 const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
-

@@ -29,8 +29,6 @@ export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 
-readonly yba_installer_home=$( cd "${BASH_SOURCE%/*}" && pwd )
-
 destination=""
 
 while [ $# -gt 0 ]; do
@@ -46,22 +44,28 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+
+echo Starting yb_release for yba-installer > /dev/stderr
+
 # verify that the destination directory exists
 if [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"
 fi
 VERSION_FULL=$(<version.txt)
 BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
-IFS='-'
-read -ra VERSION_NUMBER <<< "$VERSION_FULL"
-IFS=" "
-VERSION="$VERSION_NUMBER-b$BUILD_NUMBER"
+# IFS splits input according to delimiter.
+IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
+VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
 GOOS="linux"
 GOARCH="amd64"
 PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-make VERSION="${VERSION}" PACKAGE_NAME=${PACKAGE_NAME} GOOS=${GOOS} GOARCH=${GOARCH}
+echo "Starting make"  > /dev/stderr
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+echo "Completed make"  > /dev/stderr
 
-command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
-"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py $command
+echo "Invoking yb_release.py" > /dev/stderr
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py --package "${PACKAGE_NAME}" \
+                                                 --destination "${destination}"
+echo "Completed yb_release.py" > /dev/stderr

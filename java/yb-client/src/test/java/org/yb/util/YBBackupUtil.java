@@ -12,6 +12,8 @@
 //
 package org.yb.util;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import com.google.common.net.HostAndPort;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -105,6 +107,9 @@ public final class YBBackupUtil {
   }
 
   public static String runYbBackup(List<String> args) throws Exception {
+    checkArgument(args.contains("create") || args.contains("restore")
+    || args.contains("delete"), "argument create/restore/delete is missing");
+    checkArgument(args.contains("--backup_location"), "argument --backup_location is missing");
     final String ybAdminPath = TestUtils.findBinary("yb-admin");
     final String ysqlDumpPath = TestUtils.findBinary("../postgres/bin/ysql_dump");
     final String ysqlShellPath = TestUtils.findBinary("../postgres/bin/ysqlsh");
@@ -142,8 +147,6 @@ public final class YBBackupUtil {
     }
 
     processCommand.addAll(args);
-    assert(processCommand.contains("create") || processCommand.contains("restore")
-        || processCommand.contains("delete"));
     final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
     LOG.info("yb_backup output: " + output);
 

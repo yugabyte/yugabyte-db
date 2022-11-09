@@ -430,4 +430,3 @@ class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue, DataType::FR
 
 }  // namespace ql
 }  // namespace yb
-

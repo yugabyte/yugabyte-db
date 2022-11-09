@@ -193,4 +193,3 @@ class SchemaChangeResult : public ExecutedResult {
 
 } // namespace ql
 } // namespace yb
-

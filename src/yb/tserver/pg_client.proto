@@ -448,7 +448,6 @@ message PgInsertSequenceTupleRequestPB {
   int64 db_oid = 2;
   int64 seq_oid = 3;
   uint64 ysql_catalog_version = 4;
-  uint64 ysql_db_catalog_version = 7;
   int64 last_val = 5;
   bool is_called = 6;
 }
@@ -462,7 +461,6 @@ message PgUpdateSequenceTupleRequestPB {
   int64 db_oid = 2;
   int64 seq_oid = 3;
   uint64 ysql_catalog_version = 4;
-  uint64 ysql_db_catalog_version = 10;
   int64 last_val = 5;
   bool is_called = 6;
   bool has_expected = 7;
@@ -480,7 +478,6 @@ message PgReadSequenceTupleRequestPB {
   int64 db_oid = 2;
   int64 seq_oid = 3;
   uint64 ysql_catalog_version = 4;
-  uint64 ysql_db_catalog_version = 5;
 }
 
 message PgReadSequenceTupleResponsePB {
@@ -527,18 +524,15 @@ message PgCheckIfPitrActiveResponsePB {
   AppStatusPB status = 2;
 }
 
-message PgGetTserverCatalogVersionInfoRequestPB {
-  // True if we only want to return the size of the catalog version map from tserver.
-  bool size_only = 1;
-}
+message PgGetTserverCatalogVersionInfoRequestPB {}
 
 message PgGetTserverCatalogVersionInfoResponsePB {
-  AppStatusPB status = 1;
   message Entry {
     uint32 db_oid = 1;
     int32 shm_index = 2;
     uint64 current_version = 3;
   }
-  repeated Entry entries = 2;
-  uint32 num_entries = 3;
+
+  repeated Entry entries = 1;
+  AppStatusPB status = 2;
 }

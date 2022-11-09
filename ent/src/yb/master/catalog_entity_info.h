@@ -240,4 +240,3 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
 } // namespace master
 } // namespace yb
-

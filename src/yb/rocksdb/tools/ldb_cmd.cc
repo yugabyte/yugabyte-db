@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/tools/ldb_cmd.h"
 
 #ifndef __STDC_FORMAT_MACROS
@@ -48,7 +47,6 @@
 #include "yb/rocksdb/port/dirent.h"
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -2286,4 +2284,3 @@ void DBFileDumperCommand::DoCommand() {
 }
 
 }   // namespace rocksdb
-#endif  // ROCKSDB_LITE

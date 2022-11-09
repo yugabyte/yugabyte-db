@@ -52,4 +52,3 @@ Status IterateAndDoForUDT(QLTypePB* pb_type, Fn fn) {
 }
 
 }; // namespace yb
-

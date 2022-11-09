@@ -61,4 +61,3 @@ bool CrossThreadMutex::try_lock_until(const std::chrono::time_point<Clock, Durat
 }
 
 }  // namespace yb
-

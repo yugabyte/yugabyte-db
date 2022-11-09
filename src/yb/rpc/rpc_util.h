@@ -28,4 +28,3 @@ Slice GetGlobalSkipBuffer();
 
 }  // namespace rpc
 }  // namespace yb
-

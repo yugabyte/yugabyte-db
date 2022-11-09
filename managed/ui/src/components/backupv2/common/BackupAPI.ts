@@ -114,7 +114,7 @@ export function deleteBackup(backupList: IBackup[]) {
 export function cancelBackup(backup: IBackup) {
   const cUUID = localStorage.getItem('customerId');
   return axios.post(
-    `${ROOT_URL}/customers/${cUUID}/backups/${backup.commonBackupInfo.backupUUID}/stop`
+    `${ROOT_URL}/customers/${cUUID}/tasks/${backup.commonBackupInfo.taskUUID}/abort`
   );
 }
 

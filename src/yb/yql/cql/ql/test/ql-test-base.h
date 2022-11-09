@@ -225,4 +225,3 @@ class QLTestBase : public YBTest {
 
 }  // namespace ql
 }  // namespace yb
-
