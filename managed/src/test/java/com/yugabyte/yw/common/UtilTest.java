@@ -26,11 +26,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
@@ -408,5 +410,24 @@ public class UtilTest extends FakeDBApplication {
   @Test
   public void testYsqlRedaction(String output, String input) {
     assertEquals(output, Util.redactYsqlQuery(input));
+  }
+
+  @Test
+  @Parameters({
+    "3ns, 3",
+    "2us, 2000",
+    "5\u00b5s, 5000",
+    "1ms, 1000000",
+    "5s, 5000000000",
+    "1m, 60000000000",
+    "2h, 7200000000000",
+    "1d, 86400000000000",
+    "1h2m3s, 3723000000000",
+    "1ms2us3ns, 1002003"
+  })
+  public void testGoDurationConversion(String goDuration, long expectedNanos) {
+    Duration duration = Util.goDurationToJava(goDuration);
+    long nanos = TimeUnit.SECONDS.toNanos(duration.getSeconds()) + duration.getNano();
+    assertEquals(expectedNanos, nanos);
   }
 }
