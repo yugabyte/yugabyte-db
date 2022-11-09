@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
@@ -288,4 +287,3 @@ Status TransactionLogIteratorImpl::OpenLogReader(const LogFile* logFile) {
   return Status::OK();
 }
 }  //  namespace rocksdb
-#endif  // ROCKSDB_LITE

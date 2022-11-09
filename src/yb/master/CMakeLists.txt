@@ -215,12 +215,22 @@ foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})
 endforeach(ADDITIONAL_TEST)
 
-# Actual master executable
+# Actual master executable. In LTO mode, can also act as the tablet server if executed through a
+# symlink named as the tablet server executable.
 add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
+set(YB_MASTER_EXE_DEPS
+    master
+    ${YB_BASE_LIBS})
+if(NOT DEFINED YB_LTO_ENABLED)
+  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
+endif()
+if(YB_LTO_ENABLED)
+  # In LTO mode, the master executable can also function as the tablet server.
+  list(APPEND YB_MASTER_EXE_DEPS tserver_main_impl)
+endif()
 target_link_libraries(
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
-  master
-  ${YB_BASE_LIBS})
+  ${YB_MASTER_EXE_DEPS})
 
 # Generate master_flags.xml
 set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)

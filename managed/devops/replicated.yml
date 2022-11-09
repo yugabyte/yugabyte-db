@@ -236,7 +236,7 @@ components:
           --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} \
           --query.max-concurrency={{repl ConfigOption \"prometheus_query_concurrency\"}} \
           --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
-          --query.timeout={{repl ConfigOption \"prometheus_query_timeout_sec\"}}s \
+          --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
           --web.enable-admin-api \
           --web.enable-lifecycle"]
         publish_events:
@@ -250,8 +250,8 @@ components:
           - filename: /prometheus_configs/default_prometheus.yml
             contents: |
               global:
-                  scrape_interval:     {{repl ConfigOption "prometheus_scrape_interval_sec"}}s
-                  evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval_sec"}}s
+                  scrape_interval:     {{repl ConfigOption "prometheus_scrape_interval"}}
+                  evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   external_labels:
                       monitor: 'swamper'
               rule_files:
@@ -259,14 +259,14 @@ components:
                 - '/opt/yugabyte/prometheus/rules/yugaware.recording-rules.yml'
               scrape_configs:
                 - job_name: 'prometheus'
-                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout_sec"}}s
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
                       - targets: [
                         '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}'
                       ]
 
                 - job_name: 'platform'
-                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout_sec"}}s
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
@@ -495,7 +495,7 @@ components:
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
-                metrics.scrape_interval_secs = {{repl ConfigOption "prometheus_scrape_interval_sec"}}
+                metrics.scrape_interval = "{{repl ConfigOption "prometheus_scrape_interval" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
@@ -770,14 +770,14 @@ config:
         title: Amount of time to retain the metrics, default to 15 days
         type: text
         default: "15d"
-      - name: prometheus_scrape_interval_sec
-        title: How frequently we want to scrape data, in seconds, default to 10
+      - name: prometheus_scrape_interval
+        title: How frequently we want to scrape data, default to 10 seconds
         type: text
-        default: "10"
-      - name: prometheus_scrape_timeout_sec
-        title: How long until a scrape request times out, in seconds, default to 10
+        default: "10s"
+      - name: prometheus_scrape_timeout
+        title: How long until a scrape request times out, default to 10 seconds
         type: text
-        default: "10"
+        default: "10s"
       - name: prometheus_query_concurrency
         title: How many queries to execute concurrently, default to 20 queries
         type: text
@@ -786,10 +786,10 @@ config:
         title: How many samples can Prometheus load to process single query, default to 5M samples
         type: text
         default: "5000000"
-      - name: prometheus_query_timeout_sec
-        title: How long until query execution times out, in seconds, default to 30
+      - name: prometheus_query_timeout
+        title: How long until query execution times out, default to 30s
         type: text
-        default: "30"
+        default: "30s"
 
 state:
   ready:

@@ -469,7 +469,7 @@ GET     /customers/:cUUID/hooks                                                c
 POST    /customers/:cUUID/hooks                                                com.yugabyte.yw.controllers.HookController.create(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.delete(cUUID: java.util.UUID, hUUID: java.util.UUID)
 PUT     /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.update(cUUID: java.util.UUID, hUUID: java.util.UUID)
-POST    /customers/:cUUID/universes/:uniUUID/run_hooks                         com.yugabyte.yw.controllers.HookController.run(cUUID: java.util.UUID, uniUUID: java.util.UUID, isRolling: Boolean ?= true)
+POST    /customers/:cUUID/universes/:uniUUID/run_hooks                         com.yugabyte.yw.controllers.HookController.run(cUUID: java.util.UUID, uniUUID: java.util.UUID, isRolling: Boolean ?= true, clusterUUID: java.util.UUID ?= null)
 
 # Custom Hook Scope API
 GET     /customers/:cUUID/hook_scopes                                          com.yugabyte.yw.controllers.HookScopeController.list(cUUID: java.util.UUID )

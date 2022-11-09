@@ -68,6 +68,8 @@ ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 # These were incorrectly used without the "clang" prefix to indicate various versions of Clang.
 NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
 
+PREFERRED_OS_TYPE = 'centos7'
+
 
 def get_arch_regex(index: int) -> str:
     """
@@ -254,6 +256,22 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         return (self.branch_name is None or
                 yb_version.startswith((self.branch_name + '.', self.branch_name + '-')))
 
+    def should_skip_as_too_os_specific(self) -> bool:
+        """
+        Certain build types of specific OSes could be skipped because we can use the CentOS 7 build
+        instead. We can do that in cases we know we don't need to run ASAN/TSAN. We know that we
+        don't use ASAN/TSAN on aarch64 or for LTO builds as of 11/07/2022. Also we don't skip
+        Linuxbrew builds or GCC builds.
+        """
+        return (
+            self.os_type != 'centos7' and
+            self.compiler_type.startswith('clang') and
+            # We handle Linuxbrew builds in a special way, e.g. they could be built on AlmaLinux 8.
+            not self.is_linuxbrew and
+            # We don't run ASAN/TSAN on aarch64 or with LTO yet.
+            (self.architecture == 'aarch64' or self.lto_type is not None)
+        )
+
 
 @ruamel_yaml_object.register_class
 class MetadataItem(ThirdPartyReleaseBase):
@@ -365,6 +383,12 @@ def parse_args() -> argparse.Namespace:
         help='One or more Git commits in the yugabyte-db-thirdparty repository that we should '
              'find releases for, in addition to the most recent commit in that repository that is '
              'associated with any of the releases. For use with --update.')
+    parser.add_argument(
+        '--allow-older-os',
+        help='Allow using third-party archives built for an older compatible OS, such as CentOS 7.'
+             'This is typically OK, as long as no runtime libraries for e.g. ASAN or UBSAN '
+             'need to be used, which have to be built for the exact same version of OS.',
+        action='store_true')
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -425,6 +449,7 @@ class MetadataUpdater:
         releases_by_commit: Dict[str, ReleaseGroup] = {}
         num_skipped_old_tag_format = 0
         num_skipped_wrong_branch = 0
+        num_skipped_too_os_specific = 0
         num_releases_found = 0
 
         releases = []
@@ -463,9 +488,16 @@ class MetadataUpdater:
                 continue
 
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
-                logging.debug(
-                    f"Skipping release tag: {tag_name} (does not match version {yb_version}")
+                logging.info(
+                    f"Skipping release tag: {tag_name} (does not match version {yb_version})")
                 num_skipped_wrong_branch += 1
+                continue
+
+            if yb_dep_release.should_skip_as_too_os_specific():
+                logging.info(
+                    f"Skipping release {yb_dep_release} because it is too specific to a particular "
+                    "version of OS and we could use a build for an older OS instead.")
+                num_skipped_too_os_specific += 1
                 continue
 
             if sha not in releases_by_commit:
@@ -479,6 +511,8 @@ class MetadataUpdater:
             logging.info(f"Skipped {num_skipped_old_tag_format} releases due to old tag format")
         if num_skipped_wrong_branch > 0:
             logging.info(f"Skipped {num_skipped_wrong_branch} releases due to branch mismatch")
+        if num_skipped_too_os_specific > 0:
+            logging.info(f"Skipped {num_skipped_too_os_specific} releases as too OS-specific")
         logging.info(
             f"Found {num_releases_found} releases for {len(releases_by_commit)} different commits")
 
@@ -581,6 +615,9 @@ def filter_for_os(archive_candidates: List[MetadataItem], os_type: str) -> List[
         return filtered_exactly
     return [
         candidate for candidate in archive_candidates
+        # is_compatible_os does not take into account that some code built on CentOS 7 might run
+        # on AlmaLinux 8, etc. It only takes into account the equivalence of various flavors of RHEL
+        # compatible OSes.
         if is_compatible_os(candidate.os_type, os_type)
     ]
 
@@ -636,9 +673,17 @@ def get_third_party_release(
         os_type: Optional[str],
         architecture: Optional[str],
         is_linuxbrew: Optional[bool],
-        lto: Optional[str]) -> MetadataItem:
+        lto: Optional[str],
+        allow_older_os: bool) -> MetadataItem:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
+    preferred_os_type: Optional[str] = None
+    if (allow_older_os and
+            not is_linuxbrew and
+            os_type != PREFERRED_OS_TYPE and
+            not os_type.startswith('mac')):
+        preferred_os_type = PREFERRED_OS_TYPE
+
     if not architecture:
         architecture = local_sys_conf().architecture
 
@@ -660,17 +705,22 @@ def get_third_party_release(
     if is_linuxbrew is None or not is_linuxbrew or len(candidates) > 1:
         # If a Linuxbrew archive is requested, we don't have to filter by OS, because archives
         # should be OS-independent. But still do that if we have more than one candidate.
-        candidates = filter_for_os(candidates, os_type)
+        #
+        # Also, if we determine that we would rather use a "preferred OS type" (an old version of
+        # Linux that allows us to produce "universal packages"), we try to use it first.
+
+        filtered_for_os = False
+        if preferred_os_type:
+            candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
+            if candidates_for_preferred_os_type:
+                candidates = candidates_for_preferred_os_type
+                filtered_for_os = True
+
+        if not filtered_for_os:
+            candidates = filter_for_os(candidates, os_type)
 
     if len(candidates) == 1:
         return candidates[0]
-
-    if not candidates:
-        if compiler_type == 'gcc' and os_type == 'ubuntu18.04':
-            logging.info(
-                "Assuming that the compiler type of 'gcc' means 'gcc7' on Ubuntu 18.04.")
-            return get_third_party_release(
-                available_archives, 'gcc7', os_type, architecture, is_linuxbrew, lto=None)
 
     if candidates:
         i = 1
@@ -722,15 +772,16 @@ def main() -> None:
     if args.save_thirdparty_url_to_file:
         if not args.compiler_type:
             raise ValueError("Compiler type not specified")
-        thirdparty_release: Optional[MetadataItem] = get_third_party_release(
+
+        thirdparty_release = get_third_party_release(
             available_archives=metadata_items,
             compiler_type=args.compiler_type,
             os_type=args.os_type,
             architecture=args.architecture,
             is_linuxbrew=args.is_linuxbrew,
-            lto=args.lto)
-        if thirdparty_release is None:
-            raise RuntimeError("Could not determine third-party archive download URL")
+            lto=args.lto,
+            allow_older_os=args.allow_older_os)
+
         thirdparty_url = thirdparty_release.url()
         logging.info(f"Download URL for the third-party dependencies: {thirdparty_url}")
         if args.save_thirdparty_url_to_file:

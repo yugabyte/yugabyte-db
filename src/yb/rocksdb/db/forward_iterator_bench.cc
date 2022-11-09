@@ -22,16 +22,6 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#if !defined(GFLAGS) || defined(ROCKSDB_LITE)
-#include <cstdio>
-int main() {
-  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
-  return 1;
-}
-#elif defined(OS_MACOSX) || defined(OS_WIN)
-// Block forward_iterator_bench under MAC and Windows
-int main() { return 0; }
-#else
 #include <semaphore.h>
 #include <atomic>
 #include <bitset>
@@ -386,4 +376,3 @@ int main(int argc, char** argv) {
   writers.clear();
   readers.clear();
 }
-#endif  // !defined(GFLAGS) || defined(ROCKSDB_LITE)

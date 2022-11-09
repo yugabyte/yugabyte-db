@@ -463,8 +463,7 @@ public class AsyncYBClient implements AutoCloseable {
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
-        LOG.warn("GetChangesCDCSDK got Errback ", o);
-        o.printStackTrace();
+        LOG.debug("GetChangesCDCSDK got Errback ", o);
         throw o;
       }
     });

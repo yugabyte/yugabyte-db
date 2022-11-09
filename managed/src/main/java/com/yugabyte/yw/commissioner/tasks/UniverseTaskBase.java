@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -264,7 +263,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean isForceUpdate,
       boolean isResumeOrDelete,
       Consumer<Universe> callback) {
-    TaskType owner = TaskExecutor.getTaskType(getClass());
+    TaskType owner = getTaskExecutor().getTaskType(getClass());
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
@@ -319,7 +318,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * verifyUniverseVersion
    *
-   * @param expectedUniverseVersion
    * @param universe
    *     <p>This is attempting to flag situations where the UI is operating on a stale copy of the
    *     universe for example, when multiple browsers or users are operating on the same universe.
@@ -366,7 +364,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createManageEncryptionAtRestTask() {
     SubTaskGroup subTaskGroup = null;
-    AbstractTaskBase task = null;
+    AbstractTaskBase task;
     switch (taskParams().encryptionAtRestConfig.opType) {
       case ENABLE:
         subTaskGroup = getTaskExecutor().createSubTaskGroup("EnableEncryptionAtRest", executor);
@@ -393,32 +391,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            log.info(
-                String.format(
-                    "Setting encryption at rest status to %s for universe %s",
-                    taskParams().encryptionAtRestConfig.opType.name(),
-                    universe.universeUUID.toString()));
-            // Persist the updated information about the universe.
-            // It should have been marked as being edited in lockUniverseForUpdate().
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            if (!universeDetails.updateInProgress) {
-              String msg =
-                  "Universe "
-                      + taskParams().universeUUID
-                      + " has not been marked as being updated.";
-              log.error(msg);
-              throw new RuntimeException(msg);
-            }
-
-            universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
-
-            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-                taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
-            universe.setUniverseDetails(universeDetails);
+        universe -> {
+          log.info(
+              String.format(
+                  "Setting encryption at rest status to %s for universe %s",
+                  taskParams().encryptionAtRestConfig.opType.name(),
+                  universe.universeUUID.toString()));
+          // Persist the updated information about the universe.
+          // It should have been marked as being edited in lockUniverseForUpdate().
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          if (!universeDetails.updateInProgress) {
+            String msg =
+                "Universe " + taskParams().universeUUID + " has not been marked as being updated.";
+            log.error(msg);
+            throw new RuntimeException(msg);
           }
+
+          universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
+
+          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
+              taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
+          universe.setUniverseDetails(universeDetails);
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -475,7 +468,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     version. -1 implies always lock the universe.
    * @param callback Callback is invoked for any pre-processing to be done on the Universe before it
    *     is saved in transaction with 'updateInProgress' flag.
-   * @return
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion, Consumer<Universe> callback) {
     UniverseUpdater updater =
@@ -602,31 +594,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     final String err = error;
     // Create the update lambda.
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            // If this universe is not being edited, fail the request.
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            if (!universeDetails.updateInProgress) {
-              String msg = "Universe " + universeUUID + " is not being edited.";
-              log.error(msg);
-              throw new RuntimeException(msg);
-            }
-            // Persist the updated information about the universe. Mark it as being edited.
-            universeDetails.updateInProgress = false;
-            universeDetails.updatingTask = null;
-            universeDetails.errorString = err;
-            if (universeDetails.updateSucceeded) {
-              // Clear the task UUID only if the update succeeded.
-              universeDetails.updatingTaskUUID = null;
-              // Do not save the transient state in the universe.
-              universeDetails.nodeDetailsSet.forEach(
-                  n -> {
-                    n.masterState = null;
-                  });
-            }
-            universe.setUniverseDetails(universeDetails);
+        universe -> {
+          // If this universe is not being edited, fail the request.
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          if (!universeDetails.updateInProgress) {
+            String msg = "Universe " + universeUUID + " is not being edited.";
+            log.error(msg);
+            throw new RuntimeException(msg);
           }
+          // Persist the updated information about the universe. Mark it as being edited.
+          universeDetails.updateInProgress = false;
+          universeDetails.updatingTask = null;
+          universeDetails.errorString = err;
+          if (universeDetails.updateSucceeded) {
+            // Clear the task UUID only if the update succeeded.
+            universeDetails.updatingTaskUUID = null;
+            // Do not save the transient state in the universe.
+            universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+          }
+          universe.setUniverseDetails(universeDetails);
         };
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
@@ -1053,11 +1039,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to resume nodes and adds it to the task queue.
-   *
-   * @param nodes : a collection of nodes that need to be resumed.
-   */
+  /** Creates a task list to resume nodes in the universe and adds it to the task queue. */
   public SubTaskGroup createResumeServerTasks(Universe universe) {
     Collection<NodeDetails> nodes = universe.getNodes();
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ResumeServer", executor);
@@ -1293,7 +1275,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes the set if nodes to be updated.
    * @param nodeStatus the status into which these nodes will be transitioned.
-   * @return
    */
   public SubTaskGroup createSetNodeStatusTasks(
       Collection<NodeDetails> nodes, NodeStatus nodeStatus) {
@@ -1341,7 +1322,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param tableName name of the table.
    * @param tableDetails table options and related details.
    * @param ifNotExist create only if it does not exist.
-   * @return
    */
   public SubTaskGroup createTableTask(
       TableType tableType, String tableName, TableDetails tableDetails, boolean ifNotExist) {
@@ -2666,9 +2646,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Return list of nodeNames from the given set of node details.
   public String nodeNames(Collection<NodeDetails> nodes) {
-    String nodeNames = "";
+    StringBuilder nodeNames = new StringBuilder();
     for (NodeDetails node : nodes) {
-      nodeNames += node.nodeName + ",";
+      nodeNames.append(node.nodeName).append(",");
     }
     return nodeNames.substring(0, nodeNames.length() - 1);
   }
@@ -2701,13 +2681,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // Update the Universe's 'backupInProgress' flag to new state.
   private void updateBackupState(boolean state) {
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.backupInProgress = state;
-            universe.setUniverseDetails(universeDetails);
-          }
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.backupInProgress = state;
+          universe.setUniverseDetails(universeDetails);
         };
     if (state) {
       // New state is to set backupInProgress to true.
@@ -2838,7 +2815,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     this case for now. When we get to a point where manual yb-admin operations are never
    *     needed, we can consider flagging this case. For now, we will let the universe version on
    *     Platform and the cluster config version on the master diverge.
-   * @param mode
+   * @param mode version check mode
    */
   private static void checkUniverseVersion(UUID universeUUID, VersionCheckMode mode) {
     if (mode == VersionCheckMode.NEVER) {
@@ -3080,8 +3057,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createDeleteBootstrapIdsTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
-    // If target universe is destroyed, ignore creating this subtask.
-    if (xClusterConfig.targetUniverseUUID != null) {
+    // If target universe is destroyed or is a K8s universe, ignore creating this subtask.
+    if (xClusterConfig.targetUniverseUUID != null
+        && !Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes)) {
       File sourceRootCertDirPath =
           Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
               .getUniverseDetails()

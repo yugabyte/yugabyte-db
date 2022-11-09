@@ -20,7 +20,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/db_impl.h"
 #include <vector>
@@ -94,7 +93,6 @@ class DBImplReadOnly : public DBImpl {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
-#ifndef ROCKSDB_LITE
   virtual Status DisableFileDeletions() override {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
@@ -107,7 +105,6 @@ class DBImplReadOnly : public DBImpl {
                               bool flush_memtable = true) override {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
-#endif  // ROCKSDB_LITE
 
   using DBImpl::Flush;
   virtual Status Flush(const FlushOptions& options,
@@ -128,5 +125,3 @@ class DBImplReadOnly : public DBImpl {
   void operator=(const DBImplReadOnly&);
 };
 } // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

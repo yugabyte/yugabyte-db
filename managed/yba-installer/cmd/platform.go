@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/fluxcd/pkg/tar"
 )
 
 // Component 3: Platform
@@ -93,7 +95,7 @@ func untarDevopsAndYugawarePackages(version string) {
 	}
 
 	for _, f := range files {
-		if strings.Contains(f.Name(), "devops") {
+		if strings.Contains(f.Name(), "devops") && strings.Contains(f.Name(), "tar") {
 
 			devopsTgzName := f.Name()
 			devopsTgzPath := packageFolderPath + "/" + devopsTgzName
@@ -102,9 +104,12 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			Untar(rExtract, packageFolderPath+"/devops")
+			if err := tar.Untar(rExtract, packageFolderPath+"/devops",
+				tar.WithMaxUntarSize(-1)); err != nil {
+				LogError(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
+			}
 
-		} else if strings.Contains(f.Name(), "yugaware") {
+		} else if strings.Contains(f.Name(), "yugaware") && strings.Contains(f.Name(), "tar") {
 
 			yugawareTgzName := f.Name()
 			yugawareTgzPath := packageFolderPath + "/" + yugawareTgzName
@@ -113,7 +118,10 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			Untar(rExtract, packageFolderPath+"/yugaware")
+			if err := tar.Untar(rExtract, packageFolderPath+"/yugaware",
+				tar.WithMaxUntarSize(-1)); err != nil {
+				LogError(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
+			}
 
 		}
 	}

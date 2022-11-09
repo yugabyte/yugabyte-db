@@ -102,11 +102,7 @@ class MemTableRep {
   // Like Insert(handle), but may be called concurrent with other calls
   // to InsertConcurrently for other handles
   virtual void InsertConcurrently(KeyHandle handle) {
-#ifndef ROCKSDB_LITE
     throw std::runtime_error("concurrent insert not supported");
-#else
-    abort();
-#endif
   }
 
   virtual bool Erase(KeyHandle handle, const KeyComparator& comparator) {
@@ -276,7 +272,6 @@ class CDSSkipListFactory : public MemTableRepFactory {
   bool IsInsertConcurrentlySupported() const override { return true; }
 };
 
-#ifndef ROCKSDB_LITE
 // This creates MemTableReps that are backed by an std::vector. On iteration,
 // the vector is sorted. This is useful for workloads where iteration is very
 // rare and writes are generally not issued after reads begin.
@@ -332,5 +327,4 @@ extern MemTableRepFactory* NewHashLinkListRepFactory(
     bool if_log_bucket_dist_when_flash = true,
     uint32_t threshold_use_skiplist = 256);
 
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb

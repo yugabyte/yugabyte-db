@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/fluxcd/pkg/tar"
 )
 
 // Component 2: Prometheus
@@ -137,7 +139,7 @@ func (prom Prometheus) GetConfFile() string {
 	return prom.ConfFileLocation
 }
 
-//Per current cleanup.sh script.
+// Per current cleanup.sh script.
 func (prom Prometheus) Uninstall() {
 	prom.Stop()
 	RemoveAllExceptDataVolumes([]string{"prometheus"})
@@ -163,7 +165,10 @@ func (prom Prometheus) moveAndExtractPrometheusPackage(ver string) {
 	if _, err := os.Stat(path_package_extracted); err == nil {
 		LogDebug(path_package_extracted + " already exists, skipping re-extract.")
 	} else {
-		Untar(rExtract, INSTALL_VERSION_DIR+"/packages")
+		if err := tar.Untar(rExtract, INSTALL_VERSION_DIR+"/packages",
+			tar.WithMaxUntarSize(-1)); err != nil {
+			LogError(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
+		}
 		LogDebug(dstPath + " successfully extracted.")
 	}
 
