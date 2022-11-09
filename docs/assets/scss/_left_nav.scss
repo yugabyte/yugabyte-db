@@ -1233,8 +1233,9 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     padding: 14px 20px;
     background: #eee;
     margin-left: -15px;
-    min-width: calc(100%);
+    min-width: calc(100% + 15px);
     position: fixed;
+    top: 75px;
     font-weight: bold;
     cursor: pointer;
   }
@@ -1247,7 +1248,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     width: 100%;
     padding-left: 15px;
     min-width: calc(100% - 15px);
-    top: -3px !important;
+    top: 127px !important;
     height: calc(100vh - 126px);
   }
 

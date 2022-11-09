@@ -269,8 +269,7 @@
             display: block;
             height: 40px;
             text-align: center;
-
-            &.icon-azure {
+            &.icon-azure{
               font-size: 30px;
             }
           }
@@ -293,10 +292,9 @@
           color: #0b1117;
           text-overflow: ellipsis;
           overflow: hidden;
-          white-space: nowrap;
-
-          @media (max-width: 479px) {
-            white-space: normal;
+          //white-space: nowrap;
+          @media(max-width:479px){
+            //white-space: normal;
           }
         }
       }
