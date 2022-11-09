@@ -1696,7 +1696,7 @@ public class AsyncYBClient implements AutoCloseable {
     Callback<Deferred<R>, Exception> eb = new RetryRpcErrback<>(request);
 
     Deferred<GetTableLocationsResponsePB> returnedD =
-        locateTablet(request.getTable(), partitionKey);
+        locateTablet(request.getTable(), partitionKey, true);
 
     return AsyncUtil.addCallbacksDeferring(returnedD, cb, eb);
   }
@@ -2022,7 +2022,7 @@ public class AsyncYBClient implements AutoCloseable {
    * @return Deferred to track the progress
    */
   Deferred<GetTableLocationsResponsePB> locateTablet(
-      YBTable table, byte[] partitionKey) {
+      YBTable table, byte[] partitionKey, boolean includeInactive) {
     final boolean has_permit = acquireMasterLookupPermit();
     String tableId = table.getTableId();
     if (!has_permit) {
@@ -2042,7 +2042,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
     GetTableLocationsRequest rpc =
         new GetTableLocationsRequest(masterTable, partitionKey, partitionKey, tableId,
-          numTablets);
+          numTablets, includeInactive);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     final Deferred<GetTableLocationsResponsePB> d;
 
