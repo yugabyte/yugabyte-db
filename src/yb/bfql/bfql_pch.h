@@ -20,6 +20,7 @@
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <compare>
 #include <cstdint>
 #include <fstream>
 #include <functional>
@@ -33,6 +34,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
@@ -58,6 +60,7 @@
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
 #include <boost/uuid/uuid.hpp>
+#include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <google/protobuf/arena.h>
@@ -90,6 +93,10 @@
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/io.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"

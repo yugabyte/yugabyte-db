@@ -126,12 +126,10 @@ class ColumnFamilyTest : public RocksDBTest {
                                &db_);
   }
 
-#ifndef ROCKSDB_LITE  // ReadOnlyDB is not supported
   void AssertOpenReadOnly(std::vector<std::string> cf,
                     std::vector<ColumnFamilyOptions> options = {}) {
     ASSERT_OK(OpenReadOnly(cf, options));
   }
-#endif  // !ROCKSDB_LITE
 
 
   void Open(std::vector<std::string> cf,
@@ -173,7 +171,6 @@ class ColumnFamilyTest : public RocksDBTest {
           db_->CreateColumnFamily(current_cf_opt, cfs[i], &handles_[cfi]));
       names_[cfi] = cfs[i];
 
-#ifndef ROCKSDB_LITE  // RocksDBLite does not support GetDescriptor
       // Verify the CF options of the returned CF handle.
       ColumnFamilyDescriptor desc;
       ASSERT_OK(handles_[cfi]->GetDescriptor(&desc));
@@ -184,7 +181,6 @@ class ColumnFamilyTest : public RocksDBTest {
         desc.options.arena_block_size = 0;
       }
       ASSERT_OK(RocksDBOptionsParser::VerifyCFOptions(desc.options, current_cf_opt));
-#endif  // !ROCKSDB_LITE
       cfi++;
     }
   }
@@ -230,23 +226,15 @@ class ColumnFamilyTest : public RocksDBTest {
   }
 
   void WaitForFlush(int cf) {
-#ifndef ROCKSDB_LITE  // TEST functions are not supported in lite
     ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable(handles_[cf]));
-#endif  // !ROCKSDB_LITE
   }
 
   void WaitForCompaction() {
-#ifndef ROCKSDB_LITE  // TEST functions are not supported in lite
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
-#endif  // !ROCKSDB_LITE
   }
 
   uint64_t MaxTotalInMemoryState() {
-#ifndef ROCKSDB_LITE
     return dbfull()->TEST_MaxTotalInMemoryState();
-#else
-    return 0;
-#endif  // !ROCKSDB_LITE
   }
 
   void AssertMaxTotalInMemoryState(uint64_t value) {
@@ -291,7 +279,6 @@ class ColumnFamilyTest : public RocksDBTest {
                        "rocksdb.num-files-at-level" + ToString(level));
   }
 
-#ifndef ROCKSDB_LITE
   // Return spread of files per level
   std::string FilesPerLevel(int cf) {
     std::string result;
@@ -308,26 +295,19 @@ class ColumnFamilyTest : public RocksDBTest {
     result.resize(last_non_zero_offset);
     return result;
   }
-#endif
 
   void AssertFilesPerLevel(const std::string& value, int cf) {
-#ifndef ROCKSDB_LITE
     ASSERT_EQ(value, FilesPerLevel(cf));
-#endif
   }
 
-#ifndef ROCKSDB_LITE  // GetLiveFilesMetaData is not supported
   int CountLiveFiles() {
     std::vector<LiveFileMetaData> metadata;
     db_->GetLiveFilesMetaData(&metadata);
     return static_cast<int>(metadata.size());
   }
-#endif  // !ROCKSDB_LITE
 
   void AssertCountLiveFiles(int expected_value) {
-#ifndef ROCKSDB_LITE
     ASSERT_EQ(expected_value, CountLiveFiles());
-#endif
   }
 
   // Do n memtable flushes, each of which produces an sstable
@@ -341,7 +321,6 @@ class ColumnFamilyTest : public RocksDBTest {
     }
   }
 
-#ifndef ROCKSDB_LITE  // GetSortedWalFiles is not supported
   int CountLiveLogFiles() {
     int micros_wait_for_log_deletion = 20000;
     env_->SleepForMicroseconds(micros_wait_for_log_deletion);
@@ -370,23 +349,18 @@ class ColumnFamilyTest : public RocksDBTest {
     return ret;
     return 0;
   }
-#endif  // !ROCKSDB_LITE
 
   void AssertCountLiveLogFiles(int value) {
-#ifndef ROCKSDB_LITE  // GetSortedWalFiles is not supported
     ASSERT_EQ(value, CountLiveLogFiles());
-#endif  // !ROCKSDB_LITE
   }
 
   void AssertNumberOfImmutableMemtables(std::vector<int> num_per_cf) {
     assert(num_per_cf.size() == handles_.size());
 
-#ifndef ROCKSDB_LITE  // GetProperty is not supported in lite
     for (size_t i = 0; i < num_per_cf.size(); ++i) {
       ASSERT_EQ(num_per_cf[i], GetProperty(static_cast<int>(i),
                                            "rocksdb.num-immutable-mem-table"));
     }
-#endif  // !ROCKSDB_LITE
   }
 
   void CopyFile(const std::string& source, const std::string& destination,
@@ -936,7 +910,6 @@ TEST_F(ColumnFamilyTest, DifferentCompactionStyles) {
   Close();
 }
 
-#ifndef ROCKSDB_LITE
 // Sync points not supported in RocksDB Lite
 
 TEST_F(ColumnFamilyTest, MultipleManualCompactions) {
@@ -1708,9 +1681,7 @@ TEST_F(ColumnFamilyTest, SameCFAutomaticManualCompactions) {
 
   Close();
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // Tailing interator not supported
 namespace {
 std::string IterStatus(Iterator* iter) {
   std::string result;
@@ -1767,9 +1738,7 @@ TEST_F(ColumnFamilyTest, NewIteratorsTest) {
     Destroy();
   }
 }
-#endif  // !ROCKSDB_LITE
 
-#ifndef ROCKSDB_LITE  // ReadOnlyDB is not supported
 TEST_F(ColumnFamilyTest, ReadOnlyDBTest) {
   Open();
   CreateColumnFamiliesAndReopen({"one", "two", "three", "four"});
@@ -1819,7 +1788,6 @@ TEST_F(ColumnFamilyTest, ReadOnlyDBTest) {
   s = OpenReadOnly({"one", "four"});
   ASSERT_TRUE(!s.ok());
 }
-#endif  // !ROCKSDB_LITE
 
 TEST_F(ColumnFamilyTest, DontRollEmptyLogs) {
   Open();
@@ -2067,8 +2035,6 @@ TEST_F(ColumnFamilyTest, FlushAndDropRaceCondition) {
   Destroy();
 }
 
-#ifndef ROCKSDB_LITE
-// skipped as persisting options is not supported in ROCKSDB_LITE
 namespace {
 std::atomic<int> test_stage(0);
 const int kMainThreadStartPersistingOptionsFile = 1;
@@ -2148,7 +2114,6 @@ TEST_F(ColumnFamilyTest, CreateAndDropRace) {
     }
   }
 }
-#endif  // !ROCKSDB_LITE
 
 TEST_F(ColumnFamilyTest, WriteStallSingleColumnFamily) {
   const uint64_t kBaseRate = 810000u;

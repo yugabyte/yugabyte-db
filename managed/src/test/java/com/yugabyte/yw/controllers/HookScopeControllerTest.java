@@ -4,54 +4,55 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertTrue;
-import static play.test.Helpers.contentAsString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
+import static play.test.Helpers.contentAsString;
 
 import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
-import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
-import com.yugabyte.yw.models.Hook.ExecutionLang;
-import com.yugabyte.yw.models.HookScope.TriggerType;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Hook.ExecutionLang;
 import com.yugabyte.yw.models.HookScope;
+import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import org.junit.Before;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import java.io.File;
-import java.util.UUID;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.test.WithApplication;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
+import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
 public class HookScopeControllerTest extends WithApplication {
@@ -60,7 +61,7 @@ public class HookScopeControllerTest extends WithApplication {
 
   String baseRoute;
   Customer defaultCustomer;
-  Users defaultUser, superAdminUser;
+  Users defaultUser, adminUser, superAdminUser;
   Provider defaultProvider;
   Universe defaultUniverse;
 
@@ -82,6 +83,7 @@ public class HookScopeControllerTest extends WithApplication {
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
+    adminUser = ModelFactory.testUser(defaultCustomer, "admin@customer.com", Role.Admin);
     superAdminUser =
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
@@ -114,10 +116,16 @@ public class HookScopeControllerTest extends WithApplication {
 
   private Result createHookScope(
       TriggerType triggerType, UUID providerUUID, UUID universeUUID, Users user) {
+    return createHookScope(triggerType, providerUUID, universeUUID, null, user);
+  }
+
+  private Result createHookScope(
+      TriggerType triggerType, UUID providerUUID, UUID universeUUID, UUID clusterUUID, Users user) {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("triggerType", triggerType.name());
     if (providerUUID != null) bodyJson.put("providerUUID", providerUUID.toString());
     if (universeUUID != null) bodyJson.put("universeUUID", universeUUID.toString());
+    if (clusterUUID != null) bodyJson.put("clusterUUID", clusterUUID.toString());
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         "POST", baseRoute, user.createAuthToken(), bodyJson);
   }
@@ -199,12 +207,64 @@ public class HookScopeControllerTest extends WithApplication {
   }
 
   @Test
+  public void testCreateUniverseClusterHookScopeValid() {
+    UUID clusterUUID = UUID.randomUUID();
+    Result result =
+        createHookScope(
+            TriggerType.PostNodeProvision,
+            null,
+            defaultUniverse.universeUUID,
+            clusterUUID,
+            superAdminUser);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "triggerType", "PostNodeProvision");
+    assertValue(json, "universeUUID", defaultUniverse.universeUUID.toString());
+    assertValue(json, "clusterUUID", clusterUUID.toString());
+    assertAuditEntry(1, defaultCustomer.uuid);
+
+    // Ensure persistence
+    String hookScopeUUID = json.get("uuid").asText();
+    HookScope hookScope =
+        HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
+    assertTrue(hookScope.triggerType == TriggerType.PostNodeProvision);
+    assertTrue(hookScope.providerUUID == null);
+    assertTrue(hookScope.universeUUID.equals(defaultUniverse.universeUUID));
+    assertTrue(hookScope.clusterUUID.equals(clusterUUID));
+  }
+
+  @Test
   public void testCreateHookScopeNonSuperAdmin() {
     Result result =
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, null, null, defaultUser));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
     assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testCreateHookScopeAdminInCloud() {
+    when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    List<Users> users = new ArrayList<>(Arrays.asList(adminUser, superAdminUser));
+    int i = 0;
+
+    for (Users user : users) {
+      TriggerType trigger = i++ == 0 ? TriggerType.PostNodeProvision : TriggerType.PreNodeProvision;
+
+      Result result = createHookScope(trigger, null, null, user);
+      JsonNode json = Json.parse(contentAsString(result));
+      assertOk(result);
+      assertValue(json, "triggerType", trigger.toString());
+      assertAuditEntry(i, defaultCustomer.uuid);
+
+      // Ensure persistence
+      String hookScopeUUID = json.get("uuid").asText();
+      HookScope hookScope =
+          HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
+      assertTrue(hookScope.triggerType == trigger);
+      assertTrue(hookScope.providerUUID == null);
+      assertTrue(hookScope.universeUUID == null);
+    }
   }
 
   @Test

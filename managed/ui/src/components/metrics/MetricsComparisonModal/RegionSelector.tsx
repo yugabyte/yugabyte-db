@@ -101,7 +101,8 @@ export const RegionSelector: FC<RegionSelectorData> = ({
   return (
     <div className="region-picker-container pull-left">
       <Dropdown
-        id="region-filter-dropdown"
+        id="regionFilterDropdown"
+        className="region-filter-dropdown"
         disabled={isDisabled}
         title={isDisabled ? "Select a specific universe with more than single cluster or region" : ""}
       >

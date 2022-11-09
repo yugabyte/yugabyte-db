@@ -3037,7 +3037,6 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
   return s;
 }
 
-#ifndef ROCKSDB_LITE
 Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
                                         const Options* options,
                                         const EnvOptions& env_options,
@@ -3318,7 +3317,6 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
   return s;
 }
-#endif  // ROCKSDB_LITE
 
 // Set the last sequence number to s.
 void VersionSet::SetLastSequence(SequenceNumber s) {

@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/forward_iterator.h"
 
@@ -787,5 +786,3 @@ uint32_t ForwardIterator::FindFileInRange(
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

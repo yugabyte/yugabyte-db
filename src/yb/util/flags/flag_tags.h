@@ -223,6 +223,10 @@ class FlagTagger {
   DEFINE_bool(name, default_value, description); \
   _TAG_FLAG_RUNTIME(name);
 
+#define DEFINE_RUNTIME_uint32(name, default_value, description) \
+  DEFINE_uint32(name, default_value, description); \
+  _TAG_FLAG_RUNTIME(name);
+
 #define DEFINE_RUNTIME_int32(name, default_value, description) \
   DEFINE_int32(name, default_value, description); \
   _TAG_FLAG_RUNTIME(name);
@@ -246,6 +250,9 @@ class FlagTagger {
 // Non Runtime flags.
 #define DEFINE_NON_RUNTIME_bool(name, default_value, description) \
   DEFINE_bool(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_uint32(name, default_value, description) \
+  DEFINE_uint32(name, default_value, description);
 
 #define DEFINE_NON_RUNTIME_int32(name, default_value, description) \
   DEFINE_int32(name, default_value, description);

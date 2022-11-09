@@ -19,7 +19,6 @@
 //
 
 
-#ifndef ROCKSDB_LITE
 
 #pragma once
 
@@ -40,4 +39,3 @@ class RemoveEmptyValueCompactionFilter : public CompactionFilter {
         bool* value_changed) override;
 };
 }  // namespace rocksdb
-#endif // !ROCKSDB_LITE

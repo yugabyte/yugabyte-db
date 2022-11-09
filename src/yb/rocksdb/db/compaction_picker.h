@@ -90,12 +90,10 @@ class CompactionPicker {
   // files.  If it's not possible to conver an invalid input_files
   // into a valid one by adding more files, the function will return a
   // non-ok status with specific reason.
-#ifndef ROCKSDB_LITE
   Status SanitizeCompactionInputFiles(
       std::unordered_set<uint64_t>* input_files,
       const ColumnFamilyMetaData& cf_meta,
       const int output_level) const;
-#endif  // ROCKSDB_LITE
 
   // Free up the files that participated in a compaction
   //
@@ -190,12 +188,10 @@ class CompactionPicker {
 
   // A helper function to SanitizeCompactionInputFiles() that
   // sanitizes "input_files" by adding necessary files.
-#ifndef ROCKSDB_LITE
   virtual Status SanitizeCompactionInputFilesForAllLevels(
       std::unordered_set<uint64_t>* input_files,
       const ColumnFamilyMetaData& cf_meta,
       const int output_level) const;
-#endif  // ROCKSDB_LITE
 
   // Keeps track of all compactions that are running on Level0.
   // It is protected by DB mutex
@@ -243,7 +239,6 @@ class LevelCompactionPicker : public CompactionPicker {
                                                 int* level, int* output_level);
 };
 
-#ifndef ROCKSDB_LITE
 class UniversalCompactionPicker : public CompactionPicker {
  public:
   UniversalCompactionPicker(const ImmutableCFOptions& ioptions,
@@ -368,7 +363,6 @@ class NullCompactionPicker : public CompactionPicker {
     return false;
   }
 };
-#endif  // !ROCKSDB_LITE
 
 // Test whether two files have overlapping key-ranges.
 bool HaveOverlappingKeyRanges(const Comparator* c,

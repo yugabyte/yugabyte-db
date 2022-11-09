@@ -37,7 +37,6 @@ class DBPropertiesTest : public DBTestBase {
   DBPropertiesTest() : DBTestBase("/db_properties_test") {}
 };
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, Empty) {
   do {
     Options options;
@@ -897,7 +896,6 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
       "rocksdb.estimate-pending-compaction-bytes", &int_num));
   ASSERT_EQ(int_num, 0U);
 }
-#endif  // ROCKSDB_LITE
 
 class CountingUserTblPropCollector : public TablePropertiesCollector {
  public:
@@ -990,7 +988,6 @@ class CountingDeleteTabPropCollectorFactory
   }
 };
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, GetUserDefinedTableProperties) {
   Options options = CurrentOptions();
   options.level0_file_num_compaction_trigger = (1 << 30);
@@ -1030,7 +1027,6 @@ TEST_F(DBPropertiesTest, GetUserDefinedTableProperties) {
   ASSERT_OK(dbfull()->TEST_CompactRange(0, nullptr, nullptr));
   ASSERT_GT(collector_factory->num_created_, 0U);
 }
-#endif  // ROCKSDB_LITE
 
 TEST_F(DBPropertiesTest, UserDefinedTablePropertiesContext) {
   Options options = CurrentOptions();
@@ -1093,7 +1089,6 @@ TEST_F(DBPropertiesTest, UserDefinedTablePropertiesContext) {
   ASSERT_GT(collector_factory->num_created_, 0U);
 }
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBPropertiesTest, TablePropertiesNeedCompactTest) {
   Random rnd(301);
 
@@ -1224,7 +1219,6 @@ TEST_F(DBPropertiesTest, NeedCompactHintPersistentTest) {
     SetPerfLevel(PerfLevel::kDisable);
   }
 }
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

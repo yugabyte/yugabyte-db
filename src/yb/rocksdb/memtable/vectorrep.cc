@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 #include <unordered_set>
 #include <set>
 #include <memory>
@@ -303,4 +302,3 @@ MemTableRep* VectorRepFactory::CreateMemTableRep(
   return new VectorRep(compare, allocator, count_);
 }
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

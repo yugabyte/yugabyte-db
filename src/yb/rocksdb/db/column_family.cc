@@ -87,7 +87,6 @@ const std::string& ColumnFamilyHandleImpl::GetName() const {
 }
 
 Status ColumnFamilyHandleImpl::GetDescriptor(ColumnFamilyDescriptor* desc) {
-#ifndef ROCKSDB_LITE
   // accessing mutable cf-options requires db mutex.
   InstrumentedMutexLock l(mutex_);
   *desc = ColumnFamilyDescriptor(
@@ -95,9 +94,6 @@ Status ColumnFamilyHandleImpl::GetDescriptor(ColumnFamilyDescriptor* desc) {
       BuildColumnFamilyOptions(*cfd()->options(),
                                *cfd()->GetLatestMutableCFOptions()));
   return Status::OK();
-#else
-  return STATUS(NotSupported, "");
-#endif  // !ROCKSDB_LITE
 }
 
 const Comparator* ColumnFamilyHandleImpl::user_comparator() const {
@@ -391,7 +387,6 @@ ColumnFamilyData::ColumnFamilyData(
     if (ioptions_.compaction_style == kCompactionStyleLevel) {
       compaction_picker_.reset(
           new LevelCompactionPicker(ioptions_, internal_comparator_.get()));
-#ifndef ROCKSDB_LITE
     } else if (ioptions_.compaction_style == kCompactionStyleUniversal) {
       compaction_picker_.reset(
           new UniversalCompactionPicker(ioptions_, internal_comparator_.get()));
@@ -405,7 +400,6 @@ ColumnFamilyData::ColumnFamilyData(
           "Column family %s does not use any background compaction. "
           "Compactions can only be done via CompactFiles\n",
           GetName().c_str());
-#endif  // !ROCKSDB_LITE
     } else {
       RLOG(InfoLogLevel::ERROR_LEVEL, ioptions_.info_log,
           "Unable to recognize the specified compaction style %d. "
@@ -872,7 +866,6 @@ void ColumnFamilyData::ResetThreadLocalSuperVersions() {
   }
 }
 
-#ifndef ROCKSDB_LITE
 Status ColumnFamilyData::SetOptions(
       const std::unordered_map<std::string, std::string>& options_map) {
   MutableCFOptions new_mutable_cf_options;
@@ -884,7 +877,6 @@ Status ColumnFamilyData::SetOptions(
   }
   return s;
 }
-#endif  // ROCKSDB_LITE
 
 ColumnFamilySet::ColumnFamilySet(const std::string& dbname,
                                  const DBOptions* db_options,
