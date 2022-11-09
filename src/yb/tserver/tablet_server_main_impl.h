@@ -10,8 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tserver/tablet_server_main_impl.h"
+#pragma once
 
-int main(int argc, char** argv) {
-  return yb::tserver::TabletServerMain(argc, argv);
-}
+namespace yb {
+namespace tserver {
+
+int TabletServerMain(int argc, char** argv);
+
+}  // namespace tserver
+}  // namespace yb

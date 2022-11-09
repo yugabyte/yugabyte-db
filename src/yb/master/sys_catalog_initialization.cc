@@ -37,12 +37,6 @@ DEFINE_string(initial_sys_catalog_snapshot_path, "",
 
 DEPRECATE_FLAG(bool, use_initial_sys_catalog_snapshot, "11_2022");
 
-DEFINE_bool(enable_ysql, true,
-    "Enable YSQL on cluster. This will initialize sys catalog tablet from a pre-existing snapshot "
-    "and start YSQL proxy. "
-    "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be auto-detected."
-    );
-
 DEFINE_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 

@@ -188,6 +188,12 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
+DEFINE_bool(enable_ysql, true,
+            "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
+            "tablet from an initial snapshot (in case --initial_sys_catalog_snapshot_path is "
+            "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
+            "server as a child process.");
+
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
