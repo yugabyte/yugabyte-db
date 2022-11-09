@@ -28,7 +28,7 @@ namespace yb {
 
 class MemoryUsageTest : public YBTest {};
 
-#if !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER)
+#if !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER) && defined(YB_GPERFTOOLS_TCMALLOC)
 TEST_F(MemoryUsageTest, String) {
 #else
 TEST_F(MemoryUsageTest, DISABLED_String) {

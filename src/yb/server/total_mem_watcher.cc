@@ -28,10 +28,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/flags.h"
 
-#ifdef TCMALLOC_ENABLED
-#include <gperftools/malloc_extension.h>
-#endif
-
 using namespace std::literals;
 
 #if defined(THREAD_SANITIZER)
@@ -167,7 +163,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
 
   std::string GetMemoryUsageDetails() override {
     std::string result;
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     result += TcMallocStats();
     result += "\n";
 #endif

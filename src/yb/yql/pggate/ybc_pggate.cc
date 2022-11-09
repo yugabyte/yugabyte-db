@@ -248,16 +248,16 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
-    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
+#if defined(YB_TCMALLOC_ENABLED)
+  *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
-    *consumption = 0;
+  *consumption = 0;
 #endif
   return YBCStatusOK();
 }
 
 YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
 #else
     *consumption = 0;
@@ -283,7 +283,7 @@ bool YBCTryMemRelease(int64_t bytes) {
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   using mt = yb::MemTracker;
   desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
   desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
