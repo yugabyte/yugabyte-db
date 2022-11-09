@@ -23,8 +23,8 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 | Section | Purpose | [Setup](#set-up-your-environment) |
 | :--- | :--- | :--- |
-| [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |}
-| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency with follower reads and moving data closer to users with tablespaces. | Multi-node cluster<br/>Local instance |}
+| [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
+| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency with follower reads and moving data closer to users with tablespaces. | Multi-node cluster<br/>Local instance |
 | [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node goes down. | Multi-node cluster<br/>Local instance |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node cluster<br/>Local instance |
 | [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
