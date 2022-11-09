@@ -15,11 +15,7 @@ This document describes the data types supported in YSQL, from the basic data ty
 
 The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
+{{% explore-setup-single %}}
 
 ## Strings
 

@@ -13,12 +13,6 @@ type: docs
 
 This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
-
 ## Query data
 
 The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions.
@@ -44,6 +38,8 @@ The following `SELECT` statement clauses provide flexibility and allow you to fi
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
 
 ### SELECT examples
+
+{{% explore-setup-single %}}
 
 Suppose you work with a database that includes the following table populated with data:
 

@@ -13,11 +13,7 @@ type: docs
 
 This document describes how to use triggers when performing data manipulation and definition.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
+{{% explore-setup-single %}}
 
 ## Overview
 

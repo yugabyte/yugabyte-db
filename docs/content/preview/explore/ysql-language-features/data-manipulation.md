@@ -13,11 +13,7 @@ type: docs
 
 This section describes how to manipulate data in YugabyteDB using the YSQL `INSERT`, `UPDATE`, and `DELETE` statements.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
+{{% explore-setup-single %}}
 
 ## Insert rows
 

@@ -13,11 +13,7 @@ type: docs
 
 This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
+{{% explore-setup-single %}}
 
 ## Basic operators
 
