@@ -9,14 +9,11 @@ export const MetricTypes = {
   YCQL_OPS: 'ycql_ops',
   YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
-  REDIS: 'redis',
   TSERVER: 'tserver',
   MASTER: 'master',
   MASTER_ADVANCED: 'master_advanced',
   LSMDB: 'lsmdb',
   CONTAINER: 'container',
-  SQL: 'sql',
-  CQL: 'cql',
   TSERVER_TABLE: 'tserver_table',
   LSMDB_TABLE: 'lsmdb_table',
   OUTLIER_TABLES: 'outlier_tables'
@@ -24,42 +21,38 @@ export const MetricTypes = {
 
 export const MetricTypesWithOperations = {
   ysql_ops: {
-    title: 'YSQL Ops',
+    title: 'YSQL',
     metrics: [
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
-      'ysql_connections'
+      'ysql_connections',
+      'ysql_server_advanced_rpc_per_second',
+      'ysql_sql_advanced_latency'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
   },
   ycql_ops: {
-    title: 'YCQL Ops',
-    metrics: ['cql_server_rpc_per_second', 'cql_sql_latency', 'cql_server_rpc_p99']
-  },
-  yedis_ops: {
-    title: 'YEDIS Ops',
-    metrics: ['redis_rpcs_per_sec_all', 'redis_ops_latency_all', 'redis_server_rpc_p99']
-  },
-  server: {
-    title: 'Resource',
+    title: 'YCQL',
     metrics: [
-      'cpu_usage',
-      'memory_usage',
-      'disk_iops',
-      'disk_usage_percent',
-      'disk_used_size_total',
-      'disk_bytes_per_second_per_node',
-      'network_packets',
-      'network_bytes',
-      'network_errors',
-      'system_load_over_time',
-      'node_clock_skew'
+      'cql_server_rpc_per_second',
+      'cql_sql_latency', 'cql_server_rpc_p99',
+      'cql_sql_latency_breakdown',
+      'cql_yb_local_vs_remote',
+      'cql_yb_latency',
+      'cql_reactor_latency',
+      'tserver_rpc_queue_size_cql',
+      'response_sizes',
+      'cql_yb_transaction',
+      'cql_yb_rpc_connections'
     ]
   },
-  redis: {
-    title: 'YEDIS Advanced',
+  yedis_ops: {
+    title: 'YEDIS',
     metrics: [
+      'redis_rpcs_per_sec_all',
+      'redis_ops_latency_all',
+      'redis_server_rpc_p99',
       'redis_yb_local_vs_remote_ops',
       'tserver_rpc_queue_size_redis',
       'redis_yb_local_vs_remote_latency',
@@ -77,6 +70,22 @@ export const MetricTypesWithOperations = {
       'redis_rpcs_per_sec_local',
       'redis_ops_latency_local',
       'redis_yb_rpc_connections'
+    ]
+  },
+  server: {
+    title: 'Resource',
+    metrics: [
+      'cpu_usage',
+      'memory_usage',
+      'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
+      'disk_bytes_per_second_per_node',
+      'network_packets',
+      'network_bytes',
+      'network_errors',
+      'system_load_over_time',
+      'node_clock_skew'
     ]
   },
   tserver: {
@@ -152,7 +161,7 @@ export const MetricTypesWithOperations = {
     ]
   },
   lsmdb: {
-    title: 'Docs DB',
+    title: 'DocDB',
     metrics: [
       'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_num_seek_or_next',
@@ -186,23 +195,6 @@ export const MetricTypesWithOperations = {
       'container_memory_usage',
       'container_volume_stats',
       'container_volume_usage_percent']
-  },
-  sql: {
-    title: 'YSQL Advanced',
-    metrics: ['ysql_server_advanced_rpc_per_second', 'ysql_sql_advanced_latency']
-  },
-  cql: {
-    title: 'YCQL Advanced',
-    metrics: [
-      'cql_sql_latency_breakdown',
-      'cql_yb_local_vs_remote',
-      'cql_yb_latency',
-      'cql_reactor_latency',
-      'tserver_rpc_queue_size_cql',
-      'response_sizes',
-      'cql_yb_transaction',
-      'cql_yb_rpc_connections'
-    ]
   },
   tserver_table: {
     title: 'Tablet Server',
@@ -264,9 +256,6 @@ export const MetricTypesByOrigin = {
       'yedis_ops',
       'container',
       'server',
-      'sql',
-      'cql',
-      'redis',
       'tserver',
       'master',
       'master_advanced',
@@ -281,8 +270,6 @@ export const MetricTypesByOrigin = {
       'yedis_ops',
       'container',
       'server',
-      'cql',
-      'redis',
       'tserver',
       'master',
       'master_advanced',
