@@ -1,12 +1,13 @@
 main {
   .td-content {
-    >blockquote {
+    blockquote {
       border: 1px solid #d7dee4;
       border-radius: 8px;
       margin: 30px 0;
       position: relative;
       padding: 16px 30px 16px 56px;
       color: #25323d;
+      background: #fff;
 
       >p {
         font-family: 'inter';

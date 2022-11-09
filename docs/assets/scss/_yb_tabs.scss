@@ -177,6 +177,20 @@ ul.nav.nav-tabs-alt.nav-tabs-yb.custom-tabs {
       border-bottom: 3px solid #0b1117;
     }
 
+    &:not(.active){
+      .active{
+        &:before{
+          content:"";
+          position:absolute;
+          left:0;
+          bottom:-24px;
+          width:100%;
+          height:3px;
+          background:#0b1117;
+        }
+      }
+    }
+
     &:not(:first-child) {
       margin-left: 24px !important;
     }

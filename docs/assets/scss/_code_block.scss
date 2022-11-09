@@ -25,7 +25,9 @@ main {
 
     td > code,
     li > a > code,
+    li p > a > code,
     li > code,
+    li > em code,
     p > code {
       font-size: 12px !important;
       line-height: 16px;
@@ -49,6 +51,7 @@ main {
 
       > code {
         position: relative;
+        overflow: hidden;
       }
     }
 

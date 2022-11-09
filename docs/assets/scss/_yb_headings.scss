@@ -39,7 +39,7 @@
   h3[id],
   h4[id],
   h5[id] {
-    > a {
+    > a[aria-hidden] {
       &::after {
         content: "";
         background: url(/icons/Link.svg) center no-repeat;

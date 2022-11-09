@@ -13,6 +13,7 @@ html.no-js {
       border-radius: 8px;
       height: 100%;
       overflow: hidden;
+      position: relative;
 
       &:hover {
         background: #f2f6ff;
@@ -26,6 +27,13 @@ html.no-js {
         width: 97%;
         display: flex;
         flex-flow: wrap;
+        flex-flow: column;
+        align-items: flex-start;
+
+        @media (max-width: 1199px) {
+          position: relative;
+          z-index: 1;
+        }
       }
 
       .text-link {
@@ -50,6 +58,7 @@ html.no-js {
           margin-left: 10px;
           margin-right: 8px;
           background: url(/images/homepage/arrow-white.svg) center no-repeat;
+          background-size: 100% auto;
           display: inline-block;
           margin-top: 1px;
         }
@@ -61,6 +70,15 @@ html.no-js {
 
       .image {
         display: flex;
+
+        @media (max-width: 1199px) {
+          position: absolute;
+          height: 100%;
+          right: 0;
+          width: 130px;
+          z-index: 0;
+          align-items: flex-end;
+        }
 
         .icon,
         img {

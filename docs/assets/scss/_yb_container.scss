@@ -20,6 +20,10 @@
     width: 100%;
     justify-content: center;
 
+    @-moz-document url-prefix() {
+      max-width: calc(100% - 270px);
+    }
+
     &.search-content {
       .content-area {
         flex-grow: 1;
