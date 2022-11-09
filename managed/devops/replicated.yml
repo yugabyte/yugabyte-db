@@ -444,6 +444,7 @@ components:
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
+                metrics.scrape_interval = "{{repl ConfigOption "prometheus_scrape_interval" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
