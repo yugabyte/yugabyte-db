@@ -56,8 +56,13 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/path_util.h"
 
 #include "yb/tserver/server_main_util.h"
+
+#if YB_LTO_ENABLED
+#include "yb/tserver/tablet_server_main_impl.h"
+#endif
 
 using std::string;
 
@@ -155,5 +160,15 @@ static int MasterMain(int argc, char** argv) {
 } // namespace yb
 
 int main(int argc, char** argv) {
+  const auto executable_basename = yb::BaseName(argv[0]);
+  if (boost::starts_with(executable_basename, "yb-tserver") ||
+      boost::starts_with(executable_basename, "tserver")) {
+#if YB_LTO_ENABLED
+    return yb::tserver::TabletServerMain(argc, argv);
+#else
+    LOG(FATAL) << "yb-master executable can only function as yb-tserver in LTO mode. "
+               << "The basename of argv[0] is: " << executable_basename;
+#endif
+  }
   return yb::master::MasterMain(argc, argv);
 }
