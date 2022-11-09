@@ -163,7 +163,7 @@ To run the examples in your cluster, you use either the ysqlsh or ycqlsh CLI to 
 To start ysqlsh:
 
 ```sh
-$ ./bin/ysqlsh
+./bin/ysqlsh
 ```
 
 ```output
@@ -189,6 +189,6 @@ ycqlsh>
   </div>
 </div>
 
-## Next steps
+## Next step
 
 Start exploring [SQL features](ysql-language-features/).
