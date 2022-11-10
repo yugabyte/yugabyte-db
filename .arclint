@@ -97,7 +97,7 @@
         "(^build/include_what_you_use$)": "disabled",
         "(^build/c[+][+]11$)": "disabled",
         "(^build/gflag_default_api$)": "disabled",
-        "(^build/gflag_register_flag_validator$)": "disabled",
+        "(^build/flags$)": "disabled",
         "(.*)": "error"
       }
     }
