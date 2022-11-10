@@ -566,3 +566,16 @@ def init_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+
+
+def create_symlink(src: str, dst: str) -> None:
+    logging.info("Creating symbolic link %s -> %s", dst, src)
+    if os.path.islink(dst):
+        existing_link_src = os.readlink(dst)
+        if existing_link_src == src:
+            logging.info("Symlink %s already exists and points to %s", dst, src)
+            return
+        raise ValueError(
+                "Symlink %s already exists and points to %s instead of %s" % (
+                    dst, existing_link_src, src))
+    os.symlink(src, dst)

@@ -79,6 +79,8 @@ public class SwamperHelper {
 
   private static final String PARAMETER_LABEL_PREFIX = "__param_";
 
+  private static final int IRATE_SCRAPE_PERIODS = 5;
+
   /*
      Sample targets file
     [
@@ -311,7 +313,8 @@ public class SwamperHelper {
       fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
       long scrapeInterval = getScrapeIntervalSeconds(runtimeConfigFactory.staticApplicationConf());
       fileContent =
-          fileContent.replaceAll(RANGE_PLACEHOLDER, String.format("%ds", (scrapeInterval * 2)));
+          fileContent.replaceAll(
+              RANGE_PLACEHOLDER, String.format("%ds", (scrapeInterval * IRATE_SCRAPE_PERIODS)));
     } catch (IOException e) {
       throw new RuntimeException("Failed to read alert definition header template", e);
     }

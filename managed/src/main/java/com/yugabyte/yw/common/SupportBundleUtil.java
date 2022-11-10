@@ -1,15 +1,31 @@
+/*
+ * Copyright 2022 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/
+ * POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 package com.yugabyte.yw.common;
 
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -17,10 +33,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
@@ -31,6 +54,8 @@ import org.joda.time.DateTime;
 @Slf4j
 @Singleton
 public class SupportBundleUtil {
+
+  public static final String kubectlOutputFormat = "yaml";
 
   public Date getDateNDaysAgo(Date currDate, int days) {
     Date dateNDaysAgo = new DateTime(currDate).minusDays(days).toDate();
@@ -222,5 +247,194 @@ public class SupportBundleUtil {
       }
     }
     return filteredLogFilePaths;
+  }
+
+  /**
+   * Ensures that all directories exist along the given path by creating them if absent.
+   *
+   * @param dirPath the path to create directories.
+   * @return the Path object of the original path.
+   * @throws IOException if not able to create / access the files properly.
+   */
+  public Path createDirectories(String dirPath) throws IOException {
+    return Files.createDirectories(Paths.get(dirPath));
+  }
+
+  public enum KubernetesResourceType {
+    PODS,
+    CONFIGMAPS,
+    SERVICES,
+    STATEFULSETS,
+    PERSISTENTVOLUMECLAIMS,
+    SECRETS,
+    EVENTS,
+    STORAGECLASS
+  }
+
+  @Data
+  @ToString(includeFieldNames = true)
+  @AllArgsConstructor
+  public static class KubernetesCluster {
+    public String clusterName;
+    public Map<String, String> config;
+    public Map<String, String> namespaceToAzNameMap;
+
+    /**
+     * Checks if the list of KubernetesCluster objects contains a cluster with a given name.
+     *
+     * @param kubernetesClusters the list of k8s clusters objects.
+     * @param clusterName the cluster name to check for.
+     * @return true if it already exists, else false.
+     */
+    public static boolean listContainsClusterName(
+        List<KubernetesCluster> kubernetesClusters, String clusterName) {
+      return kubernetesClusters
+          .stream()
+          .map(KubernetesCluster::getClusterName)
+          .filter(clusterName::equals)
+          .findFirst()
+          .isPresent();
+    }
+
+    /**
+     * Returns the Kubernetes cluster object with a given name.
+     *
+     * @param kubernetesClusters the list of k8s clusters objects.
+     * @param clusterName the cluster name to check for.
+     * @return the kubernetes cluster object if it exists in the list, else null;
+     * @throws Exception when multiple kubernetes clusters exist with the same name.
+     */
+    public static KubernetesCluster findKubernetesClusterWithName(
+        List<KubernetesCluster> kubernetesClusters, String clusterName) throws Exception {
+      List<KubernetesCluster> filteredKubernetesClusters =
+          kubernetesClusters
+              .stream()
+              .filter(kubernetesCluster -> clusterName.equals(kubernetesCluster.getClusterName()))
+              .collect(Collectors.toList());
+      if (filteredKubernetesClusters == null || filteredKubernetesClusters.size() > 1) {
+        throw new Exception("Found multiple kubernetes clusters with same cluster name.");
+      }
+      if (filteredKubernetesClusters.size() < 1) {
+        return null;
+      }
+      return filteredKubernetesClusters.get(0);
+    }
+
+    /**
+     * Adds a {namespace : azname} to a kubernetes cluster with the given name in a list of cluster
+     * objects.
+     *
+     * @param kubernetesClusters the list of k8s clusters objects.
+     * @param clusterName the cluster name to check for.
+     * @param namespace the namespace in the kubernetes cluster to add.
+     * @param azName the zone name corresponding to the given namespace to add.
+     */
+    public static void addNamespaceToKubernetesClusterInList(
+        List<KubernetesCluster> kubernetesClusters,
+        String clusterName,
+        String namespace,
+        String azName) {
+      for (int i = 0; i < kubernetesClusters.size(); ++i) {
+        if (kubernetesClusters.get(i).getClusterName().equals(clusterName)) {
+          kubernetesClusters.get(i).namespaceToAzNameMap.put(namespace, azName);
+        }
+      }
+    }
+  }
+
+  public boolean writeStringToFile(String message, String localFilePath) {
+    try {
+      FileUtils.writeStringToFile(new File(localFilePath), message, Charset.forName("UTF-8"));
+      return true;
+    } catch (IOException e) {
+      log.error("Failed writing output string to file: ", e);
+      return false;
+    }
+  }
+
+  /**
+   * Gets the kubernetes service account name from the provider config object.
+   *
+   * @param provider the provider object for the universe cluster.
+   * @return the service account name.
+   */
+  public String getServiceAccountName(Provider provider) {
+    String serviceAccountName = "";
+    Map<String, String> providerConfig = provider.getUnmaskedConfig();
+    if (providerConfig.containsKey("KUBECONFIG_SERVICE_ACCOUNT")) {
+      serviceAccountName = providerConfig.get("KUBECONFIG_SERVICE_ACCOUNT");
+    }
+    return serviceAccountName;
+  }
+
+  /**
+   * Gets the permissions for all the roles associated with the service account name and saves all
+   * the outputs to a directory.
+   *
+   * @param kubernetesManager the k8s manager object (Shell / Native).
+   * @param serviceAccountName the service account name to get permissions for.
+   * @param destDir the local directory path to save the commands outputs to.
+   */
+  public void getServiceAccountPermissionsToFile(
+      KubernetesManager kubernetesManager,
+      Map<String, String> config,
+      String serviceAccountName,
+      String destDir) {
+    List<RoleData> roleDataList =
+        kubernetesManager.getAllRoleDataForServiceAccountName(config, serviceAccountName);
+    log.debug(
+        String.format(
+            "Role data list for service account name '%s' = %s.",
+            serviceAccountName, roleDataList.toString()));
+    for (RoleData roleData : roleDataList) {
+      String localFilePath =
+          destDir
+              + String.format(
+                  "/get_%s_%s_%s.%s",
+                  roleData.kind, roleData.name, roleData.namespace, kubectlOutputFormat);
+      String resourceOutput =
+          kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
+      writeStringToFile(resourceOutput, localFilePath);
+    }
+  }
+
+  /**
+   * Gets the set of all storage class names from all namespaces with master and tserver for a
+   * particular kubernetes cluster.
+   *
+   * @param kubernetesManager the k8s manager object (Shell / Native).
+   * @param kubernetesCluster the k8s cluster object.
+   * @param isMultiAz if the provider is multi az.
+   * @param nodePrefix the node prefix of the universe.
+   * @param isReadOnlyUniverseCluster if the universe cluster is a read replica.
+   * @return a set of all storage class names
+   */
+  public Set<String> getAllStorageClassNames(
+      KubernetesManager kubernetesManager,
+      KubernetesCluster kubernetesCluster,
+      boolean isMultiAz,
+      String nodePrefix,
+      boolean isReadOnlyUniverseCluster) {
+    Set<String> allStorageClassNames = new HashSet<String>();
+
+    for (Map.Entry<String, String> namespaceToAzName :
+        kubernetesCluster.namespaceToAzNameMap.entrySet()) {
+      String namespace = namespaceToAzName.getKey();
+      String helmReleaseName =
+          PlacementInfoUtil.getHelmReleaseName(
+              isMultiAz, nodePrefix, namespaceToAzName.getValue(), isReadOnlyUniverseCluster);
+
+      String masterStorageClassName =
+          kubernetesManager.getStorageClassName(
+              kubernetesCluster.config, namespace, helmReleaseName, true);
+      allStorageClassNames.add(masterStorageClassName);
+
+      String tserverStorageClassName =
+          kubernetesManager.getStorageClassName(
+              kubernetesCluster.config, namespace, helmReleaseName, false);
+      allStorageClassNames.add(tserverStorageClassName);
+    }
+
+    return allStorageClassNames;
   }
 }

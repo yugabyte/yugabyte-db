@@ -578,17 +578,12 @@ void DBLoaderCommand::DoCommand() {
 
 namespace {
 
-void DumpManifestFile(std::string file, bool verbose, bool hex) {
-  Options options;
+void DumpManifestFile(const Options& options, std::string file, bool verbose, bool hex) {
   EnvOptions sopt;
   std::string dbname("dummy");
   std::shared_ptr<Cache> tc(NewLRUCache(options.max_open_files - 10,
                                         options.table_cache_numshardbits));
-  // Notice we are using the default options not through SanitizeOptions(),
-  // if VersionSet::DumpManifest() depends on any option done by
-  // SanitizeOptions(), we need to initialize it manually.
-  options.db_paths.emplace_back("dummy", 0);
-  options.num_levels = 64;
+
   WriteController wc(options.delayed_write_rate);
   WriteBuffer wb(options.db_write_buffer_size);
   VersionSet versions(dbname, &options, sopt, tc.get(), &wb, &wc);
@@ -673,7 +668,7 @@ void ManifestDumpCommand::DoCommand() {
     printf("Processing Manifest file %s\n", manifestfile.c_str());
   }
 
-  DumpManifestFile(manifestfile, verbose_, is_key_hex_);
+  DumpManifestFile(options_, manifestfile, verbose_, is_key_hex_);
 
   if (verbose_) {
     printf("Processing Manifest file %s done\n", manifestfile.c_str());
@@ -1079,7 +1074,7 @@ void DBDumperCommand::DoCommand() {
         DumpSstFile(path_, is_key_hex_, /* show_properties */ true);
         break;
       case kDescriptorFile:
-        DumpManifestFile(path_, /* verbose_ */ false, is_key_hex_);
+        DumpManifestFile(options_, path_, /* verbose_ */ false, is_key_hex_);
         break;
       default:
         exec_state_ = LDBCommandExecuteResult::Failed(
@@ -2251,7 +2246,7 @@ void DBFileDumperCommand::DoCommand() {
   manifest_filename.resize(manifest_filename.size() - 1);
   string manifest_filepath = db_->GetName() + "/" + manifest_filename;
   std::cout << manifest_filepath << std::endl;
-  DumpManifestFile(manifest_filepath, false, false);
+  DumpManifestFile(db_->GetOptions(), manifest_filepath, false, false);
   std::cout << std::endl;
 
   std::cout << "SST Files" << std::endl;
