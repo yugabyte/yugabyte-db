@@ -32,19 +32,13 @@ type: docs
 -->
 </ul>
 
-{{< note title="Setup" >}}
+YugabyteDB supports three isolation levels in the transactional layer - Serializable, Snapshot, and Read Committed. PostgreSQL (and the SQL standard) have four isolation levels - Serializable, Repeatable read, Read Committed, and Read uncommitted. The mapping between the PostgreSQL isolation levels in YSQL, along with which transaction anomalies can occur at each isolation level, are shown in the following table.
 
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
-
-YugabyteDB supports three isolation levels in the transactional layer - Serializable, Snapshot, and Read Committed. PostgreSQL (and the SQL standard) have four isolation levels - `Serializable`, `Repeatable read`, `Read Committed`, and `Read uncommitted`. The mapping between the PostgreSQL isolation levels in YSQL, along with which transaction anomalies can occur at each isolation level, are shown in the following table.
-
-PostgreSQL Isolation  | YugabyteDB Equivalent | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly
------------------|--------------|------------------------|---|---|---
-Read <br/>uncommitted | Read Committed<sup>$</sup> | Allowed, but not in YSQL |  Possible | Possible | Possible
-Read <br/>committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possible | Possible
-Repeatable <br/>read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
+| PostgreSQL Isolation | YugabyteDB Equivalent | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
+| :------------------- | :-------------------- | :--------- | :------------------ | :----------- | :-------------------- |
+Read uncommitted | Read Committed<sup>$</sup> | Allowed, but not in YSQL |  Possible | Possible | Possible
+Read committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possible | Possible
+Repeatable read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
 <sup>$</sup> Read Committed Isolation is supported only if the YB-Tserver flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
@@ -66,13 +60,15 @@ As seen from the preceding table, the most strict isolation level is `Serializab
 
 * `Serialization anomaly`: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
 
-Let us now look at how Serializable, Snapshot, and Read Committed isolation works in YSQL.
-
 ## Serializable isolation
 
 The *Serializable* isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions; as if transactions had been executed one after another, serially, rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing *provisional records* for read operations as well.
 
+### Example
+
 The following bank overdraft protection example illustrates this case. The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank will later automatically transfer funds as needed to close the day with a positive balance in each account. Within a single transaction they check that the total of all accounts exceeds the amount requested.
+
+{{% explore-setup-single %}}
 
 Suppose someone tries to withdraw $900 from two of their accounts simultaneously, each with $500 balances. At the `REPEATABLE READ` transaction isolation level, that could work; but if the `SERIALIZABLE` transaction isolation level is used, a read/write conflict is detected and one of the transactions rejected.
 
@@ -90,6 +86,8 @@ insert into account values
   ('kevin','saving', 500),
   ('kevin','checking', 500);
 ```
+
+Next, connect to the cluster using two independent ysqlsh instances, referred to as session #1 and session #2.
 
 <table>
   <tr>
@@ -220,20 +218,18 @@ Snapshot isolation detects only write-write conflicts, it does not detect read-w
 Applications using this level must be prepared to retry transactions due to serialization failures.
 {{< /note >}}
 
+### Example
+
 The following scenario shows how transactions behave under the snapshot isolation level (which PostgreSQL's *Repeatable Read* maps to).
 
-First, create an example table with sample data as follows:
+Create an example table with sample data as follows:
 
 ```sql
 CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below.
-
-{{< note title="Note" >}}
-You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
-{{< /note >}}
+Next, connect to the cluster using two independent `ysqlsh` instances, referred to as *session #1* and *session #2*.
 
 <table>
   <tr>
@@ -282,7 +278,7 @@ SELECT * FROM example;
     </td>
     <td>
 
-Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session as follows:
+Insert a different row. Verify that the row inserted in the transaction in session #1 is not visible in this session as follows:
 
 ```sql
 INSERT INTO example VALUES (2);
@@ -347,27 +343,23 @@ SELECT * FROM example;
 
 ## Read committed isolation
 
-This is the same as Snapshot isolation except that every statement in the transaction will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). In other words, each statement works on a new "snapshot" of the database that includes everything that is committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
+Read committed isolation is the same as Snapshot isolation except that every statement in the transaction will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). In other words, each statement works on a new "snapshot" of the database that includes everything that is committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
-<table>
-  <tr>
-   <td style="text-align:center;">session #1</td>
-   <td style="text-align:center;">session #2</td>
-  </tr>
+### Example
 
-  <tr>
-    <td>
-
-Create a sample table.
+Create a sample table as follows:
 
 ```sql
 CREATE TABLE test (k int PRIMARY KEY, v int);
 INSERT INTO test VALUES (1, 2);
 ```
 
-  </td>
-    <td>
-    </td>
+Next, connect to the cluster using two independent ysqlsh instances, referred to as session #1 and session #2.
+
+<table>
+  <tr>
+   <td style="text-align:center;">session #1</td>
+   <td style="text-align:center;">session #2</td>
   </tr>
 
   <tr>
@@ -409,7 +401,7 @@ INSERT INTO test VALUES (2, 3);
   <tr>
     <td>
 
-Perform read again in the same transaction. Note that the recently inserted row (2, 3) isn't visible to the statement because Read Committed is disabled at the transactional layer and maps to Snapshot (in which the whole transaction sees a consistent snapshot of the database).
+Perform the read again in the same transaction.
 
 ```sql
 SELECT * FROM test;
@@ -423,15 +415,9 @@ COMMIT;
 (1 row)
 ```
 
-  </td>
-    <td>
-    </td>
-  </tr>
+The inserted row (2, 3) isn't visible because Read Committed is disabled at the transactional layer and maps to Snapshot (in which the whole transaction sees a consistent snapshot of the database).
 
-  <tr>
-    <td>
-
-Set YB-Tserver flag yb_enable_read_committed_isolation=true
+Set the YB-Tserver flag yb_enable_read_committed_isolation=true.
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -468,7 +454,7 @@ INSERT INTO test VALUES (3, 4);
   <tr>
     <td>
 
-Perform read again in the same transaction. This time, the statement can see the row (3, 4) that was committed after this transaction was started but before the statement was issued.
+Perform the read again in the same transaction.
 
 ```sql
 SELECT * FROM test;
@@ -482,6 +468,8 @@ SELECT * FROM test;
  3 | 4
 (3 rows)
 ```
+
+This time, the statement can see the row (3, 4) that was committed after this transaction was started but before the statement was issued.
 
   </td>
     <td>

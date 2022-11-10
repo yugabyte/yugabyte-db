@@ -13,12 +13,15 @@ type: docs
 
 You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
+{{< note title="Setup" >}}
+
+Local multi-node cluster. See [Set up your environment](../../../explore/#set-up-your-environment).
+
+{{< /note >}}
+
 ## Prerequisites
 
-To use Prometheus with YugabyteDB, you need the following:
-
-- [Download Prometheus](https://prometheus.io/download/) and [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/).
-- A local multi-node YugabyteDB cluster. See [Set up your environment](../../../../explore/#set-up-your-environment).
+[Download Prometheus](https://prometheus.io/download/) and refer to [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/) for installation instructions.
 
 ## Run the YugabyteDB workload generator
 

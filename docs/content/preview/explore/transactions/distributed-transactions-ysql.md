@@ -31,13 +31,9 @@ type: docs
 
 </ul>
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
-
 This example shows how a distributed transaction works in YugabyteDB.
+
+{{% explore-setup-single %}}
 
 ## Create a table
 

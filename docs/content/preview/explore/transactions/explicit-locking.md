@@ -3,11 +3,9 @@ title: Explicit locking
 headerTitle: Explicit locking
 linkTitle: Explicit locking
 description: Explicit locking in YugabyteDB.
-headcontent: Explore explicit locking in YugabyteDB.
-image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+headcontent: Explore row locking in YugabyteDB
 menu:
   preview:
-    name: Explicit locking
     identifier: explore-transactions-explicit-locking-1-ysql
     parent: explore-transactions
     weight: 245
@@ -27,16 +25,10 @@ type: docs
 
 This section describes how explicit locking works in YugabyteDB.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster or use the Sandbox cluster in YugabyteDB Managed. See [Set up your environment](../../../explore/#set-up-your-environment).
-
-{{< /note >}}
-
 YugabyteDB supports most row-level locks, similar to PostgreSQL. Explicit row-locks use transaction priorities to ensure that two transactions can never hold conflicting locks on the same row. To do this, the query layer acquires the row lock by assigning a very high value for the priority of the transaction that is being run. This causes all other transactions that conflict with the current transaction to fail, because they have a lower transaction priority.
 
 {{< note title="Note" >}}
-Explicit locking is an area of active development in YugabyteDB. A number of enhancements are planned in this area. Unlike PostgreSQL, YugabyteDB uses optimistic concurrency control and does not block / wait for currently held locks, instead opting to abort the conflicting transaction with a lower priority. Pessimistic concurrency control is currently under development.
+Explicit locking is an area of active development in YugabyteDB. A number of enhancements are planned. Unlike PostgreSQL, YugabyteDB uses optimistic concurrency control and does not block or wait for currently held locks, instead opting to abort the conflicting transaction with a lower priority. Pessimistic concurrency control is currently under development.
 {{</ note >}}
 
 The types of row locks currently supported are:
@@ -46,7 +38,11 @@ The types of row locks currently supported are:
 * `FOR SHARE`
 * `FOR KEY SHARE`
 
+## Example
+
 The following example uses the `FOR UPDATE` row lock. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked.
+
+{{% explore-setup-single %}}
 
 To try out this scenario, first create an example table with sample data, as follows:
 
