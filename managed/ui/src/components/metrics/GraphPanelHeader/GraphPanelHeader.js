@@ -204,7 +204,7 @@ class GraphPanelHeader extends Component {
         getPromiseState(universe.currentUniverse).isEmpty() ||
         getPromiseState(universe.currentUniverse).isInit()
       ) {
-        currentUniverse = universeList.data.find(function (item) {
+        currentUniverse = universeList?.data?.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         });
         if (!isNonEmptyObject(currentUniverse)) {
@@ -305,7 +305,7 @@ class GraphPanelHeader extends Component {
     const selectedUniverseUUID = universeUUID;
     const self = this;
     const newParams = this.state;
-    const matchedUniverse = universeList.data.find((u) => u.universeUUID === selectedUniverseUUID);
+    const matchedUniverse = universeList?.data?.find((u) => u.universeUUID === selectedUniverseUUID);
     if (matchedUniverse) {
       self.setState({
         currentSelectedUniverse: matchedUniverse,
@@ -808,8 +808,7 @@ class UniversePicker extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    let universeItems = universeList?.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <MenuItem
@@ -847,6 +846,10 @@ class UniversePicker extends Component {
       currentUniverseValue = selectedUniverse.name;
     }
 
+    // If we fail to retrieve list of Universes, still display the Universe dropdown with "All" option
+    if (!universeItems) {
+      universeItems = [];
+    }
     universeItems.splice(0, 0, defaultMenuItem);
     return (
       <div className="universe-picker-container">
@@ -877,8 +880,7 @@ class UniversePickerOld extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    const universeItems = universeList.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <option key={idx} value={item.universeUUID} name={item.name}>
