@@ -28,7 +28,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
-import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -635,7 +634,6 @@ public class CertificateHelper {
 
   @SuppressWarnings("unchecked")
   public static List<X509Certificate> convertStringToX509CertList(String certContent) {
-    java.security.Security.addProvider(new BouncyCastleProvider());
     try {
       InputStream in;
       byte[] certEntryBytes = certContent.getBytes();
@@ -649,8 +647,6 @@ public class CertificateHelper {
   }
 
   public static X509Certificate convertStringToX509Cert(String certificate) throws Exception {
-    java.security.Security.addProvider(new BouncyCastleProvider());
-
     certificate = certificate.replace("\\n", "");
     certificate = certificate.replaceAll("^\"+|\"+$", "");
     certificate = certificate.replace("-----BEGIN CERTIFICATE-----", "");
@@ -662,9 +658,6 @@ public class CertificateHelper {
   }
 
   public static PrivateKey convertStringToPrivateKey(String strKey) throws Exception {
-
-    java.security.Security.addProvider(new BouncyCastleProvider());
-
     strKey = strKey.replace(System.lineSeparator(), "");
     strKey = strKey.replaceAll("^\"+|\"+$", "");
     strKey = strKey.replace("-----BEGIN PRIVATE KEY-----", "");
@@ -732,8 +725,6 @@ public class CertificateHelper {
   }
 
   public static KeyPair getKeyPairObject() throws NoSuchAlgorithmException {
-    // Add the security provider in case it was never called.
-    Security.addProvider(new BouncyCastleProvider());
     KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
     keypairGen.initialize(2048);
     return keypairGen.generateKeyPair();
@@ -851,7 +842,7 @@ public class CertificateHelper {
               .setProvider(new BouncyCastleProvider())
               .getCertificate(newCertHolder);
 
-      newCert.verify(caCert.getPublicKey(), "BC");
+      newCert.verify(caCert.getPublicKey(), BouncyCastleProvider.PROVIDER_NAME);
 
       return newCert;
     } catch (Exception e) {

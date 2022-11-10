@@ -62,6 +62,7 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -99,6 +100,7 @@ public class Module extends AbstractModule {
     }
 
     Security.addProvider(new PemKeyStoreProvider());
+    Security.addProvider(new BouncyCastleProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CloudModules());
 
