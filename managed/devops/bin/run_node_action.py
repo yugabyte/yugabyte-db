@@ -9,7 +9,7 @@ import uuid
 import warnings
 import logging
 import json
-from ybops.utils.ssh import SSHClient
+from ybops.utils.remote_shell import RemoteShell, RpcRemoteShell
 
 warnings.filterwarnings("ignore")
 
@@ -36,6 +36,20 @@ def add_ssh_subparser(subparsers, command, parent):
     return ssh_parser
 
 
+def add_rpc_subparser(subparsers, command, parent):
+    rpc_parser = subparsers.add_parser(command, help='use rpc (is non k8s universe)',
+                                       parents=[parent])
+    rpc_parser.add_argument('--node_agent_ip', type=str, help='IP address for rpc',
+                            required=True)
+    rpc_parser.add_argument('--node_agent_port', type=int, help='Port number for rpc',
+                            required=True)
+    rpc_parser.add_argument('--node_agent_cert_path', type=str, help='Path to self-signed cert',
+                            required=True)
+    rpc_parser.add_argument('--node_agent_auth_token', type=str, help='Auth token for rpc',
+                            required=True)
+    return rpc_parser
+
+
 def add_run_command_subparser(subparsers, command, parent):
     parser = subparsers.add_parser(command, help='run command and get output',
                                    parents=[parent])
@@ -49,9 +63,9 @@ def handle_run_command(args, client):
         kwargs['output_only'] = True
         if args.skip_cmd_logging:
             kwargs['skip_cmd_logging'] = True
-    output = client.exec_command(args.command, **kwargs)
+    output = client.run_command(args.command, **kwargs)
     print('Command output:')
-    print(output)
+    print(output.stdout)
 
 
 def add_run_script_subparser(subparsers, command, parent):
@@ -91,9 +105,9 @@ def download_logs_ssh(args, client):
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
 
     rm_cmd = ['rm', tar_file_name]
-    client.exec_command(cmd)
-    client.download_file_from_remote_server(tar_file_name, args.target_local_file)
-    client.exec_command(rm_cmd)
+    client.run_command(cmd)
+    client.fetch_file(tar_file_name, args.target_local_file)
+    client.run_command(rm_cmd)
 
 
 def download_logs_k8s(args, client):
@@ -128,7 +142,7 @@ def add_download_file_subparser(subparsers, command, parent):
                         required=True)
 
 
-def download_file_ssh(args, client):
+def download_file_node(args, client):
     # Name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-" + str(uuid.uuid4()) + ".tar.gz"
 
@@ -148,8 +162,8 @@ def download_file_ssh(args, client):
     check_file_exists_output = int(file_exists)
     if check_file_exists_output:
         rm_cmd = ['rm', tar_file_name]
-        client.download_file_from_remote_server(tar_file_name, args.target_local_file)
-        client.exec_command(rm_cmd)
+        client.fetch_file(tar_file_name, args.target_local_file)
+        client.run_command(rm_cmd)
 
 
 def download_file_k8s(args, client):
@@ -172,12 +186,12 @@ def download_file_k8s(args, client):
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
     if check_file_exists_output:
         client.get_file(tar_file_name, args.target_local_file)
-        client.exec_command(['rm', tar_file_name])
+        client.run_command(['rm', tar_file_name])
 
 
 def handle_download_file(args, client):
-    if args.node_type == 'ssh':
-        download_file_ssh(args, client)
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
+        download_file_node(args, client)
     else:
         download_file_k8s(args, client)
 
@@ -197,7 +211,7 @@ def add_upload_file_subparser(subparsers, command, parent):
 
 
 def upload_file_ssh(args, client):
-    client.upload_file_to_remote_server(args.source_file, args.target_file)
+    client.put_file(args.source_file, args.target_file)
 
 
 def upload_file_k8s(args, client):
@@ -208,20 +222,21 @@ def handle_upload_file(args, client):
     logging.info("args here {}".format(args))
     target_path = Path(args.target_file)
     cmd = ['mkdir', '-p', str(target_path.parent.absolute())]
-    client.exec_command(cmd)
+    client.run_command(cmd)
 
-    if args.node_type == 'ssh':
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
         upload_file_ssh(args, client)
     else:
         upload_file_k8s(args, client)
 
     chmod_cmd = ['chmod', args.permissions, args.target_file]
-    client.exec_command(chmod_cmd)
+    client.run_command(chmod_cmd)
 
 
 node_types = {
     'k8s': NodeTypeParser(add_k8s_subparser),
-    'ssh': NodeTypeParser(add_ssh_subparser)
+    'ssh': NodeTypeParser(add_ssh_subparser),
+    'rpc': NodeTypeParser(add_rpc_subparser)
 }
 
 actions = {
@@ -258,13 +273,35 @@ def parse_args():
 def main():
     args = parse_args()
     if args.node_type == 'ssh':
-        client = SSHClient(ssh2_enabled=args.ssh2_enabled)
+        ssh_options = {
+            "ssh_user": YB_USERNAME,
+            "ssh_host": args.ip,
+            "ssh_port": args.port,
+            "private_key_file": args.key,
+            "ssh2_enabled": args.ssh2_enabled
+        }
+        logging.info("Using SSH connection to {}:{}".format(args.ip, args.port))
         try:
-            client.connect(args.ip, YB_USERNAME, args.key, args.port)
+            client = RemoteShell(ssh_options)
         except Exception as e:
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
-    elif args.node_type != 'ssh':
+
+    elif args.node_type == 'rpc':
+        rpc_options = {
+            "ip": args.node_agent_ip,
+            "port": args.node_agent_port,
+            "cert_path": args.node_agent_cert_path,
+            "auth_token": args.node_agent_auth_token
+        }
+        logging.info("Using RPC connection to {}:{}"
+                     .format(args.node_agent_ip, args.node_agent_port))
+        try:
+            client = RpcRemoteShell(rpc_options)
+        except Exception as e:
+            sys.exit("Failed to establish RPC connection to {}:{} - {}"
+                     .format(args.node_agent_ip, args.node_agent_port, str(e)))
+    else:
         args.k8s_config = json.loads(args.k8s_config)
         if args.k8s_config is None:
             sys.exit("Failed to load k8s configs")
@@ -273,8 +310,8 @@ def main():
     try:
         actions[args.action].handler(args, client)
     finally:
-        if args.node_type == 'ssh':
-            client.close_connection()
+        if args.node_type == 'ssh' or args.node_type == 'rpc':
+            client.close()
 
 
 if __name__ == '__main__':
