@@ -1,7 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
+
 import UniverseStatus from './UniverseStatus';
+import {
+  retryTask,
+  retryTaskResponse
+} from '../../../actions/tasks';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -9,6 +14,11 @@ const mapDispatchToProps = (dispatch) => {
     fetchCurrentUniverse: (universeUUID) => {
       dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    },
+    retryCurrentTask: (taskUUID) => {
+      return dispatch(retryTask(taskUUID)).then((response) => {
+        return dispatch(retryTaskResponse(response.payload));
       });
     }
   };
