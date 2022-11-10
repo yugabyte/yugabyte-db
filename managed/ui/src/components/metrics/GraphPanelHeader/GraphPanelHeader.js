@@ -129,7 +129,8 @@ class GraphPanelHeader extends Component {
       refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel,
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
-      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
+      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
+      isSingleNodeSelected: false
     };
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
@@ -315,7 +316,8 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value
+        metricMeasure: metricMeasureTypes[0].value,
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = matchedUniverse.universeDetails.nodePrefix;
     } else {
@@ -326,7 +328,8 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value
+        metricMeasure: metricMeasureTypes[0].value,
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = null;
     }
@@ -378,8 +381,18 @@ class GraphPanelHeader extends Component {
     newParams.selectedZoneName = selectedZoneName;
     this.setState({
       nodeName: nodeName,
-      selectedZoneName: selectedZoneName
+      selectedZoneName: selectedZoneName,
+      isSingleNodeSelected: nodeName && nodeName !== MetricConsts.ALL
     });
+
+    // When a single node is selected, button focus should move to Overall 
+    // and Outlier Node should be disabled
+    if (this.state.metricMeasure === MetricMeasure.OUTLIER) {
+      this.setState({
+        metricMeasure: MetricMeasure.OVERALL
+      });
+      newParams.metricMeasure = MetricMeasure.OVERALL;
+    }
 
     this.updateUrlQueryParams(newParams);
   };
@@ -391,6 +404,7 @@ class GraphPanelHeader extends Component {
       selectedRegionClusterUUID: clusterId,
       selectedRegionCode: regionCode,
       nodeName: MetricConsts.ALL,
+      isSingleNodeSelected: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
       selectedZoneName: null,
     });
@@ -740,6 +754,7 @@ class GraphPanelHeader extends Component {
                       metricMeasureTypes={metricMeasureTypes}
                       selectedMetricMeasureValue={this.state.metricMeasure}
                       onMetricMeasureChanged={this.onMetricMeasureChanged}
+                      isSingleNodeSelected={this.state.isSingleNodeSelected}
                     />
                   }
                 </FlexGrow>
