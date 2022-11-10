@@ -380,23 +380,25 @@ Result<std::string> CDCSDKTestBase::GetTableId(
 void CDCSDKTestBase::InitCreateStreamRequest(
     CreateCDCStreamRequestPB* create_req,
     const CDCCheckpointType& checkpoint_type,
+    const CDCRecordType& record_type,
     const std::string& namespace_name) {
   create_req->set_namespace_name(namespace_name);
   create_req->set_checkpoint_type(checkpoint_type);
-  create_req->set_record_type(CDCRecordType::CHANGE);
+  create_req->set_record_type(record_type);
   create_req->set_record_format(CDCRecordFormat::PROTO);
   create_req->set_source_type(CDCSDK);
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
-Result<std::string> CDCSDKTestBase::CreateDBStream(CDCCheckpointType checkpoint_type) {
+Result<std::string> CDCSDKTestBase::CreateDBStream(
+    CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type);
+  InitCreateStreamRequest(&req, checkpoint_type, record_type);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 

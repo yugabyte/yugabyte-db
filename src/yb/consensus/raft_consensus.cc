@@ -3475,10 +3475,11 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(const yb::OpId& from,
-  int64_t* last_replicated_opid_index,
-  const CoarseTimePoint deadline) {
-  return queue_->ReadReplicatedMessagesForCDC(from, last_replicated_opid_index, deadline);
+Result<ReadOpsResult> RaftConsensus::ReadReplicatedMessagesForCDC(
+    const yb::OpId& from, int64_t* last_replicated_opid_index, const CoarseTimePoint deadline,
+    const bool fetch_single_entry) {
+  return queue_->ReadReplicatedMessagesForCDC(
+      from, last_replicated_opid_index, deadline, fetch_single_entry);
 }
 
 void RaftConsensus::UpdateCDCConsumerOpId(const yb::OpId& op_id) {

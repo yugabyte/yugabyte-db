@@ -128,10 +128,12 @@ class LogCache {
   // until 'to_op_index' (inclusive).
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
-  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
-                                int64_t to_op_index,
-                                size_t max_size_bytes,
-                                CoarseTimePoint deadline = CoarseTimePoint::max());
+  Result<ReadOpsResult> ReadOps(
+      int64_t after_op_index,
+      int64_t to_op_index,
+      size_t max_size_bytes,
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      bool fetch_single_entry = false);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.

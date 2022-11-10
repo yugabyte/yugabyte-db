@@ -3668,7 +3668,9 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
           // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
           // will store this info in the map in the 'kCdcData' column.
           auto column_id = cdc_table.ColumnId(master::kCdcData);
-          cdc_table.AddMapColumnValue(req, column_id, "active_time", "0");
+          auto map_value_pb = client::AddMapColumn(req, column_id);
+          client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
+          client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
         }
 
         session->Apply(op);
@@ -3983,8 +3985,9 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         QLAddStringRangeValue(insert_req, stream->id());
         cdc_table.AddStringColumnValue(
             insert_req, master::kCdcCheckpoint, OpId::Invalid().ToString());
-        cdc_table.AddMapColumnValue(
-            insert_req, cdc_table.ColumnId(master::kCdcData), "active_time", "0");
+        auto map_value_pb = client::AddMapColumn(insert_req, cdc_table.ColumnId(master::kCdcData));
+        client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
+        client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
         session->Apply(insert_op);
       }
 
@@ -5791,8 +5794,11 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         if (is_cdcsdk_stream) {
           auto last_active_time = GetCurrentTimeMicros();
           auto column_id = cdc_table.ColumnId(master::kCdcData);
-          cdc_table.AddMapColumnValue(
-              insert_req, column_id, "active_time", std::to_string(last_active_time));
+          auto map_value_pb = client::AddMapColumn(insert_req, column_id);
+          client::AddMapEntryToColumn(
+              map_value_pb, "active_time", std::to_string(last_active_time));
+          client::AddMapEntryToColumn(
+              map_value_pb, "cdc_sdk_safe_time", std::to_string(last_active_time));
         }
         session->Apply(insert_op);
       }

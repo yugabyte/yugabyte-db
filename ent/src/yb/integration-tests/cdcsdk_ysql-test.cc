@@ -29,6 +29,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/rocksdb/db.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/client/yb_op.h"
@@ -80,11 +82,11 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-using std::vector;
-using std::string;
 using std::map;
-using std::pair;
 using std::min;
+using std::pair;
+using std::string;
+using std::vector;
 
 DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -97,11 +99,11 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(cdc_max_stream_intent_records);
-DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-
 DECLARE_bool(enable_single_record_update);
 DECLARE_bool(enable_delete_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
@@ -147,6 +149,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   struct ExpectedRecord {
     int32_t key;
     int32_t value;
+  };
+
+  struct ExpectedRecordWithThreeColumns {
+    int32_t key;
+    int32_t value;
+    int32_t value2;
   };
 
   struct VaryingExpectedRecord {
@@ -429,6 +437,41 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status WriteAndUpdateRowsHelper(
+      uint32_t start, uint32_t end, Cluster* cluster, bool flag,
+      const std::multimap<uint32_t, uint32_t>& col_val_map, const std::string& table_id) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName, i,
+          i + 1));
+    }
+    RETURN_NOT_OK(test_client()->FlushTables(
+        {table_id}, /* add_indexes = */ false,
+        /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (auto& col_value_pair : col_val_map) {
+      LOG(INFO) << "Updating row for key " << col_value_pair.first << " with value "
+                << col_value_pair.second;
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kValueColumnName,
+          col_value_pair.second, kKeyColumnName, col_value_pair.first));
+    }
+    RETURN_NOT_OK(test_client()->FlushTables(
+        {table_id}, /* add_indexes = */ false,
+        /* timeout_secs = */ 30, /* is_compaction = */ false));
+
+    if (flag) {
+      RETURN_NOT_OK(conn.Execute("COMMIT"));
+    } else {
+      RETURN_NOT_OK(conn.Execute("ABORT"));
+    }
+    return Status::OK();
+  }
+
   Status CreateColocatedObjects(Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
@@ -628,6 +671,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     LOG(INFO) << "Updating row for key " << key << " with value " << value;
     RETURN_NOT_OK(conn.ExecuteFormat(
         "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kValueColumnName, value, kKeyColumnName,
+        key));
+    return Status::OK();
+  }
+
+  Status UpdatePrimaryKey(uint32_t key, uint32_t value, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Updating primary key " << key << " with value " << value;
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kKeyColumnName, value, kKeyColumnName,
         key));
     return Status::OK();
   }
@@ -899,9 +951,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           tablets,
       const int tablet_idx,
       const OpId& op_id,
-      bool initial_checkpoint) {
+      bool initial_checkpoint,
+      const uint64_t cdc_sdk_safe_time) {
     set_checkpoint_req->set_stream_id(stream_id);
     set_checkpoint_req->set_initial_checkpoint(initial_checkpoint);
+    set_checkpoint_req->set_cdc_sdk_safe_time(cdc_sdk_safe_time);
     set_checkpoint_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(op_id.term);
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(op_id.index);
@@ -910,7 +964,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const OpId& op_id = OpId::Min(), bool initial_checkpoint = true, const int tablet_idx = 0) {
+      const OpId& op_id = OpId::Min(), const uint64_t cdc_sdk_safe_time = kuint64max,
+      bool initial_checkpoint = true, const int tablet_idx = 0) {
     int max_retries = 3;
     Status st;
     for (int retry = 0; retry < max_retries; ++retry) {
@@ -920,7 +975,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
       set_checkpoint_rpc.set_deadline(deadline);
       PrepareSetCheckpointRequest(
-          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint);
+          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
+          cdc_sdk_safe_time);
       st = cdc_proxy_->SetCDCCheckpoint(
           set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
@@ -973,9 +1029,45 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return get_tablet_list_resp;
   }
 
-  void AssertKeyValue(const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value) {
+  void AssertKeyValue(
+      const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
+      const bool& validate_third_column = false, const int32_t& value2 = 0) {
     ASSERT_EQ(key, record.row_message().new_tuple(0).datum_int32());
-    ASSERT_EQ(value, record.row_message().new_tuple(1).datum_int32());
+    if (value != INT_MAX) {
+      for (int index = 0; index < record.row_message().new_tuple_size(); ++index) {
+        if (record.row_message().new_tuple(index).column_name() == kValueColumnName) {
+          ASSERT_EQ(value, record.row_message().new_tuple(index).datum_int32());
+        }
+      }
+    }
+    if (validate_third_column && value2 != INT_MAX) {
+      for (int index = 0; index < record.row_message().new_tuple_size(); ++index) {
+        if (record.row_message().new_tuple(index).column_name() == kValueColumnName) {
+          ASSERT_EQ(value, record.row_message().new_tuple(index).datum_int32());
+        }
+        if (record.row_message().new_tuple(index).column_name() == kValue2ColumnName) {
+          ASSERT_EQ(value2, record.row_message().new_tuple(index).datum_int32());
+        }
+      }
+    }
+  }
+
+  void AssertBeforeImageKeyValue(
+      const CDCSDKProtoRecordPB& record, const int32_t& key, const int32_t& value,
+      const bool& validate_third_column = false, const int32_t& value2 = 0) {
+    if (record.row_message().old_tuple_size() > 0) {
+      ASSERT_EQ(key, record.row_message().old_tuple(0).datum_int32());
+    }
+    if (value != INT_MAX) {
+      ASSERT_EQ(value, record.row_message().old_tuple(1).datum_int32());
+    }
+    if (validate_third_column && value2 != INT_MAX) {
+      if (value == INT_MAX) {
+        ASSERT_EQ(value2, record.row_message().old_tuple(1).datum_int32());
+      } else {
+        ASSERT_EQ(value2, record.row_message().old_tuple(2).datum_int32());
+      }
+    }
   }
 
   void AssertKeyValues(
@@ -1015,7 +1107,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
-      uint32_t* count) {
+      uint32_t* count, const bool& validate_old_tuple = false,
+      CDCSDKYsqlTest::ExpectedRecord expected_before_image_records = {}) {
     // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
     switch (record.row_message().op()) {
       case RowMessage::DDL: {
@@ -1029,11 +1122,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       } break;
       case RowMessage::UPDATE: {
         AssertKeyValue(record, expected_records.key, expected_records.value);
+        if (validate_old_tuple) {
+          AssertBeforeImageKeyValue(
+              record, expected_before_image_records.key, expected_before_image_records.value);
+        }
         ASSERT_EQ(record.row_message().table(), kTableName);
         count[2]++;
       } break;
       case RowMessage::DELETE: {
         ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+        if (validate_old_tuple) {
+          AssertBeforeImageKeyValue(
+              record, expected_before_image_records.key, expected_before_image_records.value);
+        }
         ASSERT_EQ(record.row_message().table(), kTableName);
         count[3]++;
       } break;
@@ -1045,6 +1146,84 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       case RowMessage::TRUNCATE: {
         count[5]++;
       } break;
+      case RowMessage::BEGIN:
+        break;
+      case RowMessage::COMMIT:
+        break;
+      default:
+        ASSERT_FALSE(true);
+        break;
+    }
+  }
+
+  void CheckRecordWithThreeColumns(
+      const CDCSDKProtoRecordPB& record,
+      CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_records, uint32_t* count,
+      const bool& validate_old_tuple = false,
+      CDCSDKYsqlTest::ExpectedRecordWithThreeColumns expected_before_image_records = {},
+      const bool& validate_third_column = false) {
+    // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+    switch (record.row_message().op()) {
+      case RowMessage::DDL: {
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[0]++;
+      } break;
+      case RowMessage::INSERT: {
+        if (validate_third_column) {
+          AssertKeyValue(
+              record, expected_records.key, expected_records.value, true, expected_records.value2);
+        } else {
+          AssertKeyValue(record, expected_records.key, expected_records.value);
+        }
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[1]++;
+      } break;
+      case RowMessage::UPDATE: {
+        if (validate_third_column) {
+          AssertKeyValue(
+              record, expected_records.key, expected_records.value, true, expected_records.value2);
+          if (validate_old_tuple) {
+            AssertBeforeImageKeyValue(
+                record, expected_before_image_records.key, expected_before_image_records.value,
+                true, expected_before_image_records.value2);
+          }
+        } else {
+          AssertKeyValue(record, expected_records.key, expected_records.value);
+          if (validate_old_tuple) {
+            AssertBeforeImageKeyValue(
+                record, expected_before_image_records.key, expected_before_image_records.value);
+          }
+        }
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[2]++;
+      } break;
+      case RowMessage::DELETE: {
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+        if (validate_old_tuple) {
+          if (validate_third_column) {
+            AssertBeforeImageKeyValue(
+                record, expected_before_image_records.key, expected_before_image_records.value,
+                true, expected_before_image_records.value2);
+          } else {
+            AssertBeforeImageKeyValue(
+                record, expected_before_image_records.key, expected_before_image_records.value);
+          }
+        }
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[3]++;
+      } break;
+      case RowMessage::READ: {
+        AssertKeyValue(record, expected_records.key, expected_records.value);
+        ASSERT_EQ(record.row_message().table(), kTableName);
+        count[4]++;
+      } break;
+      case RowMessage::TRUNCATE: {
+        count[5]++;
+      } break;
+      case RowMessage::BEGIN:
+        break;
+      case RowMessage::COMMIT:
+        break;
       default:
         ASSERT_FALSE(true);
         break;
@@ -1444,6 +1623,41 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  int CountEntriesInDocDB(std::vector<tablet::TabletPeerPtr> peers, const std::string& table_id) {
+    int count = 0;
+    for (const auto& peer : peers) {
+      if (peer->tablet()->metadata()->table_id() != table_id) {
+        continue;
+      }
+      auto db = peer->tablet()->TEST_db();
+      rocksdb::ReadOptions read_opts;
+      read_opts.query_id = rocksdb::kDefaultQueryId;
+      std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
+      std::unordered_map<std::string, std::string> keys;
+
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        Slice key = iter->key();
+        EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
+        LOG(INFO) << "key: " << iter->key().ToDebugString()
+                  << "value: " << iter->value().ToDebugString();
+        ++count;
+      }
+    }
+    return count;
+  }
+
+  Status TriggerCompaction(const TabletId tablet_id) {
+    string tool_path = GetToolPath("../bin", "yb-ts-cli");
+    vector<string> argv;
+    argv.push_back(tool_path);
+    argv.push_back("-server_address");
+    argv.push_back(AsString(test_cluster_.mini_cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+    argv.push_back("compact_tablet");
+    argv.push_back(tablet_id);
+    RETURN_NOT_OK(Subprocess::Call(argv));
+    return Status::OK();
+  }
+
   Status CompactSystemTable() {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
@@ -1680,7 +1894,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsertWithAutoCommit))
   CheckCount(expected_count, count);
 }
 
-
 // Begin transaction, perform some operations and abort transaction.
 // Expected records: 1 (DDL).
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
@@ -1706,7 +1919,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[0] << " ddl record";
   CheckCount(expected_count, count);
-
 }
 
 // Insert one row, update the inserted row.
@@ -1769,6 +1981,387 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
     CheckRecord(record, expected_records[i], count, num_cols);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdatePrimaryKey(1 /* key */, 9 /* value */, &test_cluster_));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 2, 1, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {0, 0}, {1, 3}, {9, 3}, {0, 0}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {}, {1, 3}, {}, {}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 4 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 4"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 4"));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {2, 2, 6, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecordWithThreeColumns expected_records[] = {
+      {0, 0, 0}, {1, 2, INT_MAX},  {1, 3, INT_MAX}, {0, 0, INT_MAX}, {1, 4, INT_MAX},
+      {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {1, 99, 66},     {4, 99, 66}};
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {},
+      {},
+      {1, 2, INT_MAX},
+      {},
+      {1, 3, INT_MAX},
+      {},
+      {1, 4, INT_MAX},
+      {4, 5, 6},
+      {1, 99, INT_MAX},
+      {4, 99, 6}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    if (i < 5) {
+      CheckRecordWithThreeColumns(
+          record, expected_records[i], count, true, expected_before_image_records[i]);
+    } else {
+      CheckRecordWithThreeColumns(
+          record, expected_records[i], count, true, expected_before_image_records[i], true);
+    }
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1000000;
+  constexpr int kCompactionTimeoutSec = 60;
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {1, 4}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 3}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  // Testing compaction without compaction file filtering for TTL expiration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
+  SleepFor(MonoDelta::FromSeconds(5));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id = {change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()};
+  auto set_resp2 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id, change_resp.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+
+  ASSERT_EQ(count_before_compaction, count_after_compaction);
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 0, 2, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{1, 3}, {1, 4}};
+  ExpectedRecord expected_before_image_records[] = {{1, 2}, {1, 3}};
+
+  GetChangesResponsePB change_resp2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  uint32_t record_size = change_resp2.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp2.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+
+  checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id2 = {
+      change_resp.cdc_sdk_checkpoint().term(), change_resp2.cdc_sdk_checkpoint().index()};
+  auto set_resp3 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id2, change_resp2.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  // ASSERT_OK(TriggerCompaction(tablets[0].tablet_id()));
+  count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_EQ(count_after_compaction, 2);
+}
+
+// Insert one row, update the inserted row twice and verify before image.
+// Expected records: (DDL, INSERT, UPDATE).
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {1, 4}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 3}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  std::multimap<uint32_t, uint32_t> col_val_map;
+  col_val_map.insert({1, 88});
+  col_val_map.insert({1, 888});
+
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      1 /* start */, 2 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  col_val_map.clear();
+  col_val_map.insert({1, 999});
+  col_val_map.insert({2, 99});
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      2 /* start */, 3 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 2, 4, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0},   {1, 88}, {1, 888}, {0, 0},
+                                       {2, 3}, {0, 0}, {1, 999}, {2, 99}, {0, 0}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {},       {1, 2}, {1, 2}, {},
+                                                    {}, {}, {1, 888}, {2, 3}, {}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdateBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  std::multimap<uint32_t, uint32_t> col_val_map;
+  col_val_map.insert({2, 88});
+  col_val_map.insert({2, 888});
+
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      2 /* start */, 3 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  col_val_map.clear();
+  col_val_map.insert({2, 999});
+  col_val_map.insert({3, 99});
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      3 /* start */, 4 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 3, 6, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0},   {1, 2}, {1, 3}, {1, 4}, {2, 3},   {0, 0},  {2, 88},
+                                       {2, 888}, {0, 0}, {3, 4}, {0, 0}, {2, 999}, {3, 99}, {0, 0}};
+  ExpectedRecord expected_before_image_records[] = {
+      {}, {}, {1, 2}, {1, 3}, {}, {}, {2, 3}, {2, 3}, {}, {}, {}, {2, 888}, {3, 4}, {}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdateBeforeImage)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  std::multimap<uint32_t, uint32_t> col_val_map;
+  col_val_map.insert({1, 88});
+  col_val_map.insert({1, 888});
+
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      1 /* start */, 2 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  col_val_map.clear();
+  col_val_map.insert({1, 999});
+  col_val_map.insert({2, 99});
+  ASSERT_OK(WriteAndUpdateRowsHelper(
+      2 /* start */, 3 /* end */, &test_cluster_, true, col_val_map, table.table_id()));
+
+  ASSERT_OK(WriteRows(3 /* start */, 4 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(3 /* key */, 5 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(3 /* key */, 6 /* value */, &test_cluster_));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 3, 6, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0}, {1, 88},  {1, 888},
+                                       {0, 0}, {2, 3}, {0, 0}, {1, 999}, {2, 99},
+                                       {0, 0}, {3, 4}, {3, 5}, {3, 6}};
+  ExpectedRecord expected_before_image_records[] = {
+      {}, {}, {}, {1, 2}, {1, 2}, {}, {}, {}, {1, 888}, {2, 3}, {}, {}, {3, 4}, {3, 5}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(expected_count, count);
@@ -2549,7 +3142,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
   client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
   ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
         for (const auto& row : client::TableRange(table_handle_cdc)) {
           auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
           if (stream_id == create_resp.stream_id()) {
@@ -2557,7 +3151,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
           }
         }
         return true;
-      }, MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 
   // This should fail now as the stream is deleted.
   ASSERT_EQ(DeleteCDCStream(create_resp.stream_id()), false);
@@ -3269,8 +3864,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestHighIntentCountPersistencyAll
   SleepFor(MonoDelta::FromSeconds(60));
 
   int64 num_intents_after_restart;
-  PollForIntentCount(initial_num_intents, 0, IntentCountCompareOption::EqualTo,
-                     &num_intents_after_restart);
+  PollForIntentCount(
+      initial_num_intents, 0, IntentCountCompareOption::EqualTo, &num_intents_after_restart);
   LOG(INFO) << "Number of intents after restart: " << num_intents_after_restart;
   ASSERT_EQ(num_intents_after_restart, initial_num_intents);
 }
@@ -3336,8 +3931,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
   int64 last_seen_num_intents = -1;
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
-    auto tablet_peer_result = test_cluster()->GetTabletManager(i)->GetServingTablet(
-        tablets[0].tablet_id());
+    auto tablet_peer_result =
+        test_cluster()->GetTabletManager(i)->GetServingTablet(tablets[0].tablet_id());
     if (!tablet_peer_result.ok()) {
       continue;
     }
@@ -4016,7 +4611,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-
   RpcController rpc;
   CreateCDCStreamRequestPB create_req;
   CreateCDCStreamResponsePB create_resp;
@@ -4108,9 +4702,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
     stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     for (uint32_t jdx = 0; jdx < num_tablets; jdx++) {
-      auto resp =
-          ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablets[idx], OpId::Min(), true, jdx));
-      ASSERT_FALSE(resp.has_error());
+      auto resp = ASSERT_RESULT(
+          SetCDCCheckpoint(stream_id[idx], tablets[idx], OpId::Min(), kuint64max, true, jdx));
     }
 
     ASSERT_OK(WriteEnumsRows(0, 100, &test_cluster_, tablePrefix[idx], kNamespaceName, kTableName));
@@ -5336,7 +5929,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
       [&]() -> Result<bool> {
         int idx = 1;
         while (idx <= 2) {
-          auto get_resp = GetDBStreamInfo(stream_id[idx -1]);
+          auto get_resp = GetDBStreamInfo(stream_id[idx - 1]);
           if (!get_resp.ok()) {
             return false;
           }
@@ -5420,8 +6013,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  auto resp =
-      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
   // Insert some records in transaction.
@@ -5739,9 +6331,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
       correct_expiry_time = peer->cdc_sdk_min_checkpoint_op_id_expiration();
     }
   }
-  LOG(INFO) << "CDKSDK checkpoint expiration time with LEADER tserver:"
-            << second_leader_index << " : "
-            << correct_expiry_time.time_since_epoch().count();
+  LOG(INFO) << "CDKSDK checkpoint expiration time with LEADER tserver:" << second_leader_index
+            << " : " << correct_expiry_time.time_since_epoch().count();
 
   // We need to ensure the initial leader get's back leadership.
   ASSERT_OK(ChangeLeaderOfTablet(first_leader_index, tablets[0].tablet_id()));
@@ -6714,8 +7305,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKAddColumnsWithExplictTr
   ASSERT_GE(record_size, 10);
 
   ASSERT_OK(WriteRowsHelper(
-      11 /* start */, 21 /* end */, &test_cluster_, true, 5,
-      kTableName, {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
+      11 /* start */, 21 /* end */, &test_cluster_, true, 5, kTableName,
+      {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
@@ -6872,8 +7463,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKDropColumnsWithExplictT
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(
-      1 /* start */, 11 /* end */, &test_cluster_, true, 4,
-      kTableName, {kValue2ColumnName, kValue3ColumnName}));
+      1 /* start */, 11 /* end */, &test_cluster_, true, 4, kTableName,
+      {kValue2ColumnName, kValue3ColumnName}));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
@@ -7264,7 +7855,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKAlterWithSysCatalogComp
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
-
   GetChangesResponsePB change_resp;
   auto result = GetChangesFromCDC(stream_id, tablets);
   if (!result.ok()) {
@@ -7307,7 +7897,6 @@ TEST_F(
   const int num_tservers = 3;
   FLAGS_enable_load_balancing = false;
   FLAGS_cdc_max_stream_intent_records = 10;
-  FLAGS_consensus_max_batch_size_bytes = 1000;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));

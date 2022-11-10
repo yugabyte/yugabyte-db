@@ -387,9 +387,9 @@ class PeerMessageQueue {
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
-    const yb::OpId& last_op_id,
-    int64_t* last_replicated_opid_index = nullptr,
-    const CoarseTimePoint deadline = CoarseTimePoint::max());
+      const yb::OpId& last_op_id, int64_t* last_replicated_opid_index = nullptr,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const bool fetch_single_entry = false);
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
@@ -559,11 +559,12 @@ class PeerMessageQueue {
   //
   // If 'to_index' is 0, then all operations after 'after_index' will be included.
   Result<ReadOpsResult> ReadFromLogCache(
-    int64_t after_index,
-    int64_t to_index,
-    size_t max_batch_size,
-    const std::string& peer_uuid,
-    const CoarseTimePoint deadline = CoarseTimePoint::max());
+      int64_t after_index,
+      int64_t to_index,
+      size_t max_batch_size,
+      const std::string& peer_uuid,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const bool fetch_single_entry = false);
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
