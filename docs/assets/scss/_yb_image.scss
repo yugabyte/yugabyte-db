@@ -6,9 +6,37 @@
     position: absolute;
     inset: 0;
 
-    area {
+    .td-content p > code area {
       position: absolute;
       display: block;
+    }
+  }
+}
+
+.td-content {
+  div:not(.icon):not(.image):not(.heading-image) {
+    > {
+      p > img:not(.icon) {
+        margin-bottom: 0;
+      }
+
+      img:not(.icon) {
+        max-width: 100%;
+        border: 1px solid #e9eef2;
+        border-radius: 8px;
+        margin: 0 0 20px 0;
+      }
+    }
+  }
+
+  li>,
+  > {
+    p img:not(.icon),
+    img:not(.icon) {
+      max-width: 100%;
+      border: 1px solid #e9eef2;
+      border-radius: 8px;
+      margin: 0 0 20px 0;
     }
   }
 }
