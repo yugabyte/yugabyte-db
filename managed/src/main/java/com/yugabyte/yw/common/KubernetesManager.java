@@ -199,10 +199,10 @@ public abstract class KubernetesManager {
     return null;
   }
 
-  // userMap - flattened user provided yaml. valuesMap - flattened chart's values yaml.
+  // userMap - user provided yaml. valuesMap - chart's values yaml.
   // Return userMap keys which are not in valuesMap.
   // It doesn't check if returnred keys are actually not present in chart templates.
-  private Set<String> getUknownKeys(Map<String, String> userMap, Map<String, String> valuesMap) {
+  private Set<String> getUknownKeys(Map<String, Object> userMap, Map<String, Object> valuesMap) {
     return Sets.difference(userMap.keySet(), valuesMap.keySet());
   }
 
@@ -235,7 +235,7 @@ public abstract class KubernetesManager {
       universeOverridesCopy = mapper.readValue(universeOverridesString, Map.class);
       azOverridesString = mapper.writeValueAsString(azOverrides);
       azOverridesCopy = mapper.readValue(azOverridesString, Map.class);
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       LOG.error(
           String.format(
               "Error in writing overrides map to string or string to map: "
@@ -256,14 +256,13 @@ public abstract class KubernetesManager {
       errorsSet.add(errMsg);
       return errorsSet;
     }
-    Map<String, String> flatHelmValues =
-        HelmUtils.flattenMap(HelmUtils.convertYamlToMap(helmValuesStr));
+    Map<String, Object> helmValues = HelmUtils.convertYamlToMap(helmValuesStr);
     Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverridesCopy);
     Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverridesCopy);
 
-    Set<String> universeOverridesUnknownKeys = getUknownKeys(flatUnivOverrides, flatHelmValues);
+    Set<String> universeOverridesUnknownKeys = getUknownKeys(universeOverridesCopy, helmValues);
     Set<String> universeOverridesNullValueKeys = getNullValueKeys(flatUnivOverrides);
-    Set<String> azOverridesUnknownKeys = getUknownKeys(flatAZOverrides, flatHelmValues);
+    Set<String> azOverridesUnknownKeys = getUknownKeys(azOverridesCopy, helmValues);
     Set<String> azOverridesNullValueKeys = getNullValueKeys(flatAZOverrides);
 
     if (universeOverridesUnknownKeys.size() != 0) {
