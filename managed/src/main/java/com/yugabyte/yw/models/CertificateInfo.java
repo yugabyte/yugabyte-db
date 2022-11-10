@@ -529,7 +529,7 @@ public class CertificateInfo extends Model {
     if (certInfo.certType == CertConfigType.SelfSigned) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot edit self-signed cert.");
     }
-    if (certInfo.customCertInfo != null) {
+    if (!(certInfo.customCertInfo == null || certInfo.customCertInfo.isNull())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
     }

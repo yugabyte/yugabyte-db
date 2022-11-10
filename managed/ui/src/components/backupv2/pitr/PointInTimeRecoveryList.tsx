@@ -21,7 +21,7 @@ import { PointInTimeRecoveryEmpty } from './PointInTimeRecoveryEmpty';
 import { PointInTimeRecoveryEnableModal } from './PointInTimeRecoveryEnableModal';
 import { YBTable } from '../../common/YBTable';
 import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
 import './PointInTimeRecoveryList.scss';
 
@@ -67,19 +67,19 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         <MenuItem
           onClick={(e: any) => {
             e.stopPropagation();
-            row.snapshots.length && setRecoveryItem(row);
+            row.minRecoverTimeInMillis && setRecoveryItem(row);
           }}
-          disabled={!row.snapshots.length}
+          disabled={!row.minRecoverTimeInMillis}
         >
           Recover to a Point in Time
         </MenuItem>
         <MenuItem
           onClick={(e: any) => {
             e.stopPropagation();
-            row.snapshots.length && setItemToDisable(row);
+            row.minRecoverTimeInMillis && setItemToDisable(row);
           }}
           className="action-danger"
-          disabled={!row.snapshots.length}
+          disabled={!row.minRecoverTimeInMillis}
         >
           Disable Point-in-time Recovery
         </MenuItem>
@@ -89,11 +89,11 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
 
   if (isLoading) return <YBLoading />;
 
-  const regex = new RegExp(searchText.toLowerCase() ?? '');
+  const regex = new RegExp(searchText.replace(/\\/g, '\\\\').toLowerCase() ?? '');
   const pitr_list = configs.filter(
     (config: any) =>
       regex.test(config.dbName.toLowerCase()) ||
-      regex.test(TABLE_TYPE_MAP[config.tableType].toLowerCase())
+      regex.test(TableTypeLabel[config.tableType].toLowerCase())
   );
 
   return (
@@ -145,7 +145,7 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="tableType"
-              dataFormat={(tableType) => TABLE_TYPE_MAP[tableType]}
+              dataFormat={(tableType) => TableTypeLabel[tableType]}
               dataSort
             >
               API Type
@@ -161,15 +161,8 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
               Retention Period
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="snapshots"
-              dataFormat={(snapshots) => {
-                const activeSnapShots = snapshots.filter(
-                  (snapshot: any) => snapshot.state === 'COMPLETE'
-                );
-                if (!activeSnapShots.length) return '-';
-                const minTime = Math.min(
-                  ...activeSnapShots.map((snapshot: any) => snapshot.recoveryTime)
-                );
+              dataField="minRecoverTimeInMillis"
+              dataFormat={(minTime) => {
                 return minTime ? <FormatUnixTimeStampTimeToTimezone timestamp={minTime} /> : '';
               }}
               dataSort

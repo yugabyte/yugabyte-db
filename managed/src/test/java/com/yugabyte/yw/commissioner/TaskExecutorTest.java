@@ -75,14 +75,15 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private Config mockConfig;
 
-  private Set<TaskType> RETRYABLE_TASKS =
+  private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
-          TaskType.ReleaseInstanceFromUniverse);
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.RebootNodeInUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -169,7 +170,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testTaskSubmission() throws InterruptedException {
+  public void testTaskSubmission() {
     ITask task = mockTaskCommon(false);
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
@@ -180,7 +181,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testTaskFailure() throws InterruptedException {
+  public void testTaskFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Error occurred in task")).when(task).run();
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
@@ -194,7 +195,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskAsyncSuccess() throws InterruptedException {
+  public void testSubTaskAsyncSuccess() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
@@ -225,7 +226,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskAsyncFailure() throws InterruptedException {
+  public void testSubTaskAsyncFailure() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
@@ -263,7 +264,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskNonAbortable() throws InterruptedException {
+  public void testSubTaskNonAbortable() {
     ITask task = mockTaskCommon(false);
     CountDownLatch latch = new CountDownLatch(1);
     doAnswer(
@@ -346,7 +347,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskAbortAtPosition() throws InterruptedException {
+  public void testSubTaskAbortAtPosition() {
     ITask task = mockTaskCommon(true);
     ITask subTask1 = mockTaskCommon(true);
     ITask subTask2 = mockTaskCommon(true);
@@ -484,9 +485,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     // This should get rejected as the executor is already shutdown.
     assertThrows(
         IllegalStateException.class,
-        () -> {
-          taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
-        });
+        () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
   }
 
   @Test
@@ -548,13 +547,13 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues()
             .stream()
-            .filter(t -> Commissioner.isTaskRetryable(t))
+            .filter(taskType -> TaskExecutor.isTaskRetryable(taskExecutor.getTaskClass(taskType)))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }
 
   @Test
-  public void testTaskCache() throws InterruptedException {
+  public void testTaskCache() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();

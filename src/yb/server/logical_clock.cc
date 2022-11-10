@@ -89,4 +89,3 @@ void LogicalClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_ent
 
 }  // namespace server
 }  // namespace yb
-

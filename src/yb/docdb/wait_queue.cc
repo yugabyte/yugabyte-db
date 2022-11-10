@@ -32,7 +32,8 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -42,12 +43,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
-              "If greater than zero, indicates the maximum amount of time to wait to lock keys "
-              "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
+DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
+    "If greater than zero, indicates the maximum amount of time to wait to lock keys "
+    "needed by a newly unblocked transaction. Otherwise, a default value of 1s is used.");
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
-TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
 
 DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
               "The amount of time to wait before sending the client of a single shard transaction "
@@ -186,11 +186,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     }
     finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
     if (!status.ok()) {
+      unlocked_ = std::nullopt;
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_ = std::nullopt;;
+    unlocked_ = std::nullopt;
     callback(locks->status());
   }
 
@@ -267,6 +268,10 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 class BlockerData {
  public:
   std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+    VLOG(4) << "Signaling waiters "
+            << (txn_status_response.ok() ?
+                txn_status_response->ToString() :
+                txn_status_response.status().ToString());
     auto txn_status = UnwrapResult(txn_status_response);
     bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
     bool should_signal = !is_txn_pending;
@@ -358,9 +363,11 @@ class WaitQueue::Impl {
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
        WaitingTxnRegistry* waiting_txn_registry,
        const std::shared_future<client::YBClient*>& client_future,
-       const server::ClockPtr& clock, const MetricEntityPtr& metrics)
+       const server::ClockPtr& clock, const MetricEntityPtr& metrics,
+       std::unique_ptr<ThreadPoolToken> thread_pool_token)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
+        thread_pool_token_(std::move(thread_pool_token)),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
@@ -573,6 +580,8 @@ class WaitQueue::Impl {
       blocker_status_.clear();
     }
 
+    thread_pool_token_->Shutdown();
+
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->ShutdownStatusRequest();
       waiter_data->InvokeCallback(kShuttingDownError);
@@ -712,8 +721,20 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : resolved_blocker->Signal(std::move(res))) {
-      // TODO(pessimistic): Resolve these waiters in parallel.
-      SignalWaiter(waiter);
+      WARN_NOT_OK(thread_pool_token_->SubmitFunc([weak_waiter = std::weak_ptr(waiter), this]() {
+        {
+          SharedLock<decltype(mutex_)> l(mutex_);
+          if (shutting_down_) {
+            VLOG(4) << "Skipping waiter signal - shutting down";
+            return;
+          }
+        }
+        if (auto waiter = weak_waiter.lock()) {
+          this->SignalWaiter(waiter);
+        } else {
+          LOG(INFO) << "Failed to lock weak_ptr to waiter to signal. Skipping.";
+        }
+      }), "Failed to submit waiter resumption");
     }
   }
 
@@ -801,6 +822,7 @@ class WaitQueue::Impl {
   WaitingTxnRegistry* const waiting_txn_registry_;
   const std::shared_future<client::YBClient*>& client_future_;
   const server::ClockPtr& clock_;
+  std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   scoped_refptr<Histogram> pending_time_waiting_;
   scoped_refptr<Histogram> finished_waiting_latency_;
   scoped_refptr<Histogram> blockers_per_waiter_;
@@ -815,9 +837,10 @@ WaitQueue::WaitQueue(
     WaitingTxnRegistry* waiting_txn_registry,
     const std::shared_future<client::YBClient*>& client_future,
     const server::ClockPtr& clock,
-    const MetricEntityPtr& metrics):
+    const MetricEntityPtr& metrics,
+    std::unique_ptr<ThreadPoolToken> thread_pool_token):
   impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
-                 metrics)) {}
+                 metrics, std::move(thread_pool_token))) {}
 
 WaitQueue::~WaitQueue() = default;
 

@@ -33,7 +33,6 @@
 #include <signal.h> // For sigaction
 #include <sys/time.h>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 

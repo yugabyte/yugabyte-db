@@ -16,20 +16,26 @@ import os
 import re
 import json
 import platform
+import time
+import random
+import string
 
-from collections import defaultdict
 from enum import Enum
 from typing import Any, Set, FrozenSet, List, Optional, Dict, Union, Iterable, FrozenSet
 
 from yb.common_util import (
-    get_build_type_from_build_root,
-    is_ninja_build_root,
+    append_to_list_in_dict,
+    assert_sets_equal,
+    assert_set_contains_all,
     ensure_yb_src_root_from_build_root,
+    get_build_type_from_build_root,
     get_home_dir,
     get_relative_path_or_none,
     group_by,
-    append_to_list_in_dict,
+    is_ninja_build_root,
 )
+
+from yb.cmake_cache import CMakeCache
 
 
 def make_extensions(exts_without_dot: List[str]) -> List[str]:
@@ -494,10 +500,12 @@ class CMakeDepGraph:
     cmake_targets: Set[str]
     cmake_deps_path: str
     cmake_deps: Dict[str, Set[str]]
+    cmake_cache: CMakeCache
 
     def __init__(self, build_root: str) -> None:
         self.build_root = build_root
         self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
+        self.cmake_cache = CMakeCache(os.path.join(build_root, 'CMakeCache.txt'))
         self._load()
 
     def _load(self) -> None:
@@ -526,8 +534,16 @@ class CMakeDepGraph:
                     cmake_dep_set.add(cmake_dep)
 
         for cmake_target, cmake_target_deps in self.cmake_deps.items():
+            if not cmake_target:
+                raise ValueError("Empty CMake target found in {self.cmake_deps_path}")
+            for cmake_target_dep in cmake_target_deps:
+                if not cmake_target_dep:
+                    raise ValueError(
+                        f"Empty CMake target found as a dependency of {cmake_target} in "
+                        f"{self.cmake_deps_path}")
             adding_targets = [cmake_target] + list(cmake_target_deps)
             self.cmake_targets.update(set(adding_targets))
+
         logging.info("Found {} CMake targets in '{}'".format(
             len(self.cmake_targets), self.cmake_deps_path))
 
@@ -575,6 +591,8 @@ class DependencyGraph:
 
     canonicalization_cache: Dict[str, str] = {}
 
+    cxx_tests_are_being_built_cached_value: Optional[bool]
+
     def __init__(self,
                  conf: DepGraphConf,
                  json_data: Optional[List[Dict[str, Any]]] = None) -> None:
@@ -587,6 +605,7 @@ class DependencyGraph:
             self.init_from_json(json_data)
         self.nodes_by_basename = None
         self.cmake_dep_graph = None
+        self.cxx_tests_are_being_built_cached_value = None
 
     def get_cmake_dep_graph(self) -> CMakeDepGraph:
         if self.cmake_dep_graph:
@@ -600,6 +619,17 @@ class DependencyGraph:
 
         self.cmake_dep_graph = cmake_dep_graph
         return cmake_dep_graph
+
+    def cxx_tests_are_being_built(self) -> bool:
+        """
+        Whether tests are being built. This is controlled by the --no-tests option to yb_build.sh.
+        We are reading this information from CMakeCache.txt.
+        """
+        if self.cxx_tests_are_being_built_cached_value is None:
+            # If BUILD_TESTS is not present in the cache, we assume we are building the tests.
+            self.cxx_tests_are_being_built_cached_value = \
+                bool(self.get_cmake_dep_graph().cmake_cache.get('BUILD_TESTS', True))
+        return self.cxx_tests_are_being_built_cached_value
 
     def find_node(self,
                   path: str,
@@ -712,6 +742,23 @@ class DependencyGraph:
         Converts the dependency graph into a JSON representation, where every node is given an id,
         so that dependencies are represented concisely.
         """
+        output_path_tmp = ''.join([
+            output_path,
+            '.',
+            str(int(time.time() * 1000000)),
+            '.',
+            ''.join([random.choice(string.ascii_letters) for _ in range(10)]),
+            '.tmp'
+        ])
+        try:
+            self._save_as_json_internal(output_path_tmp)
+            os.rename(output_path_tmp, output_path)
+        finally:
+            if os.path.exists(output_path_tmp):
+                os.remove(output_path_tmp)
+        logging.info("Saved dependency graph to '{}'".format(output_path))
+
+    def _save_as_json_internal(self, output_path: str) -> None:
         with open(output_path, 'w') as output_file:
             next_node_id = [1]  # Use a mutable object so we can modify it from closure.
             path_to_id: Dict[str, int] = {}
@@ -737,8 +784,6 @@ class DependencyGraph:
                 is_first = False
                 output_file.write(json.dumps(node_json))
             output_file.write("\n]\n")
-
-        logging.info("Saved dependency graph to '{}'".format(output_path))
 
     def validate_node_existence(self) -> None:
         logging.info("Validating existence of build artifacts")
@@ -790,6 +835,7 @@ class DependencyGraph:
 
                     proto_node_by_rel_path[proto_rel_path] = node
             else:
+                # Not a .proto file.
                 match = PROTO_OUTPUT_FILE_NAME_RE.match(basename)
                 if match:
                     proto_output_rel_path = node.path_rel_to_build_root()
@@ -813,25 +859,44 @@ class DependencyGraph:
                                     proto_gen_cmake_target
                                 )
 
-        for rel_path in proto_node_by_rel_path:
-            if rel_path not in pb_h_cc_nodes_by_rel_path:
-                raise ValueError(
-                    "For relative path %s, found a proto file (%s) but no .pb.{h,cc} files" %
-                    (rel_path, proto_node_by_rel_path[rel_path]))
+        if not self.conf.incomplete_build:
+            # Only for complete builds, we expect to find .pb.h and .pb.cc files for every .proto
+            # file.
+            for rel_path in proto_node_by_rel_path:
+                if rel_path not in pb_h_cc_nodes_by_rel_path:
+                    logging.error(
+                        "For relative path %s, found a proto file (%s) but no .pb.{h,cc} files",
+                        rel_path, proto_node_by_rel_path[rel_path])
 
+        # Even for an incomplete build, we still expect to find a .proto file for each generated
+        # .pb.h or .pb.cc file.
         for rel_path in pb_h_cc_nodes_by_rel_path:
             if rel_path not in proto_node_by_rel_path:
-                raise ValueError(
-                    "For relative path %s, found .pb.{h,cc} files (%s) but no .proto" %
-                    (rel_path, pb_h_cc_nodes_by_rel_path[rel_path]))
+                logging.error(
+                    "For relative path %s, found .pb.{h,cc} files (%s) but no .proto",
+                    rel_path, pb_h_cc_nodes_by_rel_path[rel_path])
 
-        # This is what we've verified above in two directions separately.
-        assert set(proto_node_by_rel_path.keys()) == set(pb_h_cc_nodes_by_rel_path.keys())
+        proto_node_rel_path_set: Set[str] = set(proto_node_by_rel_path.keys())
+        pb_h_cc_node_by_rel_path_set: Set[str] = set(pb_h_cc_nodes_by_rel_path.keys())
+        if self.conf.incomplete_build:
+            assert_set_contains_all(
+                proto_node_rel_path_set,
+                pb_h_cc_node_by_rel_path_set,
+                message='This is a potentially incomplete build, which is OK. But we expect the '
+                        'set of .proto file paths in the source directory to be a superset of the '
+                        'set of .pb.h and .pb.cc files found in the build directory, ignoring '
+                        'extensions.')
+        else:
+            assert_sets_equal(
+                proto_node_rel_path_set,
+                pb_h_cc_node_by_rel_path_set,
+                message='This is a complete build. We expect to find .pb.{h,cc} files for every '
+                        '.proto file and vice versa.')
 
         for rel_path in proto_node_by_rel_path.keys():
             proto_node = proto_node_by_rel_path[rel_path]
             # .pb.{h,cc} files need to depend on the .proto file they were generated from.
-            for pb_h_cc_node in pb_h_cc_nodes_by_rel_path[rel_path]:
+            for pb_h_cc_node in pb_h_cc_nodes_by_rel_path.get(rel_path, []):
                 pb_h_cc_node.add_dependency(proto_node)
 
     def _check_for_circular_dependencies(self) -> None:
@@ -891,6 +956,12 @@ class DependencyGraph:
                 continue
             source_deps = [dep for dep in node.deps if dep.path.endswith('.cc')]
             if len(source_deps) != 1:
+                if not source_deps and self.conf.incomplete_build:
+                    # This is a potentially incomplete build, and we might not have picked up the
+                    # dependencies of certain .cc.o files on the corresponding .cc files.
+                    # Omit this file from the analysis.
+                    continue
+
                 raise ValueError(
                     "Could not identify a single source dependency of node %s. Found: %s. " %
                     (node, source_deps))

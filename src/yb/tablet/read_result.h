@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_READ_RESULT_H
-#define YB_TABLET_READ_RESULT_H
+#pragma once
 
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -34,5 +33,3 @@ struct PgsqlReadRequestResult {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_READ_RESULT_H

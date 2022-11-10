@@ -38,7 +38,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -52,25 +52,28 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(txn_print_trace_every_n, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_print_trace_every_n, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_print_trace_every_n, advanced);
-TAG_FLAG(txn_print_trace_every_n, runtime);
 
-DEFINE_int32(txn_slow_op_threshold_ms, 0,
-             "Controls the rate at which txn traces are printed. Setting this to 0 "
-             "disables printing the collected traces.");
+DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
+    "Controls the rate at which txn traces are printed. Setting this to 0 "
+    "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
-TAG_FLAG(txn_slow_op_threshold_ms, runtime);
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
+
+DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+            "Automatically promote transactions touching data outside of region to global.");
 
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
@@ -90,7 +93,7 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace client {
@@ -597,7 +600,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global || FLAGS_enable_wait_queues) {
+      if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
+        YB_LOG_EVERY_N_SECS(WARNING, 100)
+            << "Cross-region transactions are disabled in clusters with pessimistic locking "
+            << "enabled. This will be supported in a future release. "
+            << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
+      }
       auto tablet_id = op->tablet->tablet_id();
       auto status = STATUS_FORMAT(
             IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);

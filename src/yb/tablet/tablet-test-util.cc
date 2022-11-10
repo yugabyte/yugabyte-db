@@ -28,6 +28,8 @@
 
 #include "yb/util/status_log.h"
 
+using std::string;
+
 DECLARE_bool(enable_data_block_fsync);
 
 namespace yb {
@@ -66,7 +68,8 @@ void YBTabletTest::SetUpTestTablet(const std::string& root_dir) {
 }
 
 void YBTabletTest::AlterSchema(const Schema& schema) {
-  ChangeMetadataRequestPB req;
+  Arena arena;
+  LWChangeMetadataRequestPB req(&arena);
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
   ChangeMetadataOperation operation(nullptr, nullptr, &req);

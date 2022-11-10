@@ -8,15 +8,22 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -30,6 +37,8 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -105,6 +114,9 @@ public class NodeAgent extends Model {
 
   @ApiModelProperty(accessMode = READ_ONLY)
   public String ip;
+
+  @ApiModelProperty(accessMode = READ_ONLY)
+  public int port;
 
   @ApiModelProperty(accessMode = READ_ONLY)
   public UUID customerUuid;
@@ -219,5 +231,51 @@ public class NodeAgent extends Model {
   public void saveState(State state) {
     this.state = state;
     save();
+  }
+
+  public boolean updateState(State newState) {
+    return db().update(NodeAgent.class)
+            .set("state", newState)
+            .set("updatedAt", new Date())
+            .where()
+            .eq("uuid", uuid)
+            .eq("state", state)
+            .update()
+        > 0;
+  }
+
+  public void purge() {
+    String val = config == null ? null : config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isNotBlank(val)) {
+      Path certDirPath = Paths.get(val);
+      try {
+        File file = certDirPath.toFile();
+        if (file.exists()) {
+          FileUtils.deleteDirectory(file);
+        }
+      } catch (Exception e) {
+        log.warn("Error deleting cert directory {}", certDirPath, e);
+      }
+    }
+    delete();
+  }
+
+  @JsonIgnore
+  public PrivateKey getPrivateKey() {
+    return CertificateHelper.getPrivateKey(new String(getServerKey()));
+  }
+
+  @JsonIgnore
+  public PublicKey getPublicKey() {
+    try {
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      X509Certificate cert =
+          (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+      return cert.getPublicKey();
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
   }
 }

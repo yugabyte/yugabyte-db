@@ -34,6 +34,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
+using std::vector;
+using std::string;
+
 DECLARE_bool(TEST_check_broadcast_address);
 
 namespace yb {

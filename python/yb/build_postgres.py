@@ -19,19 +19,15 @@ directories.
 
 import os
 import logging
-import argparse
 import re
 import sys
 import multiprocessing
 import subprocess
-import json
 import hashlib
 import time
 import semantic_version  # type: ignore
 import shlex
 import pathlib
-
-from subprocess import check_call
 
 from yugabyte_pycommon import (  # type: ignore
     init_logging,
@@ -59,7 +55,7 @@ from yb import compile_commands
 from yb.compile_commands import (
     create_compile_commands_symlink, CompileCommandProcessor, get_compile_commands_file_path)
 from overrides import overrides
-from typing import List, Dict, Optional, Any, Set
+from typing import List, Dict, Optional, Any, Set, Callable
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -81,6 +77,9 @@ REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and
 TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
 TRANSIENT_BUILD_RETRIES = 3
 
+COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES = ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX']
+# CPPFLAGS are preprocessor flags.
+ALL_FLAG_ENV_VAR_NAMES = COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES + ['CPPFLAGS']
 
 # These files include generated files from the same directory as the including file itself, so their
 # directory need to be added to the list of include directories when we generate compilation
@@ -102,14 +101,17 @@ TRANSIENT_BUILD_RETRIES = 3
 # command in compile_commands.json.
 FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR = ['guc.c', 'tuplesort.c']
 
+UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE = re.compile(r'\s-undefined\s+dynamic_lookup\b')
+
 
 def sha256(s: str) -> str:
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
-def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optional[str]:
+def adjust_compiler_flag(flag: str, step: str, language: str) -> Optional[str]:
     """
-    Adjust a given compiler flag according to the build step and language.
+    Adjust a given compiler flag according to the build step and language. If this returns None,
+    the flag should be removed from the command line.
     """
     assert language in ('c', 'c++')
     assert step in BUILD_STEPS
@@ -133,19 +135,54 @@ def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optiona
     return flag
 
 
-def filter_compiler_flags(compiler_flags: str, step: str, language: str) -> str:
-    """
-    This function optionaly removes flags that turn warnings into errors.
-    """
-    assert language in ('c', 'c++')
+def adjust_linker_flag(flag: str, step: str) -> Optional[str]:
     assert step in BUILD_STEPS
-    adjusted_flags = [
-        adjust_error_on_warning_flag(flag, step, language)
-        for flag in compiler_flags.split()
-    ]
-    return ' '.join([
-        flag for flag in adjusted_flags if flag is not None
+    if step == 'configure':
+        # During the configuration step, do not ignore unresolved symbols. This may cause the
+        # configure script to conclude that certain functions are present that are actually
+        # absent, e.g. fls.
+        if flag in ['-Wl,--allow-shlib-undefined', '-Wl,--unresolved-symbols=ignore-all']:
+            return None
+    return flag
+
+
+def adjust_compiler_or_linker_flags(
+        flags_str: str,
+        step: str,
+        flag_var_name: str) -> str:
+    """
+    >>> adjust_compiler_or_linker_flags('-some_flag -undefined dynamic_lookup -some_other_flag',
+    ...                                 'configure',
+    ...                                 'LDFLAGS_EX')
+    '-some_flag -some_other_flag'
+    >>> adjust_compiler_or_linker_flags('-undefined dynamic_lookup -some_other_flag',
+    ...                                 'configure',
+    ...                                 'LDFLAGS_EX')
+    '-some_other_flag'
+    """
+    assert flag_var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES
+    assert step in BUILD_STEPS
+    adjust_fn: Callable[[str], Optional[str]]
+    if flag_var_name.startswith('LD'):
+        def adjust_fn(flag: str) -> Optional[str]:
+            return adjust_linker_flag(flag, step)
+    else:
+        language = 'c++' if flag_var_name.startswith('CXX') else 'c'
+
+        def adjust_fn(flag: str) -> Optional[str]:
+            return adjust_compiler_flag(flag, step, language)
+    adjusted_optional_flag_list = [adjust_fn(flag) for flag in flags_str.split()]
+    new_flags_str = ' '.join([
+        flag for flag in adjusted_optional_flag_list if flag is not None
     ])
+    if step == 'configure' and flag_var_name.startswith('LD'):
+        # We remove the "-undefined dynamic_lookup" flag from the linker flags for the same reason
+        # as we remove other flags that tell the linker to ignore unresolved symbols. We have to
+        # do it here with a regex because it consists of two separate arguments.
+        new_flags_str = ' '.join(
+            UNDEFINED_DYNAMIC_LOOKUP_FLAG_RE.sub(' ', ' ' + new_flags_str).strip().split()
+        )
+    return new_flags_str
 
 
 class PostgresBuilder(YbBuildToolBase):
@@ -222,6 +259,12 @@ class PostgresBuilder(YbBuildToolBase):
             '--shared_library_suffix',
             help='Shared library suffix used on the current platform. Used to set DLSUFFIX '
                  'in compile_commands.json.')
+        parser.add_argument(
+            '--exe_ld_flags_after_yb_libs',
+            help='Extra linker flags to add after the Yugabyte libraries when linking executables. '
+                 'For example, this can be used to add tcmalloc static library to satisfy missing '
+                 'symbols in Yugabyte libraries. This is relevant when building with GCC and '
+                 'linking with ld. With Clang and lld, the order of libraries does not matter.')
 
     @overrides
     def validate_and_process_args(self) -> None:
@@ -304,7 +347,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
-        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'CPPFLAGS']:
+        for var_name in ALL_FLAG_ENV_VAR_NAMES:
             arg_value = getattr(self.args, var_name.lower())
             self.set_env_var(var_name, arg_value)
 
@@ -357,11 +400,11 @@ class PostgresBuilder(YbBuildToolBase):
         if self.is_gcc():
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
-        for var_name in ['CFLAGS', 'CXXFLAGS']:
-            os.environ[var_name] = filter_compiler_flags(
+        for var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES:
+            os.environ[var_name] = adjust_compiler_or_linker_flags(
                     os.environ.get(var_name, '') + ' ' + ' '.join(additional_c_cxx_flags),
                     step,
-                    language='c' if var_name == 'CFLAGS' else 'c++')
+                    flag_var_name=var_name)
         if step == 'make':
             self.adjust_cflags_in_makefile()
 
@@ -414,6 +457,8 @@ class PostgresBuilder(YbBuildToolBase):
         if self.build_type == 'tsan':
             self.set_env_var('TSAN_OPTIONS', os.getenv('TSAN_OPTIONS', '') + ' report_bugs=0')
             logging.info("TSAN_OPTIONS for Postgres build: %s", os.getenv('TSAN_OPTIONS'))
+
+        os.environ['YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS'] = self.args.exe_ld_flags_after_yb_libs
 
     def sync_postgres_source(self) -> None:
         logging.info("Syncing postgres source code")

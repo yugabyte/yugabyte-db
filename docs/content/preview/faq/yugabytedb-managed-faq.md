@@ -48,21 +48,21 @@ YugabyteDB Managed supports all the regions that have robust infrastructure and 
 
 ### What are the differences between Sandbox and Dedicated clusters?
 
-Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 21 days are [paused](#why-is-my-sandbox-cluster-paused); after 30 days they are deleted.
+Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 10 days are [paused](#why-is-my-sandbox-cluster-paused); after 15 days they are deleted.
 
 Dedicated clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Dedicated clusters also support VPC peering, and scheduled and manual backups. By default, Dedicated clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
 A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add as many Dedicated clusters as you need.
 
 | Feature | Sandbox | Dedicated |
-| :----------- | :---------- | :---------- |
+| :------ | :------ | :-------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
 | [Regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
-| [VPC Peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
-| Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
-| Connections | Up to 10 simultaneous connections | 10 per vCPU per node |
+| [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
+| [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |
+| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 10 simultaneous connections | 10 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
@@ -166,11 +166,17 @@ Sandbox clusters are limited to a single node in a single region.
 
 You can connect to clusters in the following ways:
 
-#### Cloud Shell
+{{< tabpane text=true >}}
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../quick-start-yugabytedb-managed/), with a series of pre-built queries for you to run.
+  {{% tab header="Cloud Shell" lang="Cloud Shell" %}}
 
-#### Client Shell
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured.
+
+When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/), with a series of pre-built queries for you to run.
+
+  {{% /tab %}}
+
+  {{% tab header="Client Shell" lang="Client Shell" %}}
 
 Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
@@ -188,7 +194,9 @@ Windows client shells require Docker:
 docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
 ```
 
-#### psql
+  {{% /tab %}}
+
+  {{% tab header="psql" lang="psql" %}}
 
 Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
 
@@ -201,29 +209,41 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 
 For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
 
-#### Applications
+  {{% /tab %}}
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+  {{% tab header="Applications" lang="Applications" %}}
 
-Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
+
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+
+For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
+
+Clusters have SSL ([encryption in-transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/)) enabled so make sure your driver details include SSL parameters.
+
+Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 For more details, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect/).
 
 ### Why is my Sandbox cluster paused?
 
-Sandbox clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
+Sandbox clusters are paused after 10 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
 For more details, refer to [Inactive Sandbox clusters](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
 
 ### How do I keep my Sandbox cluster from being paused or deleted?
 
-Sandbox clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
+Sandbox clusters are paused after 10 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
 To keep a paused cluster from being deleted, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
-Sandbox clusters are paused after 21 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+Sandbox clusters are paused after 10 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
 - Any SELECT, UPDATE, INSERT, or DELETE database operation.
 

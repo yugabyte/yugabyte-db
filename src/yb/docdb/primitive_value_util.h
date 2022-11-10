@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
-#define YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
+#pragma once
 
 #include "yb/docdb/docdb.h"
 
@@ -28,16 +27,14 @@ namespace docdb {
 Status QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
-    vector<KeyEntryValue> *components);
+    std::vector<KeyEntryValue> *components);
 
-Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
     const Schema &schema, size_t start_idx);
 
-Result<vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_PRIMITIVE_VALUE_UTIL_H

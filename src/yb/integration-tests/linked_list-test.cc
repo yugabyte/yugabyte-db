@@ -104,6 +104,10 @@ using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBTableName;
 using std::shared_ptr;
+using std::string;
+using std::vector;
+using std::pair;
+using std::set;
 using yb::itest::TServerDetails;
 using yb::itest::MustBeCommitted;
 
@@ -176,9 +180,9 @@ class LinkedListTester {
 
   // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot hybrid_time.
   Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
-                                                  const bool log_errors,
-                                                  const bool latest_at_leader,
-                                                  int64_t* verified_count) {
+                                          const bool log_errors,
+                                          const bool latest_at_leader,
+                                          int64_t* verified_count) {
     LOG(INFO) << __func__ << ": expected=" << expected
               << ", log_errors=" << log_errors
               << ", latest_at_leader=" << latest_at_leader;
@@ -197,8 +201,8 @@ class LinkedListTester {
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
   Status WaitAndVerify(const int seconds_to_run,
-                               const int64_t expected,
-                               const bool latest_at_leader) {
+                       const int64_t expected,
+                       const bool latest_at_leader) {
     LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run
               << ", expected=" << expected
               << ", latest_at_leader=" << latest_at_leader;

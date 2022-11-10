@@ -234,7 +234,7 @@ Status StatusFromOldPB(const PB& pb) {
   auto status_factory = [code, &pb](const Slice& errors) {
     return Status(
         code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), errors,
-        DupFileName::kTrue);
+        pb.source_file().size());
   };
 
   #define ENCODE_ERROR_AND_RETURN_STATUS(Tag, value) \
@@ -264,7 +264,7 @@ Status StatusFromOldPB(const PB& pb) {
   }
 
   return Status(code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), "",
-                nullptr /* error */, DupFileName::kTrue);
+                nullptr /* error */, pb.source_file().size());
   #undef ENCODE_ERROR_AND_RETURN_STATUS
 }
 
@@ -283,7 +283,7 @@ Status DoStatusFromPB(const PB& pb) {
 
   if (pb.has_errors()) {
     return Status(kErrorCodeToStatus[pb.code()], Slice(pb.source_file()).cdata(), pb.source_line(),
-                  pb.message(), pb.errors(), DupFileName::kTrue);
+                  pb.message(), pb.errors(), pb.source_file().size());
   }
 
   return StatusFromOldPB(pb);

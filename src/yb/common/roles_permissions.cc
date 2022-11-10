@@ -17,6 +17,9 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 
 const std::unordered_map<string, vector<PermissionType>> all_permissions_by_resource = {

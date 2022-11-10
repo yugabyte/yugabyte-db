@@ -55,6 +55,7 @@ using std::ostream;
 using std::shared_ptr;
 using std::string;
 using std::unordered_map;
+using std::vector;
 using strings::Substitute;
 
 DEFINE_int32(checksum_timeout_sec, 120,

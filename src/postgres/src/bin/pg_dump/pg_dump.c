@@ -15782,7 +15782,10 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 {
 	DumpOptions *dopt = fout->dopt;
 
-	/* do nothing, if --no-tablegroups or --no-tablegroup-creation is supplied */
+	/*
+	 * Do nothing, if include_yb_metadata is not supplied
+	 * or if --no-tablegroups or --no-tablegroup-creation is supplied.
+	 */
 	if (!dopt->include_yb_metadata || dopt->no_tablegroups || dopt->no_tablegroup_creations)
 		return;
 
@@ -15792,6 +15795,17 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 
 	if (!tginfo->dobj.dump || dopt->dataOnly)
 		return;
+
+	/*
+	 * Set the next tablegroup oid to be used in yb_binary_restore mode.
+	 * It's necessary to reuse the old tablegroup oid during the backup
+	 * restoring to match tablegroup parent table.
+	 */
+	appendPQExpBufferStr(q,
+						 "\n-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid\n");
+	appendPQExpBuffer(q,
+					  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+					  tginfo->dobj.catId.oid);
 
 	namecopy = pg_strdup(fmtId(tginfo->dobj.name));
 

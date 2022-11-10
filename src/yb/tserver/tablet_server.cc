@@ -80,7 +80,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -92,6 +91,7 @@
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 
@@ -156,7 +156,6 @@ DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshott
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
 
 DECLARE_int32(num_concurrent_backfills_allowed);
-DECLARE_int32(svc_queue_length_default);
 
 constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
@@ -177,8 +176,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0),
-      tablet_server_service_(nullptr) {
+      master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
@@ -359,6 +357,11 @@ uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
+Status TabletServer::SetAutoFlagConfig(const AutoFlagsConfigPB new_config) {
+  return auto_flags_manager_->LoadFromConfig(
+      std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
+}
+
 AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
   return auto_flags_manager_->GetConfig();
 }
@@ -380,16 +383,14 @@ void TabletServer::AutoInitServiceFlags() {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
     const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("tablet_server_svc_num_threads", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(tablet_server_svc_num_threads, num_threads));
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
   }
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
     const int32 num_threads = std::max(1, std::min(8, num_cores / 2));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("num_concurrent_backfills_allowed", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_concurrent_backfills_allowed, num_threads));
     LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
               << FLAGS_num_concurrent_backfills_allowed;
   }
@@ -398,19 +399,18 @@ void TabletServer::AutoInitServiceFlags() {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
     const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
-    CHECK_OK(
-        SetFlagDefaultAndCurrent("ts_consensus_svc_num_threads", std::to_string(num_threads)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ts_consensus_svc_num_threads, num_threads));
     LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
               << FLAGS_ts_consensus_svc_num_threads;
   }
 }
 
 Status TabletServer::RegisterServices() {
-  tablet_server_service_ = new TabletServiceImpl(this);
-  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service_;
-  std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
+  auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
+  tablet_server_service_ = tablet_server_service;
+  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(ts_service)));
+                                                     std::move(tablet_server_service)));
 
   std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
@@ -432,16 +432,14 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
-
+  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
+      *this, tablet_manager_->client_future(), clock(),
+      std::bind(&TabletServer::TransactionPool, this), metric_entity(),
+      &messenger()->scheduler(), &xcluster_safe_time_map_);
+  pg_client_service_ = pg_client_service;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length,
-      std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(),
-          clock(),
-          std::bind(&TabletServer::TransactionPool, this),
-          metric_entity(),
-          &messenger()->scheduler(),
-          &xcluster_safe_time_map_)));
+      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   return Status::OK();
 }
@@ -479,11 +477,6 @@ void TabletServer::Shutdown() {
 
     if (FLAGS_tserver_enable_metrics_snapshotter) {
       WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
-    }
-
-    {
-      std::lock_guard<simple_spinlock> l(lock_);
-      tablet_server_service_ = nullptr;
     }
     tablet_manager_->StartShutdown();
     RpcAndWebServerBase::Shutdown();
@@ -540,11 +533,6 @@ void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
 std::string TabletServer::cluster_uuid() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return cluster_uuid_;
-}
-
-TabletServiceImpl* TabletServer::tablet_server_service() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return tablet_server_service_;
 }
 
 Status GetDynamicUrlTile(
@@ -620,24 +608,34 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     auto* entry = resp->add_entries();
     entry->set_db_oid(it.first);
     entry->set_shm_index(it.second.shm_index);
+    entry->set_current_version(it.second.current_version);
   }
   return Status::OK();
 }
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
 
-  if (new_version > ysql_catalog_version_) {
+    if (new_version == ysql_catalog_version_) {
+      return;
+    } else if (new_version < ysql_catalog_version_) {
+      LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
+                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+      return;
+    }
     ysql_catalog_version_ = new_version;
     shared_object().SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
-    if (FLAGS_log_ysql_catalog_versions) {
-      LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
-                          << new_breaking_version;
-    }
-  } else if (new_version < ysql_catalog_version_) {
-    LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
-                 << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+  if (FLAGS_log_ysql_catalog_versions) {
+    LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
+                        << new_breaking_version;
+  }
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    LOG(INFO) << "Invalidating PgTableCache cache since catalog version incremented";
+    pg_client_service->InvalidateTableCache();
   }
 }
 
@@ -656,7 +654,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       continue;
     }
     // Try to insert a new entry, using -1 as shm_index which will be updated later if the
-    // new entry is inserted successully.
+    // new entry is inserted successfully.
     // Design note:
     // In per-db catalog version mode once a database is allocated a slot in the shared memory
     // array db_catalog_versions_, it will remain allocated and will not change across the
@@ -724,7 +722,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
     if (row_inserted || row_updated) {
       // Set the new catalog version in shared memory at slot shm_index.
-      shared_object().SetYsqlDbCatalogVersion(shm_index, new_version);
+      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), new_version);
       if (FLAGS_log_ysql_catalog_versions) {
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
@@ -747,7 +745,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
       // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
-      shared_object().SetYsqlDbCatalogVersion(shm_index, 0);
+      shared_object().SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
     } else {
       ++it;
     }
@@ -799,6 +797,15 @@ void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap
 Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
     const NamespaceId& namespace_id, HybridTime commit_ht) const {
   return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
+}
+
+scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
+    TabletServerServiceRpcMethodIndexes metric) {
+  auto tablet_server_service = tablet_server_service_.lock();
+  if (tablet_server_service) {
+    return tablet_server_service->GetMetric(metric).handler_latency;
+  }
+  return nullptr;
 }
 
 }  // namespace tserver

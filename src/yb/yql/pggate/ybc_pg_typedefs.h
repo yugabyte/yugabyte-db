@@ -13,8 +13,7 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
-#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -335,6 +334,7 @@ typedef struct PgCallbacks {
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
   const bool*     ysql_disable_index_backfill;
+  const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
@@ -342,6 +342,7 @@ typedef struct PgGFlagsAccessor {
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
+  const bool*     ysql_colocate_database_by_default;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -395,5 +396,3 @@ typedef enum PgBoundType {
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
-
-#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

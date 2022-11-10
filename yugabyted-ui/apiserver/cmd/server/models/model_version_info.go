@@ -1,6 +1,7 @@
 package models
 
+// VersionInfo - YugabyteDB version info
 type VersionInfo struct {
 
-	Data VersionInfoData `json:"data"`
+    Version string `json:"version"`
 }

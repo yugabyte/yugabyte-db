@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSUTIL_YB_ROCKSDB_LOGGER_H
-#define YB_ROCKSUTIL_YB_ROCKSDB_LOGGER_H
+#pragma once
 
 #include <string>
 #include "yb/rocksdb/env.h"
@@ -56,5 +55,3 @@ class YBRocksDBLogger : public rocksdb::Logger {
 };
 
 } // namespace yb
-
-#endif // YB_ROCKSUTIL_YB_ROCKSDB_LOGGER_H

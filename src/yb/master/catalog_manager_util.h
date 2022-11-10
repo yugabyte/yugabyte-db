@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_UTIL_H
-#define YB_MASTER_CATALOG_MANAGER_UTIL_H
+#pragma once
 
 #include <unordered_map>
 #include <vector>
@@ -29,7 +28,7 @@
 namespace yb {
 namespace master {
 
-using ZoneToDescMap = std::unordered_map<string, TSDescriptorVector>;
+using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 
 struct Comparator;
 class SetPreferredZonesRequestPB;
@@ -49,12 +48,12 @@ class CatalogManagerUtil {
   static Status AreLeadersOnPreferredOnly(
       const TSDescriptorVector& ts_descs,
       const ReplicationInfoPB& replication_info,
-      const vector<scoped_refptr<TableInfo>>& tables = {});
+      const std::vector<scoped_refptr<TableInfo>>& tables = {});
 
   // Creates a mapping from tserver uuid to the number of transaction leaders present.
   static void CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
                                     int* num_txn_tablets,
-                                    vector<scoped_refptr<TableInfo>> tables);
+                                    std::vector<scoped_refptr<TableInfo>> tables);
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.
@@ -110,7 +109,7 @@ class CatalogManagerUtil {
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
   static void GetAllAffinitizedZones(
-      const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones);
+      const ReplicationInfoPB& replication_info, std::vector<AffinitizedZonesSet>* affinitized_zones);
 
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
@@ -232,5 +231,3 @@ struct Comparator {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CATALOG_MANAGER_UTIL_H

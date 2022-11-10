@@ -33,9 +33,9 @@
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
-#ifndef YB_UTIL_SLICE_H_
-#define YB_UTIL_SLICE_H_
+#pragma once
 
+#include <compare>
 #include <string>
 #include <string_view>
 
@@ -396,6 +396,10 @@ inline bool operator>=(const Slice& lhs, const Slice& rhs) {
   return lhs.compare(rhs) >= 0;
 }
 
+inline std::strong_ordering operator<=>(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) <=> 0;
+}
+
 }  // namespace yb
 
 namespace rocksdb {
@@ -404,5 +408,3 @@ typedef yb::Slice Slice;
 typedef yb::SliceParts SliceParts;
 
 }  // namespace rocksdb
-
-#endif // YB_UTIL_SLICE_H_

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
-#define YB_MASTER_CATALOG_ENTITY_INFO_H
+#pragma once
 
 #include <shared_mutex>
 #include <mutex>
@@ -243,6 +242,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaDriveInfo(const std::string& ts_uuid,
                               const TabletReplicaDriveInfo& drive_info);
 
+  // Returns the per-stream replication status bitmasks.
+  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
@@ -313,6 +315,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
+
+  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -416,11 +420,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const NamespaceId namespace_id() const;
   const NamespaceName namespace_name() const;
 
+  ColocationId GetColocationId() const;
+
   const Status GetSchema(Schema* schema) const;
 
   bool has_pgschema_name() const;
 
-  const std::string& pgschema_name() const;
+  const std::string pgschema_name() const;
 
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
@@ -716,7 +722,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   virtual const NamespaceId& id() const override { return namespace_id_; }
 
-  const NamespaceName& name() const;
+  const NamespaceName name() const;
 
   YQLDatabase database_type() const;
 
@@ -754,7 +760,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryTyp
     return pb.field_names_size();
   }
 
-  const string& field_names(int index) const {
+  const std::string& field_names(int index) const {
     return pb.field_names(index);
   }
 
@@ -775,17 +781,17 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return udtype_id_; }
 
-  const UDTypeName& name() const;
+  const UDTypeName name() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   int field_names_size() const;
 
-  const string& field_names(int index) const;
+  const std::string field_names(int index) const;
 
   int field_types_size() const;
 
-  const QLTypePB& field_types(int index) const;
+  const QLTypePB field_types(int index) const;
 
   std::string ToString() const override;
 
@@ -985,5 +991,3 @@ class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTim
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_ENTITY_INFO_H

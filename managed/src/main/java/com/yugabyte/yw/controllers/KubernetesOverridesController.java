@@ -65,13 +65,13 @@ public class KubernetesOverridesController extends AuthenticatedController {
 
   // RFC: In the following method we are not running 'helm template' for every AZ in overrides so if
   // there is bad config in overrides in one of the az configs and if that az is not in placement
-  // duiring the creation, we may not report errors but later during edit universe user can add new
-  // az into placement which has bad config in overrides, then we might hit the errors edit tasks.
+  // during the universe creation, we may not report errors but later during edit universe user can
+  // add that az into placement which has bad config in overrides, then we might hit the errors edit
+  // tasks.
+
   // Returns errors in overrides and helm template response if it fails.
-  @SuppressWarnings("unchecked")
   private KubernetesOverridesResponse validateKubernetesOverrides(
       UniverseConfigureTaskParams taskParams) {
-    KubernetesOverridesResponse result = new KubernetesOverridesResponse();
     Set<String> overrideErrorsSet = new HashSet<>();
     try {
       // Check if read cluster has any overrides specified.
@@ -83,14 +83,13 @@ public class KubernetesOverridesController extends AuthenticatedController {
         }
       }
 
-      // Get both overrides.
       UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
-      Map<String, Object> universeOverrides = new HashMap<>();
       Map<String, String> azsOverrides = userIntent.azOverrides;
       if (azsOverrides == null) {
         azsOverrides = new HashMap<>();
       }
 
+      Map<String, Object> universeOverrides = new HashMap<>();
       try {
         universeOverrides = HelmUtils.convertYamlToMap(userIntent.universeOverrides);
       } catch (Exception e) {
@@ -98,7 +97,6 @@ public class KubernetesOverridesController extends AuthenticatedController {
         LOG.error("Error in convertYamlToMap: ", e);
         overrideErrorsSet.add(errMsg);
       }
-
       Set<String> providersAZSet = new HashSet<>();
       Set<String> placementAZSet = new HashSet<>();
       // For every AZ, run helm template with overrides and collect errors.
@@ -116,8 +114,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();
           boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-          String azCode = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).code : null;
-          placementAZSet.add(azCode);
+          String azName = AvailabilityZone.getOrBadRequest(azUUID).code;
+          String azCode = isMultiAz ? azName : null;
+          placementAZSet.add(azName);
           Map<String, String> config = entry.getValue();
           String azOverridesStr =
               azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
@@ -126,7 +125,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
             azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
           } catch (Exception e) {
             String errMsg =
-                String.format("Error in parsing %s overrides: %s", azCode, e.getMessage());
+                String.format("Error in parsing %s overrides: %s", azName, e.getMessage());
             LOG.error("Error in convertYamlToMap ", e);
             overrideErrorsSet.add(errMsg);
           }
@@ -142,12 +141,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
               kubernetesManagerFactory
                   .getManager()
                   .validateOverrides(
-                      ybSoftwareVersion,
-                      config,
-                      namespace,
-                      universeOverrides,
-                      azOverrides,
-                      AvailabilityZone.getOrBadRequest(azUUID).code);
+                      ybSoftwareVersion, config, namespace, universeOverrides, azOverrides, azName);
           overrideErrorsSet.addAll(partialErrorsSet);
         }
       }

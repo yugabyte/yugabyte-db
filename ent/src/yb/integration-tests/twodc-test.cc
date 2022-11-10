@@ -17,7 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_value.h"
@@ -40,6 +40,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
+#include "yb/consensus/log.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -74,6 +75,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);
@@ -83,6 +86,7 @@ DECLARE_int32(replication_failure_delay_exponent);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(async_replication_idle_delay_ms);
+DECLARE_int32(async_replication_polling_delay_ms);
 DECLARE_int32(async_replication_max_idle_wait);
 DECLARE_int32(external_intent_cleanup_secs);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -102,6 +106,16 @@ DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(TEST_disable_cleanup_applied_transactions);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_int64(log_stop_retaining_min_disk_mb);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_bool(TEST_cdc_skip_replication_poll);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(global_log_cache_size_limit_mb);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -380,6 +394,78 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       return true;
     }, MonoDelta::FromSeconds(30), "Cleaned up transaction");
   }
+
+  void VerifyReplicationError(
+      const std::string& consumer_table_id,
+      const std::string& stream_id,
+      const boost::optional<ReplicationErrorPb> expected_replication_error) {
+
+    // 1. Verify that the RPC contains the expected error.
+    master::GetReplicationStatusRequestPB req;
+    master::GetReplicationStatusResponsePB resp;
+
+    req.set_universe_id(kUniverseId);
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    rpc::RpcController rpc;
+    ASSERT_OK(WaitFor([&] () -> Result<bool> {
+      rpc.Reset();
+      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+      if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
+        return false;
+      }
+
+      if (resp.has_error()) {
+        return false;
+      }
+
+      if (resp.statuses_size() == 0 ||
+          (resp.statuses()[0].table_id() != consumer_table_id &&
+           resp.statuses()[0].stream_id() != stream_id)) {
+        return false;
+      }
+
+      if (expected_replication_error) {
+        return resp.statuses()[0].errors_size() == 1 &&
+                resp.statuses()[0].errors()[0].error() == *expected_replication_error;
+      } else {
+        return resp.statuses()[0].errors_size() == 0;
+      }
+    }, MonoDelta::FromSeconds(30), "Waiting for replication error"));
+
+    // 2. Verify that the yb-admin output contains the expected error.
+    auto admin_out =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kUniverseId));
+    if (expected_replication_error) {
+      ASSERT_TRUE(admin_out.find(
+        Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
+          std::string::npos);
+    } else {
+      ASSERT_TRUE(admin_out.find("error:") == std::string::npos);
+    }
+  }
+
+  Result<CDCStreamId> GetCDCStreamID(const std::string& producer_table_id) {
+    master::ListCDCStreamsResponsePB stream_resp;
+    RETURN_NOT_OK(GetCDCStreamForTable(producer_table_id, &stream_resp));
+
+    if (stream_resp.streams_size() != 1) {
+      return STATUS(IllegalState,
+                    Format("Expected 1 stream, have $0", stream_resp.streams_size()));
+    }
+
+    if (stream_resp.streams(0).table_id().Get(0) != producer_table_id) {
+      return STATUS(IllegalState,
+                    Format("Expected table id $0, have $1", producer_table_id,
+                           stream_resp.streams(0).table_id().Get(0)));
+    }
+
+    return stream_resp.streams(0).stream_id();
+  }
+
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -588,9 +674,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
@@ -1249,7 +1333,8 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
     cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-      cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+      std::static_pointer_cast<cdc::CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"", stream_id, tablet_id}));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -1723,19 +1808,8 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
   ASSERT_OK(VerifyNumRecords(tables[0]->name(), producer_client(), 10));
 
   // Write conflicting records on both clusters (1 clusters adds key, another deletes key).
-  std::vector<std::thread> threads;
-  for (int i = 0; i < 2; ++i) {
-    auto client = i == 0 ? producer_client() : consumer_client();
-    int index = i;
-    bool is_delete = i == 0;
-    threads.emplace_back([this, client, index, tables, is_delete] {
-      WriteWorkload(10, 20, client, tables[index]->name(), is_delete);
-    });
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  WriteWorkload(0, 5, consumer_client(), tables[1]->name());
+  WriteWorkload(5, 10, producer_client(), tables[0]->name(), true /* is_delete */);
 
   // Ensure that same records exist on both universes.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -2221,29 +2295,12 @@ TEST_P(TwoDCTest, TestAlterDDLBasic) {
     }
   }
 
-  // Verify that the Consumer doesn't have new data even though it has the pending_schema/ALTER.
-  LOG(INFO) << "Verify that Consumer doesn't have inserts.";
-  {
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      master::SysClusterConfigEntryPB cluster_info;
-      auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-      RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-      auto& producer_map = cluster_info.consumer_registry().producer_map();
-      auto producer_entry = FindOrNull(producer_map, kUniverseId);
-      if (producer_entry) {
-        CHECK_EQ(producer_entry->stream_map().size(), 1);
-        auto& stream_entry = producer_entry->stream_map().begin()->second;
-        return (stream_entry.has_producer_schema() &&
-            stream_entry.producer_schema().has_pending_schema());
-      }
-      return false;
-    }, MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL"));
+  // Get the stream id.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(tables[0]->id()));
 
-    auto producer_results = ScanTableToStrings(tables[0]->name(), producer_client());
-    auto consumer_results = ScanTableToStrings(tables[1]->name(), consumer_client());
-    ASSERT_EQ(producer_results.size(), 10);
-    ASSERT_EQ(consumer_results.size(), 5);
-  }
+  // Verify that the replication status for the consumer table contains a schema mismatch error.
+  VerifyReplicationError(
+    tables[1]->id(), stream_id, ReplicationErrorPb::REPLICATION_SCHEMA_MISMATCH);
 
   // Alter the CQL Table on the Consumer next to match.
   LOG(INFO) << "Alter the Consumer.";
@@ -2257,6 +2314,9 @@ TEST_P(TwoDCTest, TestAlterDDLBasic) {
   // Verify that the Producer data is now sent over.
   LOG(INFO) << "Verify matching records.";
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Verify that the replication status for the consumer table does not contain an error.
+  VerifyReplicationError(tables[1]->id(), stream_id, boost::optional<ReplicationErrorPb>());
 
   // Stop replication on the Consumer.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
@@ -2459,6 +2519,10 @@ TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  // This test depends on the write op metrics from the tservers. If the load balancer changes the
+  // leader of a consumer tablet, it may re-write replication records and break the test.
+  FLAGS_enable_load_balancing = false;
 
   WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
   for (size_t i = 0; i < num_runs; i++) {
@@ -2832,7 +2896,8 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   std::shared_ptr<cdc::CDCTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
+            cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id}));
         if (!metrics) {
           return false;
         }
@@ -2862,7 +2927,6 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
 }
 
 TEST_P(TwoDCTest, DeleteTableChecksCQL) {
-  YB_SKIP_TEST_IN_TSAN();
   // Create 3 tables with 1 tablet each.
   constexpr int kNT = 1;
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT};
@@ -3344,6 +3408,86 @@ TEST_P(TwoDCTestWaitForReplicationDrain, TestProducerChange) {
   ASSERT_OK(producer_cluster()->WaitForTabletServerCount(num_tservers + 1));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_wait_replication_drain) = false;
   ASSERT_OK(drain_api_future.get());
+}
+
+TEST_P(TwoDCTest, YB_DISABLE_TEST_IN_TSAN(TestPrematureLogGC)) {
+  // Allow WAL segments to be garbage collected regardless of their lifetime.
+  FLAGS_TEST_disable_wal_retention_time = true;
+
+  // Set a small WAL segment to ensure that we create many segments in this test.
+  FLAGS_log_segment_size_bytes = 500;
+
+  // Allow the maximum number of WAL segments to be considered for garbage collection.
+  FLAGS_log_min_segments_to_retain = 1;
+
+  // Don't cache any of the WAL segments.
+  FLAGS_log_cache_size_limit_mb = 0;
+  FLAGS_global_log_cache_size_limit_mb = 0;
+
+  // Increase the frequency of the metrics heartbeat.
+  FLAGS_tserver_heartbeat_metrics_interval_ms = 250;
+
+  // Disable the disk space GC policy.
+  FLAGS_log_stop_retaining_min_disk_mb = 0;
+
+  constexpr int kNTabletsPerTable = 1;
+  constexpr int kReplicationFactor = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable};
+  auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, kReplicationFactor));
+
+  std::shared_ptr<client::YBTable> producer_table = tables[0];
+  std::shared_ptr<client::YBTable> consumer_table = tables[1];
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+
+  // Write enough records to the producer to populate multiple WAL segments.
+  constexpr int kNumWriteRecords = 100;
+  WriteWorkload(0, kNumWriteRecords, producer_client(), producer_table->name());
+
+  // Verify that all records were written and replicated.
+  ASSERT_OK(VerifyNumRecords(producer_table->name(), producer_client(), kNumWriteRecords));
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), kNumWriteRecords));
+
+  // Disable polling on the consumer so that we can forcefully GC the wal segments without racing
+  // against the replication poll.
+  FLAGS_TEST_cdc_skip_replication_poll = true;
+
+  // Sleep long enough to ensure the last consumer poll completes.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Set a large minimum disk space policy so that all WAL segments will be garbage collected for
+  // violating the disk space policy.
+  FLAGS_log_stop_retaining_min_disk_mb = std::numeric_limits<int64_t>::max();
+
+  // Write another batch of records.
+  WriteWorkload(kNumWriteRecords, 2 * kNumWriteRecords, producer_client(), producer_table->name());
+  ASSERT_OK(VerifyNumRecords(producer_table->name(), producer_client(), 2 * kNumWriteRecords));
+
+  // Unflushed WAL segments can not be garbage collected. Flush all tablets WALs now.
+  ASSERT_OK(producer_cluster()->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+
+  // Garbage collect all Tablet WALs. This will GC most of the segments, but will leave at least one
+  // segment in each WAL (determined by FLAGS_log_min_segments_to_retain). The remaining segment may
+  // contain records.
+  ASSERT_OK(producer_cluster()->CleanTabletLogs());
+
+  // Re-enable the replication poll and wait long enough for multiple cycles to run.
+  FLAGS_TEST_cdc_skip_replication_poll = false;
+  SleepFor(MonoDelta::FromSeconds(3));
+
+  // Verify that at least one of the recently written records failed to replicate.
+  auto results = ScanTableToStrings(consumer_table->name(), consumer_client());
+  ASSERT_GE(results.size(), kNumWriteRecords);
+  ASSERT_LT(results.size(), 2 * kNumWriteRecords);
+
+  // Get the stream id.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table->id()));
+
+  // Verify that the GetReplicationStatus RPC contains the 'REPLICATION_MISSING_OP_ID' error.
+  VerifyReplicationError(
+    consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
 }
 
 } // namespace enterprise

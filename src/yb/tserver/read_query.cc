@@ -33,7 +33,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
@@ -53,18 +53,16 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_bool(parallelize_read_ops, true,
-            "Controls whether multiple (Redis) read ops that are present in a operation "
-            "should be executed in parallel.");
+DEFINE_RUNTIME_bool(parallelize_read_ops, true,
+    "Controls whether multiple (Redis) read ops that are present in a operation "
+    "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
-TAG_FLAG(parallelize_read_ops, runtime);
 
-DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
-            "Controls whether ysql follower reads that specify a not-yet-safe read time "
-            "should be rejected. This will force them to go to the leader, which will likely be "
-            "faster than waiting for safe time to catch up.");
+DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+    "Controls whether ysql follower reads that specify a not-yet-safe read time "
+    "should be rejected. This will force them to go to the leader, which will likely be "
+    "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
-TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
 METRIC_DEFINE_coarse_histogram(server, read_time_wait,
                                "Read Time Wait",
@@ -265,31 +263,17 @@ Status ReadQuery::DoPerform() {
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
-  if (!req_->pgsql_batch().empty()) {
-    uint64_t last_breaking_catalog_version = 0; // unset.
-    for (const auto& pg_req : req_->pgsql_batch()) {
-      // For postgres requests check that the syscatalog version matches.
-      if (pg_req.has_ysql_catalog_version()) {
-        if (last_breaking_catalog_version == 0) {
-          // Initialize last breaking version if not yet set.
-          server_.get_ysql_catalog_version(
-              nullptr /* current_version */, &last_breaking_catalog_version);
-        }
-        if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          return STATUS(
-              QLError, "The catalog snapshot used for this transaction has been invalidated",
-              TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
-        }
+  CatalogVersionChecker catalog_version_checker(server_);
+  for (const auto& pg_req : req_->pgsql_batch()) {
+    RETURN_NOT_OK(catalog_version_checker(pg_req));
+    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    if (IsValidRowMarkType(current_row_mark)) {
+      if (!req_->has_transaction()) {
+        return STATUS(
+            NotSupported, "Read request with row mark types must be part of a transaction",
+            TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
       }
-      RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
-      if (IsValidRowMarkType(current_row_mark)) {
-        if (!req_->has_transaction()) {
-          return STATUS(
-              NotSupported, "Read request with row mark types must be part of a transaction",
-              TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED));
-        }
-        batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
-      }
+      batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
   const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
@@ -305,7 +289,7 @@ Status ReadQuery::DoPerform() {
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
-    abstract_tablet_ = leader_peer.peer->shared_tablet();
+    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet_safe());
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
@@ -336,7 +320,9 @@ Status ReadQuery::DoPerform() {
   }
 
   if (!abstract_tablet_->system() && tablet()->metadata()->hidden()) {
-    return STATUS(NotFound, "Tablet not found", req_->tablet_id());
+    return STATUS(
+        NotFound, "Tablet not found", req_->tablet_id(),
+        TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
   }
 
   if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {
@@ -379,8 +365,11 @@ Status ReadQuery::DoPerform() {
   if (serializable_isolation || has_row_mark) {
     auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term, deadline, leader_peer.peer.get(),
-        leader_peer.peer->tablet(), nullptr /* response */,
+        leader_peer.leader_term,
+        deadline,
+        leader_peer.peer.get(),
+        leader_peer.tablet,
+        nullptr /* response */,
         docdb::OperationKind::kRead);
 
     auto& write = *query->operation().AllocateRequest();
@@ -390,7 +379,7 @@ Status ReadQuery::DoPerform() {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);
     }
-    write.set_unused_tablet_id(""); // For backward compatibility.
+    write.ref_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
     if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
@@ -399,7 +388,7 @@ Status ReadQuery::DoPerform() {
     }
     // TODO(dtxn) write request id
 
-    RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(
+    RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
         req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
         &write_batch));
 

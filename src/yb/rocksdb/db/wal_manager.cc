@@ -49,9 +49,10 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 
 Status WalManager::GetSortedWalFiles(VectorLogPtr* files) {
   // First get sorted files in db dir, then get sorted files from archived
@@ -488,5 +489,4 @@ Status WalManager::ReadFirstLine(const std::string& fname,
   return status;
 }
 
-#endif  // ROCKSDB_LITE
 }  // namespace rocksdb

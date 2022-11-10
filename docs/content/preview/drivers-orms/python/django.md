@@ -14,7 +14,7 @@ type: docs
 
   <li >
     <a href="../django/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
@@ -217,4 +217,4 @@ To run the application and insert a new row, execute the following steps.
 
 ## Next steps
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB

@@ -45,6 +45,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 using namespace std::literals;
 
 constexpr int32_t kMasterLogLockWarningMsDefault =

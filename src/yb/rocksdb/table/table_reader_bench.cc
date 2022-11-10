@@ -26,7 +26,7 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/slice_transform.h"

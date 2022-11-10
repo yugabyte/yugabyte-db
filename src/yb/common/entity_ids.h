@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_ENTITY_IDS_H
-#define YB_COMMON_ENTITY_IDS_H
+#pragma once
 
 #include <string>
 
@@ -71,5 +70,3 @@ Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
 }  // namespace yb
-
-#endif  // YB_COMMON_ENTITY_IDS_H

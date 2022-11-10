@@ -14,6 +14,8 @@
 #include "yb/util/test_util.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 

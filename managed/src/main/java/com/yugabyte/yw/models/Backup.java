@@ -9,6 +9,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -38,7 +40,6 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -74,6 +75,7 @@ public class Backup extends Model {
     @EnumValue("Failed")
     Failed,
 
+    // This state is no longer used in Backup V2 APIs.
     @EnumValue("Deleted")
     Deleted,
 
@@ -90,12 +92,44 @@ public class Backup extends Model {
     @EnumValue("Stopped")
     Stopped,
 
-    @EnumValue("DeleteInProgress")
-    DeleteInProgress,
-
     @EnumValue("QueuedForDeletion")
-    QueuedForDeletion
+    QueuedForDeletion,
+
+    @EnumValue("DeleteInProgress")
+    DeleteInProgress;
   }
+
+  private static final Multimap<BackupState, BackupState> ALLOWED_TRANSITIONS =
+      ImmutableMultimap.<BackupState, BackupState>builder()
+          .put(BackupState.InProgress, BackupState.Completed)
+          .put(BackupState.InProgress, BackupState.Failed)
+          .put(BackupState.Completed, BackupState.Deleted)
+          .put(BackupState.FailedToDelete, BackupState.Deleted)
+          .put(BackupState.Failed, BackupState.Deleted)
+          .put(BackupState.Stopped, BackupState.Deleted)
+          .put(BackupState.InProgress, BackupState.Skipped)
+          .put(BackupState.InProgress, BackupState.FailedToDelete)
+          .put(BackupState.QueuedForDeletion, BackupState.FailedToDelete)
+          .put(BackupState.DeleteInProgress, BackupState.FailedToDelete)
+          .put(BackupState.Failed, BackupState.FailedToDelete)
+          .put(BackupState.Completed, BackupState.FailedToDelete)
+          .put(BackupState.InProgress, BackupState.Stopping)
+          .put(BackupState.Failed, BackupState.Stopping)
+          .put(BackupState.Completed, BackupState.Stopping)
+          .put(BackupState.InProgress, BackupState.Stopped)
+          .put(BackupState.Stopping, BackupState.Stopped)
+          .put(BackupState.Failed, BackupState.Stopped)
+          .put(BackupState.Completed, BackupState.Stopped)
+          .put(BackupState.Failed, BackupState.QueuedForDeletion)
+          .put(BackupState.Stopped, BackupState.QueuedForDeletion)
+          .put(BackupState.Stopping, BackupState.QueuedForDeletion)
+          .put(BackupState.InProgress, BackupState.QueuedForDeletion)
+          .put(BackupState.Completed, BackupState.QueuedForDeletion)
+          .put(BackupState.Skipped, BackupState.QueuedForDeletion)
+          .put(BackupState.FailedToDelete, BackupState.QueuedForDeletion)
+          .put(BackupState.Deleted, BackupState.QueuedForDeletion)
+          .put(BackupState.QueuedForDeletion, BackupState.DeleteInProgress)
+          .build();
 
   public enum BackupCategory {
     @EnumValue("YB_BACKUP_SCRIPT")
@@ -368,10 +402,10 @@ public class Backup extends Model {
     this.save();
   }
 
-  public void onIncrementCompletion(Date incrementExpiryDate, long incrementSizeInBytes) {
-    if (incrementExpiryDate == null
-        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
-      this.expiry = incrementExpiryDate;
+  public void onIncrementCompletion(Date incrementCreateDate, long incrementSizeInBytes) {
+    Date newExpiryDate = new Date(incrementCreateDate.getTime() + this.backupInfo.timeBeforeDelete);
+    if (this.getExpiry() != null && this.getExpiry().before(newExpiryDate)) {
+      this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes += incrementSizeInBytes;
     this.save();
@@ -446,7 +480,7 @@ public class Backup extends Model {
     // Get current timestamp.
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).eq("state", BackupState.Completed).findList();
+        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
 
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
@@ -474,25 +508,8 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-    if (this.state == newState) {
-      LOG.error("Skipping state transition as no change in previous and new state");
-    } else if ((this.state == BackupState.InProgress)
-        || (this.state != BackupState.DeleteInProgress && newState == BackupState.QueuedForDeletion)
-        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.DeleteInProgress)
-        || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
-        || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
-        || (this.state == BackupState.Completed && newState == BackupState.Stopped)
-        || (this.state == BackupState.Failed && newState == BackupState.Stopped)
-        || (this.state == BackupState.Stopping && newState == BackupState.Stopped)) {
-      LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
-      this.state = newState;
-      save();
-    } else if ((this.state == BackupState.InProgress && this.state != newState)
-        || (this.state == BackupState.Completed && newState == BackupState.Deleted)
-        || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)
-        || (this.state == BackupState.Failed && newState == BackupState.Deleted)
-        || (this.state == BackupState.Failed && newState == BackupState.FailedToDelete)) {
-      LOG.debug("Old Backup API: transitioned from {} to {}", this.state, newState);
+    if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
+      LOG.debug("Backup state transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
     } else {
@@ -679,7 +696,8 @@ public class Backup extends Model {
     return null;
   }
 
-  public static List<Backup> fetchAllBackupsByScheduleUUID(UUID customerUUID, UUID scheduleUUID) {
+  public static List<Backup> fetchAllCompletedBackupsByScheduleUUID(
+      UUID customerUUID, UUID scheduleUUID) {
     return find.query()
         .where()
         .eq("customer_uuid", customerUUID)
@@ -693,6 +711,8 @@ public class Backup extends Model {
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
 
     query.eq("customer_uuid", filter.getCustomerUUID());
+    // Only non-incremental backups.
+    query.raw("backup_uuid = base_backup_uuid");
     appendActionTypeClause(query);
     if (!CollectionUtils.isEmpty(filter.getScheduleUUIDList())) {
       appendInClause(query, "schedule_uuid", filter.getScheduleUUIDList());
@@ -760,18 +780,7 @@ public class Backup extends Model {
             .parallelStream()
             .map(b -> BackupUtil.toBackupResp(b, customerConfigService))
             .collect(Collectors.toList());
-    BackupPagedApiResponse responseMin;
-    try {
-      responseMin = BackupPagedApiResponse.class.newInstance();
-    } catch (Exception e) {
-      throw new IllegalStateException(
-          "Failed to create " + BackupPagedApiResponse.class.getSimpleName() + " instance", e);
-    }
-    responseMin.setEntities(backupList);
-    responseMin.setHasPrev(response.isHasPrev());
-    responseMin.setHasNext(response.isHasNext());
-    responseMin.setTotalCount(response.getTotalCount());
-    return responseMin;
+    return response.setData(backupList, new BackupPagedApiResponse());
   }
 
   public boolean isIncrementalBackup() {

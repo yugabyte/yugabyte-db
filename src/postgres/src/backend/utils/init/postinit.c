@@ -95,7 +95,6 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
-
 /*** InitPostgres support ***/
 
 
@@ -696,6 +695,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		YbRegisterSysTableForPrefetching(
 				AuthMemRelationId);       // pg_auth_members
 		YbTryRegisterCatalogVersionTableForPrefetching();
+
+		/*
+		 * If per database catalog version mode is enabled, this will load the
+		 * catalog version of template1. It is fine because at this time we
+		 * only read the above shared relations and therefore can use any
+		 * database OID. We will update yb_catalog_cache_version to match
+		 * MyDatabaseId once the latter is resolved so we will never use
+		 * the catalog version of template1 to query relations that are
+		 * private to MyDatabaseId.
+		 */
 		yb_catalog_cache_version = YbGetMasterCatalogVersion();
 	}
 	/*
@@ -942,6 +951,25 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 			CommitTransactionCommand();
 		}
 		return;
+	}
+
+	if (MyDatabaseId != TemplateDbOid && YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * Rather than fetching the current DB catalog version for MyDatabaseId
+		 * from master which requires another RPC that can cause the connection
+		 * establishment to slow down, we just set yb_catalog_cache_version from
+		 * that in the local tserver's catalog version ver. We expect in most
+		 * cases it will be identical to what we would get from master. However
+		 * it may be stale because of the heartbeat delay between the tserver
+		 * and master. If in rare cases we have set yb_catalog_cache_version to
+		 * a stale version, a future tserver to master hearbeat response will
+		 * bring the newer version and cause a cache refresh.
+		 * TODO: It is possible that catalog cache was changed on a master
+		 *       at this point (due to concurrent DDL). Cache refresh is
+		 *       required in this case. GH #14741 is created to handle this.
+		 */
+		yb_catalog_cache_version = YbGetSharedCatalogVersion();
 	}
 
 	/*

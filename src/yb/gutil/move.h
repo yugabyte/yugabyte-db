@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef BASE_MOVE_H_
-#define BASE_MOVE_H_
+#pragma once
 
 // Macro with the boilerplate that makes a type move-only in C++03.
 //
@@ -229,5 +228,3 @@
   type Pass() { return type(rvalue_type(this)); } \
   typedef void MoveOnlyTypeForCPP03; \
  private:
-
-#endif  // BASE_MOVE_H_

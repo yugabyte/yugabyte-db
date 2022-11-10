@@ -55,9 +55,9 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 | YCQL Op Latency (Avg) | The average time of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | An alert should be issued when latency is close to or higher than your application SLA. | ![img](/images/yp/metrics4.png) |
 | YCQL Op Latency (P99) | The average time of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern and you might want to issue an alert.<br>You should check whether or not there are consistent spikes in latency. | ![img](/images/yp/metrics5.png) |
 
-### Node
+### Resource
 
-Node metrics should be considered on a per-node basis.
+Resource metrics should be considered on a per-node basis.
 
 | Graph                                 | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | :------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
@@ -199,7 +199,7 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 ### Command-line access to metrics
 
-YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI). These metrics include those not available from the **Dashboard**.
+YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI), including those not available from the **Metrics** page.
 
 You can view YB-TServer and YB-Master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
 
@@ -279,6 +279,12 @@ The output would be similar to the following:
             },
 ...
 ```
+
+{{< note title="Note" >}}
+
+YugabyteDB Anywhere obtains the replication lag using Prometheus metrics from the YB-TServer port 9000. If this port is closed, the xCluster replication still works, but the replication lag would not be available via **Metrics**.
+
+{{< /note >}}
 
 You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
 

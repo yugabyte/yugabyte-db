@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_NAMESPACE_ALTERER_H
-#define YB_CLIENT_NAMESPACE_ALTERER_H
+#pragma once
 
 #include <string>
 
@@ -61,5 +60,3 @@ class YBNamespaceAlterer {
 
 }  // namespace client
 }  // namespace yb
-
-#endif  // YB_CLIENT_NAMESPACE_ALTERER_H

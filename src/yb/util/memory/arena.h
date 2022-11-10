@@ -34,8 +34,7 @@
 //
 // Memory arena for variable-length datatypes and STL collections.
 
-#ifndef YB_UTIL_MEMORY_ARENA_H_
-#define YB_UTIL_MEMORY_ARENA_H_
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -396,6 +395,10 @@ class ArenaComponent {
     }
   }
 
+  ArenaComponent* next() const {
+    return next_;
+  }
+
   ArenaComponent* SetNext(ArenaComponent* next) {
     auto* result = next_;
     next_ = next;
@@ -540,5 +543,3 @@ template<class Traits>
 void* operator new(size_t bytes, yb::internal::ArenaBase<Traits>* arena) noexcept {
   return arena->AllocateBytesAligned(bytes, sizeof(void*));
 }
-
-#endif  // YB_UTIL_MEMORY_ARENA_H_

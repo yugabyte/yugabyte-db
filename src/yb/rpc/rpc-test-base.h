@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_RPC_TEST_BASE_H
-#define YB_RPC_RPC_TEST_BASE_H
+#pragma once
 
 #include <algorithm>
 #include <list>
@@ -179,15 +178,15 @@ class RpcTestBase : public YBTest {
   void TearDown() override;
 
   std::unique_ptr<Messenger> CreateMessenger(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   MessengerBuilder CreateMessengerBuilder(
-      const string &name,
+      const std::string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
   Status DoTestSyncCall(Proxy* proxy, const RemoteMethod *method);
@@ -228,5 +227,3 @@ class RpcTestBase : public YBTest {
 
 } // namespace rpc
 } // namespace yb
-
-#endif  // YB_RPC_RPC_TEST_BASE_H

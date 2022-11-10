@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
-#define YB_MASTER_MASTER_PATH_HANDLERS_H
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -231,7 +230,7 @@ class MasterPathHandlers {
   // Otherwise, do not perform calculation if number of tables is less than max_table_count.
   Status CalculateTServerTree(TServerTree* tserver_tree, int max_table_count);
   void RenderLoadBalancerViewPanel(
-      const TServerTree& tserver_tree, const vector<std::shared_ptr<TSDescriptor>>& descs,
+      const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
       const std::vector<TableInfoPtr>& tables, std::stringstream* output);
   TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
@@ -272,4 +271,3 @@ void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebRes
 
 } // namespace master
 } // namespace yb
-#endif /* YB_MASTER_MASTER_PATH_HANDLERS_H */

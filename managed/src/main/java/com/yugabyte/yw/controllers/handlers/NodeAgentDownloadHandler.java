@@ -5,6 +5,7 @@ import com.cronutils.utils.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.utils.FileUtils;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -19,7 +20,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
@@ -29,11 +29,11 @@ import org.apache.commons.lang3.EnumUtils;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
-@Slf4j
 @Singleton
 public class NodeAgentDownloadHandler {
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final String NODE_AGENT_TGZ_FILE_FORMAT = "node_agent-%s-%s-%s.tar.gz";
+  private static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
@@ -112,8 +112,7 @@ public class NodeAgentDownloadHandler {
     OS osType = EnumUtils.getEnumIgnoreCase(OS.class, os);
     Arch archType = EnumUtils.getEnumIgnoreCase(Arch.class, arch);
     validateDownloadType(downloadType, osType, archType);
-    Path nodeAgentsReleasesPath =
-        Paths.get(appConfig.getString("yb.storage.path"), "node-agent", "releases");
+    Path nodeAgentsReleasesPath = Paths.get(appConfig.getString(NODE_AGENT_RELEASES_PATH_PROPERTY));
     String softwareVersion =
         Objects.requireNonNull(
             (String)
@@ -127,8 +126,8 @@ public class NodeAgentDownloadHandler {
               osType.name().toLowerCase(),
               archType.name().toLowerCase());
       File buildZip = new File(nodeAgentsReleasesPath.toString(), buildPkgFile);
-      InputStream is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
-      return new NodeAgentDownloadFile("application/gzip", is, buildPkgFile);
+      return new NodeAgentDownloadFile(
+          "application/gzip", FileUtils.getInputStreamOrFail(buildZip), buildPkgFile);
     }
     // Look for the installer script in any of the tgz file.
     // This makes distribution of the installer more convenient.

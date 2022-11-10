@@ -11,9 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_CLIENT_SERVICE_H
-#define YB_TSERVER_PG_CLIENT_SERVICE_H
+#pragma once
 
+#include <functional>
 #include <future>
 
 #include "yb/client/client_fwd.h"
@@ -60,11 +60,13 @@ namespace tserver {
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (CheckIfPitrActive) \
+    (GetTserverCatalogVersionInfo) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
+      std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
@@ -76,6 +78,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+
+  void InvalidateTableCache();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \
@@ -93,5 +97,3 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_PG_CLIENT_SERVICE_H

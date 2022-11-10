@@ -47,6 +47,9 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::string;
+using std::make_pair;
+
 using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
@@ -396,7 +399,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey))
   for (int i = 0; i != kTruncateThreads; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto truncate_conn = ASSERT_RESULT(Connect());
-      int idx = 0;
+      int idx __attribute__((unused)) = 0;
       while (!stop.load(std::memory_order_acquire)) {
         auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
         ++idx;
@@ -1177,6 +1180,103 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
       30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
+class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Enable colocation by default on the cluster.
+    options->extra_tserver_flags.push_back("--ysql_colocate_database_by_default=true");
+  }
+};
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTableColocationEnabledByDefaultTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseNameColocatedByDefault = "test_db_colocated_by_default";
+  const string kDatabaseNameColocatedExplicitly = "test_db_colocated_explicitly";
+  const string kDatabaseNameNotColocated = "test_db_not_colocated";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> foo_tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> bar_tablets;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Database without specifying colocation value must be created with colocation = true.
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseNameColocatedByDefault));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedByDefault));
+
+  // A parent table with one tablet should be created when the database is created.
+  auto colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedByDefault, 30s));
+  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a colocated index table.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // A table should be able to opt out of colocation.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo_non_colocated (a INT, PRIMARY KEY (a ASC)) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Database which explicitly specifies colocated = true should work as expected.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 WITH colocated = true", kDatabaseNameColocatedExplicitly));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
+
+  // A parent table with one tablet should be created when the database is created.
+  colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, 30s));
+  colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedExplicitly,
+      "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Database which explicitly opts out of colocation must work as expected.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = false",
+      kDatabaseNameNotColocated));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameNotColocated));
+
+  // Create two tables which shouldn't share the same tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (b INT)"));
+  auto table_id_foo =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "foo"));
+  auto table_id_bar =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "bar"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_foo, 0, &foo_tablets));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_bar, 0, &bar_tablets));
+  ASSERT_EQ(foo_tablets.size(), 1);
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), foo_tablets[0].tablet_id());
+  }
+}
+
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
     const string database_name, bool colocated, const string tablegroup_name) {
   auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
@@ -1576,6 +1676,249 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         return rpc_calls == 0;
       },
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsTruncateTable),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "test_tgroup";
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  // Create a table within the tablegroup and insert some values.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE foo (a INT, value TEXT, PRIMARY KEY (a ASC)) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (2, 'hello2')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello3')"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM foo")).get()), 3);
+
+  // Create index and verify it's content by forcing an index scan.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a ASC)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+  std::vector<std::pair<int, std::string>> values = {
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+  };
+  ASSERT_EQ(values[0].first, 1);
+  ASSERT_EQ(values[0].second, "hello");
+  ASSERT_EQ(values[1].first, 2);
+  ASSERT_EQ(values[1].second, "hello2");
+  ASSERT_EQ(values[2].first, 3);
+  ASSERT_EQ(values[2].second, "hello3");
+
+  // Create another table within the tablegroup and insert some values.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE bar (a INT) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO bar (a) VALUES (100)"));
+  ASSERT_OK(conn.Execute("INSERT INTO bar (a) VALUES (200)"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM bar")).get()), 2);
+
+  // Create index on bar and verify it's content by forcing an index scan.
+  ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a DESC)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<int> bar_values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  };
+  ASSERT_EQ(bar_values[0], 200);
+  ASSERT_EQ(bar_values[1], 100);
+
+  // Truncating foo works correctly.
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE foo"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM foo")).get()), 0);
+
+  // Index scan on foo should also return 0 rows.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 0);
+
+  // Truncation of foo shouldn't affect bar.
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM bar")).get()), 2);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  bar_values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  };
+  ASSERT_EQ(bar_values[0], 200);
+  ASSERT_EQ(bar_values[1], 100);
+}
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsDDL), PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kSchemaName = "test_schema";
+  const string kTablegroupName = "test_tgroup";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  // A parent table with one tablet should be created when the tablegroup is created.
+  const auto tablegroup =
+      ASSERT_RESULT(SelectTablegroup(client.get(), &conn, kDatabaseName, kTablegroupName));
+
+  // Create a table within the tablegroup.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE foo (a INT, value TEXT) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello')"));
+
+  // Adding a PK works and inserting duplicate PK fails.
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD PRIMARY KEY (a)"));
+  ASSERT_NOK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello2')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (2, 'hello2')"));
+
+  // Creating a unique index on non-PK column works.
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX foo_unique_index ON foo(value)"));
+  ASSERT_NOK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello3')"));
+
+  // Creating a view for the table works.
+  ASSERT_OK(conn.ExecuteFormat("CREATE VIEW odd_a_view AS SELECT * FROM foo WHERE MOD(a, 2) = 1"));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM odd_a_view ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+  std::vector<std::pair<int, std::string>> values = {
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1)))};
+  ASSERT_EQ(values[0].first, 1);
+  ASSERT_EQ(values[0].second, "hello");
+  ASSERT_EQ(values[1].first, 3);
+  ASSERT_EQ(values[1].second, "hello3");
+
+  // Creating a table within the tablegroup with a different schema is successful.
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0.bar (a INT, value TEXT) TABLEGROUP $1", kSchemaName, kTablegroupName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (1, 'hello')", kSchemaName));
+
+  // Index on bar should work.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE UNIQUE INDEX bar_unique_index ON $0.bar(value)", kSchemaName));
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (2, 'hello')", kSchemaName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (2, 'hello2')", kSchemaName));
+
+  // All tables/indexes should be in the same tablet as the parent.
+  auto relation_names = {"foo", "foo_unique_index", "bar", "bar_unique_index"};
+  for (auto relation : relation_names) {
+    auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, relation));
+    ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+    ASSERT_EQ(tablets.size(), 1);
+    ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
+  }
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsAccessMethods),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "test_tgroup";
+  const string kQuery = "SELECT * FROM $0 ORDER BY value";
+  const string kQueryForIndexScan = "SELECT * FROM $0 ORDER BY a";
+  const string kQueryForIndexOnlyScan = "SELECT a FROM $0 ORDER BY a";
+  const std::vector<string> kTableNames = {"table_without_pk", "table_with_pk"};
+  const std::vector<string> kCreateTableQueries = {
+      Format("CREATE TABLE $0 (a INT, value TEXT) TABLEGROUP $1", kTableNames[0], kTablegroupName),
+      Format(
+          "CREATE TABLE $0 (a INT, value TEXT, PRIMARY KEY (a ASC)) TABLEGROUP $1", kTableNames[1],
+          kTablegroupName)};
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  for (size_t idx = 0; idx < kTableNames.size(); idx++) {
+    // Create a table within the tablegroup and insert some values.
+    ASSERT_OK(conn.Execute(kCreateTableQueries[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (1, 'hello')", kTableNames[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (2, 'hello2')", kTableNames[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (3, 'hello3')", kTableNames[idx]));
+
+    // Sequential scan.
+    auto query = Format(kQuery, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(query, "Seq")));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 2);
+    {
+      std::vector<std::pair<int, std::string>> values = {
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      };
+      ASSERT_EQ(values[0].first, 1);
+      ASSERT_EQ(values[0].second, "hello");
+      ASSERT_EQ(values[1].first, 2);
+      ASSERT_EQ(values[1].second, "hello2");
+      ASSERT_EQ(values[2].first, 3);
+      ASSERT_EQ(values[2].second, "hello3");
+    }
+
+    // Index scan.
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE UNIQUE INDEX foo_index_$0 ON $0 (a ASC)", kTableNames[idx]));
+    auto queryForIndexScan = Format(kQueryForIndexScan, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexScan, "Index")));
+    res = ASSERT_RESULT(conn.Fetch(queryForIndexScan));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 2);
+    {
+      std::vector<std::pair<int, std::string>> values = {
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      };
+      ASSERT_EQ(values[0].first, 1);
+      ASSERT_EQ(values[0].second, "hello");
+      ASSERT_EQ(values[1].first, 2);
+      ASSERT_EQ(values[1].second, "hello2");
+      ASSERT_EQ(values[2].first, 3);
+      ASSERT_EQ(values[2].second, "hello3");
+    }
+
+    // Index only scan.
+    auto queryForIndexOnlyScan = Format(kQueryForIndexOnlyScan, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexOnlyScan, "Index Only")));
+    res = ASSERT_RESULT(conn.Fetch(queryForIndexOnlyScan));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 1);
+    {
+      std::vector<int> values = {
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+          ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+      };
+      ASSERT_EQ(values[0], 1);
+      ASSERT_EQ(values[1], 2);
+      ASSERT_EQ(values[2], 3);
+    }
+  }
 }
 
 namespace {
@@ -2808,6 +3151,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
   pg_ts = cluster_->tablet_server(0);
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_yugabyte.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
 
   // Get the initial catalog version map.
   auto map = GetMasterCatalogVersionMap(&conn_yugabyte);
@@ -2855,6 +3201,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
   auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
 
   LOG(INFO) << "Create a table";
   ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
@@ -2962,6 +3311,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   // Use a new connection to re-create the table.
   auto new_conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(new_conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
   LOG(INFO) << "Re-create the table";
   ASSERT_OK(new_conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
@@ -2990,6 +3342,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
   conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
 }
 

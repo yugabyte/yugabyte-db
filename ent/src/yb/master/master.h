@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_MASTER_MASTER_H
-#define ENT_SRC_YB_MASTER_MASTER_H
+#pragma once
 
 namespace yb {
 namespace master {
@@ -58,4 +57,3 @@ class Master : public yb::master::Master {
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-#endif // ENT_SRC_YB_MASTER_MASTER_H

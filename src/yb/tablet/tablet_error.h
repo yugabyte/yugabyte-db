@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TABLET_ERROR_H
-#define YB_TABLET_TABLET_ERROR_H
+#pragma once
 
 #include "yb/tablet/metadata.pb.h"
 #include "yb/util/status_ec.h"
@@ -35,5 +34,3 @@ typedef StatusErrorCodeImpl<RaftGroupStateErrorTag> RaftGroupStateError;
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TABLET_ERROR_H

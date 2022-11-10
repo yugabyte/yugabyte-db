@@ -15,8 +15,7 @@
 // Tree node definitions for ALTER TABLE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -36,7 +35,7 @@ typedef enum AlterColumnType : int {
   ALTER_TYPE
 } ModColumnType;
 
-const string supported_properties[] = {"ttl"};
+const std::string supported_properties[] = {"ttl"};
 
 //--------------------------------------------------------------------------------------------------
 // Drop/rename/alter type column operation details
@@ -173,5 +172,3 @@ class PTAlterTable : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_

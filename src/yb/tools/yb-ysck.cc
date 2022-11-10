@@ -33,7 +33,6 @@
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/split.h"
@@ -58,6 +57,7 @@ using std::cout;
 using std::endl;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using strings::Substitute;
 
 DEFINE_string(master_address, "",

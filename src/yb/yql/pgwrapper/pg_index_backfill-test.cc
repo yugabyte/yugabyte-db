@@ -38,6 +38,8 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::string;
+
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -1082,7 +1084,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
   // gflag delay times.
   const MonoDelta kBackfillAlterTableDelay = 0s;
   const MonoDelta kBackfillDelay = RegularBuildVsSanitizers(3s, 7s);
-  const MonoDelta kIndexStateFlagsUpdateDelay = RegularBuildVsSanitizers(3s, 7s);
+  const MonoDelta kIndexStateFlagsUpdateDelay = RegularBuildVsDebugVsSanitizers(3s, 5s, 7s);
 
   // maximum delay between checks on index state flags.
   const MonoDelta kMaxDelay = 100ms;

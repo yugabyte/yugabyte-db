@@ -419,7 +419,7 @@ class SecureContext::Impl {
 
   // Generates and uses temporary keys, should be used only during testing.
   Status TEST_GenerateKeys(int bits, const std::string& common_name,
-                                   MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
+                           MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
 
   Result<SSLPtr> Create(rpc::UseCertificateKeyPair use_certificate_key_pair)
       const EXCLUDES(mutex_);

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_BOOTSTRAP_IF_H
-#define YB_TABLET_TABLET_BOOTSTRAP_IF_H
+#pragma once
 
 #include <memory>
 #include <shared_mutex>
@@ -164,6 +163,7 @@ struct BootstrapTabletData {
   ThreadPool* log_sync_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
+  bool bootstrap_retryable_requests = true;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
@@ -180,5 +180,3 @@ Status BootstrapTablet(
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif // YB_TABLET_TABLET_BOOTSTRAP_IF_H

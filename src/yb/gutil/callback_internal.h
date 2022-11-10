@@ -20,8 +20,7 @@
 // This file contains utility functions and classes that help the
 // implementation, and management of the Callback objects.
 
-#ifndef YB_GUTIL_CALLBACK_INTERNAL_H_
-#define YB_GUTIL_CALLBACK_INTERNAL_H_
+#pragma once
 
 #include <stddef.h>
 
@@ -189,5 +188,3 @@ typename base::enable_if<IsMoveOnlyType<T>::value, T>::type CallbackForward(T& t
 
 }  // namespace internal
 }  // namespace yb
-
-#endif // YB_GUTIL_CALLBACK_INTERNAL_H_

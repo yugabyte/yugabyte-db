@@ -17,7 +17,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -54,6 +54,9 @@
 #include "yb/yql/redis/redisserver/redis_commands.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
+
+using std::string;
+using std::vector;
 
 using yb::operator"" _MB;
 using namespace std::literals;

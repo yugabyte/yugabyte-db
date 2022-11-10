@@ -81,6 +81,7 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
+using std::string;
 
 const std::string kKeyspaceName("my_keyspace");
 const YBTableName kTableName1(YQL_DATABASE_CQL, kKeyspaceName, "testMasterReplication-1");

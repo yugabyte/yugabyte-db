@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_LOGICAL_CLOCK_H_
-#define YB_SERVER_LOGICAL_CLOCK_H_
+#pragma once
 
 #include <string>
 
@@ -84,5 +83,3 @@ class LogicalClock : public Clock {
 
 }  // namespace server
 }  // namespace yb
-
-#endif /* YB_SERVER_LOGICAL_CLOCK_H_ */

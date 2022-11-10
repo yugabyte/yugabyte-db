@@ -92,6 +92,7 @@ using yb::rpc_test::PingRequestPB;
 using yb::rpc_test::PingResponsePB;
 
 using std::vector;
+using std::string;
 
 using rpc_test::AddRequestPartialPB;
 using rpc_test::CalculatorServiceProxy;
@@ -1021,7 +1022,7 @@ TEST_F(RpcStubTest, Lightweight) {
   req.mutable_map()->clear();
   std::string req_str = req.ShortDebugString();
 
-  auto lw_req = CopySharedMessage<rpc_test::LWLightweightRequestPB>(req);
+  auto lw_req = CopySharedMessage(req);
   req.Clear();
   ASSERT_STR_EQ(AsString(*lw_req), req_str);
   ASSERT_STR_EQ(AsString(resp.short_debug_string()), req_str);

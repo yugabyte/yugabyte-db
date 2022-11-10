@@ -37,6 +37,7 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -46,7 +47,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -56,6 +57,9 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+
+using std::vector;
+using std::string;
 
 using namespace std::literals;
 
@@ -131,9 +135,9 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
   tracker_->SetMetricEntity(metric_entity, kParentMemTrackerId);
 
   // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
-  auto zero_op = std::make_shared<ReplicateMsg>();
+  auto zero_op = rpc::MakeSharedMessage<LWReplicateMsg>();
   *zero_op->mutable_id() = MinimumOpId();
-  InsertOrDie(&cache_, 0, { zero_op, zero_op->SpaceUsed() });
+  InsertOrDie(&cache_, 0, { zero_op, zero_op->SpaceUsedLong() });
 }
 
 MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
@@ -175,7 +179,7 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   std::vector<CacheEntry> entries_to_insert;
   entries_to_insert.reserve(msgs.size());
   for (const auto& msg : msgs) {
-    CacheEntry e = { msg, static_cast<int64_t>(msg->SpaceUsedLong()) };
+    CacheEntry e = { msg, msg->SpaceUsedLong() };
     result.mem_required += e.mem_usage;
     entries_to_insert.emplace_back(std::move(e));
   }
@@ -229,7 +233,7 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   return result;
 }
 
-Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const OpId& committed_op_id,
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   PrepareAppendResult prepare_result;
@@ -317,9 +321,9 @@ namespace {
 
 // Calculate the total byte size that will be used on the wire to replicate this message as part of
 // a consensus update request. This accounts for the length delimiting and tagging of the message.
-int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
+int64_t TotalByteSizeForMessage(const LWReplicateMsg& msg) {
   auto msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
-    msg.ByteSize());
+      msg.SerializedSize());
   msg_size += 1; // for the type tag
   return msg_size;
 }
@@ -427,7 +431,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         }
         result.messages.push_back(msg);
         if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
-          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          msg->change_metadata_request().schema().ToGoogleProtobuf(&result.header_schema);
           result.header_schema_version = msg->change_metadata_request().schema_version();
         }
         result.read_from_disk_size += current_message_size;
@@ -463,7 +467,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
         result.messages.push_back(msg);
         if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
-          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          msg->change_metadata_request().schema().ToGoogleProtobuf(&result.header_schema);
           result.header_schema_version = msg->change_metadata_request().schema_version();
         }
         next_index++;
@@ -502,7 +506,7 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
   for (auto iter = cache_.begin(); iter != cache_.end();) {
     const CacheEntry& entry = iter->second;
     const ReplicateMsgPtr& msg = entry.msg;
-    VLOG_WITH_PREFIX_UNLOCKED(2) << "considering for eviction: " << msg->id();
+    VLOG_WITH_PREFIX_UNLOCKED(2) << "considering for eviction: " << OpId::FromPB(msg->id());
     int64_t msg_index = msg->id().index();
     if (msg_index == 0) {
       // Always keep our special '0' op.
@@ -514,7 +518,7 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
       break;
     }
 
-    VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting cache. Removing: " << msg->id();
+    VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting cache. Removing: " << OpId::FromPB(msg->id());
     AccountForMessageRemovalUnlocked(entry);
     bytes_evicted += entry.mem_usage;
 
@@ -608,7 +612,7 @@ void LogCache::DumpToStrings(vector<string>* lines) const {
       Substitute("Message[$0] $1.$2 : REPLICATE. Type: $3, Size: $4",
                  counter++, msg->id().term(), msg->id().index(),
                  OperationType_Name(msg->op_type()),
-                 msg->ByteSize()));
+                 msg->SerializedSize()));
   }
 }
 
@@ -627,7 +631,7 @@ void LogCache::DumpToHtml(std::ostream& out) const {
                       "<td>$4</td><td>$5</td></tr>",
                       counter++, msg->id().term(), msg->id().index(),
                       OperationType_Name(msg->op_type()),
-                      msg->ByteSize(), msg->id().ShortDebugString()) << endl;
+                      msg->SerializedSize(), msg->id().ShortDebugString()) << endl;
   }
   out << "</table>";
 }

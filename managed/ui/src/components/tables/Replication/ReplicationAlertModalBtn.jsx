@@ -12,6 +12,9 @@ import {
   updateAlertConfiguration
 } from '../../../actions/universe';
 
+// DEPRECATED - Replaced with ConfigureMaxLagTimeModal.tsx
+// TODO: Remove this.
+
 const ALERT_NAME = 'Replication Lag';
 const DEFAULT_THRESHOLD = 180000;
 
@@ -96,7 +99,7 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
 
       formikBag.setSubmitting(false);
       toggleModalVisibility();
-      queryClient.invalidateQueries(['getConfiguredThreshold',configurationFilter]);
+      queryClient.invalidateQueries(['alert', 'configurations', configurationFilter]);
     } catch (error) {
       setSubmissionError(error.message);
       formikBag.setSubmitting(false);

@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
+#pragma once
 
 #include <string>
 
@@ -52,7 +51,10 @@ static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
-constexpr static const char* const kValueColumnName = "value";
+constexpr static const char* const kValueColumnName = "value_1";
+constexpr static const char* const kValue2ColumnName = "value_2";
+constexpr static const char* const kValue3ColumnName = "value_3";
+constexpr static const char* const kValue4ColumnName = "value_4";
 
 struct CDCSDKTestParams {
   CDCSDKTestParams(int batch_size_, bool enable_replicate_intents_) :
@@ -141,7 +143,33 @@ class CDCSDKTestBase : public YBTest {
       bool enum_value = false,
       const std::string& enum_suffix = "",
       const std::string& schema_name = "public",
-      uint32_t num_cols = 2);
+      uint32_t num_cols = 2,
+      const std::vector<std::string>& optional_cols_name = {});
+
+  Status AddColumn(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const std::string& add_column_name,
+      const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
+
+  Status DropColumn(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const std::string& column_name,
+      const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
+
+  Status RenameColumn(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& table_name,
+      const std::string& old_column_name,
+      const std::string& new_column_name,
+      const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 
@@ -169,5 +197,3 @@ class CDCSDKTestBase : public YBTest {
 } // namespace enterprise
 } // namespace cdc
 } // namespace yb
-
-#endif  // ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H

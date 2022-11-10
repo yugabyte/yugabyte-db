@@ -53,11 +53,11 @@ namespace docdb {
 namespace {
 
 struct OverwriteData {
-  DocHybridTime doc_ht;
+  EncodedDocHybridTime encoded_doc_ht;
   Expiration expiration;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(doc_ht, expiration);
+    return YB_STRUCT_TO_STRING(encoded_doc_ht, expiration);
   }
 };
 
@@ -72,6 +72,31 @@ class PackedRowFeed {
   virtual Status FeedPackedRow(const Slice& key, const Slice& value, size_t doc_key_serial) = 0;
 
   virtual ~PackedRowFeed() = default;
+};
+
+// Lazily decode doc hybrid time and return hybrid time part, since callers are not interested in
+// it.
+class LazyHybridTime {
+ public:
+  explicit LazyHybridTime(std::reference_wrapper<const EncodedDocHybridTime> encoded_doc_ht)
+      : encoded_doc_ht_(encoded_doc_ht) {
+  }
+
+  Result<HybridTime> Get() {
+    if (!value_) {
+      auto temp = DocHybridTime::FullyDecodeFrom(encoded_doc_ht_.AsSlice());
+      if (temp.ok()) {
+        value_.emplace(temp->hybrid_time());
+      } else {
+        value_.emplace(temp.status());
+      }
+    }
+    return *value_;
+  }
+
+ private:
+  const EncodedDocHybridTime& encoded_doc_ht_;
+  std::optional<Result<HybridTime>> value_;
 };
 
 class PackedRowData {
@@ -122,11 +147,11 @@ class PackedRowData {
   Status ProcessPackedRow(
       const Slice& internal_key, size_t doc_key_size,
       const Slice& full_value, size_t control_fields_size,
-      const DocHybridTime& row_doc_ht, size_t new_doc_key_serial) {
+      const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial) {
     VLOG_WITH_FUNC(4)
         << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
         << full_value.ToDebugHexString() << ", control_fields_size: " << control_fields_size
-        << ", row_doc_ht: " << row_doc_ht;
+        << ", row_doc_ht: " << encoded_row_doc_ht.ToString();
     RSTATUS_DCHECK(!active(), Corruption, Format(
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
@@ -135,7 +160,7 @@ class PackedRowData {
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = control_fields_size;
-    doc_ht_ = row_doc_ht;
+    encoded_doc_ht_ = encoded_row_doc_ht;
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
@@ -148,13 +173,14 @@ class PackedRowData {
   }
 
   void StartPacking(
-      const Slice& internal_key, size_t doc_key_size, const DocHybridTime& doc_ht,
+      const Slice& internal_key, size_t doc_key_size,
+      const EncodedDocHybridTime& encoded_doc_ht,
       size_t new_doc_key_serial) {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = 0;
-    doc_ht_ = doc_ht;
+    encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
     InitPacker();
   }
@@ -169,9 +195,11 @@ class PackedRowData {
   }
 
   // Returns true if column was processed. Otherwise caller should handle this column.
+  // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
-      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, size_t encoded_control_fields_size) {
+      ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
+      const ValueControlFields& control_fields, size_t encoded_control_fields_size,
+      LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -211,7 +239,7 @@ class PackedRowData {
             << tail_size;
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
       auto control_fields_copy = control_fields;
-      control_fields_copy.timestamp = column_doc_ht.hybrid_time().GetPhysicalValueMicros();
+      control_fields_copy.timestamp = VERIFY_RESULT(lazy_ht->Get()).GetPhysicalValueMicros();
       control_fields_buffer_.clear();
       control_fields_copy.AppendEncoded(&control_fields_buffer_);
       return packer_->AddValue(
@@ -246,7 +274,7 @@ class PackedRowData {
       return Status::OK();
     }
     key_.PushBack(KeyEntryTypeAsChar::kHybridTime);
-    doc_ht_.AppendEncodedInDocDbFormat(&key_);
+    key_.Append(encoded_doc_ht_.AsSlice());
     key_.Append(last_internal_component_, sizeof(last_internal_component_));
 
     Slice value_slice;
@@ -358,7 +386,7 @@ class PackedRowData {
   size_t control_fields_size_ = 0;
   size_t doc_key_serial_ = std::numeric_limits<size_t>::max();
   KeyBuffer key_;
-  DocHybridTime doc_ht_;
+  EncodedDocHybridTime encoded_doc_ht_;
   char last_internal_component_[rocksdb::kLastInternalComponentSize];
 
   // All old_ fields are releated to original row packing.
@@ -401,16 +429,26 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
  public:
   DocDBCompactionFeed(
       rocksdb::CompactionFeed* next_feed,
-      HistoryRetentionDirective retention,
+      const HistoryRetentionDirective& retention,
       HybridTime min_input_hybrid_time,
       HybridTime min_other_data_ht,
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider)
-      : next_feed_(*next_feed), retention_(std::move(retention)), key_bounds_(key_bounds),
-        min_other_data_ht_(retention_.retain_delete_markers_in_major_compaction
-            ? HybridTime::kMin : min_other_data_ht),
-        could_change_key_range_(!CanHaveOtherDataBefore(min_input_hybrid_time)),
+      : next_feed_(*next_feed),
+        retention_(retention),
+        // Use max write id, to be sure that entries with hybrid time equals to history cutoff
+        // would not be garbage collected.
+        encoded_history_cutoff_(retention_.history_cutoff, kMaxWriteId),
+        key_bounds_(key_bounds),
+        // We use min write id for two fields below to correctly handle entries with
+        // matching hybrid time.
+        encoded_min_other_data_ht_(
+            retention_.retain_delete_markers_in_major_compaction
+                ? HybridTime::kMin : min_other_data_ht,
+            kMinWriteId),
+        could_change_key_range_(
+            !CanHaveOtherDataBefore(EncodedDocHybridTime(min_input_hybrid_time, kMinWriteId))),
         boundary_extractor_(boundary_extractor),
         packed_row_(this, schema_packing_provider, retention_.history_cutoff) {
   }
@@ -502,14 +540,47 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     return Status::OK();
   }
 
-  bool CanHaveOtherDataBefore(HybridTime ht) const {
-    return ht >= min_other_data_ht_;
+  bool CanHaveOtherDataBefore(const EncodedDocHybridTime& ht) const {
+    return ht >= encoded_min_other_data_ht_;
+  }
+
+  inline Expiration CalcExpiration(
+      bool is_ttl_row, const Expiration& popped_exp, MonoDelta ttl,
+      LazyHybridTime* doc_ht) {
+    if (within_merge_block_) {
+      return popped_exp;
+    }
+
+    const auto& last_expiration = LastExpiration();
+    if (ttl == ValueControlFields::kMaxTtl && !is_ttl_row) {
+      return last_expiration;
+    }
+
+    auto ht = doc_ht->Get();
+    if (!ht.ok()) {
+      LOG(DFATAL) << "Failed to decode doc hybrid time for expiration: " << doc_ht;
+      return last_expiration;
+    }
+    if (*ht < last_expiration.write_ht) {
+      return last_expiration;
+    }
+
+    return Expiration(*ht, ttl);
+  }
+
+  const Expiration& LastExpiration() const {
+    if (overwrite_.empty()) {
+      static const Expiration kDefaultExpiration;
+      return kDefaultExpiration;
+    }
+    return overwrite_.back().expiration;
   }
 
   rocksdb::CompactionFeed& next_feed_;
   const HistoryRetentionDirective retention_;
+  EncodedDocHybridTime encoded_history_cutoff_;
   const KeyBounds* key_bounds_;
-  const HybridTime min_other_data_ht_;
+  const EncodedDocHybridTime encoded_min_other_data_ht_;
   const bool could_change_key_range_;
   rocksdb::BoundaryValuesExtractor* boundary_extractor_;
   ValueBuffer new_value_buffer_;
@@ -586,13 +657,11 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
 // ------------------------------------------------------------------------------------------------
 
 Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) {
-  const HybridTime history_cutoff = retention_.history_cutoff;
-
   if (!feed_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(INFO) << "DocDB compaction feed, min_other_data_ht: "
-              << min_other_data_ht_
-              << ", history_cutoff=" << history_cutoff;
+              << encoded_min_other_data_ht_.ToString()
+              << ", history_cutoff=" << retention_.history_cutoff;
     feed_usage_logged_ = true;
   }
 
@@ -660,8 +729,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
-  overwrite_.resize(std::min(overwrite_.size(), num_shared_components));
-  auto ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(key));
+  if (num_shared_components < overwrite_.size()) {
+    overwrite_.erase(overwrite_.begin() + num_shared_components, overwrite_.end());
+  }
+  EncodedDocHybridTime encoded_doc_ht;
+  RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
   // truncating the stack to the number of components in the common prefix of previous and current
   // key.
@@ -683,10 +755,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // k1 col2 T9   Truncating the stack to [T10], setting prev_overwrite_ht to 10, and therefore
   //              deciding to remove this entry because 9 < 10.
   //
-  const DocHybridTime prev_overwrite_ht =
-      overwrite_.empty() ? DocHybridTime::kMin : overwrite_.back().doc_ht;
-  const Expiration prev_exp =
-      overwrite_.empty() ? Expiration() : overwrite_.back().expiration;
+  EncodedDocHybridTime prev_overwrite_ht(
+      overwrite_.empty() ? DocHybridTime::EncodedMin() : overwrite_.back().encoded_doc_ht);
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
   // was fully overwritten or deleted prior to or at the history cutoff time. The intuition is that
@@ -704,15 +774,16 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
   bool is_ttl_row = IsMergeRecord(value);
-  VLOG_WITH_FUNC(4) << "Ht: " << ht << ", prev_overwrite_ht: " << prev_overwrite_ht;
-  if (ht < prev_overwrite_ht && !is_ttl_row) {
+  VLOG_WITH_FUNC(4) << "Ht: " << encoded_doc_ht.ToString()
+                    << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString();
+  if (encoded_doc_ht < prev_overwrite_ht && !is_ttl_row) {
     return Status::OK();
   }
 
   // Every subdocument was fully overwritten at least at the time any of its parents was fully
   // overwritten.
   if (overwrite_.size() < new_stack_size - 1) {
-    overwrite_.resize(new_stack_size - 1, {prev_overwrite_ht, prev_exp});
+    overwrite_.resize(new_stack_size - 1, {prev_overwrite_ht, LastExpiration()});
   }
 
   Expiration popped_exp = overwrite_.empty() ? Expiration() : overwrite_.back().expiration;
@@ -733,11 +804,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // In case of ht > history_cutoff_, we just keep the parent document's highest known overwrite
   // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
-  if (ht.hybrid_time() > history_cutoff) {
+  if (encoded_doc_ht > encoded_history_cutoff_) {
     AssignPrevSubDocKey(key.cdata(), same_bytes);
-    overwrite_.push_back({prev_overwrite_ht, prev_exp});
+    overwrite_.push_back({prev_overwrite_ht, LastExpiration()});
     VLOG_WITH_FUNC(4)
-        << "Feed to next because of history cutoff: " << ht.hybrid_time() << ", " << history_cutoff;
+        << "Feed to next because of history cutoff: " << encoded_doc_ht.ToString() << ", "
+        << encoded_history_cutoff_.ToString();
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
     if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
@@ -749,6 +821,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   Slice value_slice = value;
   ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+  LazyHybridTime lazy_ht(encoded_doc_ht);
 
   // Check for columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
@@ -780,8 +853,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.
           doc_key_serial_ != last_passed_doc_key_serial_ &&
-          !CanHaveOtherDataBefore(ht.hybrid_time())) {
-        packed_row_.StartPacking(internal_key, doc_key_size, ht, doc_key_serial_);
+          !CanHaveOtherDataBefore(encoded_doc_ht)) {
+        packed_row_.StartPacking(internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
       if (packed_row_.active()) {
@@ -792,19 +865,19 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, ht, control_fields, encoded_control_fields_size))) {
+                column_id, value, encoded_doc_ht, control_fields, encoded_control_fields_size,
+                &lazy_ht))) {
           return Status::OK();
         }
       }
     }
   }
 
-  auto overwrite_ht = is_ttl_row ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
+  const auto& overwrite_ht = is_ttl_row || prev_overwrite_ht > encoded_doc_ht
+      ? prev_overwrite_ht : encoded_doc_ht;
 
   const auto value_type = static_cast<ValueEntryType>(
       value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
-
-  const Expiration curr_exp(ht.hybrid_time(), control_fields.ttl);
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -813,15 +886,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   //     If this is a TTL row, cache TTL (start merge block).
   //     If normal row, compute its ttl and continue.
 
-  Expiration expiration;
-  if (within_merge_block_) {
-    expiration = popped_exp;
-  } else if (ht.hybrid_time() >= prev_exp.write_ht &&
-             (curr_exp.ttl != ValueControlFields::kMaxTtl || is_ttl_row)) {
-    expiration = curr_exp;
-  } else {
-    expiration = prev_exp;
-  }
+  auto expiration = CalcExpiration(is_ttl_row, popped_exp, control_fields.ttl, &lazy_ht);
 
   overwrite_.push_back({overwrite_ht, expiration});
 
@@ -841,16 +906,15 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  if (value_type == ValueEntryType::kTombstone &&
-      !CanHaveOtherDataBefore(ht.hybrid_time())) {
+  if (value_type == ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
     return Status::OK();
   }
 
   // TODO(packed_row) combine non packed columns into packed row
   if (value_type == ValueEntryType::kPackedRow) {
     return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(), ht,
-        doc_key_serial_);
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
+        encoded_doc_ht, doc_key_serial_);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -863,9 +927,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // The key could not have possibly expired by history_cutoff_ otherwise.
   MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_.table_ttl);
   const auto has_expired = HasExpiredTTL(
-      true_ttl == expiration.ttl ? expiration.write_ht : ht.hybrid_time(),
+      true_ttl == expiration.ttl ? expiration.write_ht : VERIFY_RESULT(lazy_ht.Get()),
       true_ttl,
-      history_cutoff);
+      retention_.history_cutoff);
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
@@ -874,7 +938,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
-    if (!CanHaveOtherDataBefore(ht.hybrid_time())) {
+    if (!CanHaveOtherDataBefore(encoded_doc_ht)) {
       return Status::OK();
     }
 
@@ -884,7 +948,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   } else if (within_merge_block_) {
     if (expiration.ttl != ValueControlFields::kMaxTtl) {
       expiration.ttl += MonoDelta::FromMicroseconds(
-          overwrite_.back().expiration.write_ht.PhysicalDiff(ht.hybrid_time()));
+          overwrite_.back().expiration.write_ht.PhysicalDiff(VERIFY_RESULT(lazy_ht.Get())));
       overwrite_.back().expiration.ttl = expiration.ttl;
     }
 

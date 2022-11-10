@@ -41,6 +41,8 @@
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -162,12 +164,14 @@ class ApplyToValue {
 class PgClientServiceImpl::Impl {
  public:
   explicit Impl(
+      std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
       const XClusterSafeTimeMap* xcluster_safe_time_map)
-      : client_future_(client_future),
+      : tablet_server_(tablet_server.get()),
+        client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
@@ -361,12 +365,32 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetTserverCatalogVersionInfo(
+      const PgGetTserverCatalogVersionInfoRequestPB& req,
+      PgGetTserverCatalogVersionInfoResponsePB* resp,
+      rpc::RpcContext* context) {
+    GetTserverCatalogVersionInfoResponsePB info;
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(&info));
+    resp->mutable_entries()->Reserve(info.entries_size());
+    for (const auto& src : info.entries()) {
+      auto* dst = resp->add_entries();
+      dst->set_db_oid(src.db_oid());
+      dst->set_shm_index(src.shm_index());
+      dst->set_current_version(src.current_version());
+    }
+    return Status::OK();
+  }
+
   void Perform(
       const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
       Respond(status, resp, context);
     }
+  }
+
+  void InvalidateTableCache() {
+    table_cache_.InvalidateAll(CoarseMonoClock::Now());
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
@@ -442,6 +466,7 @@ class PgClientServiceImpl::Impl {
     return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
   }
 
+  const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
   TransactionPoolProvider transaction_pool_provider_;
@@ -482,6 +507,7 @@ class PgClientServiceImpl::Impl {
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
+    std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
     const scoped_refptr<ClockBase>& clock,
     TransactionPoolProvider transaction_pool_provider,
@@ -490,14 +516,18 @@ PgClientServiceImpl::PgClientServiceImpl(
     const XClusterSafeTimeMap* xcluster_safe_time_map)
     : PgClientServiceIf(entity),
       impl_(new Impl(
-          client_future, clock, std::move(transaction_pool_provider), scheduler,
+          tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
           xcluster_safe_time_map)) {}
 
-PgClientServiceImpl::~PgClientServiceImpl() {}
+PgClientServiceImpl::~PgClientServiceImpl() = default;
 
 void PgClientServiceImpl::Perform(
     const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
   impl_->Perform(*req, resp, &context);
+}
+
+void PgClientServiceImpl::InvalidateTableCache() {
+  impl_->InvalidateTableCache();
 }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \

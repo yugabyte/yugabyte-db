@@ -30,7 +30,7 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/twodc_write_interface.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -39,22 +39,19 @@
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
-DEFINE_bool(cdc_force_remote_tserver, false,
-            "Avoid local tserver apply optimization for CDC and force remote RPCs.");
-TAG_FLAG(cdc_force_remote_tserver, runtime);
+DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
+    "Avoid local tserver apply optimization for CDC and force remote RPCs.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
-                 "Whether or not to fail after processing a replicated split_op on the consumer.");
+    "Whether or not to fail after processing a replicated split_op on the consumer.");
 
 using namespace std::placeholders;
 
 namespace yb {
 namespace tserver {
 namespace enterprise {
-
-using rpc::Rpc;
 
 class TwoDCOutputClient : public cdc::CDCOutputClient {
  public:
@@ -63,6 +60,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       const cdc::ConsumerTabletInfo& consumer_tablet_info,
       const cdc::ProducerTabletInfo& producer_tablet_info,
       const std::shared_ptr<CDCClient>& local_client,
+      ThreadPool* thread_pool,
       rpc::Rpcs* rpcs,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
       bool use_local_tserver,
@@ -72,6 +70,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       consumer_tablet_info_(consumer_tablet_info),
       producer_tablet_info_(producer_tablet_info),
       local_client_(local_client),
+      thread_pool_(thread_pool),
       rpcs_(rpcs),
       write_handle_(rpcs->InvalidHandle()),
       apply_changes_clbk_(std::move(apply_changes_clbk)),
@@ -81,16 +80,47 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table) {}
 
   ~TwoDCOutputClient() {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    shutdown_ = true;
-    rpcs_->Abort({&write_handle_});
+    VLOG_WITH_PREFIX_UNLOCKED(1) << "Destroying TwoDCOutputClient";
+    DCHECK(shutdown_);
   }
+
+  // Sets the last compatible consumer schema version
+  void SetLastCompatibleConsumerSchemaVersion(uint32_t schema_version) override;
 
   Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
+  void Shutdown() override {
+    DCHECK(!shutdown_);
+    shutdown_ = true;
+
+    rpc::RpcCommandPtr rpc_to_abort;
+    {
+      std::lock_guard<decltype(lock_)> l(lock_);
+      if (write_handle_ != rpcs_->InvalidHandle()) {
+        rpc_to_abort = *write_handle_;
+      }
+    }
+    if (rpc_to_abort) {
+      rpc_to_abort->Abort();
+    }
+  }
 
  private:
+  // Utility function since we are inheriting shared_from_this().
+  std::shared_ptr<TwoDCOutputClient> SharedFromThis() {
+    return std::dynamic_pointer_cast<TwoDCOutputClient>(shared_from_this());
+  }
+
+  std::string LogPrefixUnlocked() const {
+    return strings::Substitute(
+        "P [$0:$1] C [$2:$3]: ",
+        producer_tablet_info_.stream_id,
+        producer_tablet_info_.tablet_id,
+        consumer_tablet_info_.table_id,
+        consumer_tablet_info_.tablet_id);
+  }
+
+  void SetLastCompatibleConsumerSchemaVersionUnlocked(uint32_t schema_version) REQUIRES(lock_);
 
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
@@ -110,8 +140,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Result<bool> ProcessMetaOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
-  Status ProcessRecord(
-      const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
+  Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
 
   Status ProcessCommitRecord(
       const std::string& status_tablet,
@@ -126,6 +155,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status SendUserTableWrites();
 
   void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
+
+  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
+  void DoWriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
 
   // Increment processed record count.
   // Returns true if all records are processed, false if there are still some pending records.
@@ -143,6 +175,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   cdc::ConsumerTabletInfo consumer_tablet_info_;
   cdc::ProducerTabletInfo producer_tablet_info_;
   std::shared_ptr<CDCClient> local_client_;
+  ThreadPool* thread_pool_;  // Use threadpool so that callbacks aren't run on reactor threads.
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle write_handle_ GUARDED_BY(lock_);
   // Retain COMMIT rpcs in-flight as these need to be cleaned up on shutdown
@@ -158,11 +191,13 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status error_status_ GUARDED_BY(lock_);
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
-  bool shutdown_ GUARDED_BY(lock_) = false;
   uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
+  std::atomic<bool> shutdown_ = false;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
+
+  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
 
   // This will cache the response to an ApplyChanges() request.
   cdc::GetChangesResponsePB twodc_resp_copy_;
@@ -187,6 +222,28 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       return std::move(_s); \
     } \
   } while (0);
+
+#define RETURN_WHEN_OFFLINE() \
+  if (shutdown_.load()) { \
+    VLOG_WITH_PREFIX_UNLOCKED(1) \
+        << "Aborting ApplyChanges since the output client is shutting down."; \
+    return; \
+  }
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersionUnlocked(
+    SchemaVersion schema_version) {
+  if (schema_version != cdc::kInvalidSchemaVersion &&
+      schema_version > last_compatible_consumer_schema_version_) {
+    LOG(INFO) << "Last compatible consumer schema version updated to  "
+              << schema_version;
+    last_compatible_consumer_schema_version_ = schema_version;
+  }
+}
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
+  std::lock_guard<decltype(lock_)> lock(lock_);
+  SetLastCompatibleConsumerSchemaVersionUnlocked(schema_version);
+}
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
   // ApplyChanges is called in a single threaded manner.
@@ -412,7 +469,8 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
     auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
       .tablet_id = tablet_id,
       .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
-      .status_tablet_id = status_tablet_id
+      .status_tablet_id = status_tablet_id,
+      .last_compatible_consumer_schema_version = last_compatible_consumer_schema_version_
     }, record);
     if (!status.ok()) {
       error_status_ = status;
@@ -445,9 +503,7 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
   }
   auto tablet_ids = std::vector<std::string>(filtered_tablets.size());
   std::transform(filtered_tablets.begin(), filtered_tablets.end(), tablet_ids.begin(),
-                 [&](const auto& tablet_ptr) {
-    return tablet_ptr->tablet_id();
-  });
+                 [&](const auto& tablet_ptr) { return tablet_ptr->tablet_id(); });
   return ProcessRecord(tablet_ids, record);
 }
 
@@ -467,6 +523,7 @@ bool TwoDCOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 
 Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
   uint32_t wait_for_version = 0;
+  uint32_t last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
   if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
     // Construct and send the update request.
     master::ProducerSplitTabletInfoPB split_info;
@@ -484,12 +541,17 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
-    bool should_halt = VERIFY_RESULT(local_client_->client->UpdateConsumerOnProducerMetadata(
+    master::UpdateConsumerOnProducerMetadataResponsePB resp;
+    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerMetadata(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id,
-        record.change_metadata_request()));
-    if (should_halt) {
-      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id;
+        record.change_metadata_request(), &resp));
+    if (resp.should_wait()) {
       wait_for_version = record.change_metadata_request().schema_version();
+      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id
+                << " due to schema change. Waiting for Schema version: " << wait_for_version;
+    }
+    if (resp.has_last_compatible_consumer_schema_version()) {
+      last_compatible_consumer_schema_version = resp.last_compatible_consumer_schema_version();
     }
   }
 
@@ -499,6 +561,7 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
     wait_for_version_ = wait_for_version;
+    SetLastCompatibleConsumerSchemaVersionUnlocked(last_compatible_consumer_schema_version);
     DCHECK(wait_for_version == 0 || done); // If (should_wait) then done.
   }
   return done;
@@ -506,19 +569,20 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
 
 void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request) {
   // TODO: This should be parallelized for better performance with M:N setups.
-  auto deadline = CoarseMonoClock::Now() +
-                  MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+  auto deadline =
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+
   std::lock_guard<decltype(lock_)> l(lock_);
   write_handle_ = rpcs_->Prepare();
   if (write_handle_ != rpcs_->InvalidHandle()) {
     // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
-    *write_handle_ = CreateCDCWriteRpc(
+    *write_handle_ = cdc::CreateCDCWriteRpc(
         deadline,
         nullptr /* RemoteTablet */,
         table_,
         local_client_->client.get(),
         write_request.get(),
-        std::bind(&TwoDCOutputClient::WriteCDCRecordDone, this, _1, _2),
+        std::bind(&TwoDCOutputClient::WriteCDCRecordDone, SharedFromThis(), _1, _2),
         UseLocalTserver());
     (**write_handle_).SendRpc();
   } else {
@@ -527,16 +591,23 @@ void TwoDCOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB>
 }
 
 void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResponsePB& response) {
-  // Handle response.
-  rpc::RpcCommandPtr retained = nullptr;
+  rpc::RpcCommandPtr retained;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     retained = rpcs_->Unregister(&write_handle_);
-    if (shutdown_) {
-      LOG(INFO) << "Aborting ApplyChanges since the client is shutting down.";
-      return;
-    }
   }
+  RETURN_WHEN_OFFLINE();
+
+  WARN_NOT_OK(
+      thread_pool_->SubmitFunc(std::bind(
+          &TwoDCOutputClient::DoWriteCDCRecordDone, SharedFromThis(), status, std::move(response))),
+      "Could not submit DoWriteCDCRecordDone to thread pool");
+}
+
+void TwoDCOutputClient::DoWriteCDCRecordDone(
+    const Status& status, const WriteResponsePB& response) {
+  RETURN_WHEN_OFFLINE();
+
   if (!status.ok()) {
     HandleError(status);
     return;
@@ -547,7 +618,7 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
   cdc_consumer_->IncrementNumSuccessfulWriteRpcs();
 
   // See if we need to handle any more writes.
-  std::unique_ptr <WriteRequestPB> write_request;
+  std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     write_request = write_strategy_->GetNextWriteRequest();
@@ -607,6 +678,8 @@ cdc::OutputClientResponse TwoDCOutputClient::PrepareResponse() {
 }
 
 void TwoDCOutputClient::SendResponse(const cdc::OutputClientResponse& resp) {
+  // If we're shutting down, then don't try to call the callback as that object might be deleted.
+  RETURN_WHEN_OFFLINE();
   apply_changes_clbk_(resp);
 }
 
@@ -628,22 +701,23 @@ bool TwoDCOutputClient::IncProcessedRecordCount() {
   return done_processing_;
 }
 
-std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
+std::shared_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     CDCConsumer* cdc_consumer,
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<CDCClient>& local_client,
+    ThreadPool* thread_pool,
     rpc::Rpcs* rpcs,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
     bool use_local_tserver,
     client::YBTablePtr global_transaction_status_table,
     bool enable_replicate_transaction_status_table) {
   return std::make_unique<TwoDCOutputClient>(
-      cdc_consumer, consumer_tablet_info, producer_tablet_info, local_client, rpcs,
+      cdc_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
       std::move(apply_changes_clbk), use_local_tserver, global_transaction_status_table,
       enable_replicate_transaction_status_table);
 }
 
-} // namespace enterprise
-} // namespace tserver
-} // namespace yb
+}  // namespace enterprise
+}  // namespace tserver
+}  // namespace yb

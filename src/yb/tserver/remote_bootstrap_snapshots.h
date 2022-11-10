@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H
+#pragma once
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -27,7 +26,7 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
   RemoteBootstrapSnapshotsComponent(RemoteBootstrapFileDownloader* downloader,
                                     tablet::RaftGroupReplicaSuperBlockPB* new_superblock);
 
-  Status CreateDirectories(const string& db_dir, FsManager* fs) override;
+  Status CreateDirectories(const std::string& db_dir, FsManager* fs) override;
   Status Download() override;
 
  private:
@@ -62,5 +61,3 @@ class RemoteBootstrapSnapshotsSource : public RemoteBootstrapSource {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_SNAPSHOTS_H

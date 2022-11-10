@@ -565,9 +565,7 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 	/* targets */
 	ybginSetupTargets(scan);
 
-	/* syscatalog version */
-	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybso->handle,
-											   yb_catalog_cache_version));
+	YbSetCatalogCacheVersion(ybso->handle, yb_catalog_cache_version);
 
 	/* execute select */
 	ybginExecSelect(scan, dir);

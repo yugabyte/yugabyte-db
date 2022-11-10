@@ -36,7 +36,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/packed_row.h"
@@ -44,7 +44,7 @@
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -97,7 +97,7 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
 Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
-                                 Schema* static_projection, Schema* non_static_projection) {
+                         Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb.
   unordered_set<ColumnId> static_columns, non_static_columns;
 
@@ -128,8 +128,8 @@ Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& colu
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
-                           const size_t begin_idx, const size_t col_count,
-                           QLRow* row, size_t *col_idx) {
+                   const size_t begin_idx, const size_t col_count,
+                   QLRow* row, size_t *col_idx) {
   for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
     RETURN_NOT_OK(table_row.GetValue(schema.column_id(i), row->mutable_column((*col_idx)++)));
   }
@@ -137,7 +137,7 @@ Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& projection,
-                           QLRow* row, size_t* col_idx) {
+                   QLRow* row, size_t* col_idx) {
   return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
 
@@ -204,12 +204,12 @@ bool JoinNonStaticRow(
 }
 
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
-                                  int index,
-                                  rapidjson::Value* document,
-                                  rapidjson::Value::MemberIterator* memberit,
-                                  rapidjson::Value::ValueIterator* valueit,
-                                  bool* last_elem_object,
-                                  IsInsert is_insert) {
+                          int index,
+                          rapidjson::Value* document,
+                          rapidjson::Value::MemberIterator* memberit,
+                          rapidjson::Value::ValueIterator* valueit,
+                          bool* last_elem_object,
+                          IsInsert is_insert) {
   *last_elem_object = false;
 
   int64_t array_index;
@@ -668,10 +668,8 @@ Status QLWriteOperation::ApplyForJsonOperators(
           return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
             column_value.ShortDebugString());
         }
-        common::Jsonb empty_jsonb;
-        RETURN_NOT_OK(empty_jsonb.FromString("{}"));
         QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
-        column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+        column.value.set_jsonb_value(common::Jsonb::kSerializedJsonbEmpty);
 
         Jsonb jsonb(column.value.jsonb_value());
         RETURN_NOT_OK(jsonb.ToRapidJson(&document));
@@ -1277,6 +1275,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       RETURN_NOT_OK(EvalCondition(
         index->where_predicate_spec()->where_expr().condition(), existing_row,
         &index_pred_existing_row));
+    } else {
+      VLOG(3) << "No where predicate for index " << index->table_id();
     }
 
     if (is_row_deleted) {
@@ -1458,6 +1458,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     RETURN_NOT_OK(expr_executor->EvalCondition(
       index->where_predicate_spec()->where_expr().condition(), new_row,
       &new_row_satisfies_idx_pred));
+    VLOG(2) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
     if (index_pred_new_row) {
       *index_pred_new_row = new_row_satisfies_idx_pred;
     }
@@ -1470,6 +1471,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
           index->table_id();
       update_this_index = true;
     }
+  } else {
+    VLOG(3) << "No where predicate for index " << index->table_id();
   }
 
   if (index_has_write_permission &&
@@ -1661,7 +1664,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                   const QLResultSet* resultset,
                                                   const size_t row_count_limit,
                                                   const size_t num_rows_skipped,
@@ -1703,22 +1706,22 @@ Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* it
   return Status::OK();
 }
 
-Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   std::vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
-  auto pair = out->mutable_read_pairs()->Add();
+  auto* pair = out->add_read_pairs();
   if (hashed_components.empty()) {
     // Empty hashed components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
+    pair->dup_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
   } else {
     DocKey doc_key(request_.hash_code(), hashed_components);
-    pair->set_key(doc_key.Encode().ToStringBuffer());
+    pair->dup_key(doc_key.Encode().AsSlice());
   }
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+  pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
   // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
   // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
   out->set_wait_policy(WAIT_ERROR);

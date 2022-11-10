@@ -30,7 +30,6 @@
  * @author Deon Nicholas (dnicholas@fb.com)
  */
 
-#ifndef ROCKSDB_LITE
 
 #include <iostream>
 #include <cctype>
@@ -41,6 +40,8 @@
 #include "yb/rocksdb/utilities/redis/redis_lists.h"
 
 #include "yb/util/test_util.h"
+
+using std::string;
 
 namespace rocksdb {
 
@@ -900,13 +901,3 @@ int main(int argc, char* argv[]) {
     return RUN_ALL_TESTS();
   }
 }
-
-#else
-#include <stdio.h>
-
-int main(int argc, char* argv[]) {
-  fprintf(stderr, "SKIPPED as redis is not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

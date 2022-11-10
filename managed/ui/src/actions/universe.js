@@ -889,3 +889,11 @@ export async function fetchSupportedReleases(pUUID) {
     throw e.response.data;
   }
 }
+
+export function validateHelmYAML(UniverseConfigureTaskParams) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
+    ...UniverseConfigureTaskParams
+  });
+
+}

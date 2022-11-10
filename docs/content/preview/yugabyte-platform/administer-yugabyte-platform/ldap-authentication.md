@@ -14,13 +14,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../oidc-authentication/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OIDC
     </a>
   </li>
   <li>
     <a href="../ldap-authentication/" class="nav-link active">
-      <i class="fas fa-cubes"></i>
+      <i class="fa-solid fa-cubes"></i>
       LDAP
     </a>
   </li>
@@ -49,11 +49,11 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
   <br>
 
-  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api). 
+  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
   - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
 
-  - The **Binding Mechanism** field allows you to select one of the following: 
+  - The **Binding Mechanism** field allows you to select one of the following:
     - **Simple Bind**, in which case you can proceed with the typical configuration.
     - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
 

@@ -3816,6 +3816,13 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 */
 	if (need_global_cache_refresh)
 		yb_need_cache_refresh = true;
+	else if (need_table_cache_refresh)
+	{
+		ereport(LOG,
+				(errmsg("invalidating table cache entry %s",
+						table_to_refresh)));
+		HandleYBStatus(YBCPgInvalidateTableCacheByTableId(table_to_refresh));
+	}
 
 	/*
 	 * Prepare to retry the query if possible.
@@ -3864,14 +3871,6 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 			/* Refresh cache now so that the retry uses latest version. */
 			if (need_global_cache_refresh)
 				YBRefreshCache();
-			else
-			{
-				/* need_table_cache_refresh */
-				ereport(LOG,
-						(errmsg("invalidating table cache entry %s",
-								table_to_refresh)));
-				HandleYBStatus(YBCPgInvalidateTableCacheByTableId(table_to_refresh));
-			}
 
 			*need_retry = true;
 		}
@@ -4028,8 +4027,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 	if (YBCIsInitDbModeEnvVarSet())
 		return;
 
-	uint64_t shared_catalog_version;
-	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	const bool need_global_cache_refresh =
 		yb_catalog_cache_version < shared_catalog_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
@@ -4521,7 +4519,7 @@ yb_attempt_to_restart_on_error(int attempt,
 
 			if (YBCIsRestartReadError(edata->yb_txn_errcode))
 			{
-				YBCRestartTransaction(false /* force_restart */);
+				YBCRestartTransaction();
 			}
 			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			{

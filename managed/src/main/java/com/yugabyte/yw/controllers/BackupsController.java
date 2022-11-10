@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
@@ -162,6 +163,20 @@ public class BackupsController extends AuthenticatedController {
     BackupPagedApiResponse backups = Backup.pagedList(query);
 
     return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(
+      value = "List Incremental backups",
+      response = CommonBackupInfo.class,
+      responseContainer = "List",
+      nickname = "listIncrementalBackups")
+  public Result listIncrementalBackups(UUID customerUUID, UUID baseBackupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup.getOrBadRequest(customerUUID, baseBackupUUID);
+    List<CommonBackupInfo> incrementalBackupChain =
+        backupUtil.getIncrementalBackupList(baseBackupUUID, customerUUID);
+
+    return PlatformResults.withData(incrementalBackupChain);
   }
 
   @ApiOperation(
@@ -346,16 +361,13 @@ public class BackupsController extends AuthenticatedController {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot create incremental backup schedules on non-ybc universes.");
       }
-      BackupUtil.validateBackupFrequency(taskParams.incrementalBackupFrequency);
-      long schedulingFrequency = taskParams.schedulingFrequency;
-      if (!StringUtils.isEmpty(taskParams.cronExpression)) {
-        schedulingFrequency = BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
-      }
-      if (schedulingFrequency <= taskParams.incrementalBackupFrequency) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Incremental backup frequency should be lower than full backup frequency.");
-      }
+      // Validate Incremental backup schedule frequency
+      long schedulingFrequency =
+          (StringUtils.isEmpty(taskParams.cronExpression))
+              ? taskParams.schedulingFrequency
+              : BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
+      BackupUtil.validateIncrementalScheduleFrequency(
+          taskParams.incrementalBackupFrequency, schedulingFrequency);
     }
     Schedule schedule =
         Schedule.create(
@@ -428,6 +440,11 @@ public class BackupsController extends AuthenticatedController {
     }
     if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
       taskParams.category = BackupCategory.YB_CONTROLLER;
+    }
+
+    if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore the ybc backup as ybc is not installed on the universe");
     }
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
@@ -658,7 +675,7 @@ public class BackupsController extends AuthenticatedController {
                   : String.format("univ-%s", backup.universeUUID.toString());
           CustomerTask.create(
               customer,
-              backup.backupUUID,
+              backup.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
@@ -752,6 +769,8 @@ public class BackupsController extends AuthenticatedController {
         && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Please provide a time unit for backup expiry");
+    } else if (!backup.backupUUID.equals(backup.baseBackupUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot edit an incremental backup");
     }
     if (taskParams.storageConfigUUID != null) {
       updateBackupStorageConfig(customerUUID, backupUUID, taskParams);

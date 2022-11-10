@@ -36,7 +36,6 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
@@ -49,7 +48,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"

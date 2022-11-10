@@ -36,6 +36,9 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
 namespace yb {
@@ -115,7 +118,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
-      if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::YQL_TABLE_TYPE) {
         return peer->tablet_metadata()->rocksdb_dir();
       }
     }
@@ -143,6 +146,22 @@ TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
   ASSERT_OK(Subprocess::Call(argv, &output));
 
   ASSERT_NE(output.find("Keys in range: 1"), string::npos);
+}
+
+TEST_F(YBTabletUtilTest, DumpManifestFile) {
+    string output;
+  ASSERT_OK(WriteData());
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+  string db_path = ASSERT_RESULT(GetTabletDbPath());
+
+  vector<string> argv = {
+    GetToolPath(kTabletUtilToolName),
+    "manifest_dump",
+    "--db=" + db_path
+  };
+
+  // Make sure LDB is not crashing
+  ASSERT_OK(Subprocess::Call(argv, &output));
 }
 
 } // namespace tools

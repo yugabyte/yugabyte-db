@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTION_INTENT_APPLIER_H
-#define YB_TABLET_TRANSACTION_INTENT_APPLIER_H
+#pragma once
 
 #include <type_traits>
 
@@ -27,16 +26,22 @@
 namespace yb {
 namespace tablet {
 
+YB_DEFINE_ENUM(RemoveReason,
+               (kApplied)(kLargeApplied)(kProcessCleanup)(kStatusReceived)(kAbortReceived)
+               (kShutdown)(kSetDB)(kCleanupAborts)(kNotFound));
+
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
   virtual Result<docdb::ApplyTransactionState> ApplyIntents(const TransactionApplyData& data) = 0;
   virtual Status RemoveIntents(
-      const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
+      const RemoveIntentsData& data, RemoveReason reason,
+      const TransactionId& transaction_id) = 0;
   virtual Status RemoveIntents(
-      const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
+      const RemoveIntentsData& data, RemoveReason reason,
+      const TransactionIdSet& transactions) = 0;
 
-  virtual Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
+  virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 
   // See TransactionParticipant::WaitMinRunningHybridTime below
   virtual void MinRunningHybridTimeSatisfied() = 0;
@@ -47,5 +52,3 @@ class TransactionIntentApplier {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_TRANSACTION_INTENT_APPLIER_H

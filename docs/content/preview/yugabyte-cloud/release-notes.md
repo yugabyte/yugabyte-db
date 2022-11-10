@@ -10,6 +10,26 @@ type: docs
 
 ## Releases
 
+### November 4, 2022
+
+**New Features**
+
+- Ability to reset slow queries for faster debugging of slow-running queries.
+- Ability to set a preferred region to tune the read and write latency for specific regions. Designating one region as preferred can reduce the number of network hops needed to process requests. The preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Ability to view details of task progress for cluster edit operations for better monitoring.
+
+### October 24, 2022
+
+**New Features**
+
+- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or number of YSQL connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
 ### September 28, 2022
 
 **Database**
@@ -194,6 +214,8 @@ This release includes the following features:
 
 ## Cloud provider regions
 
+### GCP
+
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
@@ -224,6 +246,8 @@ The following **GCP regions** are available:
 - Los Angeles (us-west2)
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
+
+### AWS
 
 The following **AWS regions** are available:
 
@@ -257,9 +281,11 @@ The following **AWS regions** are available:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 - **Read Replicas** - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
+- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
 
-### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
+### Known issues in Cloud Shell
 
-- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

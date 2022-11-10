@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FILE_SYSTEM_POSIX_H
-#define YB_UTIL_FILE_SYSTEM_POSIX_H
+#pragma once
 
 #include "yb/util/file_system.h"
 
@@ -112,5 +111,3 @@ class PosixWritableFile : public WritableFile {
 };
 
 } // namespace rocksdb
-
-#endif  // YB_UTIL_FILE_SYSTEM_POSIX_H

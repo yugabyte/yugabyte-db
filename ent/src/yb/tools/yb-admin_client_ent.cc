@@ -51,7 +51,7 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
@@ -1600,8 +1600,26 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
+Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+  req.set_role(role);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ChangeXClusterRole(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error changing role: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Changed role successfully" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
-                                                                 bool is_enabled) {
+                                                         bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
   req.set_producer_id(producer_id);
@@ -1746,6 +1764,86 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::GetReplicationInfo(
+    const std::string& universe_uuid) {
+
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  if (!universe_uuid.empty()) {
+    req.set_universe_id(universe_uuid);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetReplicationStatus(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting replication status: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << resp.DebugString();
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
+  master::GetXClusterEstimatedDataLossRequestPB req;
+  master::GetXClusterEstimatedDataLossResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster estimated data loss values: " << resp.error().status().message()
+         << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& data_loss : resp.namespace_data_loss()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
+
+    // Use 1 second granularity.
+    int64_t data_loss_s = MonoDelta::FromMicroseconds(data_loss.data_loss_us()).ToSeconds();
+    AddStringField(
+        "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
+  master::GetXClusterSafeTimeRequestPB req;
+  master::GetXClusterSafeTimeResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& safe_time : resp.namespace_safe_times()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    const auto& st = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField("safe_time", HybridTimeToString(st), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(st.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
 }
 
 }  // namespace enterprise

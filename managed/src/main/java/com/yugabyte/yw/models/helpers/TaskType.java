@@ -47,7 +47,7 @@ public enum TaskType {
 
   CreatePitrConfig("CreatePitrConfig"),
 
-  RestoreSnapshot("RestoreSnapshot"),
+  RestoreSnapshotSchedule("RestoreSnapshotSchedule"),
 
   EditUniverse("EditUniverse"),
 
@@ -61,6 +61,9 @@ public enum TaskType {
   ImportIntoTable("ImportIntoTable"),
 
   RunApiTriggeredHooks("RunApiTriggeredHooks"),
+
+  AddOnClusterCreate("AddOnClusterCreate"),
+  AddOnClusterDelete("AddOnClusterDelete"),
 
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
@@ -84,6 +87,8 @@ public enum TaskType {
   CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
 
   TlsToggle("upgrade.TlsToggle"),
+
+  NodeCertReloadTask("subtasks.NodeCertReloadTask"),
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
@@ -136,19 +141,22 @@ public enum TaskType {
 
   UpdateDiskSize("UpdateDiskSize"),
 
+  UpdateKubernetesDiskSize("UpdateKubernetesDiskSize"),
+
+  KubernetesCheckStorageClass("subtasks.KubernetesCheckStorageClass"),
+
   StartMasterOnNode("StartMasterOnNode"),
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
+  SyncXClusterConfig("SyncXClusterConfig"),
+
+  CreateSupportBundle("CreateSupportBundle"),
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
   EditXClusterConfig("EditXClusterConfig"),
 
   RestartXClusterConfig("RestartXClusterConfig"),
-
-  DeleteXClusterConfig("DeleteXClusterConfig"),
-
-  SyncXClusterConfig("SyncXClusterConfig"),
-
-  CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey("subtasks.AddAuthorizedKey"),
@@ -274,6 +282,8 @@ public enum TaskType {
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
+  XClusterConfigSetStatusForTables("subtasks.xcluster.XClusterConfigSetStatusForTables"),
+
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
   XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
@@ -386,6 +396,8 @@ public enum TaskType {
 
   RebootServer("subtasks.RebootServer"),
 
+  HardRebootServer("subtasks.HardRebootServer"),
+
   RunHooks("subtasks.RunHooks"),
 
   UpdateUniverseTags("subtasks.UpdateUniverseTags"),
@@ -398,7 +410,9 @@ public enum TaskType {
 
   DisableYbc("DisableYbc"),
 
-  InstanceExistCheck("subtasks.InstanceExistCheck");
+  InstanceExistCheck("subtasks.InstanceExistCheck"),
+
+  AddGFlagMetadata("AddGFlagMetadata");
 
   private String relativeClassPath;
 

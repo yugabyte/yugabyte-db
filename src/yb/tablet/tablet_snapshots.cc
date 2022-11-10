@@ -35,7 +35,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -43,12 +43,13 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
-TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
 namespace yb {
 namespace tablet {
@@ -250,8 +251,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
-    restore_metadata.index_map.emplace(request.indexes());
+    RETURN_NOT_OK(SchemaFromPB(
+        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
@@ -260,12 +262,13 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(entry.schema(), table_metadata->schema.get_ptr()));
-    table_metadata->index_map.emplace(entry.indexes());
-    table_metadata->table_id = entry.table_id();
+    RETURN_NOT_OK(SchemaFromPB(
+        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
+    table_metadata->table_id = entry.table_id().ToBuffer();
   }
-
-  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(
+      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -279,49 +282,60 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
-  // Restore snapshot to temporary folder and create rocksdb out of it.
-  const auto& request = *operation->request();
-  LOG_WITH_PREFIX(INFO) << "Restoring only rows with db oid " << request.db_oid();
-  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(request.snapshot_id()));
-  auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
-  auto dir = VERIFY_RESULT(RestoreToTemporary(snapshot_id, restore_at));
-  rocksdb::Options rocksdb_options;
-  std::string log_prefix = LogPrefix();
-  // Remove ": " to patch suffix.
-  log_prefix.erase(log_prefix.size() - 2);
-  tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+  docdb::DocWriteBatch write_batch(tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
 
-  docdb::DocWriteBatch write_batch(
-      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
-  FetchState restoring_state(doc_db, ReadHybridTime::SingleTime(restore_at));
-  FetchState existing_state(tablet().doc_db(), ReadHybridTime::Max());
-
-  RETURN_NOT_OK(restoring_state.SetPrefix(""));
-  RETURN_NOT_OK(existing_state.SetPrefix(""));
-
-  TabletRestorePatch restore_patch(
-      &existing_state, &restoring_state, &write_batch, request.db_oid());
-
-  RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
-
-  size_t total_changes = restore_patch.TotalTickerCount();
-
-  if (total_changes != 0 || VLOG_IS_ON(3)) {
+  auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
+      operation->request()->ToGoogleProtobuf(), &write_batch));
+  if (restore_patch.TotalTickerCount() != 0 || VLOG_IS_ON(3)) {
     LOG(INFO) << "PITR: Sequences data tablet: " << tablet().tablet_id()
               << ", " << restore_patch.TickersToString();
   }
 
   WriteToRocksDB(
       &write_batch, operation->WriteHybridTime(), operation->op_id(), &tablet(), std::nullopt);
-
   return Status::OK();
+}
+
+Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
+    const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch) {
+  FetchState existing_state(tablet().doc_db(), ReadHybridTime::Max());
+  RETURN_NOT_OK(existing_state.SetPrefix(""));
+
+  // The non-empty snapshot id means the snapshot being used to restore contains this sequences data
+  // tablet, so we construct a restore patch based on db_oid. Otherwise, we clean up current state.
+  if (!request.snapshot_id().empty()) {
+    // Restore snapshot to temporary folder and create rocksdb out of it.
+    LOG_WITH_PREFIX(INFO) << "Restoring only rows with db oid " << request.db_oid();
+    auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(request.snapshot_id()));
+    auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
+    auto dir = VERIFY_RESULT(RestoreToTemporary(snapshot_id, restore_at));
+    rocksdb::Options rocksdb_options;
+    std::string log_prefix = LogPrefix();
+    // Remove ": " to patch suffix.
+    log_prefix.erase(log_prefix.size() - 2);
+    tablet().InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+    auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
+    auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+    FetchState restoring_state(doc_db, ReadHybridTime::SingleTime(restore_at));
+    RETURN_NOT_OK(restoring_state.SetPrefix(""));
+
+    TabletRestorePatch restore_patch(
+        &existing_state, &restoring_state, write_batch, request.db_oid());
+    RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    return std::move(restore_patch);
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Cleaning only rows with db oid " << request.db_oid();
+    TabletRestorePatch restore_patch(
+        &existing_state, nullptr, write_batch, request.db_oid());
+    RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    return std::move(restore_patch);
+  }
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   const auto destroy = !dir.empty();
@@ -393,8 +407,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     auto tablet_metadata_file = TabletMetadataFile(dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
     if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
-      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+                            << " , force overwrite of schema packing " << !is_pitr_restore;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
+          tablet_metadata_file,
+          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
+              : docdb::OverwriteSchemaPacking::kTrue));
+      need_flush = true;
     }
   }
 
@@ -456,7 +475,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const auto& snapshot_id = operation.request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
-      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();

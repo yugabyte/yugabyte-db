@@ -54,7 +54,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
@@ -73,6 +73,8 @@
 
 using std::unordered_set;
 using std::vector;
+using std::string;
+using std::numeric_limits;
 using strings::Substitute;
 
 DEFINE_string(

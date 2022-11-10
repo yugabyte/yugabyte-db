@@ -21,7 +21,6 @@
 #include <vector>
 
 #include <boost/range/iterator_range_core.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -31,7 +30,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
@@ -247,7 +246,8 @@ bool ShouldApplySeparately(OperationType operation_type) {
     case OperationType::kTruncate: FALLTHROUGH_INTENDED;
     case OperationType::kSplit: FALLTHROUGH_INTENDED;
     case OperationType::kEmpty: FALLTHROUGH_INTENDED;
-    case OperationType::kHistoryCutoff:
+    case OperationType::kHistoryCutoff: FALLTHROUGH_INTENDED;
+    case OperationType::kChangeAutoFlagsConfig:
       return true;
 
     case OperationType::kWrite: FALLTHROUGH_INTENDED;

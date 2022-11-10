@@ -14,25 +14,31 @@ import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.CommonBackupInfo;
+import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Backup.BackupCategory;
-import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -58,7 +64,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
+import org.yb.client.SnapshotInfo;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
 
@@ -76,6 +84,7 @@ public class BackupUtil {
   public static final int UUID_LENGTH = 36;
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
+  public static final long MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS = 1800000L;
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
   public static final String YBC_BACKUP_IDENTIFIER = "ybc_backup";
   public static final String YB_CLOUD_COMMAND_TYPE = "table";
@@ -104,15 +113,44 @@ public class BackupUtil {
     TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
   }
 
-  public static TableType getTableType(String tableType) {
-    switch (tableType) {
-      case "YSQL":
-        return TableType.PGSQL_TABLE_TYPE;
-      case "YCQL":
-        return TableType.YQL_TABLE_TYPE;
-      default:
-        throw new IllegalArgumentException("Unexpected table type " + tableType);
+  public enum ApiType {
+    YSQL("YSQL"),
+    YCQL("YCQL");
+
+    private final String value;
+
+    ApiType(String value) {
+      this.value = value;
     }
+
+    public String toString() {
+      return this.value;
+    }
+  }
+
+  public static BiMap<ApiType, TableType> API_TYPE_TO_TABLE_TYPE_MAP = HashBiMap.create();
+
+  static {
+    API_TYPE_TO_TABLE_TYPE_MAP.put(ApiType.YSQL, TableType.PGSQL_TABLE_TYPE);
+    API_TYPE_TO_TABLE_TYPE_MAP.put(ApiType.YCQL, TableType.YQL_TABLE_TYPE);
+  }
+
+  public static String getKeyspaceName(ApiType apiType, String keyspaceName) {
+    return apiType.toString().toLowerCase() + "." + keyspaceName;
+  }
+
+  public static boolean allSnapshotsSuccessful(List<SnapshotInfo> snapshotInfoList) {
+    return !snapshotInfoList.stream().anyMatch(info -> info.getState().equals(State.FAILED));
+  }
+
+  public static Metric buildMetricTemplate(
+      PlatformMetrics metric, Universe universe, PitrConfig pitrConfig, double value) {
+    return MetricService.buildMetricTemplate(
+            metric, universe, MetricService.DEFAULT_METRIC_EXPIRY_SEC)
+        .setKeyLabel(KnownAlertLabels.PITR_CONFIG_UUID, pitrConfig.getUuid().toString())
+        .setLabel(KnownAlertLabels.TABLE_TYPE.labelName(), pitrConfig.getTableType().toString())
+        .setLabel(KnownAlertLabels.NAMESPACE_NAME.labelName(), pitrConfig.getDbName())
+        .setValue(value);
   }
 
   /**
@@ -159,6 +197,18 @@ public class BackupUtil {
     }
   }
 
+  public static void validateIncrementalScheduleFrequency(
+      long frequency, long fullBackupFrequency) {
+    if (frequency < MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Minimum incremental backup schedule duration is 30 mins");
+    }
+    if (frequency >= fullBackupFrequency) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Incremental backup frequency should be lower than full backup frequency.");
+    }
+  }
+
   public static long extractBackupSize(JsonNode backupResponse) {
     long backupSize = 0L;
     JsonNode backupSizeJsonNode = backupResponse.get(BACKUP_SIZE_FIELD);
@@ -173,45 +223,55 @@ public class BackupUtil {
   public static BackupResp toBackupResp(
       Backup backup, CustomerConfigService customerConfigService) {
 
-    Boolean isStorageConfigPresent = true;
-    Boolean isUniversePresent = true;
-    try {
-      CustomerConfig config =
-          customerConfigService.getOrBadRequest(
-              backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
-    } catch (PlatformServiceException e) {
-      isStorageConfigPresent = false;
-    }
-    try {
-      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
-    } catch (PlatformServiceException e) {
-      isUniversePresent = false;
+    Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
+    Boolean isUniversePresent = checkIfUniverseExists(backup);
+    List<Backup> backupChain =
+        Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
+    Date lastIncrementDate = null;
+    boolean hasIncrements = false;
+    BackupState lastBackupState = BackupState.Completed;
+    if (CollectionUtils.isNotEmpty(backupChain)) {
+      lastIncrementDate = backupChain.get(0).getCreateTime();
+      lastBackupState = backupChain.get(0).state;
+      hasIncrements = backupChain.size() > 1;
     }
     Boolean onDemand = (backup.getScheduleUUID() == null);
     BackupRespBuilder builder =
         BackupResp.builder()
-            .createTime(backup.getCreateTime())
-            .updateTime(backup.getUpdateTime())
             .expiryTime(backup.getExpiry())
-            .completionTime(backup.getCompletionTime())
             .onDemand(onDemand)
-            .sse(backup.getBackupInfo().sse)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
-            .backupUUID(backup.backupUUID)
-            .taskUUID(backup.taskUUID)
             .scheduleUUID(backup.getScheduleUUID())
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
             .category(backup.category)
-            .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
-            .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
-            .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
             .storageConfigType(backup.getBackupInfo().storageConfigType)
-            .state(backup.state);
+            .fullChainSizeInBytes(backup.getBackupInfo().fullChainSizeInBytes)
+            .commonBackupInfo(getCommonBackupInfo(backup))
+            .hasIncrementalBackups(hasIncrements)
+            .lastIncrementalBackupTime(lastIncrementDate)
+            .lastBackupState(lastBackupState);
+    return builder.build();
+  }
+
+  public static CommonBackupInfo getCommonBackupInfo(Backup backup) {
+    CommonBackupInfoBuilder builder = CommonBackupInfo.builder();
+    builder
+        .createTime(backup.getCreateTime())
+        .updateTime(backup.getUpdateTime())
+        .completionTime(backup.getCompletionTime())
+        .backupUUID(backup.backupUUID)
+        .baseBackupUUID(backup.baseBackupUUID)
+        .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
+        .state(backup.state)
+        .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
+        .storageConfigUUID(backup.storageConfigUUID)
+        .taskUUID(backup.taskUUID)
+        .sse(backup.getBackupInfo().sse);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
           KeyspaceTablesList.builder()
@@ -232,6 +292,7 @@ public class BackupUtil {
                   b -> {
                     return KeyspaceTablesList.builder()
                         .keyspace(b.getKeyspace())
+                        .allTables(b.allTables)
                         .tablesList(b.getTableNames())
                         .backupSizeInBytes(b.backupSizeInBytes)
                         .defaultLocation(b.storageLocation)
@@ -242,6 +303,14 @@ public class BackupUtil {
       builder.responseList(kTLists);
     }
     return builder.build();
+  }
+
+  public List<CommonBackupInfo> getIncrementalBackupList(UUID baseBackupUUID, UUID customerUUID) {
+    List<Backup> backupChain = Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
+    if (CollectionUtils.isEmpty(backupChain)) {
+      return new ArrayList<>();
+    }
+    return backupChain.stream().map(BackupUtil::getCommonBackupInfo).collect(Collectors.toList());
   }
 
   // For creating new backup we would set the storage location based on
@@ -588,5 +657,13 @@ public class BackupUtil {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
         .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
+  }
+
+  public static boolean checkIfStorageConfigExists(Backup backup) {
+    return CustomerConfig.get(backup.customerUUID, backup.storageConfigUUID) != null;
+  }
+
+  public static boolean checkIfUniverseExists(Backup backup) {
+    return Universe.maybeGet(backup.universeUUID).isPresent();
   }
 }

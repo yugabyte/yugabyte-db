@@ -15,9 +15,7 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
-#include <gflags/gflags.h>
-
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
 DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
@@ -47,8 +45,7 @@ DEFINE_int32(ysql_request_limit, 1024,
 DEFINE_uint64(ysql_prefetch_limit, 1024,
               "Maximum number of rows to prefetch");
 
-DEFINE_double(ysql_backward_prefetch_scale_factor, 1.,
-              "DEPRECATED. Feature has been removed.");
+DEPRECATE_FLAG(double, ysql_backward_prefetch_scale_factor, "11_2022");
 
 DEFINE_uint64(ysql_session_max_batch_size, 3072,
               "Use session variable ysql_session_max_batch_size instead. "
@@ -78,8 +75,7 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
 
-DEFINE_bool(ysql_enable_update_batching, true,
-            "DEPRECATED. Feature has been removed");
+DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
@@ -97,6 +93,9 @@ DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
+
+DEFINE_bool(
+    ysql_colocate_database_by_default, false, "Enable colocation by default on each database.");
 
 DEFINE_bool(ysql_beta_feature_tablespace_alteration, false,
             "Whether to enable the incomplete 'tablespace_alteration' beta feature");

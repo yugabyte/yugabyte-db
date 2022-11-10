@@ -395,7 +395,7 @@ TEST_F(PgOnConflictTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
       char value[2] = "0";
       while (!stop.load(std::memory_order_acquire)) {
         int key = RandomUniformInt(1, kKeys);
-        value[0] = RandomUniformInt('A', 'Z');
+        value[0] = RandomUniformInt<uint8_t>('A', 'Z');
         auto status = connection.ExecuteFormat(
             "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
             "UPDATE SET v = CONCAT(test.v, '$1')",

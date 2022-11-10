@@ -18,13 +18,13 @@ type: docs
 
 ### Run all tests
 
-To run all the C++ tests you can use following command:
+To run all the C++ tests, you can use following command:
 
 ```sh
 ./yb_build.sh release --ctest
 ```
 
-If you omit release argument, it will run java tests against debug YugabyteDB build.
+If you omit the release argument, it will use the debug build type.
 
 ### Run specific tests
 
@@ -44,13 +44,13 @@ To run a specific sub-test, for example the `TestMonoTime.TestCondition` sub-tes
 
 ### Run all tests
 
-Given that you've already built C++ and Java code you can run Java tests using following command:
+After you've built the C++ and Java code, run the Java tests using the following command:
 
 ```sh
 ./yb_build.sh release --scb --sj --java-tests
 ```
 
-If you omit release argument, it will run java tests against debug YugabyteDB build, so you should then either build debug binaries with `./yb_build.sh` or omit `--scb` and then it will build debug binaries automatically.
+If you omit the release argument, it will run Java tests against the debug build, so you should either omit `--scb` or first build debug binaries by running `./yb_build.sh` with no test options.
 
 ### Run specific tests
 
@@ -63,28 +63,18 @@ To run specific test:
 To run a specific Java sub-test within a test file use the # syntax, for example:
 
 ```sh
-./yb_build.sh release --scb --sj --java-test org.yb.client.TestYBClient#testClientCreateDestroy
+./yb_build.sh release --scb --sj --java-test 'org.yb.client.TestYBClient#testClientCreateDestroy'
 ```
 
 ### Viewing log outputs
 
-You can find Java tests output in corresponding directory (you might need to change yb-client to respective Java tests module):
+You can find Java test output in files typically matching this pattern: `java/*/target/surefire-reports_*/*-output.txt`.
 
-```sh
-$ ls -1 java/yb-client/target/surefire-reports/
-TEST-org.yb.client.TestYBClient.xml
-org.yb.client.TestYBClient-output.txt
-org.yb.client.TestYBClient.testAffinitizedLeaders.stderr.txt
-org.yb.client.TestYBClient.testAffinitizedLeaders.stdout.txt
-…
-org.yb.client.TestYBClient.testWaitForLoadBalance.stderr.txt
-org.yb.client.TestYBClient.testWaitForLoadBalance.stdout.txt
-org.yb.client.TestYBClient.txt
+Test output includes the log location. For example:
+
 ```
-
-{{< note title="Note" >}}
-The YB logs are contained in the output file now.
-{{< /note >}}
+[postprocess_test_result.py:183] 2022-10-28 10:49:43,664 INFO: Log path: /path/to/repo/java/yb-pgsql/target/surefire-reports_org.yb.pgsql.TestIndexBackfill__insertsWhileCreatingIndex/org.yb.pgsql.TestIndexBackfill-output.txt
+```
 
 ### YSQL Java tests
 
@@ -100,8 +90,6 @@ Each schedule has a serial order of files to run.  For example, the `yb_arrays_s
 and output to `build/latest/postgres_build/src/test/regress/results/yb_pg_int8.out` because the first `test:` line in `yb_arrays_schedule` is `test: yb_pg_int8`.
 This will be compared with `build/latest/postgres_build/src/test/regress/expected/yb_pg_int8.out` for pass/fail.
 Note the `build/latest/postgres_build` prefix.  The source files (`src/postgres/src/test/regress/sql/foo.sql`) get copied there (`build/latest/postgres_build/src/test/regress/src/foo.sql`).
-If a build fails to pick up the changes and fails to copy them, you can remove `build/latest/postgres_build` to force a recopy or copy them yourself manually.
-
 
 {{< tip title="Tips" >}}
 

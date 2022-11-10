@@ -18,6 +18,8 @@ To review activity for your entire cloud, use the [**Activity** tab](../../cloud
 
 ![Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
 
+To view cluster activity details, click the activity in the list to display the **Activity Details** sheet.
+
 ## Logged activity
 
 The following table lists the cluster activity that is logged.

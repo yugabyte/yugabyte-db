@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TIMESTAMP_H_
-#define YB_UTIL_TIMESTAMP_H_
+#pragma once
 
 #include <inttypes.h>
 #include <string>
@@ -82,5 +81,3 @@ inline std::ostream &operator <<(std::ostream &o, const Timestamp &timestamp) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_TIMESTAMP_H_

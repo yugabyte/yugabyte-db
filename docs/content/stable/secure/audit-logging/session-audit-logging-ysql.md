@@ -1,13 +1,11 @@
 ---
-title: Session-Level Audit Logging in YSQL
-headerTitle: Session-Level Audit Logging in YSQL
-linkTitle: Session-Level Audit Logging in YSQL
-description: Session-Level Audit Logging in YSQL.
-headcontent: Session-Level Audit Logging in YSQL.
+title: Session-level audit logging in YSQL
+headerTitle: Session-level audit logging in YSQL
+linkTitle: Session-level audit logging
+description: Session-level audit logging in YSQL.
 image: /images/section_icons/secure/authentication.png
 menu:
   stable:
-    name: Session-Level Audit Logging
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760

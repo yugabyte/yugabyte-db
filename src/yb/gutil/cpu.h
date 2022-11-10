@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef BASE_CPU_H_
-#define BASE_CPU_H_
+#pragma once
 
 #include <string>
 
@@ -101,5 +100,3 @@ class CPU {
 };
 
 }  // namespace base
-
-#endif  // BASE_CPU_H_

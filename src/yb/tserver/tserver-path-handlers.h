@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TSERVER_PATH_HANDLERS_H
-#define YB_TSERVER_TSERVER_PATH_HANDLERS_H
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -70,6 +69,8 @@ class TabletServerPathHandlers {
                             Webserver::WebResponse* resp);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp);
+  void HandleIntentsDBPage(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req,
@@ -87,4 +88,3 @@ class TabletServerPathHandlers {
 
 } // namespace tserver
 } // namespace yb
-#endif /* YB_TSERVER_TSERVER_PATH_HANDLERS_H */

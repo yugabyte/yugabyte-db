@@ -41,17 +41,16 @@
 #include "yb/master/tablet_split_manager.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using std::shared_ptr;
+using std::vector;
 
-DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
-             "Amount of time the catalog manager background task thread waits "
-             "between runs");
-TAG_FLAG(catalog_manager_bg_task_wait_ms, runtime);
+DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
+    "Amount of time the catalog manager background task thread waits between runs");
 
 DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
@@ -71,6 +70,8 @@ DECLARE_bool(enable_ysql);
 
 namespace yb {
 namespace master {
+
+typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
     : closing_(false),
@@ -228,6 +229,27 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->CleanUpDeletedTables();
       }
 
+      {
+        // Find if there have been any new tables added to any namespace with an active cdcsdk
+        // stream.
+        TableStreamIdsMap table_unprocessed_streams_map;
+        // In case of master leader restart of leadership changes, we will scan all streams for
+        // unprocessed tables, but from the second iteration onwards we will only consider the
+        // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
+        Status s =
+            catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
+
+        if (s.ok() && !table_unprocessed_streams_map.empty()) {
+          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
+              table_unprocessed_streams_map);
+        }
+        if (!s.ok()) {
+          YB_LOG_EVERY_N(WARNING, 10)
+              << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
+              << s.ToString();
+        }
+      }
+
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
         Status s = catalog_manager_->SysCatalogRespectLeaderAffinity();
@@ -240,6 +262,9 @@ void CatalogManagerBgTasks::Run() {
         // Start the tablespace background task.
         catalog_manager_->StartTablespaceBgTaskIfStopped();
       }
+
+      // Restart CDCSDK parent tablet deletion bg task.
+      catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
 
       // Run background tasks related to XCluster & CDC Schema.
       WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");

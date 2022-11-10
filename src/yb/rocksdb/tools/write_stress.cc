@@ -69,7 +69,7 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -90,7 +90,6 @@ int main() {
 #include "yb/rocksdb/db/filename.h"
 
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_int32(key_size, 10, "Key size");
@@ -257,9 +256,6 @@ class WriteStress {
     }
     threads_.clear();
 
-// Skip checking for leaked files in ROCKSDB_LITE since we don't have access to
-// function GetLiveFilesMetaData
-#ifndef ROCKSDB_LITE
     // let's see if we leaked some files
     CHECK_OK(db_->PauseBackgroundWork());
     std::vector<LiveFileMetaData> metadata;
@@ -288,7 +284,6 @@ class WriteStress {
       }
     }
     CHECK_OK(db_->ContinueBackgroundWork());
-#endif  // !ROCKSDB_LITE
 
     return 0;
   }

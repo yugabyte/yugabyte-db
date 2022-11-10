@@ -24,6 +24,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 DEFINE_int32(update_permissions_cache_msecs, 2000,
              "How often the roles' permissions cache should be updated. 0 means never update it");
 

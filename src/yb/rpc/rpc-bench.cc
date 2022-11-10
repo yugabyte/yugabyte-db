@@ -157,4 +157,3 @@ TEST_F(RpcBench, BenchmarkCalls) {
 
 } // namespace rpc
 } // namespace yb
-

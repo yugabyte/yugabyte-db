@@ -27,6 +27,12 @@ aside.td-sidebar {
   background: rgb(246, 246, 248);
 
   .left-sidebar-wrap {
+    height: calc(100vh - 129px);
+    position: sticky;
+    margin-top: 0;
+    top: 129px;
+    transition: width 0.5s linear;
+
     &.parent-active-remove::before {
       content: "";
       background: #f5f1f2;
@@ -36,12 +42,6 @@ aside.td-sidebar {
       z-index: 3;
       left: 0;
     }
-
-    height: calc(100vh - 129px);
-    position: sticky;
-    margin-top: 129px;
-    top: 129px;
-    transition: width 0.5s linear;
 
     .hover-collapse {
       display: none;
@@ -318,7 +318,7 @@ aside.td-sidebar {
     display: flex;
     flex-flow: column;
     transition: width 0.5s linear, opacity 0.2s 0.3s linear;
-    min-width: 220px;
+    min-width: 268px;
 
     &.collapse {
       width: 0;
@@ -326,26 +326,23 @@ aside.td-sidebar {
 
     &::-webkit-scrollbar {
       width: 5px;
+      height: 5px;
     }
 
     &::-webkit-scrollbar-thumb {
-      background: var(--theme-color);
+      background: #b7c3cb;
       border-radius: 6px;
-
-      &:hover {
-        background: #322965;
-      }
     }
 
     > ul {
       padding-left: 0;
 
-      >li:not(.bottom-link):not(.arrow-menu):not(:last-child),
-      >li.unlink-list:not(:last-child) {
+      > li:not(.bottom-link):not(.arrow-menu):not(:last-child),
+      > li.unlink-list:not(:last-child) {
         border-bottom: 1px solid rgba(209, 214, 223, 0.3);
       }
 
-      >li.unlink-list:not(:last-child) {
+      > li.unlink-list:not(:last-child) {
         border-bottom: 0 !important;
       }
 
@@ -514,10 +511,14 @@ aside.td-sidebar {
                 background: none !important;
                 transform: none;
                 color: #fff;
-                line-height: normal;
-                top: -2px;
+                line-height: 9px;
+                top: 1px;
                 font-weight: 3000;
-                left: 3px;
+                left: -1px;
+                font-style: normal;
+                right: 0;
+                text-align: center;
+                margin: 0 auto;
               }
 
               &::after {
@@ -528,8 +529,8 @@ aside.td-sidebar {
             &.open > i::before {
               content: "-";
               font-size: 16px;
-              line-height: 12px;
-              padding-left: 1px;
+              line-height: 9px;
+              padding-left: 0;
             }
 
             > ul {
@@ -783,7 +784,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul {
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul > li > a,
 aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > a {
-  font-size: 15.5px;
+  font-size: 15px;
   padding: 4px 0;
   padding-left: 5px;
 }
@@ -813,6 +814,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list > li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
   background: var(--theme-color) !important;
+  content: '' !important;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > a,
@@ -1114,7 +1116,7 @@ aside.td-sidebar nav > ul > li.view-all-products {
         }
       }
 
-      >li:hover > i::before {
+      > li:hover > i::before {
         content: "+";
         font-size: 12px;
         line-height: normal;
@@ -1174,7 +1176,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     }
   }
 
-  >ul {
+  > ul {
     padding-left: 0;
 
     a {
@@ -1221,7 +1223,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
 
 @media (max-width: 947px) and (min-width: 768px) {
   .td-main main {
-    max-width: calc(100% - 237px) !important;
+    //max-width: calc(100% - 237px) !important;
     padding-left: 1rem !important;
   }
 }
@@ -1232,8 +1234,9 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     padding: 14px 20px;
     background: #eee;
     margin-left: -15px;
-    min-width: calc(100%);
+    min-width: calc(100% + 15px);
     position: fixed;
+    top: 75px;
     font-weight: bold;
     cursor: pointer;
   }
@@ -1246,7 +1249,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     width: 100%;
     padding-left: 15px;
     min-width: calc(100% - 15px);
-    top: -3px !important;
+    top: 127px !important;
     height: calc(100vh - 126px);
   }
 
@@ -1281,7 +1284,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     top: 17px;
   }
 
-  body:not(.td-home) .td-main main {
+  body:not(.td-home-) .td-main main {
     padding-top: 30px;
     margin-top: 7rem;
   }

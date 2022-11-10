@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
@@ -27,6 +26,8 @@
 #include "yb/rocksdb/db/transaction_log_impl.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -286,4 +287,3 @@ Status TransactionLogIteratorImpl::OpenLogReader(const LogFile* logFile) {
   return Status::OK();
 }
 }  //  namespace rocksdb
-#endif  // ROCKSDB_LITE

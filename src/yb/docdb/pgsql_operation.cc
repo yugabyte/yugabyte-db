@@ -30,7 +30,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -40,7 +40,7 @@
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/algorithm_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -48,13 +48,14 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
-DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
-              "DEPRECATED. Has no affect, use ysql_scan_deadline_margin_ms to control the client "
-              "timeout");
+DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
@@ -77,6 +78,9 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
 
 DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
+DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+            "Whether to enable packed row for colocated tables.");
+
 DEFINE_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
@@ -92,8 +96,8 @@ namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
 Status CreateProjection(const Schema& schema,
-                                const PgsqlColumnRefsPB& column_refs,
-                                Schema* projection) {
+                        const PgsqlColumnRefsPB& column_refs,
+                        Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
@@ -122,10 +126,11 @@ Status CreateProjection(
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
 }
 
-void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueWriteBatchPB *out) {
-  auto pair = out->mutable_read_pairs()->Add();
-  pair->set_key(encoded_key);
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+void AddIntent(
+    const std::string& encoded_key, WaitPolicy wait_policy, LWKeyValueWriteBatchPB *out) {
+  auto* pair = out->add_read_pairs();
+  pair->dup_key(encoded_key);
+  pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
   // Since we don't batch read RPCs that lock rows, we can get away with using a singular
   // wait_policy field. Once we start batching read requests (issue #2495), we will need a repeated
   // wait policies field.
@@ -133,7 +138,7 @@ void AddIntent(const std::string& encoded_key, WaitPolicy wait_policy, KeyValueW
 }
 
 Status AddIntent(const PgsqlExpressionPB& ybctid, WaitPolicy wait_policy,
-                         KeyValueWriteBatchPB* out) {
+                 LWKeyValueWriteBatchPB* out) {
   const auto &val = ybctid.value().binary_value();
   SCHECK(!val.empty(), InternalError, "empty ybctid");
   AddIntent(val, wait_policy, out);
@@ -178,6 +183,11 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
+}
+
+bool DisablePackedRowIfColocatedTable(const Schema& schema) {
+  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
+         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -568,7 +578,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row) {
+  if (FLAGS_ysql_enable_packed_row &&
+      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -674,6 +685,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_packed_row &&
+        !DisablePackedRowIfColocatedTable(schema) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
@@ -840,7 +852,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
     pggate::PgWire::WriteInt64(0, &result_buffer_);
   }
   ++result_rows_;
-  int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       QLExprResult value;
@@ -859,7 +870,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       }
       RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
     }
-    rscol_index++;
   }
   return Status::OK();
 }
@@ -1341,7 +1351,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
   return row_count;
 }
 
-Status PgsqlReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                      size_t fetched_rows,
                                                      const size_t row_count_limit,
                                                      const bool scan_time_exceeded,
@@ -1430,7 +1440,7 @@ Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   if (request_.batch_arguments_size() > 0) {
     for (const auto& batch_argument : request_.batch_arguments()) {
       SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");

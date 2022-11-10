@@ -1,3 +1,4 @@
+import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
 export interface PlacementAZ {
@@ -219,6 +220,17 @@ export interface Universe {
   version: number;
 }
 
+export interface YBTable {
+  isIndexTable: boolean;
+  keySpace: string;
+  pgSchemaName: string;
+  relationType: YBTableRelationType;
+  sizeBytes: number;
+  tableName: string;
+  tableType: TableType;
+  tableUUID: string;
+}
+
 // Provider.java
 export interface Provider {
   uuid: string;
@@ -348,12 +360,49 @@ export enum TableType {
   PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
 }
 
-export const TABLE_TYPE_MAP: Record<TableType, string> = {
+export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
   REDIS_TABLE_TYPE: 'REDIS'
-};
+} as const;
 
+export interface MetricsData {
+  type: string;
+  metricsKey: string[];
+  nodePrefixes: string;
+  selectedUniverse: any;
+  title: string;
+  tableName?: string;
+}
+
+export interface GraphFilter {
+  startMoment: any;
+  endMoment: any;
+  nodeName: string;
+  nodePrefix: string;
+  filterValue?: string;
+  filterType?: string;
+  currentSelectedRegion?: string;
+  metricMeasure?: string;
+  outlierType?: string;
+  outlierNumNodes?: number;
+  selectedRegionClusterUUID?: string | null;
+  selectedRegionCode?: string | null;
+  selectedZoneName?: string | null;
+}
+
+export interface MetricSettings {
+  metric: string;
+  splitTopNodes: number;
+}
+
+export interface MetricQueryParams {
+  metricsWithSettings: MetricSettings[];
+  start: string;
+  end: string;
+  nodePrefix: string;
+  nodeNames: string[];
+}
 export interface CpuMeasureQueryData {
   maxNodeName: string;
   maxNodeValue: number;
@@ -406,4 +455,18 @@ export enum RecommendationTypeEnum {
   ConnectionSkew = 'ConnectionSkew',
   CpuSkew = 'CpuSkew',
   CpuUsage = 'CpuUsage'
+}
+
+export interface RunTimeConfigData {
+  configID: number;
+  configKey: string;
+  configValue: string;
+  isConfigInherited: boolean;
+}
+
+export enum RunTimeConfigScope {
+  GLOBAL = 'GLOBAL',
+  UNIVERSE = 'UNIVERSE',
+  PROVIDER = 'PROVIDER',
+  CUSTOMER = 'CUSTOMER'
 }

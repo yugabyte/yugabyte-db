@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FAST_VARINT_H
-#define YB_UTIL_FAST_VARINT_H
+#pragma once
 
 #include <string>
 
@@ -111,5 +110,3 @@ inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
 
 }  // namespace util
 }  // namespace yb
-
-#endif  // YB_UTIL_FAST_VARINT_H

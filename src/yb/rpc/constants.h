@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CONSTANTS_H
-#define YB_RPC_CONSTANTS_H
+#pragma once
 
 #include <stdint.h>
 
@@ -43,5 +42,3 @@ const uint8_t kMsgLengthPrefixLength = 4;
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_CONSTANTS_H

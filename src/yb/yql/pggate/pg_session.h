@@ -11,17 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SESSION_H_
-#define YB_YQL_PGGATE_PG_SESSION_H_
+#pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/tablet_server.h"
@@ -117,10 +115,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(PgClient* pg_client,
-            const string& database_name,
+            const std::string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
-            const tserver::TServerSharedObject* tserver_shared_object,
             const YBCPgCallbacks& pg_callbacks);
   virtual ~PgSession();
 
@@ -150,18 +147,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status CreateSequencesDataTable();
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called);
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
@@ -176,7 +173,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   Status DropTablegroup(const PgOid database_oid,
-                                PgOid tablegroup_oid);
+                        PgOid tablegroup_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
@@ -254,7 +251,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return connected_database_.c_str();
   }
 
-  const string& connected_database() const {
+  const std::string& connected_database() const {
     return connected_database_;
   }
   void set_connected_database(const std::string& database) {
@@ -265,7 +262,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   // Generate a new random and unique rowid. It is a v4 UUID.
-  string GenerateNewRowid() {
+  std::string GenerateNewRowid() {
     return GenerateObjectId(true /* binary_id */);
   }
 
@@ -279,13 +276,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
-
-  // Return the local tserver's catalog version stored in shared memory or an error if the shared
-  // memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedCatalogVersion();
-  // Return the local tserver's postgres authentication key stored in shared memory or an error if
-  // the shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedAuthKey();
 
   using YbctidReader =
       LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
@@ -302,7 +292,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Status ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const std::string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -319,6 +309,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool HasWriteOperationsInDdlMode() const;
 
   Result<bool> CheckIfPitrActive();
+
+  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
   Result<PerformFuture> FlushOperations(
@@ -359,7 +351,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Execution status.
   Status status_;
-  string errmsg_;
+  std::string errmsg_;
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
@@ -373,7 +365,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
-  const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
@@ -381,5 +372,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SESSION_H_

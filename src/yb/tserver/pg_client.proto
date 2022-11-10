@@ -53,6 +53,7 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
+  // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
@@ -68,6 +69,8 @@ service PgClientService {
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
+  rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
+      returns (PgGetTserverCatalogVersionInfoResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -352,6 +355,7 @@ message PgPerformOptionsPB {
   bool force_global_transaction = 13;
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
+  uint32 active_sub_transaction_id = 16;
 }
 
 message PgPerformRequestPB {
@@ -383,12 +387,14 @@ message PgReserveOidsResponsePB {
 message PgRollbackToSubTransactionRequestPB {
   uint64 session_id = 1;
   uint32 sub_transaction_id = 2;
+  PgPerformOptionsPB options = 3;
 }
 
 message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
+// DEPRECATED
 message PgSetActiveSubTransactionRequestPB {
   uint64 session_id = 1;
   uint32 sub_transaction_id = 2;
@@ -396,6 +402,7 @@ message PgSetActiveSubTransactionRequestPB {
   PgPerformOptionsPB options = 3;
 }
 
+// DEPRECATED
 message PgSetActiveSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
@@ -514,5 +521,18 @@ message PgCheckIfPitrActiveRequestPB {}
 
 message PgCheckIfPitrActiveResponsePB {
   bool is_pitr_active = 1;
+  AppStatusPB status = 2;
+}
+
+message PgGetTserverCatalogVersionInfoRequestPB {}
+
+message PgGetTserverCatalogVersionInfoResponsePB {
+  message Entry {
+    uint32 db_oid = 1;
+    int32 shm_index = 2;
+    uint64 current_version = 3;
+  }
+
+  repeated Entry entries = 1;
   AppStatusPB status = 2;
 }

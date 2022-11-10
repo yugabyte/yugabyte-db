@@ -13,7 +13,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 

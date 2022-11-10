@@ -26,6 +26,8 @@
 
 #include "yb/util/trace.h"
 
+using std::vector;
+
 namespace yb {
 namespace tablet {
 

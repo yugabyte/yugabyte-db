@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_UTIL_H
-#define YB_MASTER_CLUSTER_BALANCE_UTIL_H
+#pragma once
 
 #include <memory>
 #include <set>
@@ -126,10 +125,10 @@ struct CBTabletServerMetadata {
   std::unordered_map<std::string, int> path_to_starting_tablets_count;
 
   // Set of paths sorted descending by tablets count.
-  vector<std::string> sorted_path_load_by_tablets_count;
+  std::vector<std::string> sorted_path_load_by_tablets_count;
 
   // Set of paths sorted ascending by tablet leaders count.
-  vector<std::string> sorted_path_load_by_leader_count;
+  std::vector<std::string> sorted_path_load_by_leader_count;
 
   // The set of tablet ids that this tablet server is currently running.
   std::set<TabletId> running_tablets;
@@ -206,8 +205,8 @@ struct Options {
   // Either a live replica or a read.
   ReplicaType type;
 
-  string placement_uuid;
-  string live_placement_uuid;
+  std::string placement_uuid;
+  std::string live_placement_uuid;
 
   // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
 };
@@ -322,9 +321,9 @@ class PerTableLoadState {
   void SortDriveLoad();
 
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts = "",
-                            const TabletServerId& to_ts_path = "");
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts = "",
+                    const TabletServerId& to_ts_path = "");
 
   void SortLeaderLoad();
 
@@ -335,16 +334,16 @@ class PerTableLoadState {
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
-                                  const TabletServerId& ts_uuid,
-                                  const std::string& path);
+                          const TabletServerId& ts_uuid,
+                          const std::string& path);
 
   Status RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddLeaderTablet(const TabletId& tablet_id,
-                                 const TabletServerId& ts_uuid,
-                                 const TabletServerId& ts_path);
+                         const TabletServerId& ts_uuid,
+                         const TabletServerId& ts_path);
 
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
@@ -408,7 +407,7 @@ class PerTableLoadState {
   // And if B was also leader blacklisted:
   // [[A] [C],[E,D,B,F]]
   // If affinitized leaders is not enabled, all servers are treated as priority 1.
-  vector<vector<TabletServerId>> sorted_leader_load_;
+  std::vector<std::vector<TabletServerId>> sorted_leader_load_;
 
   std::unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
   std::unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
@@ -436,7 +435,7 @@ class PerTableLoadState {
   bool allow_only_leader_balancing_ = false;
 
   // List of availability zones for affinitized leaders.
-  vector<AffinitizedZonesSet> affinitized_zones_;
+  std::vector<AffinitizedZonesSet> affinitized_zones_;
 
  private:
   bool ShouldSkipReplica(const TabletReplica& replica);
@@ -449,5 +448,3 @@ class PerTableLoadState {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CLUSTER_BALANCE_UTIL_H

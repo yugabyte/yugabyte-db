@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include <memory>
 
 #include "yb/rocksdb/table_properties.h"
@@ -40,5 +39,3 @@ extern std::shared_ptr<TablePropertiesCollectorFactory>
         size_t sliding_window_size,
         size_t deletion_trigger);
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

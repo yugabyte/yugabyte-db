@@ -35,11 +35,9 @@
 
 #include <string>
 
-#include <gflags/gflags.h>
-
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 
 using std::string;
@@ -72,6 +70,9 @@ DEFINE_bool(webserver_enable_doc_root, true,
     "If true, webserver may serve static files from the webserver_doc_root");
 TAG_FLAG(webserver_enable_doc_root, advanced);
 
+DEFINE_string(webserver_ca_certificate_file, "",
+    "The location of the certificate of the certificate authority of the debug webserver's SSL "
+    "certificate file, in .pem format. If empty, system-wide CA certificates are used.");
 DEFINE_string(webserver_certificate_file, "",
     "The location of the debug webserver's SSL certificate file, in .pem format. If "
     "empty, webserver SSL support is not enabled");

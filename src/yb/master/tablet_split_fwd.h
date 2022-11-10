@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TABLET_SPLIT_FWD_H
-#define YB_MASTER_TABLET_SPLIT_FWD_H
+#pragma once
 
 #include "yb/util/strongly_typed_bool.h"
 
@@ -30,5 +29,3 @@ YB_STRONGLY_TYPED_BOOL(ManualSplit);
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_TABLET_SPLIT_FWD_H

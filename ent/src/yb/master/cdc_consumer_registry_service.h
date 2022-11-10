@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H
-#define ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H
+#pragma once
 
 #include <vector>
 #include <unordered_set>
@@ -62,7 +61,7 @@ Status UpdateTabletMappingOnConsumerSplit(
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
     const SplitTabletIds& split_tablet_ids,
-    const string& split_key,
+    const std::string& split_key,
     bool* found_source,
     bool* found_all_split_childs,
     cdc::StreamEntryPB* stream_entry);
@@ -70,5 +69,3 @@ Status UpdateTabletMappingOnProducerSplit(
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-
-#endif // ENT_SRC_YB_MASTER_CDC_CONSUMER_REGISTRY_SERVICE_H

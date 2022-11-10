@@ -40,6 +40,7 @@
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
+#include <gperftools/malloc_hook.h>
 #endif
 
 #include "yb/gutil/map-util.h"
@@ -50,7 +51,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
@@ -100,6 +101,23 @@ DEFINE_int32(tcmalloc_max_free_bytes_percentage, 10,
              "Maximum percentage of the RSS that tcmalloc is allowed to use for "
              "reserved but unallocated memory.");
 TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
+
+DEFINE_NON_RUNTIME_bool(tcmalloc_trace_enabled, false,
+                        "Enable tracing of malloc/free calls for tcmalloc.");
+TAG_FLAG(tcmalloc_trace_enabled, advanced);
+
+DEFINE_NON_RUNTIME_uint64(tcmalloc_trace_min_threshold, 0,
+                          "Minimum (inclusive) threshold for tracing malloc/free calls.");
+TAG_FLAG(tcmalloc_trace_min_threshold, advanced);
+
+DEFINE_NON_RUNTIME_uint64(tcmalloc_trace_max_threshold, 0,
+                          "Maximum (exclusive) threshold for tracing malloc/free calls. "
+                          "If 0, no maximum threshold is used.");
+TAG_FLAG(tcmalloc_trace_max_threshold, advanced);
+
+DEFINE_RUNTIME_double(tcmalloc_trace_frequency, 0.0,
+                      "Frequency at which malloc/free calls should be traced.");
+TAG_FLAG(tcmalloc_trace_frequency, advanced);
 #endif
 
 DEFINE_bool(mem_tracker_logging, false,
@@ -113,12 +131,11 @@ DEFINE_int64(mem_tracker_update_consumption_interval_us, 2000000,
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
-             "When the total amount of memory from calls to Release() since the last GC exceeds "
-             "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
-             "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
-             "overhead, but more efficient in terms of runtime.");
-TAG_FLAG(mem_tracker_tcmalloc_gc_release_bytes, runtime);
+DEFINE_RUNTIME_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
+    "When the total amount of memory from calls to Release() since the last GC exceeds "
+    "this flag, a new tcmalloc GC will be triggered. This GC will clear the tcmalloc "
+    "page heap freelist. A higher value implies less aggressive GC, i.e. higher memory "
+    "overhead, but more efficient in terms of runtime.");
 
 namespace yb {
 
@@ -144,6 +161,14 @@ GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
 
+#ifdef TCMALLOC_ENABLED
+
+// Memory tracker for tcmalloc tracing.
+shared_ptr<MemTracker> tcmalloc_trace_tracker;
+
+#endif // TCMALLOC_ENABLED
+
+
 // Validate that various flags are percentages.
 bool ValidatePercentage(const char* flagname, int value) {
   if (value >= 0 && value <= 100) {
@@ -155,18 +180,16 @@ bool ValidatePercentage(const char* flagname, int value) {
 }
 
 // Marked as unused because this is not referenced in release mode.
-bool dummy[] __attribute__((unused)) = {
-    google::RegisterFlagValidator(&FLAGS_memory_limit_soft_percentage, &ValidatePercentage),
-    google::RegisterFlagValidator(&FLAGS_memory_limit_warn_threshold_percentage,
-        &ValidatePercentage)
+DEFINE_validator(memory_limit_soft_percentage, &ValidatePercentage);
+DEFINE_validator(memory_limit_warn_threshold_percentage, &ValidatePercentage);
 #ifdef TCMALLOC_ENABLED
-    , google::RegisterFlagValidator(&FLAGS_tcmalloc_max_free_bytes_percentage, &ValidatePercentage)
+DEFINE_validator(tcmalloc_max_free_bytes_percentage, &ValidatePercentage);
 #endif
-};
 
-template <class TrackerMetrics>
-bool TryIncrementBy(int64_t delta, int64_t max, HighWaterMark* consumption,
-                    const std::unique_ptr<TrackerMetrics>& metrics) {
+    template <class TrackerMetrics>
+    bool TryIncrementBy(
+        int64_t delta, int64_t max, HighWaterMark* consumption,
+        const std::unique_ptr<TrackerMetrics>& metrics) {
   if (consumption->TryIncrementBy(delta, max)) {
     if (metrics) {
       metrics->metric_->IncrementBy(delta);
@@ -219,7 +242,55 @@ void OverrideTcmallocGcThresholdForPg() {
               << FLAGS_mem_tracker_tcmalloc_gc_release_bytes;
   }
 }
-#endif
+
+bool CheckWithinTCMallocTraceThreshold(size_t size) {
+  return FLAGS_tcmalloc_trace_min_threshold <= size &&
+      (FLAGS_tcmalloc_trace_max_threshold == 0 || size < FLAGS_tcmalloc_trace_max_threshold);
+}
+
+void TCMallocNewHook(const void* ptr, size_t) {
+  if (!tcmalloc_trace_tracker) return;
+
+  auto size = MallocExtension::instance()->GetAllocatedSize(ptr);
+  if (CheckWithinTCMallocTraceThreshold(size)) {
+    tcmalloc_trace_tracker->Consume(size);
+
+    // Skip stack trace logging for memory allocations while initializing random, because
+    // RandomActWithProbability will cause infinite recursion otherwise.
+    if (!IsRandomInitializingInThisThread() &&
+        RandomActWithProbability(FLAGS_tcmalloc_trace_frequency)) {
+      // Skip four top frames: GetStackTrace, this function, the malloc hook invoker, and the
+      // allocation itself.
+      LOG(INFO) << "Malloc Call: size = " << size << "\n" <<
+          GetStackTrace(StackTraceLineFormat::DEFAULT, 4 /* num_top_frames_to_skip */);
+    }
+  }
+}
+void TCMallocDeleteHook(const void* ptr) {
+  if (!tcmalloc_trace_tracker) return;
+
+  auto size = MallocExtension::instance()->GetAllocatedSize(ptr);
+
+  // We didn't track any allocations done during program initialization, but some of those may
+  // be deleted before the tracker is deleted. Avoid throwing an error by returning early.
+  if (static_cast<int64_t>(size) > tcmalloc_trace_tracker->consumption()) return;
+
+  if (CheckWithinTCMallocTraceThreshold(size)) {
+    tcmalloc_trace_tracker->Release(size);
+  }
+}
+
+void RegisterTCMallocHooks() {
+  if (FLAGS_tcmalloc_trace_enabled && !tcmalloc_trace_tracker) {
+    LOG(INFO) << "TCMalloc tracing enabled";
+    tcmalloc_trace_tracker = MemTracker::FindOrCreateTracker(
+        "TCMalloc Trace", MemTracker::GetRootTracker(), AddToParent::kFalse, CreateMetrics::kTrue);
+    MallocHook::AddNewHook(TCMallocNewHook);
+    MallocHook::AddDeleteHook(TCMallocDeleteHook);
+  }
+}
+
+#endif // TCMALLOC_ENABLED
 
 } // namespace
 
@@ -276,11 +347,12 @@ void MemTracker::SetTCMallocCacheMemory() {
           kTcMallocMaxThreadCacheBytes, FLAGS_server_tcmalloc_max_total_thread_cache_bytes)) {
     LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
   }
+
+  RegisterTCMallocHooks();
 #endif
 }
 
 void MemTracker::CreateRootTracker() {
-  DCHECK_ONLY_NOTNULL(dummy);
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
     // If no limit is provided, we'll use

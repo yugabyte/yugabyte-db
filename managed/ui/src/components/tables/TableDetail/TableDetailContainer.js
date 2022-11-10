@@ -47,7 +47,8 @@ function mapStateToProps(state) {
     customer: state.customer,
     universe: state.universe,
     tables: state.tables,
-    modal: state.modal
+    modal: state.modal,
+    featureFlags: state.featureFlags
   };
 }
 

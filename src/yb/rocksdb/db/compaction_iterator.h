@@ -19,8 +19,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_DB_COMPACTION_ITERATOR_H
-#define YB_ROCKSDB_DB_COMPACTION_ITERATOR_H
 
 #pragma once
 
@@ -172,5 +170,3 @@ class CompactionIterator {
   std::vector<std::pair<Slice, Slice>> live_key_ranges_stack_;
 };
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COMPACTION_ITERATOR_H

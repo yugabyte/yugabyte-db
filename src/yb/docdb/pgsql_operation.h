@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_PGSQL_OPERATION_H
-#define YB_DOCDB_PGSQL_OPERATION_H
+#pragma once
 
 #include "yb/common/pgsql_protocol.pb.h"
 
@@ -165,7 +164,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status GetTupleId(QLValuePB *result) const override;
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
  private:
   // Execute a READ operator for a given scalar argument.
@@ -197,22 +196,23 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool *has_paging_state);
 
   Status PopulateResultSet(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+                           faststring *result_buffer);
 
   Status EvalAggregate(const QLTableRow& table_row);
 
   Status PopulateAggregate(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+                           faststring *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
-                                           size_t fetched_rows,
-                                           const size_t row_count_limit,
-                                           const bool scan_time_exceeded,
-                                           const Schema& schema,
-                                           const ReadHybridTime& read_time,
-                                           bool *has_paging_state);
+  Status SetPagingStateIfNecessary(
+      YQLRowwiseIteratorIf* iter,
+      size_t fetched_rows,
+      const size_t row_count_limit,
+      const bool scan_time_exceeded,
+      const Schema& schema,
+      const ReadHybridTime& read_time,
+      bool* has_paging_state);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
@@ -224,5 +224,3 @@ class PgsqlReadOperation : public DocExprExecutor {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_PGSQL_OPERATION_H

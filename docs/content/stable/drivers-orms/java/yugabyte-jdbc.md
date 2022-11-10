@@ -17,7 +17,7 @@ For Java applications, the JDBC driver provides database connectivity through th
 
   <li >
     <a href="../yugabyte-jdbc/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB JDBC Driver
     </a>
   </li>

@@ -40,11 +40,14 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
+
+using std::string;
+using std::vector;
 
 using namespace std::literals;
 
@@ -100,7 +103,10 @@ void TabletServerTestBase::SetUp() {
 }
 
 void TabletServerTestBase::TearDown() {
-  client_messenger_->Shutdown();
+  if (client_messenger_) {
+    client_messenger_->Shutdown();
+  }
+
   tablet_peer_.reset();
   if (mini_server_) {
     mini_server_->Shutdown();
@@ -185,7 +191,7 @@ void TabletServerTestBase::ResetClientProxies() {
 
 // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
 void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, int32_t num_rows) {
-  tablet::LocalTabletWriter writer(tablet_peer_->tablet());
+  tablet::LocalTabletWriter writer(CHECK_RESULT(tablet_peer_->shared_tablet_safe()));
   QLWriteRequestPB req;
   for (int i = 0; i < num_rows; i++) {
     BuildTestRow(start_row + i, &req);

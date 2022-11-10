@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_INDEX_BUILDER_H
-#define YB_ROCKSDB_TABLE_INDEX_BUILDER_H
+#pragma once
 
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
@@ -310,5 +309,3 @@ class MultiLevelIndexBuilder : public IndexBuilder {
 };
 
 } // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_INDEX_BUILDER_H

@@ -14,6 +14,8 @@
 #include "yb/encryption/header_manager_mock_impl.h"
 #include "yb/encryption/encryption_util.h"
 
+using std::string;
+
 namespace yb {
 namespace encryption {
 

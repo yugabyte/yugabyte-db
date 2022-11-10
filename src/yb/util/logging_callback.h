@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_LOGGING_CALLBACK_H
-#define YB_UTIL_LOGGING_CALLBACK_H
+#pragma once
 
 #include <ctime>
 
@@ -56,5 +55,3 @@ typedef Callback<void(LogSeverity severity,
                       size_t message_len)> LoggingCallback;
 
 } // namespace yb
-
-#endif // YB_UTIL_LOGGING_CALLBACK_H

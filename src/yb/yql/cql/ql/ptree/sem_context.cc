@@ -18,7 +18,7 @@
 #include "yb/client/table.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -41,6 +41,7 @@ namespace yb {
 namespace ql {
 
 using std::shared_ptr;
+using std::string;
 using client::YBTable;
 using client::YBTableName;
 using client::YBColumnSchema;
