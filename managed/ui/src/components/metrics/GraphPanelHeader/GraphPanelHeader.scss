@@ -3,8 +3,12 @@
 @use '../../../_style/colors.scss';
 
 .graph-panel-header {
-  .content-panel>.header {
-    margin-bottom: 0px;
+  .content-panel > .header {
+    margin-bottom: 0px !important;
+  }
+
+  .content-panel .container > .body {
+    margin-top: 30px;
   }
 }
 
