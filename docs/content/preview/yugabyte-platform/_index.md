@@ -10,8 +10,8 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
-type: homepage
-body_class: yb-page-style
+type: indexpage
+breadcrumbDisable: true
 ---
 
 ### Overview
@@ -27,7 +27,6 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 ### Get started
 
 <div class="row">
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="install-yugabyte-platform/install/public-cloud/">
       <div class="head">
@@ -51,5 +50,4 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
       </div>
     </a>
   </div>
-
 </div>

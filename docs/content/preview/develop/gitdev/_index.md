@@ -2,7 +2,6 @@
 title: GitDev
 linkTitle: Cloud-native development
 description: Integrated development environments as code and configuration
-headcontent:
 image: /images/section_icons/develop/git.png
 menu:
   preview:
@@ -11,6 +10,7 @@ menu:
     weight: 590
 type: indexpage
 ---
+
 GitHub Codespaces and Gitpod provide Git-based, fully automated, integrated cloud-native development workflows. This "GitDev" approach provides a preconfigured development environment that seamlessly provides a consistent development environment for stream-aligned teams.
 
 <div class="row">
