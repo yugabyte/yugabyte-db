@@ -62,6 +62,7 @@ export interface IBackup {
   hasIncrementalBackups: boolean;
   lastBackupState: Backup_States;
   backupType: TableType;
+  category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
   universeUUID: string;
   scheduleUUID: string;
   customerUUID: string;
