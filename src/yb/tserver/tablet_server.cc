@@ -678,8 +678,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
         existing_entry.last_breaking_version = new_breaking_version;
         row_updated = true;
         shm_index = existing_entry.shm_index;
-        CHECK(shm_index >= 0 && shm_index < TServerSharedData::kMaxNumDbCatalogVersions)
-          << "Invalid shm_index: " << shm_index;
+        CHECK(
+            shm_index >= 0 &&
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+            << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
         LOG(DFATAL) << "Ignoring ysql db " << db_oid
                     << " catalog version update: new version too old. "
@@ -691,7 +693,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     } else {
       auto& inserted_entry = it.first->second;
       // Allocate a new free slot in shared memory array db_catalog_versions_ for db_oid.
-      int count = 0;
+      uint32_t count = 0;
       while (count < TServerSharedData::kMaxNumDbCatalogVersions) {
         if (!(*ysql_db_catalog_version_index_used_)[search_starting_index_]) {
           // Found a free slot, remember it.
@@ -738,7 +740,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     if (db_oid_set.count(db_oid) == 0) {
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
-            shm_index < TServerSharedData::kMaxNumDbCatalogVersions) << shm_index;
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
       // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
       (*ysql_db_catalog_version_index_used_)[shm_index] = false;
       it = ysql_db_catalog_version_map_.erase(it);
