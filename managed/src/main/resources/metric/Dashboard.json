@@ -4954,7 +4954,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : ""
     }, {
       "format" : "short",
       "label" : null,
