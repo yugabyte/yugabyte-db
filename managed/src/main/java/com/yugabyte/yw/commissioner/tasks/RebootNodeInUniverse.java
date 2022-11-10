@@ -1,16 +1,16 @@
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Collections;
-
-import javax.inject.Inject;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
+import java.util.Collections;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditionalAllowedActions;
@@ -18,9 +18,13 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditional
 @Slf4j
 public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
+  @JsonDeserialize(converter = RebootNodeInUniverse.Converter.class)
   public static class Params extends NodeTaskParams {
     public boolean isHardReboot = false;
   }
+
+  public static class Converter
+      extends UniverseDefinitionTaskParams.BaseConverter<RebootNodeInUniverse.Params> {}
 
   @Inject
   protected RebootNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {

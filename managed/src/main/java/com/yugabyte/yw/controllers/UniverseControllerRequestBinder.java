@@ -138,7 +138,7 @@ public class UniverseControllerRequestBinder {
   }
 
   public static <T extends UniverseDefinitionTaskParams> T mergeWithUniverse(
-      T params, Universe universe, Class<T> paramsClass) {
+      T params, Universe universe, Class<? extends T> paramsClass) {
     try {
       ObjectNode paramsJson = Json.mapper().valueToTree(params);
       if (params.clusters != null && params.clusters.isEmpty()) {
@@ -161,6 +161,10 @@ public class UniverseControllerRequestBinder {
     universeDetailsNode.remove("targetXClusterConfigs");
     universeDetailsNode.remove("sourceXClusterConfigs");
     T result = Json.mapper().treeToValue(universeDetailsNode, paramsClass);
+    if (!paramsClass.equals(result.getClass())) {
+      throw new IllegalStateException(
+          "Expected " + paramsClass + " but deserialized to " + result.getClass());
+    }
     result.universeUUID = universe.universeUUID;
     result.expectedUniverseVersion = universe.version;
     if (universe.isYbcEnabled()) {
