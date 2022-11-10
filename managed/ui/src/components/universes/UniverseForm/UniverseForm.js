@@ -246,8 +246,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    universeTaskParams.enableYbc =
+    if(!isEdit){
+      universeTaskParams.enableYbc =
       this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+    }
+    
     universeTaskParams.ybcSoftwareVersion = '';
   };
 
