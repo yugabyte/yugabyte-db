@@ -105,13 +105,14 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
-DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
+DEFINE_UNKNOWN_bool(propagate_safe_time, true,
+    "Propagate safe time to read from leader to followers");
 
-DEFINE_int32(wait_queue_poll_interval_ms, 1000,
+DEFINE_UNKNOWN_int32(wait_queue_poll_interval_ms, 1000,
              "The interval duration between wait queue polls to fetch transaction statuses of "
              "active blockers.");
 

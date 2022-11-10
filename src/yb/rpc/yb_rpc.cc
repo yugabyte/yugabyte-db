@@ -44,9 +44,9 @@ using namespace std::literals;
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_uint64(rpc_max_message_size);
 
-DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
+DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
-DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
+DEFINE_UNKNOWN_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "

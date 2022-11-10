@@ -34,10 +34,10 @@ using namespace std::literals;
 DEFINE_test_flag(uint64, transaction_delay_status_reply_usec_in_tests, 0,
                  "For tests only. Delay handling status reply by specified amount of usec.");
 
-DEFINE_int64(transaction_abort_check_interval_ms, 5000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(transaction_abort_check_interval_ms, 5000 * yb::kTimeMultiplier,
              "Interval to check whether running transaction was aborted.");
 
-DEFINE_int64(transaction_abort_check_timeout_ms, 30000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(transaction_abort_check_timeout_ms, 30000 * yb::kTimeMultiplier,
              "Timeout used when checking for aborted transactions.");
 
 namespace yb {

@@ -17,6 +17,7 @@
 
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/flags.h"
 
 using namespace yb::size_literals;
 
@@ -26,7 +27,7 @@ using namespace yb::size_literals;
 // than that because we will have overheads from that layer.
 // Hence, we have a limit of 254MB at the consensus layer.
 // The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
-DEFINE_uint64(rpc_max_message_size, 255_MB,
+DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
               "The maximum size of a message of any RPC that the server will accept.");
 
 using google::protobuf::internal::WireFormatLite;
