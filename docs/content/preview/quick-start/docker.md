@@ -9,7 +9,7 @@ aliases:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud-icon.svg" alt="Icon">
@@ -26,7 +26,7 @@ Use a local cluster
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

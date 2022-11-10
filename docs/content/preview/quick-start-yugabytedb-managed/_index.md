@@ -11,7 +11,7 @@ rightNav:
   hideH4: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
               <img src="/icons/cloud-icon.svg" alt="Icon">

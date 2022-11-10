@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../ysql/" class="nav-link">
       YSQL

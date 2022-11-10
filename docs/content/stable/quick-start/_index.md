@@ -7,7 +7,7 @@ layout: single
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
       Use a cloud cluster
@@ -24,7 +24,7 @@ Test YugabyteDB's APIs and core features by creating a local cluster on a single
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../quick-start/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

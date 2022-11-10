@@ -8,7 +8,7 @@ aliases:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
     <a href="../../" class="nav-link">
       Use a local cluster
@@ -21,7 +21,7 @@ type: docs
   </li>
 </ul>
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

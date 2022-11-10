@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../yugabyte-psycopg2/" class="nav-link">
       YSQL
