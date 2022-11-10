@@ -68,6 +68,15 @@
   .h6 {
     color: $yb-font-dark;
 
+    a:not([aria-hidden],[class]) {
+      color: #507ce1;
+
+      &:hover {
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+    }
+
     &:not(:first-child) {
       margin: 4.5rem 0 1rem 0;
     }
