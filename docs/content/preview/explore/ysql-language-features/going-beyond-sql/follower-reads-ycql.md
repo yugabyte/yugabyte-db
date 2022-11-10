@@ -51,15 +51,15 @@ You can specify the maximum staleness of data when reading from tablet followers
 
 In this tutorial, you update a single key-value over and over, and read it from the tablet leader. While that workload is running, you start another workload to read from a follower and verify that you are able to read from a tablet follower.
 
-### Create universe
+### Create a cluster
 
-If you have a previously running local universe, destroy it by executing the following command:
+If you have a previously running cluster, destroy it by executing the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with three nodes and a replication factor (RF) of `3`, as follows:
+Start a new local cluster with three nodes and a replication factor (RF) of `3`, as follows:
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -154,6 +154,5 @@ $ ./bin/yb-ctl destroy
 
 ## Read more
 
-- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/).
-
-- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/) in YCQL.
+- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/)
