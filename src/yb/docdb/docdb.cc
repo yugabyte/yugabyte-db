@@ -78,7 +78,7 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_int32(cdc_max_stream_intent_records, 1000,
+DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1000,
              "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {

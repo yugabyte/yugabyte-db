@@ -223,12 +223,12 @@ constexpr int kDefaultBackfillIndexClientRpcTimeoutMs = 24 * 60 * 60 * 1000;  //
 
 }
 
-DEFINE_bool(client_suppress_created_logs, false,
+DEFINE_UNKNOWN_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
-DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
+DEFINE_UNKNOWN_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 

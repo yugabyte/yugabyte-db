@@ -39,12 +39,13 @@
 #include "yb/util/striped64.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
 namespace yb {
 
 // These flags are used by the multi-threaded tests, can be used for microbenchmarking.
-DEFINE_int32(num_operations, 10*1000, "Number of operations to perform");
-DEFINE_int32(num_threads, 2, "Number of worker threads");
+DEFINE_UNKNOWN_int32(num_operations, 10*1000, "Number of operations to perform");
+DEFINE_UNKNOWN_int32(num_threads, 2, "Number of worker threads");
 
 // Test some basic operations
 TEST(Striped64Test, TestBasic) {

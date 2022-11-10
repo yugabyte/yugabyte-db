@@ -54,9 +54,10 @@
 
 using std::string;
 
-DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
-DEFINE_int32(pggate_num_connections_to_server, 1,
+DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
+    "Timeout for YSQL's yb-client read/write "
+    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
+DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
 DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
@@ -70,12 +71,12 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DEFINE_bool(ysql_enable_reindex, false,
+DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
-DEFINE_bool(ysql_disable_server_file_access, false,
+DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 

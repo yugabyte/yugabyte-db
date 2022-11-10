@@ -32,7 +32,7 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_bool(cql_table_is_transactional_by_default, false,
+DEFINE_UNKNOWN_bool(cql_table_is_transactional_by_default, false,
             "When the 'transactions' property is not specified at CREATE TABLE time "
             "for a YCQL table, this flag determines the default setting for whether "
             "the table is transactional or not.");

@@ -67,6 +67,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
@@ -81,11 +82,11 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-DEFINE_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
+DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DEFINE_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
+DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 

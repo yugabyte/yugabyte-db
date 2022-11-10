@@ -73,11 +73,11 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(consensus_rpc_timeout_ms, 3000,
+DEFINE_UNKNOWN_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
-DEFINE_int32(max_wait_for_processresponse_before_closing_ms,
+DEFINE_UNKNOWN_int32(max_wait_for_processresponse_before_closing_ms,
              yb::RegularBuildVsSanitizers(5000, 60000),
              "Maximum amount of time we will wait in Peer::Close() for Peer::ProcessResponse() to "
              "finish before returning proceding to close the Peer and return");
