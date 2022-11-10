@@ -1058,7 +1058,6 @@ Status MetaCache::ProcessTabletLocations(
           if (tablets_by_key) {
             (*tablets_by_key)[partition.partition_key_start()] = remote;
           }
-          MaybeUpdateClientRequests(*remote);
         }
         remote->Refresh(ts_cache_, loc.replicas());
         remote->SetExpectedReplicas(loc.expected_live_replicas(), loc.expected_read_replicas());
@@ -1090,43 +1089,6 @@ Status MetaCache::ProcessTabletLocations(
   }
 
   return Status::OK();
-}
-
-void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
-  VLOG_WITH_PREFIX_AND_FUNC(2) << "Tablet: " << tablet.tablet_id()
-                    << " split parent: " << tablet.split_parent_tablet_id();
-  if (tablet.split_parent_tablet_id().empty()) {
-    VLOG_WITH_PREFIX(2) << "Tablet " << tablet.tablet_id() << " is not a result of split";
-    return;
-  }
-  // TODO: MetaCache is a friend of Client and tablet_requests_mutex_ with tablet_requests_ are
-  // public members of YBClient::Data. Consider refactoring that.
-  std::lock_guard<simple_spinlock> request_lock(client_->data_->tablet_requests_mutex_);
-  auto& tablet_requests = client_->data_->tablet_requests_;
-  const auto requests_it = tablet_requests.find(tablet.split_parent_tablet_id());
-  if (requests_it == tablet_requests.end()) {
-    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for parent tablet "
-                        << tablet.split_parent_tablet_id()
-                        << " (split_depth: " << tablet.split_depth() - 1 << ")";
-    // This can happen if client wasn't active (for example node was partitioned away) during
-    // sequence of splits that resulted in `tablet` creation, so we don't have info about `tablet`
-    // split parent.
-    // In this case we set request_id_seq to special value and will reset it on getting
-    // "request id is less than min" error. We will use min request ID plus 2^24 (there wouldn't be
-    // 2^24 client requests in progress from the same client to the same tablet, so it is safe to do
-    // this).
-    tablet_requests.emplace(
-        tablet.tablet_id(),
-        YBClient::Data::TabletRequests {
-            .request_id_seq = kInitializeFromMinRunning
-        });
-    return;
-  }
-  VLOG_WITH_PREFIX(2) << "Setting request_id_seq for tablet " << tablet.tablet_id()
-                      << " (split_depth: " << tablet.split_depth() << ") from tablet "
-                      << tablet.split_parent_tablet_id() << " to "
-                      << requests_it->second.request_id_seq;
-  tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }
 
 std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocked(

@@ -451,12 +451,6 @@ bool TabletInvoker::Done(Status* status) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
     }
-    if (status->IsExpired() && rpc_->ShouldRetryExpiredRequest()) {
-      client_->MaybeUpdateMinRunningRequestId(
-          tablet_->tablet_id(), MinRunningRequestIdStatusData(*status).value());
-      *status = STATUS(
-          TryAgain, status->message(), ClientError(ClientErrorCode::kExpiredRequestToBeRetried));
-    }
     std::string current_ts_string;
     if (current_ts_) {
       current_ts_string = Format("on tablet server $0", *current_ts_);

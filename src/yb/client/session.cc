@@ -187,6 +187,11 @@ void BatcherFlushDone(
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
+    // Transmit failed request id to retry_batcher.
+    if (op->request_id().has_value()) {
+      done_batcher->RemoveRequest(op->request_id().value());
+      retry_batcher->RegisterRequest(op->request_id().value());
+    }
     retry_batcher->Add(op);
   }
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
