@@ -407,7 +407,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_usage",
-      "expr" : "avg(avg_over_time(container_cpu_usage{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s]))",
+      "expr" : "avg(avg_over_time(container_cpu_usage{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
