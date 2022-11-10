@@ -520,7 +520,6 @@ class GraphPanelHeader extends Component {
       closeModal,
       visibleModal,
       enableNodeComparisonModal,
-      enableTopNodes,
       enableTopKMetrics
     } = this.props;
     const {
@@ -636,7 +635,6 @@ class GraphPanelHeader extends Component {
                         nodeItemChangedOld={this.nodeItemChangedOld}
                         selectedUniverse={this.state.currentSelectedUniverse}
                         selectedNode={this.state.nodeName}
-                        topNodesSelection={enableTopNodes}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
                         enableTopKMetrics={enableTopKMetrics}
