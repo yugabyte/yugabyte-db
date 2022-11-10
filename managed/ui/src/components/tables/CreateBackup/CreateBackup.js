@@ -239,7 +239,9 @@ export default class CreateBackup extends Component {
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
     const { backupType } = this.state;
-    const configTypeList = BackupStorageOptions(storageConfigs);
+    const configTypeList = Array.isArray(BackupStorageOptions(storageConfigs))
+      ? BackupStorageOptions(storageConfigs)
+      : [];
     const initialValues = this.props.initialValues;
     let tableOptions = [];
     let keyspaceOptions = [];
@@ -544,7 +546,11 @@ export default class CreateBackup extends Component {
                     {s3StorageSelected && (
                       <Field name="enableSSE" component={YBFormToggle} label={'Encrypt Backup'} />
                     )}
-                    <Field name="useTablespaces" component={YBFormToggle} label={'Use Tablespaces'} />
+                    <Field
+                      name="useTablespaces"
+                      component={YBFormToggle}
+                      label={'Use Tablespaces'}
+                    />
                     <Field
                       name="parallelism"
                       component={YBFormInput}
