@@ -194,36 +194,36 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Reserve Postgres oids for a Postgres database.
   Status ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
-                                  ReservePgsqlOidsResponsePB* resp,
-                                  rpc::RpcContext* rpc);
+                          ReservePgsqlOidsResponsePB* resp,
+                          rpc::RpcContext* rpc);
 
   // Get the info (current only version) for the ysql system catalog.
   Status GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
-                                      GetYsqlCatalogConfigResponsePB* resp,
-                                      rpc::RpcContext* rpc);
+                              GetYsqlCatalogConfigResponsePB* resp,
+                              rpc::RpcContext* rpc);
 
   // Copy Postgres sys catalog tables into a new namespace.
   Status CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                                    const std::vector<scoped_refptr<TableInfo>>& tables);
+                            const std::vector<scoped_refptr<TableInfo>>& tables);
 
   // Create a new Table with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status CreateTable(const CreateTableRequestPB* req,
-                             CreateTableResponsePB* resp,
-                             rpc::RpcContext* rpc) override;
+                     CreateTableResponsePB* resp,
+                     rpc::RpcContext* rpc) override;
 
   // Create a new transaction status table.
   Status CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
-                                              CreateTransactionStatusTableResponsePB* resp,
-                                              rpc::RpcContext *rpc);
+                                      CreateTransactionStatusTableResponsePB* resp,
+                                      rpc::RpcContext *rpc);
 
   // Create a transaction status table with the given name.
   Status CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
-                                                      const std::string& table_name,
-                                                      const TablespaceId* tablespace_id,
-                                                      const ReplicationInfoPB* replication_info);
+                                              const std::string& table_name,
+                                              const TablespaceId* tablespace_id,
+                                              const ReplicationInfoPB* replication_info);
 
   // Add a tablet to a transaction status table.
   Status AddTransactionStatusTablet(const AddTransactionStatusTabletRequestPB* req,
@@ -263,8 +263,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get tablet ids of the global transaction status table and local transaction status tables
   // matching a given placement.
   Status GetTransactionStatusTablets(const GetTransactionStatusTabletsRequestPB* req,
-                                             GetTransactionStatusTabletsResponsePB* resp,
-                                             rpc::RpcContext *rpc) EXCLUDES(mutex_);
+                                     GetTransactionStatusTabletsResponsePB* resp,
+                                     rpc::RpcContext *rpc) EXCLUDES(mutex_);
 
   // Create the metrics snapshots table if needed (i.e. if it does not exist already).
   //
@@ -273,11 +273,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Get the information about an in-progress create operation.
   Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
-                                   IsCreateTableDoneResponsePB* resp) override;
+                           IsCreateTableDoneResponsePB* resp) override;
 
   Status IsCreateTableInProgress(const TableId& table_id,
-                                         CoarseTimePoint deadline,
-                                         bool* create_in_progress);
+                                 CoarseTimePoint deadline,
+                                 bool* create_in_progress);
 
   Status WaitForCreateTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
@@ -299,18 +299,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status TruncateTable(const TruncateTableRequestPB* req,
-                               TruncateTableResponsePB* resp,
-                               rpc::RpcContext* rpc);
+                       TruncateTableResponsePB* resp,
+                       rpc::RpcContext* rpc);
 
   // Get the information about an in-progress truncate operation.
   Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                                     IsTruncateTableDoneResponsePB* resp);
+                             IsTruncateTableDoneResponsePB* resp);
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
   Status BackfillIndex(const BackfillIndexRequestPB* req,
-                               BackfillIndexResponsePB* resp,
-                               rpc::RpcContext* rpc);
+                       BackfillIndexResponsePB* resp,
+                       rpc::RpcContext* rpc);
 
   // Gets the backfill jobs state associated with the requested table.
   Status GetBackfillJobs(const GetBackfillJobsRequestPB* req,
@@ -320,8 +320,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Backfill the indexes for the specified table.
   // Used for backfilling YCQL defered indexes when triggered from yb-admin.
   Status LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
-                                             LaunchBackfillIndexForTableResponsePB* resp,
-                                             rpc::RpcContext* rpc);
+                                     LaunchBackfillIndexForTableResponsePB* resp,
+                                     rpc::RpcContext* rpc);
 
   // Schedules a table deletion to run as a background task.
   Status ScheduleDeleteTable(const scoped_refptr<TableInfo>& table);
@@ -331,50 +331,50 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status DeleteTable(const DeleteTableRequestPB* req,
-                             DeleteTableResponsePB* resp,
-                             rpc::RpcContext* rpc);
+                     DeleteTableResponsePB* resp,
+                     rpc::RpcContext* rpc);
   Status DeleteTableInternal(
       const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc);
 
   // Get the information about an in-progress delete operation.
   Status IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
-                                   IsDeleteTableDoneResponsePB* resp);
+                           IsDeleteTableDoneResponsePB* resp);
 
   // Alter the specified table.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status AlterTable(const AlterTableRequestPB* req,
-                            AlterTableResponsePB* resp,
-                            rpc::RpcContext* rpc);
+                    AlterTableResponsePB* resp,
+                    rpc::RpcContext* rpc);
 
   // Get the information about an in-progress alter operation.
   Status IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                                  IsAlterTableDoneResponsePB* resp);
+                          IsAlterTableDoneResponsePB* resp);
 
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
-                                GetTableSchemaResponsePB* resp) override;
+                        GetTableSchemaResponsePB* resp) override;
   Status GetTableSchemaInternal(const GetTableSchemaRequestPB* req,
-                                        GetTableSchemaResponsePB* resp,
-                                        bool get_fully_applied_indexes = false);
+                                GetTableSchemaResponsePB* resp,
+                                bool get_fully_applied_indexes = false);
 
   // Get the information about the specified tablegroup.
   Status GetTablegroupSchema(const GetTablegroupSchemaRequestPB* req,
-                                     GetTablegroupSchemaResponsePB* resp);
+                             GetTablegroupSchemaResponsePB* resp);
 
   // Get the information about the specified colocated databsae.
   Status GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
-                                          GetColocatedTabletSchemaResponsePB* resp);
+                                  GetColocatedTabletSchemaResponsePB* resp);
 
   // List all the running tables.
   Status ListTables(const ListTablesRequestPB* req,
-                            ListTablesResponsePB* resp) override;
+                    ListTablesResponsePB* resp) override;
 
   Status GetTableLocations(const GetTableLocationsRequestPB* req,
-                                   GetTableLocationsResponsePB* resp) override;
+                           GetTableLocationsResponsePB* resp) override;
 
   // Lookup tablet by ID, then call GetTabletLocations below.
   Status GetTabletLocations(
@@ -401,41 +401,41 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status ProcessTabletReport(TSDescriptor* ts_desc,
-                                     const TabletReportPB& report,
-                                     TabletReportUpdatesPB *report_update,
-                                     rpc::RpcContext* rpc);
+                             const TabletReportPB& report,
+                             TabletReportUpdatesPB *report_update,
+                             rpc::RpcContext* rpc);
 
   // Create a new Namespace with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status CreateNamespace(const CreateNamespaceRequestPB* req,
-                                 CreateNamespaceResponsePB* resp,
-                                 rpc::RpcContext* rpc) override;
+                         CreateNamespaceResponsePB* resp,
+                         rpc::RpcContext* rpc) override;
   // Get the information about an in-progress create operation.
   Status IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestPB* req,
-                                       IsCreateNamespaceDoneResponsePB* resp);
+                               IsCreateNamespaceDoneResponsePB* resp);
 
   // Delete the specified Namespace.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status DeleteNamespace(const DeleteNamespaceRequestPB* req,
-                                 DeleteNamespaceResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+                         DeleteNamespaceResponsePB* resp,
+                         rpc::RpcContext* rpc);
   // Get the information about an in-progress delete operation.
   Status IsDeleteNamespaceDone(const IsDeleteNamespaceDoneRequestPB* req,
-                                       IsDeleteNamespaceDoneResponsePB* resp);
+                               IsDeleteNamespaceDoneResponsePB* resp);
 
   // Alter the specified Namespace.
   Status AlterNamespace(const AlterNamespaceRequestPB* req,
-                                AlterNamespaceResponsePB* resp,
-                                rpc::RpcContext* rpc);
+                        AlterNamespaceResponsePB* resp,
+                        rpc::RpcContext* rpc);
 
   // User API to Delete YSQL database tables.
   Status DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
-                                    DeleteNamespaceResponsePB* resp,
-                                    rpc::RpcContext* rpc);
+                            DeleteNamespaceResponsePB* resp,
+                            rpc::RpcContext* rpc);
 
   // Work to delete YSQL database tables, handled asynchronously from the User API call.
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
@@ -448,60 +448,60 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // List all the current namespaces.
   Status ListNamespaces(const ListNamespacesRequestPB* req,
-                                ListNamespacesResponsePB* resp);
+                        ListNamespacesResponsePB* resp);
 
   // Get information about a namespace.
   Status GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
-                                  GetNamespaceInfoResponsePB* resp,
-                                  rpc::RpcContext* rpc);
+                          GetNamespaceInfoResponsePB* resp,
+                          rpc::RpcContext* rpc);
 
   // Set Redis Config
   Status RedisConfigSet(const RedisConfigSetRequestPB* req,
-                                RedisConfigSetResponsePB* resp,
-                                rpc::RpcContext* rpc);
+                        RedisConfigSetResponsePB* resp,
+                        rpc::RpcContext* rpc);
 
   // Get Redis Config
   Status RedisConfigGet(const RedisConfigGetRequestPB* req,
-                                RedisConfigGetResponsePB* resp,
-                                rpc::RpcContext* rpc);
+                        RedisConfigGetResponsePB* resp,
+                        rpc::RpcContext* rpc);
 
   Status CreateTablegroup(const CreateTablegroupRequestPB* req,
-                                  CreateTablegroupResponsePB* resp,
-                                  rpc::RpcContext* rpc);
+                          CreateTablegroupResponsePB* resp,
+                          rpc::RpcContext* rpc);
 
   Status DeleteTablegroup(const DeleteTablegroupRequestPB* req,
-                                  DeleteTablegroupResponsePB* resp,
-                                  rpc::RpcContext* rpc);
+                          DeleteTablegroupResponsePB* resp,
+                          rpc::RpcContext* rpc);
 
   // List all the current tablegroups for a namespace.
   Status ListTablegroups(const ListTablegroupsRequestPB* req,
-                                 ListTablegroupsResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+                         ListTablegroupsResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status CreateUDType(const CreateUDTypeRequestPB* req,
-                              CreateUDTypeResponsePB* resp,
-                              rpc::RpcContext* rpc);
+                      CreateUDTypeResponsePB* resp,
+                      rpc::RpcContext* rpc);
 
   // Delete the specified UDType.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
   Status DeleteUDType(const DeleteUDTypeRequestPB* req,
-                              DeleteUDTypeResponsePB* resp,
-                              rpc::RpcContext* rpc);
+                      DeleteUDTypeResponsePB* resp,
+                      rpc::RpcContext* rpc);
 
   // List all user defined types in given namespaces.
   Status ListUDTypes(const ListUDTypesRequestPB* req,
-                             ListUDTypesResponsePB* resp);
+                     ListUDTypesResponsePB* resp);
 
   // Get the info (id, name, namespace, fields names, field types) of a (user-defined) type.
   Status GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
-                               GetUDTypeInfoResponsePB* resp,
-                               rpc::RpcContext* rpc);
+                       GetUDTypeInfoResponsePB* resp,
+                       rpc::RpcContext* rpc);
 
   // Disables tablet splitting for a specified amount of time.
   Status DisableTabletSplitting(
@@ -689,8 +689,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Checks that placement info can be accommodated by available ts_descs.
   Status CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
-                                         const TSDescriptorVector& ts_descs,
-                                         ValidateReplicationInfoResponsePB* resp);
+                                 const TSDescriptorVector& ts_descs,
+                                 ValidateReplicationInfoResponsePB* resp);
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
@@ -703,11 +703,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Handles the config creation for a given placement.
   Status HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
-                                                   const TSDescriptorVector& ts_descs,
-                                                   consensus::PeerMemberType member_type,
-                                                   consensus::RaftConfigPB* config,
-                                                   CMPerTableLoadState* per_table_state,
-                                                   CMGlobalLoadState* global_state);
+                                           const TSDescriptorVector& ts_descs,
+                                           consensus::PeerMemberType member_type,
+                                           consensus::RaftConfigPB* config,
+                                           CMPerTableLoadState* per_table_state,
+                                           CMGlobalLoadState* global_state);
 
   // Populates ts_descs with all tservers belonging to a certain placement.
   void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
@@ -728,8 +728,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   PeerRole Role() const;
 
   Status PeerStateDump(const std::vector<consensus::RaftPeerPB>& masters_raft,
-                               const DumpMasterStateRequestPB* req,
-                               DumpMasterStateResponsePB* resp);
+                       const DumpMasterStateRequestPB* req,
+                       DumpMasterStateResponsePB* resp);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
@@ -779,16 +779,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // API to check if all the live tservers have similar tablet workload.
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
-                                IsLoadBalancedResponsePB* resp) override;
+                        IsLoadBalancedResponsePB* resp) override;
 
   MonoTime LastLoadBalancerRunTime() const;
 
   Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
-                                    IsLoadBalancerIdleResponsePB* resp);
+                            IsLoadBalancerIdleResponsePB* resp);
 
   // API to check that all tservers that shouldn't have leader load do not.
   Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                           AreLeadersOnPreferredOnlyResponsePB* resp);
+                                   AreLeadersOnPreferredOnlyResponsePB* resp);
 
   // Return the placement uuid of the primary cluster containing this master.
   Result<std::string> placement_uuid() const;
@@ -1059,7 +1059,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Since this method takes lock on mutex_, it is separated out of permissions manager
   // so that the thread safety relationship between the two managers is easy to reason about.
   Status CheckResource(const GrantRevokePermissionRequestPB* req,
-                               GrantRevokePermissionResponsePB* resp);
+                       GrantRevokePermissionResponsePB* resp);
 
   // Generated the default entry for the cluster config, that is written into sys_catalog on very
   // first leader election of the cluster.
@@ -1082,21 +1082,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   template <class T>
   Status PrepareSystemTableTemplate(const TableName& table_name,
-                                            const NamespaceName& namespace_name,
-                                            const NamespaceId& namespace_id,
-                                            int64_t term) REQUIRES(mutex_);
-
-  Status PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
-                                    const Schema& schema,
-                                    int64_t term,
-                                    YQLVirtualTable* vtable) REQUIRES(mutex_);
+                                    int64_t term) REQUIRES(mutex_);
+
+  Status PrepareSystemTable(const TableName& table_name,
+                            const NamespaceName& namespace_name,
+                            const NamespaceId& namespace_id,
+                            const Schema& schema,
+                            int64_t term,
+                            YQLVirtualTable* vtable) REQUIRES(mutex_);
 
   Status PrepareNamespace(YQLDatabase db_type,
-                                  const NamespaceName& name,
-                                  const NamespaceId& id,
-                                  int64_t term) REQUIRES(mutex_);
+                          const NamespaceName& name,
+                          const NamespaceId& id,
+                          int64_t term) REQUIRES(mutex_);
 
   void ProcessPendingNamespace(NamespaceId id,
                                std::vector<scoped_refptr<TableInfo>> template_tables,
@@ -1106,30 +1106,30 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns, bool txn_query_succeeded);
 
   Status ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
-                                                 TabletLocationsPB* locs_pb);
+                                         TabletLocationsPB* locs_pb);
 
   // Creates the table and associated tablet objects in-memory and updates the appropriate
   // catalog manager maps.
   Status CreateTableInMemory(const CreateTableRequestPB& req,
-                                     const Schema& schema,
-                                     const PartitionSchema& partition_schema,
-                                     const NamespaceId& namespace_id,
-                                     const NamespaceName& namespace_name,
-                                     const std::vector<Partition>& partitions,
-                                     IndexInfoPB* index_info,
-                                     TabletInfos* tablets,
-                                     CreateTableResponsePB* resp,
-                                     scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
+                             const Schema& schema,
+                             const PartitionSchema& partition_schema,
+                             const NamespaceId& namespace_id,
+                             const NamespaceName& namespace_name,
+                             const std::vector<Partition>& partitions,
+                             IndexInfoPB* index_info,
+                             TabletInfos* tablets,
+                             CreateTableResponsePB* resp,
+                             scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
   Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
   Status CreateCopartitionedTable(const CreateTableRequestPB& req,
-                                          CreateTableResponsePB* resp,
-                                          rpc::RpcContext* rpc,
-                                          Schema schema,
-                                          scoped_refptr<NamespaceInfo> ns);
+                                  CreateTableResponsePB* resp,
+                                  rpc::RpcContext* rpc,
+                                  Schema schema,
+                                  scoped_refptr<NamespaceInfo> ns);
 
   // Check that local host is present in master addresses for normal master process start.
   // On error, it could imply that master_addresses is incorrectly set for shell master startup
@@ -1167,8 +1167,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Add index info to the indexed table.
   Status AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
-                                     const IndexInfoPB& index_info,
-                                     CreateTableResponsePB* resp);
+                             const IndexInfoPB& index_info,
+                             CreateTableResponsePB* resp);
 
   // Delete index info from the indexed table.
   Status MarkIndexInfoFromTableForDeletion(
@@ -1301,7 +1301,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // all the tablets have completed backfilling, the index will be updated
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   Status SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
-                                       const AlterTableRequestPB* req = nullptr);
+                               const AlterTableRequestPB* req = nullptr);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.
@@ -1321,8 +1321,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Truncate the specified table/index.
   Status TruncateTable(const TableId& table_id,
-                               TruncateTableResponsePB* resp,
-                               rpc::RpcContext* rpc);
+                       TruncateTableResponsePB* resp,
+                       rpc::RpcContext* rpc);
 
   struct DeletingTableData {
     TableInfoPtr info;
@@ -1413,9 +1413,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   Status AbortTableCreation(TableInfo* table,
-                                    const TabletInfos& tablets,
-                                    const Status& s,
-                                    CreateTableResponsePB* resp);
+                            const TabletInfos& tablets,
+                            const Status& s,
+                            CreateTableResponsePB* resp);
 
   Status CreateTransactionStatusTablesForTablespaces(
       const TablespaceIdToReplicationInfoMap& tablespace_info,
@@ -2010,4 +2010,3 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
 }  // namespace master
 }  // namespace yb
-

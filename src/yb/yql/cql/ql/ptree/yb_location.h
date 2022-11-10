@@ -97,4 +97,3 @@ operator<< (std::basic_ostream<YYChar>& ostr, const YBLocation& loc) {
 
 }  // namespace ql
 }  // namespace yb
-

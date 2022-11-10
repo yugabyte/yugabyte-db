@@ -84,4 +84,3 @@ class PgMemctx {
 
 }  // namespace pggate
 }  // namespace yb
-

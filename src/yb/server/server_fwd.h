@@ -28,4 +28,3 @@ using ClockPtr = scoped_refptr<Clock>;
 
 } // namespace server
 } // namespace yb
-

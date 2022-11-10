@@ -57,4 +57,3 @@ void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 Status GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
 } // namespace yb
-

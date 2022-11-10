@@ -46,4 +46,3 @@ class TransactionStatusCache {
 
 } // namespace docdb
 } // namespace yb
-

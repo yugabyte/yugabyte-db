@@ -89,4 +89,3 @@ class ServicePool : public RpcService {
 
 } // namespace rpc
 } // namespace yb
-

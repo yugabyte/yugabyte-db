@@ -138,4 +138,3 @@ inline bool operator==(const ReadHybridTime& lhs, const ReadHybridTime& rhs) {
 }
 
 } // namespace yb
-

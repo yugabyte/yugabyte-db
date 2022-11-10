@@ -70,4 +70,3 @@ class Location : public YBLocation {
 
 } // namespace ql
 } // namespace yb
-

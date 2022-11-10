@@ -48,4 +48,3 @@ YB_STRONGLY_TYPED_BOOL(Commit);
 
 }  // namespace pggate
 }  // namespace yb
-

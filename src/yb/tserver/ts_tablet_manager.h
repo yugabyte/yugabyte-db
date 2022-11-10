@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TS_TABLET_MANAGER_H
-#define YB_TSERVER_TS_TABLET_MANAGER_H
 
 #pragma once
 
@@ -437,8 +435,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
   Status RegisterTablet(const TabletId& tablet_id,
-                                const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                RegisterTabletPeerMode mode);
+                        const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                        RegisterTabletPeerMode mode);
 
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
@@ -720,5 +718,3 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
 
 } // namespace tserver
 } // namespace yb
-
-#endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

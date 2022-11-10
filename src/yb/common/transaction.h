@@ -365,4 +365,3 @@ extern const std::string kTransactionTablePrefix;
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 
 } // namespace yb
-

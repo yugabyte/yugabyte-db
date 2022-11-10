@@ -807,4 +807,3 @@ void AppendValues(const FromCollection& from, std::set<ToType>* const to) {
   CHECK(to != NULL);
   to->insert(from.begin(), from.end());
 }
-

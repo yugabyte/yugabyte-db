@@ -307,4 +307,3 @@ class ConcurrentValue {
 using internal::ConcurrentValue;
 
 } // namespace yb
-

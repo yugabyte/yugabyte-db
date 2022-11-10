@@ -40,4 +40,3 @@ int RandomSeed();
 
 }  // namespace test
 }  // namespace rocksdb
-

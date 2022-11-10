@@ -33,6 +33,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstddef>
@@ -131,6 +132,7 @@
 #include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/map.h>
 #include <google/protobuf/map_entry.h>
 #include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
@@ -202,7 +204,10 @@
 #include "yb/util/ev_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
@@ -235,6 +240,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"

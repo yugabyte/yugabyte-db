@@ -120,4 +120,3 @@ class RemoteBootstrapTest : public TabletServerTestBase {
 
 } // namespace tserver
 } // namespace yb
-

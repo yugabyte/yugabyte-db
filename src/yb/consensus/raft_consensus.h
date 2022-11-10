@@ -159,7 +159,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Status WaitUntilLeaderForTests(const MonoDelta& timeout) override;
 
   Status StepDown(const LeaderStepDownRequestPB* req,
-                          LeaderStepDownResponsePB* resp) override;
+                  LeaderStepDownResponsePB* resp) override;
 
   Status TEST_Replicate(const ConsensusRoundPtr& round) override;
   Status ReplicateBatch(const ConsensusRounds& rounds) override;
@@ -169,12 +169,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       LWConsensusResponsePB* response, CoarseTimePoint deadline) override;
 
   Status RequestVote(const VoteRequestPB* request,
-                             VoteResponsePB* response) override;
+                     VoteResponsePB* response) override;
 
   Status ChangeConfig(const ChangeConfigRequestPB& req,
-                              const StdStatusCallback& client_cb,
-                              boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
-                              override;
+                      const StdStatusCallback& client_cb,
+                      boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
+                      override;
 
   Status UnsafeChangeConfig(
       const UnsafeChangeConfigRequestPB& req,
@@ -371,9 +371,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Replicate (as leader) a pre-validated config change. This includes
   // updating the peers and setting the new_configuration as pending.
   Status ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
-                                               const RaftConfigPB& new_config,
-                                               ChangeConfigType type,
-                                               StdStatusCallback client_cb);
+                                       const RaftConfigPB& new_config,
+                                       ChangeConfigType type,
+                                       StdStatusCallback client_cb);
 
   // Update the peers and queue to be consistent with a new active configuration.
   // Should only be called by the leader.
@@ -497,8 +497,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
   Status RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_opid,
-                                                  const VoteRequestPB* request,
-                                                  VoteResponsePB* response);
+                                          const VoteRequestPB* request,
+                                          VoteResponsePB* response);
 
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.
@@ -752,4 +752,3 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
 }  // namespace consensus
 }  // namespace yb
-

@@ -90,4 +90,3 @@ class WaitQueue {
 
 } // namespace docdb
 } // namespace yb
-

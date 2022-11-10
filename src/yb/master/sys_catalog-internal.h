@@ -89,4 +89,3 @@ std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term
 
 } // namespace master
 } // namespace yb
-

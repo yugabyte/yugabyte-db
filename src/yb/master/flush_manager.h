@@ -46,10 +46,10 @@ class FlushManager {
 
   // API to start a table flushing.
   Status FlushTables(const FlushTablesRequestPB* req,
-                             FlushTablesResponsePB* resp);
+                     FlushTablesResponsePB* resp);
 
   Status IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
-                                   IsFlushTablesDoneResponsePB* resp);
+                           IsFlushTablesDoneResponsePB* resp);
 
   void HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                   const TabletServerId& ts_uuid,

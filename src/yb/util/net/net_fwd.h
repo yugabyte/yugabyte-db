@@ -49,4 +49,3 @@ typedef boost::asio::io_service IoService;
 typedef boost::asio::ip::basic_resolver_results<boost::asio::ip::tcp> ResolverResults;
 
 } // namespace yb
-

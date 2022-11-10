@@ -98,4 +98,3 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
 
 } // namespace master
 } // namespace yb
-

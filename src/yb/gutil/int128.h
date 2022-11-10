@@ -340,4 +340,3 @@ inline uint128& uint128::operator--() {
   *this -= 1;
   return *this;
 }
-

@@ -14,30 +14,3 @@ COPY test_tsvector FROM '@abs_srcdir@/data/tsearch.data';
 COPY testjsonb FROM '@abs_srcdir@/data/jsonb.data';
 COPY array_op_test FROM '@abs_srcdir@/data/array.data';
 COPY array_index_op_test FROM '@abs_srcdir@/data/array.data';
---- test copying in CSV mode with various styles
---- of embedded line ending characters
-SET yb_default_copy_from_rows_per_transaction=0;
-create temp table copytest (
-        style   text,
-        test    text,
-        filler  int);
-insert into copytest values('DOS',E'abc\r\ndef',1);
-insert into copytest values('Unix',E'abc\ndef',2);
-insert into copytest values('Mac',E'abc\rdef',3);
-insert into copytest values(E'esc\\ape',E'a\\r\\\r\\\n\\nb',4);
-copy copytest to '@abs_builddir@/results/copytest.csv' csv;
-create temp table copytest2 (like copytest);
-copy copytest2 from '@abs_builddir@/results/copytest.csv' csv;
-select * from copytest except select * from copytest2;
- style | test | filler
--------+------+--------
-(0 rows)
-
-truncate copytest2;
---- same test but with an escape char different from quote char
-copy copytest to '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\\';
-copy copytest2 from '@abs_builddir@/results/copytest.csv' csv quote '''' escape E'\\';
-select * from copytest except select * from copytest2;
- style | test | filler
--------+------+--------
-(0 rows)

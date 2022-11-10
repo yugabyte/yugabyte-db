@@ -235,4 +235,3 @@ typedef enum ImportForeignSchemaType : int {
 
 }  // namespace ql
 }  // namespace yb
-

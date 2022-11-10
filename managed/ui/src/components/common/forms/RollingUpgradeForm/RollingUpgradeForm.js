@@ -182,7 +182,7 @@ export default class RollingUpgradeForm extends Component {
       }
     }
 
-    if (!isDefinedNotNull(primaryCluster.enableYbc))
+    if (!isDefinedNotNull(primaryCluster.enableYbc) && payload.taskType === 'Software')
       payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
 
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {

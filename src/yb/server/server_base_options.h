@@ -137,4 +137,3 @@ CloudInfoPB GetPlacementFromGFlags();
 
 } // namespace server
 } // namespace yb
-

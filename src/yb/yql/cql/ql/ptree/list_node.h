@@ -109,10 +109,10 @@ class TreeListNode : public TreeNode {
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
   Status Apply(ContextType *context,
-                       TreeNodePtrOperator<ContextType, DerivedType> node_op,
-                       int max_nested_level = 0,
-                       int max_nested_count = 0,
-                       TreeNodePtrOperator<ContextType, DerivedType> nested_node_op = nullptr) {
+               TreeNodePtrOperator<ContextType, DerivedType> node_op,
+               int max_nested_level = 0,
+               int max_nested_count = 0,
+               TreeNodePtrOperator<ContextType, DerivedType> nested_node_op = nullptr) {
 
     int nested_level = 0;
     int nested_count = 0;
@@ -185,4 +185,3 @@ class PTListNode : public TreeListNode<> {
 
 }  // namespace ql
 }  // namespace yb
-

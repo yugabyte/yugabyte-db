@@ -8,6 +8,8 @@ import ch.qos.logback.core.read.ListAppender;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import io.ebean.Ebean;
+import io.ebean.EbeanServer;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -64,5 +66,12 @@ public class TestHelper {
         // Needed because we're using 'value' as column name. This makes H2 be happy with that./
         // PostgreSQL works fine with 'value' column as is.
         Helpers.inMemoryDatabase("default", ImmutableMap.of("NON_KEYWORDS", "VALUE")));
+  }
+
+  public static void shutdownDatabase() {
+    EbeanServer server = Ebean.getServer("default");
+    if (server != null) {
+      server.shutdown(false, false);
+    }
   }
 }

@@ -50,9 +50,16 @@ class GetTableLocationsRequest extends YRpc<MasterClientOuterClass.GetTableLocat
   private final byte[] endKey;
   private final String tableId;
   private final int maxTablets;
+  private final boolean includeInactive;
 
   GetTableLocationsRequest(YBTable table, byte[] startPartitionKey,
                            byte[] endPartitionKey, String tableId, int maxTablets) {
+    this(table, startPartitionKey, endPartitionKey, tableId, maxTablets, false);
+  }
+
+  GetTableLocationsRequest(YBTable table, byte[] startPartitionKey,
+                           byte[] endPartitionKey, String tableId, int maxTablets,
+                           boolean includeInactive) {
     super(table);
     if (startPartitionKey != null && endPartitionKey != null
         && Bytes.memcmp(startPartitionKey, endPartitionKey) > 0) {
@@ -63,6 +70,7 @@ class GetTableLocationsRequest extends YRpc<MasterClientOuterClass.GetTableLocat
     this.endKey = endPartitionKey;
     this.tableId = tableId;
     this.maxTablets = maxTablets;
+    this.includeInactive = includeInactive;
   }
 
   @Override
@@ -95,6 +103,8 @@ class GetTableLocationsRequest extends YRpc<MasterClientOuterClass.GetTableLocat
     if (maxTablets != 0) {
       builder.setMaxReturnedLocations(maxTablets);
     }
+
+    builder.setIncludeInactive(includeInactive);
 
     if (startPartitionKey != null) {
       builder.setPartitionKeyStart(UnsafeByteOperations.unsafeWrap(startPartitionKey));

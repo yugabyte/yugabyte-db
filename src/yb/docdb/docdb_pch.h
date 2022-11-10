@@ -9,7 +9,9 @@
 #include <inttypes.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
+#include <setjmp.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,6 +21,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <uuid/uuid.h>
+#include <zlib.h>
 
 #include <algorithm>
 #include <array>
@@ -29,6 +32,7 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -170,7 +174,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/boost_mutex_utils.h"
@@ -196,8 +199,10 @@
 #include "yb/util/faststring.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
@@ -227,6 +232,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.messages.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"

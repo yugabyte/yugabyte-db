@@ -101,6 +101,15 @@ public class SupportBundleController extends AuthenticatedController {
               + "Please set k8s_enabled=true to create support bundle");
     }
 
+    if (cloudType != CloudType.kubernetes
+        && bundleData.components.contains(ComponentType.K8sInfo)) {
+      bundleData.components.remove(ComponentType.K8sInfo);
+      log.warn(
+          "Component 'K8sInfo' is only applicable for kubernetes universes, not cloud type = "
+              + cloudType.toString()
+              + ". Continuing without it.");
+    }
+
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);

@@ -237,4 +237,3 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 void WriteRegistryAsJson(JsonWriter* writer);
 
 } // namespace yb
-

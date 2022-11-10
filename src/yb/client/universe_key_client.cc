@@ -18,27 +18,37 @@
 #include "yb/master/master_encryption.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/backoff_waiter.h"
 
 using namespace std::chrono_literals;
+
+DEFINE_int32(
+    universe_key_client_max_delay_ms, 2000,
+    "Maximum Time in microseconds that an instance of Backoff_waiter waits before retrying to "
+    "get the Universe key registry.");
 
 namespace yb {
 namespace client {
 
 void UniverseKeyClient::GetUniverseKeyRegistryAsync() {
   for (const auto& host_port : hps_) {
-    SendAsyncRequest(host_port);
+    auto backoff_waiter = CoarseBackoffWaiter(
+        CoarseTimePoint::max(), std::chrono::milliseconds(FLAGS_universe_key_client_max_delay_ms));
+    SendAsyncRequest(host_port, backoff_waiter);
   }
 }
 
 void UniverseKeyClient::GetUniverseKeyRegistrySync() {
   for (const auto& host_port : hps_) {
-    SendAsyncRequest(host_port);
+    auto backoff_waiter = CoarseBackoffWaiter(
+        CoarseTimePoint::max(), std::chrono::milliseconds(FLAGS_universe_key_client_max_delay_ms));
+    SendAsyncRequest(host_port, backoff_waiter);
   }
   std::unique_lock<decltype(mutex_)> l(mutex_);
   cond_.wait(l, [&] { return callback_triggered_; } );
 }
 
-void UniverseKeyClient::SendAsyncRequest(HostPort host_port) {
+void UniverseKeyClient::SendAsyncRequest(HostPort host_port, CoarseBackoffWaiter backoff_waiter) {
   master::GetUniverseKeyRegistryRequestPB req;
   auto resp = std::make_shared<master::GetUniverseKeyRegistryResponsePB>();
   auto rpc = std::make_shared<rpc::RpcController>();
@@ -47,18 +57,23 @@ void UniverseKeyClient::SendAsyncRequest(HostPort host_port) {
   master::MasterEncryptionProxy peer_proxy(proxy_cache_, host_port);
   peer_proxy.GetUniverseKeyRegistryAsync(
       req, resp.get(), rpc.get(),
-      std::bind(&UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse, this, resp, rpc,
-                host_port));
+      std::bind(
+          &UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse, this, resp, rpc, host_port,
+          backoff_waiter));
 }
 
 void UniverseKeyClient::ProcessGetUniverseKeyRegistryResponse(
       std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
       std::shared_ptr<rpc::RpcController> rpc,
-      HostPort host_port) {
+      HostPort host_port,
+      CoarseBackoffWaiter backoff_waiter) {
   if (!rpc->status().ok() || resp->has_error()) {
-    LOG(WARNING) << Format("Rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
+    LOG_EVERY_N(WARNING, 100) << Format(
+        "Rpc status: $0, resp: $1", rpc->status(), resp->ShortDebugString());
+
     // Always retry the request on failure.
-    SendAsyncRequest(host_port);
+    backoff_waiter.Wait();
+    SendAsyncRequest(host_port, backoff_waiter);
     return;
   }
   std::unique_lock<decltype(mutex_)> l(mutex_);

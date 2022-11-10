@@ -78,7 +78,7 @@ class ExternalMiniClusterSecureTest :
   }
 
   Status CallYBTSCli(const std::string& client_node, const std::string& what,
-                             const HostPort& server) {
+                     const HostPort& server) {
     auto command = yb::ToStringVector(
         GetToolPath("yb-ts-cli"), "-server_address", server,
         "-certs_dir_name", ToolCertDirectory(),

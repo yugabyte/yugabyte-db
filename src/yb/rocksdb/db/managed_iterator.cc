@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/managed_iterator.h"
 
@@ -268,5 +267,3 @@ void ManagedIterator::UnLock() {
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

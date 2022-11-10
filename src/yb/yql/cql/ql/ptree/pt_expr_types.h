@@ -109,4 +109,3 @@ using PTRelation3 = PTExpr3<InternalType::kBoolValue, DataType::BOOL, PTRelation
 
 }  // namespace ql
 }  // namespace yb
-

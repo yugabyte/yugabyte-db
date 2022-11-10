@@ -68,4 +68,3 @@ extern __thread IOStatsContext iostats_context;
 #endif  // IOS_CROSS_COMPILE
 
 }  // namespace yb
-

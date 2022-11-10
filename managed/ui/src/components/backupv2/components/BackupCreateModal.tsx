@@ -617,7 +617,8 @@ function BackupConfigurationForm({
                             setFieldValue('show_select_ycql_table', true);
                           }}
                         >
-                          <i className="fa fa-pencil" /> Edit selection
+                          <i className="fa fa-pencil" />&nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                         </span>
                       </span>
                     )}

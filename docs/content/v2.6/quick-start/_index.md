@@ -9,49 +9,45 @@ layout: single
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../" class="nav-link">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
-        <i class="fa-brands fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/linux/" class="nav-link">
-        <i class="fa-brands fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/docker/" class="nav-link">
-        <i class="fa-brands fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
-        <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../quick-start/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 

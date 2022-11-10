@@ -349,4 +349,3 @@ extern const std::string kCqlTestKeyspace;
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 
 } // namespace yb
-

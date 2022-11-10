@@ -17,6 +17,7 @@ export enum Backup_States {
   DELETED = 'Deleted',
   SKIPPED = 'Skipped',
   FAILED_TO_DELETE = 'FailedToDelete',
+  STOPPING = 'Stopping',
   STOPPED = 'Stopped',
   DELETE_IN_PROGRESS = 'DeleteInProgress',
   QUEUED_FOR_DELETION = 'QueuedForDeletion'
@@ -29,12 +30,14 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
   Deleted: 'Deleted',
   Skipped: 'Cancelled',
   FailedToDelete: 'Deletion failed',
+  Stopping: 'Cancelling',
   Stopped: 'Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
 };
 
 export interface Keyspace_Table {
+  allTables: boolean;
   keyspace: string;
   tablesList: string[];
   storageLocation?: string;

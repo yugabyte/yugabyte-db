@@ -53,9 +53,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
-             "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
-TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
+DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
@@ -176,9 +174,9 @@ class PgSession::RunHelper {
   }
 
   Status Apply(const PgTableDesc& table,
-                       const PgsqlOpPtr& op,
-                       uint64_t* in_txn_limit,
-                       bool force_non_bufferable) {
+               const PgsqlOpPtr& op,
+               uint64_t* in_txn_limit,
+               bool force_non_bufferable) {
     auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).

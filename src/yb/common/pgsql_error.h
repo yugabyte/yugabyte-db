@@ -100,4 +100,3 @@ struct AuxilaryMessageTag : StringBackedErrorTag {
 typedef StatusErrorCodeImpl<AuxilaryMessageTag> AuxilaryMessage;
 
 } // namespace yb
-

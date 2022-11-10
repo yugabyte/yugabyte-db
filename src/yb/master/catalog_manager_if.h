@@ -271,4 +271,3 @@ bool IsYcqlTable(const TableInfo& table);
 
 }  // namespace master
 }  // namespace yb
-

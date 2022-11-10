@@ -107,7 +107,7 @@ export const BackupCancelModal: FC<CancelModalProps> = ({ visible, backup, onHid
   const queryClient = useQueryClient();
   const execCancelBackup = useMutation(() => cancelBackup(backup as any), {
     onSuccess: () => {
-      toast.success('process stopped');
+      toast.success('Backup is being cancelled');
       onHide();
       queryClient.invalidateQueries(['backups']);
     },

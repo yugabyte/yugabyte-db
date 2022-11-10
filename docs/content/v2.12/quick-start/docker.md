@@ -6,49 +6,45 @@ description: Get started using YugabyteDB in less than five minutes on Docker.
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../" class="nav-link">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
-        <i class="fa-brands fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../linux/" class="nav-link">
-        <i class="fa-brands fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li class="active">
-      <a href="../docker/" class="nav-link">
-        <i class="fa-brands fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../kubernetes/" class="nav-link">
-        <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li class="active">
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 

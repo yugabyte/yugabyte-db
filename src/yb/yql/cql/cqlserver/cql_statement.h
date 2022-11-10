@@ -72,4 +72,3 @@ class CQLStatement : public ql::Statement {
 
 }  // namespace cqlserver
 }  // namespace yb
-

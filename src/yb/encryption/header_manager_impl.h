@@ -34,4 +34,3 @@ std::unique_ptr<HeaderManager> DefaultHeaderManager(UniverseKeyManager* universe
 
 } // namespace encryption
 } // namespace yb
-

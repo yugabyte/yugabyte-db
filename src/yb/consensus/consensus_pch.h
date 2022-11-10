@@ -32,6 +32,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
@@ -47,6 +48,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <random>
 #include <set>
@@ -76,6 +78,8 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
@@ -125,6 +129,7 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <rapidjson/document.h>
@@ -175,7 +180,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
@@ -203,8 +207,10 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
@@ -215,6 +221,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
@@ -232,6 +240,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
+#include "yb/util/opid.messages.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
@@ -240,6 +249,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
 #include "yb/util/rw_semaphore.h"

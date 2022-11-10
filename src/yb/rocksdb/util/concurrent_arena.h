@@ -221,4 +221,3 @@ class ConcurrentArena : public Allocator {
 };
 
 }  // namespace rocksdb
-

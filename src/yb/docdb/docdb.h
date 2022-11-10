@@ -317,4 +317,3 @@ void CombineExternalIntents(
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -72,10 +72,10 @@ class PgDml : public PgStatement {
 
   // Fetch a row and return it to Postgres layer.
   Status Fetch(int32_t natts,
-                       uint64_t *values,
-                       bool *isnulls,
-                       PgSysColumns *syscols,
-                       bool *has_data);
+               uint64_t *values,
+               bool *isnulls,
+               PgSysColumns *syscols,
+               bool *has_data);
 
   // Returns TRUE if docdb replies with more data.
   Result<bool> FetchDataFromServer();
@@ -274,4 +274,3 @@ class PgDml : public PgStatement {
 
 }  // namespace pggate
 }  // namespace yb
-

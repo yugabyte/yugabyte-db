@@ -39,40 +39,40 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // API to start a snapshot creation.
   Status CreateSnapshot(const CreateSnapshotRequestPB* req,
-                                CreateSnapshotResponsePB* resp,
-                                rpc::RpcContext* rpc);
+                        CreateSnapshotResponsePB* resp,
+                        rpc::RpcContext* rpc);
 
   // API to list all available snapshots.
   Status ListSnapshots(const ListSnapshotsRequestPB* req,
-                               ListSnapshotsResponsePB* resp);
+                       ListSnapshotsResponsePB* resp);
 
   Status ListSnapshotRestorations(const ListSnapshotRestorationsRequestPB* req,
-                                          ListSnapshotRestorationsResponsePB* resp);
+                                  ListSnapshotRestorationsResponsePB* resp);
 
   // API to restore a snapshot.
   Status RestoreSnapshot(const RestoreSnapshotRequestPB* req,
-                                 RestoreSnapshotResponsePB* resp);
+                         RestoreSnapshotResponsePB* resp);
 
   // API to delete a snapshot.
   Status DeleteSnapshot(const DeleteSnapshotRequestPB* req,
-                                DeleteSnapshotResponsePB* resp,
-                                rpc::RpcContext* rpc);
+                        DeleteSnapshotResponsePB* resp,
+                        rpc::RpcContext* rpc);
 
   Status ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
-                                    ImportSnapshotMetaResponsePB* resp,
-                                    rpc::RpcContext* rpc);
+                            ImportSnapshotMetaResponsePB* resp,
+                            rpc::RpcContext* rpc);
 
   Status CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
-                                        CreateSnapshotScheduleResponsePB* resp,
-                                        rpc::RpcContext* rpc);
+                                CreateSnapshotScheduleResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   Status ListSnapshotSchedules(const ListSnapshotSchedulesRequestPB* req,
-                                       ListSnapshotSchedulesResponsePB* resp,
-                                       rpc::RpcContext* rpc);
+                               ListSnapshotSchedulesResponsePB* resp,
+                               rpc::RpcContext* rpc);
 
   Status DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
-                                        DeleteSnapshotScheduleResponsePB* resp,
-                                        rpc::RpcContext* rpc);
+                                DeleteSnapshotScheduleResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   Status EditSnapshotSchedule(
       const EditSnapshotScheduleRequestPB* req,
@@ -94,9 +94,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
   Status InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
-                                 const std::string& master_addrs,
-                                 const std::string& producer_universe_uuid,
-                                 std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
+                         const std::string& master_addrs,
+                         const std::string& producer_universe_uuid,
+                         std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
@@ -109,19 +109,19 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Fills the heartbeat response with the decrypted universe key registry.
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
-                                       TSHeartbeatResponsePB* resp) override;
+                               TSHeartbeatResponsePB* resp) override;
 
   // Is encryption at rest enabled for this cluster.
   Status IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
-                                     IsEncryptionEnabledResponsePB* resp);
+                             IsEncryptionEnabledResponsePB* resp);
 
   // Backfills pg_type_oid and pgschema_name in tablet metadata if not present.
   Status BackfillMetadataForCDC(scoped_refptr<TableInfo> table, rpc::RpcContext* rpc);
 
   // Create a new CDC stream with the specified attributes.
   Status CreateCDCStream(const CreateCDCStreamRequestPB* req,
-                                 CreateCDCStreamResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+                         CreateCDCStreamResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -135,26 +135,26 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(const ListCDCStreamsRequestPB* req,
-                                ListCDCStreamsResponsePB* resp) override;
+                        ListCDCStreamsResponsePB* resp) override;
 
   // Fetch CDC stream info corresponding to a db stream id
   Status GetCDCDBStreamInfo(const GetCDCDBStreamInfoRequestPB* req,
-                                    GetCDCDBStreamInfoResponsePB* resp) override;
+                            GetCDCDBStreamInfoResponsePB* resp) override;
 
   // Get CDC stream.
   Status GetCDCStream(const GetCDCStreamRequestPB* req,
-                              GetCDCStreamResponsePB* resp,
-                              rpc::RpcContext* rpc);
+                      GetCDCStreamResponsePB* resp,
+                      rpc::RpcContext* rpc);
 
   // Update a CDC stream.
   Status UpdateCDCStream(const UpdateCDCStreamRequestPB* req,
-                                 UpdateCDCStreamResponsePB* resp,
-                                 rpc::RpcContext* rpc);
+                         UpdateCDCStreamResponsePB* resp,
+                         rpc::RpcContext* rpc);
 
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
-                                     IsBootstrapRequiredResponsePB* resp,
-                                     rpc::RpcContext* rpc);
+                             IsBootstrapRequiredResponsePB* resp,
+                             rpc::RpcContext* rpc);
 
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
@@ -174,24 +174,24 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Setup Universe Replication to consume data from another YB universe.
   Status SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
-                                          SetupUniverseReplicationResponsePB* resp,
-                                          rpc::RpcContext* rpc);
+                                  SetupUniverseReplicationResponsePB* resp,
+                                  rpc::RpcContext* rpc);
 
   // Delete Universe Replication.
   Status DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
-                                           DeleteUniverseReplicationResponsePB* resp,
-                                           rpc::RpcContext* rpc);
+                                   DeleteUniverseReplicationResponsePB* resp,
+                                   rpc::RpcContext* rpc);
 
   // Alter Universe Replication.
   Status AlterUniverseReplication(const AlterUniverseReplicationRequestPB* req,
-                                          AlterUniverseReplicationResponsePB* resp,
-                                          rpc::RpcContext* rpc);
+                                  AlterUniverseReplicationResponsePB* resp,
+                                  rpc::RpcContext* rpc);
 
   // Rename an existing Universe Replication.
   Status RenameUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe,
-                                           const AlterUniverseReplicationRequestPB* req,
-                                           AlterUniverseReplicationResponsePB* resp,
-                                           rpc::RpcContext* rpc);
+                                   const AlterUniverseReplicationRequestPB* req,
+                                   AlterUniverseReplicationResponsePB* resp,
+                                   rpc::RpcContext* rpc);
 
   Status ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req,
                             ChangeXClusterRoleResponsePB* resp,
@@ -199,23 +199,23 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Enable/Disable an Existing Universe Replication.
   Status SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
-                                               SetUniverseReplicationEnabledResponsePB* resp,
-                                               rpc::RpcContext* rpc);
+                                       SetUniverseReplicationEnabledResponsePB* resp,
+                                       rpc::RpcContext* rpc);
 
   // Get Universe Replication.
   Status GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
-                                        GetUniverseReplicationResponsePB* resp,
-                                        rpc::RpcContext* rpc);
+                                GetUniverseReplicationResponsePB* resp,
+                                rpc::RpcContext* rpc);
 
   // Checks if the universe is in an active state or has failed during setup.
   Status IsSetupUniverseReplicationDone(const IsSetupUniverseReplicationDoneRequestPB* req,
-                                                IsSetupUniverseReplicationDoneResponsePB* resp,
-                                                rpc::RpcContext* rpc);
+                                        IsSetupUniverseReplicationDoneResponsePB* resp,
+                                        rpc::RpcContext* rpc);
 
   // On a producer side split, creates new pollers on the consumer for the new tablet children.
   Status UpdateConsumerOnProducerSplit(const UpdateConsumerOnProducerSplitRequestPB* req,
-                                               UpdateConsumerOnProducerSplitResponsePB* resp,
-                                               rpc::RpcContext* rpc);
+                                       UpdateConsumerOnProducerSplitResponsePB* resp,
+                                       rpc::RpcContext* rpc);
 
   // On a producer side metadata change, halts replication until Consumer applies the Meta change.
   Status UpdateConsumerOnProducerMetadata(const UpdateConsumerOnProducerMetadataRequestPB* req,
@@ -226,8 +226,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
   Status WaitForReplicationDrain(const WaitForReplicationDrainRequestPB* req,
-                                         WaitForReplicationDrainResponsePB* resp,
-                                         rpc::RpcContext* rpc);
+                                 WaitForReplicationDrainResponsePB* resp,
+                                 rpc::RpcContext* rpc);
 
   // Setup Universe Replication for an entire producer namespace.
   Status SetupNSUniverseReplication(const SetupNSUniverseReplicationRequestPB* req,
@@ -236,8 +236,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Returns the replication status.
   Status GetReplicationStatus(const GetReplicationStatusRequestPB* req,
-                                      GetReplicationStatusResponsePB* resp,
-                                      rpc::RpcContext* rpc);
+                              GetReplicationStatusResponsePB* resp,
+                              rpc::RpcContext* rpc);
 
   typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
 
@@ -409,8 +409,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                               ExternalTableSnapshotDataMap* tables_data,
                                               CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(const SnapshotInfoPB& snapshot_pb,
-                                              ImportSnapshotMetaResponsePB* resp,
-                                              ExternalTableSnapshotDataMap* tables_data);
+                                      ImportSnapshotMetaResponsePB* resp,
+                                      ExternalTableSnapshotDataMap* tables_data);
   void DeleteNewUDtype(const UDTypeId& udt_id,
                        const std::unordered_set<UDTypeId>& type_ids_to_delete);
   void DeleteNewSnapshotObjects(const NamespaceMap& namespace_map,
@@ -425,7 +425,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       ExternalTableSnapshotData* snapshot_data) REQUIRES_SHARED(mutex_);
 
   Status ImportNamespaceEntry(const SysRowEntry& entry,
-                                      NamespaceMap* namespace_map);
+                              NamespaceMap* namespace_map);
   Status UpdateUDTypes(QLTypePB* pb_type, const UDTypeMap& type_map);
   Status ImportUDTypeEntry(const UDTypeId& udt_id,
                            UDTypeMap* type_map,
@@ -435,15 +435,15 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                        const ExternalTableSnapshotDataMap& table_map,
                        ExternalTableSnapshotData* table_data);
   Status RepartitionTable(scoped_refptr<TableInfo> table,
-                                  const ExternalTableSnapshotData* table_data);
+                          const ExternalTableSnapshotData* table_data);
   Status ImportTableEntry(const NamespaceMap& namespace_map,
                           const UDTypeMap& type_map,
                           const ExternalTableSnapshotDataMap& table_map,
                           ExternalTableSnapshotData* s_data);
   Status PreprocessTabletEntry(const SysRowEntry& entry,
-                                       ExternalTableSnapshotDataMap* table_map);
+                               ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(const SysRowEntry& entry,
-                                   ExternalTableSnapshotDataMap* table_map);
+                           ExternalTableSnapshotDataMap* table_map);
 
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
@@ -533,12 +533,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(const SysClusterConfigEntryPB& cluster_config,
-                                                 const TSHeartbeatRequestPB* req,
-                                                 TSHeartbeatResponsePB* resp);
+                                         const TSHeartbeatRequestPB* req,
+                                         TSHeartbeatResponsePB* resp);
 
   Status FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
-                                          const TSHeartbeatRequestPB* req,
-                                          TSHeartbeatResponsePB* resp);
+                                  const TSHeartbeatRequestPB* req,
+                                  TSHeartbeatResponsePB* resp);
 
   // Helper functions for GetTableSchemaCallback, GetTablegroupSchemaCallback
   // and GetColocatedTabletSchemaCallback.
@@ -614,8 +614,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Consumer API: Find out if bootstrap is required for the Producer tables.
   Status IsBootstrapRequiredOnProducer(scoped_refptr<UniverseReplicationInfo> universe,
-                                               const TableId& producer_table,
-                                               const std::unordered_map<TableId, std::string>&
+                                       const TableId& producer_table,
+                                       const std::unordered_map<TableId, std::string>&
                                                  table_bootstrap_ids);
 
   // Check if bootstrapping is required for a table.
@@ -794,4 +794,3 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-

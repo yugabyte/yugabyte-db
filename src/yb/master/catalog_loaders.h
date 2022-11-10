@@ -105,4 +105,3 @@ bool ShouldLoadObject(const SysTabletsEntryPB& pb);
 
 }  // namespace master
 }  // namespace yb
-

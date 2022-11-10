@@ -26,4 +26,3 @@ class ProxyGenerator {
 
 } // namespace gen_yrpc
 } // namespace yb
-

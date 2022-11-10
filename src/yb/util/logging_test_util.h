@@ -103,4 +103,3 @@ struct ScopedRegisterSink {
 };
 
 } // namespace yb
-

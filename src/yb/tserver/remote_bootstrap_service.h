@@ -194,4 +194,3 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
 } // namespace tserver
 } // namespace yb
-

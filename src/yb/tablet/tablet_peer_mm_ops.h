@@ -72,4 +72,3 @@ class LogGCOp : public MaintenanceOp {
 
 } // namespace tablet
 } // namespace yb
-
