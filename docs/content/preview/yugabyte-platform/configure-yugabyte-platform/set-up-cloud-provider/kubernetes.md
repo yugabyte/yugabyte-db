@@ -77,12 +77,18 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. 
+
+Set the `YBA_NAMESPACE` environment variable to the namespace where you have installed YugabyteDB Anywhere. This variable will used by the rest of the commands from this document.
+
+```sh
+export YBA_NAMESPACE="yb-platform"
+```
 
 Run the following `kubectl` command to apply the YAML file:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n <namespace>
+kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n ${YBA_NAMESPACE}
 ```
 
 Expect the following output:
@@ -101,47 +107,29 @@ The tasks you can perform depend on your access level.
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 **Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
-
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
-{get|create|delete|list} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
-```
 
 **Namespace Admin** can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
-
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
-{get|create|delete|list|patch} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
-```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
@@ -149,18 +137,8 @@ For example, if your goal is to allow YugabyteDB Anywhere to manage YugabyteDB u
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
-```
-
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
---namespace {namespace} \
-{get|delete|list} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 ### kubeconfig file
@@ -176,7 +154,7 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 2. Run the following command to generate the `kubeconfig` file:
 
     ```sh
-    python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
+    python generate_kubeconfig.py -s yugabyte-platform-universe-management -n ${YBA_NAMESPACE}
     ```
 
     Expect the following output:
