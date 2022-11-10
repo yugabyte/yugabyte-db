@@ -1334,6 +1334,34 @@ public class NodeManager extends DevopsBase {
     }
   }
 
+  private void addNodeAgentCommandArgs(
+      Universe universe,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs,
+      Map<String, String> sensitiveArgs) {
+    String nodeIp = null;
+    UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      Optional<NodeInstance> nodeInstanceOp =
+          NodeInstance.maybeGetByName(nodeTaskParam.getNodeName());
+      if (nodeInstanceOp.isPresent()) {
+        nodeIp = nodeInstanceOp.get().getDetails().ip;
+      }
+    } else {
+      NodeDetails nodeDetails = universe.getNode(nodeTaskParam.getNodeName());
+      if (nodeDetails != null && nodeDetails.cloudInfo != null) {
+        nodeIp = nodeDetails.cloudInfo.private_ip;
+      }
+    }
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeAgentClient
+          .maybeGetNodeAgentClient(nodeIp)
+          .ifPresent(
+              nodeAgent ->
+                  NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs));
+    }
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
@@ -1929,6 +1957,7 @@ public class NodeManager extends DevopsBase {
           break;
         }
     }
+    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
