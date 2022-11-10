@@ -634,5 +634,12 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
   return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
 }
 
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
+  if (connection.ok()) {
+    RETURN_NOT_OK((*connection).Execute(query));
+  }
+  return connection;
+}
+
 } // namespace pgwrapper
 } // namespace yb
