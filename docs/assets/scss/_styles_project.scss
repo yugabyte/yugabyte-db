@@ -269,7 +269,8 @@
             display: block;
             height: 40px;
             text-align: center;
-            &.icon-azure{
+
+            &.icon-azure {
               font-size: 30px;
             }
           }
@@ -292,10 +293,6 @@
           color: #0b1117;
           text-overflow: ellipsis;
           overflow: hidden;
-          //white-space: nowrap;
-          @media(max-width:479px){
-            //white-space: normal;
-          }
         }
       }
 
@@ -354,7 +351,7 @@ body:not(.td-home) .td-main main {
     background: transparent !important;
     padding: 0 !important;
     border: none !important;
-    max-width: 100% !important;
+    max-width: calc(100% - 5px) !important;
 
     + {
       ul {
