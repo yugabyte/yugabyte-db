@@ -151,4 +151,3 @@ void FillRedisCommands(const scoped_refptr<MetricEntity>& metric_entity,
 
 } // namespace redisserver
 } // namespace yb
-

@@ -24,8 +24,6 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
-
 namespace yb {
 namespace pggate {
 
@@ -74,10 +72,10 @@ class PgDml : public PgStatement {
 
   // Fetch a row and return it to Postgres layer.
   Status Fetch(int32_t natts,
-                       uint64_t *values,
-                       bool *isnulls,
-                       PgSysColumns *syscols,
-                       bool *has_data);
+               uint64_t *values,
+               bool *isnulls,
+               PgSysColumns *syscols,
+               bool *has_data);
 
   // Returns TRUE if docdb replies with more data.
   Result<bool> FetchDataFromServer();
@@ -162,7 +160,6 @@ class PgDml : public PgStatement {
       Request* req, std::optional<PgOid> db_oid, uint64_t version) {
     auto& request = *DCHECK_NOTNULL(req);
     if (db_oid) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
       request.set_ysql_db_catalog_version(version);
       request.set_ysql_db_oid(*db_oid);
     } else {
@@ -277,4 +274,3 @@ class PgDml : public PgStatement {
 
 }  // namespace pggate
 }  // namespace yb
-

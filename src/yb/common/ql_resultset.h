@@ -85,4 +85,3 @@ class QLResultSet {
 };
 
 } // namespace yb
-

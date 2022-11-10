@@ -36,4 +36,3 @@ inline PBToLWMessage PBToLW(const google::protobuf::Message& source) {
 
 } // namespace rpc
 } // namespace yb
-

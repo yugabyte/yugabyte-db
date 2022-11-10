@@ -32,4 +32,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 }  // namespace ql
 }  // namespace yb
-

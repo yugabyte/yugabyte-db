@@ -290,4 +290,3 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
 }  // namespace rpc
 }  // namespace yb
-

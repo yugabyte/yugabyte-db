@@ -34,4 +34,3 @@ typedef StatusErrorCodeImpl<RaftGroupStateErrorTag> RaftGroupStateError;
 
 } // namespace tablet
 } // namespace yb
-

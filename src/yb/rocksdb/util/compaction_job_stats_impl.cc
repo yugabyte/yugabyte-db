@@ -22,7 +22,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 
 void CompactionJobStats::Reset() {
   elapsed_micros = 0;
@@ -84,12 +83,5 @@ void CompactionJobStats::Add(const CompactionJobStats& stats) {
   file_prepare_write_nanos += stats.file_prepare_write_nanos;
 }
 
-#else
-
-void CompactionJobStats::Reset() {}
-
-void CompactionJobStats::Add(const CompactionJobStats& stats) {}
-
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

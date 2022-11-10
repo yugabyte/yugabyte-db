@@ -41,4 +41,3 @@ inline Result<int32_t> CheckedStoi(Slice slice) {
 Result<long double> CheckedStold(Slice slice);
 
 } // namespace yb
-

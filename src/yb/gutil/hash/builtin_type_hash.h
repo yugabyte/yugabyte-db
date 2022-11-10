@@ -104,4 +104,3 @@ inline uint64 Hash64DoubleWithSeed(double num, uint64 seed) {
   a *= kMul;
   return a;
 }
-

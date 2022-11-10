@@ -224,4 +224,3 @@ inline std::string Format(const char* format) {
 }
 
 } // namespace yb
-

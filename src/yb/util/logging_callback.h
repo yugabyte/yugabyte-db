@@ -55,4 +55,3 @@ typedef Callback<void(LogSeverity severity,
                       size_t message_len)> LoggingCallback;
 
 } // namespace yb
-

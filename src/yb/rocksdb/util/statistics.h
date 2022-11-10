@@ -90,4 +90,3 @@ inline void SetTickerCount(Statistics* statistics, uint32_t ticker_type,
 }
 
 }  // namespace rocksdb
-

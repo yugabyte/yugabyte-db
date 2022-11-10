@@ -368,8 +368,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // segment. Sets 'result_path' to the fully qualified path to the unique filename created for the
   // segment.
   Status CreatePlaceholderSegment(const WritableFileOptions& opts,
-                                          std::string* result_path,
-                                          std::shared_ptr<WritableFile>* out);
+                                  std::string* result_path,
+                                  std::shared_ptr<WritableFile>* out);
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.

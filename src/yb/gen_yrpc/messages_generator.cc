@@ -789,6 +789,13 @@ class Message {
       case_indent.Reset("}\n");
     }
 
+    printer(
+        "default: { // skip unknown fields\n"
+    );
+    ScopedIndent case_indent(printer);
+    printer("::google::protobuf::internal::WireFormatLite::SkipField(input, p.first);\n");
+    case_indent.Reset("}\n");
+
     switch_indent.Reset("}\n");
     loop_indent.Reset("}\n");
     method_indent.Reset("}\n\n");

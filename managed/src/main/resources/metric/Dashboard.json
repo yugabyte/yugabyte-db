@@ -407,7 +407,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_usage",
-      "expr" : "avg(avg_over_time(container_cpu_usage{container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\", pod_name=~\"yb-tserver-(.*)\"}[300s]))",
+      "expr" : "avg(avg_over_time(container_cpu_usage{container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\", pod_name=~\"yb-tserver-(.*)\"}[300s])) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -4954,7 +4954,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "us"
+      "format" : ""
     }, {
       "format" : "short",
       "label" : null,

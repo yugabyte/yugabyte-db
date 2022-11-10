@@ -92,7 +92,7 @@ COMMIT;
 
 The following table explains what happens at each step.
 
-<table style="margin:0 5px;">
+<table>
   <tr>
    <td style="text-align:center;"><span style="font-size: 22px;">Command</span></td>
    <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">Description</span></td>

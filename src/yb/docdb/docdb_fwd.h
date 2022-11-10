@@ -94,4 +94,3 @@ YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 }  // namespace docdb
 }  // namespace yb
-

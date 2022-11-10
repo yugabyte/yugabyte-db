@@ -61,4 +61,3 @@ class StronglyTypedBool {
 };
 
 }  // namespace yb
-

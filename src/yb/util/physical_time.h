@@ -71,4 +71,3 @@ const PhysicalClockPtr& AdjTimeClock();
 #endif
 
 } // namespace yb
-

@@ -162,4 +162,3 @@ std::size_t DynamicMemoryUsageOf(const T& entity, const Types&... rest_entities)
 }
 
 }  // namespace yb
-

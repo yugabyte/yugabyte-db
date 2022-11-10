@@ -365,4 +365,3 @@ class LogTiming {
 
 } // namespace sw_internal
 } // namespace yb
-

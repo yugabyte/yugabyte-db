@@ -678,4 +678,3 @@ bool InlineSkipList<Comparator>::Contains(const char* key) const {
 }
 
 }  // namespace rocksdb
-

@@ -231,4 +231,3 @@ inline void PauseCPU() {
 }  // namespace base
 
 #undef ATOMICOPS_COMPILER_BARRIER
-

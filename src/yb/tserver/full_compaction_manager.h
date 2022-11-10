@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TSERVER_FULL_COMPACTION_MANAGER_H
-#define YB_TSERVER_FULL_COMPACTION_MANAGER_H
+#pragma once
 
 #include <map>
 #include <unordered_map>
@@ -134,5 +133,3 @@ class FullCompactionManager {
 
 } // namespace tserver
 } // namespace yb
-
-#endif /* YB_TSERVER_FULL_COMPACTION_MANAGER_H */

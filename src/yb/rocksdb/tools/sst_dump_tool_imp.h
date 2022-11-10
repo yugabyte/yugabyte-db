@@ -20,7 +20,6 @@
 
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/sst_dump_tool.h"
 
@@ -93,6 +92,3 @@ class SstFileReader {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
-

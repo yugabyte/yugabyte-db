@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 
@@ -605,5 +604,3 @@ int SSTDumpTool::Run(int argc, char** argv) {
   return 0;
 }
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

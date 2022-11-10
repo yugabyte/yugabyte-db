@@ -181,6 +181,21 @@ export const CreateConfigModal = ({
     api.fetchUniverse(sourceUniverseUUID)
   );
 
+  /**
+   * Wrapper around setFieldValue from formik.
+   * Reset `isTableSelectionValidated` to false if changing
+   * a validated table selection.
+   */
+  const setSelectedTableUUIDs = (
+    tableUUIDs: string[],
+    formikActions: FormikActions<CreateXClusterConfigFormValues>
+  ) => {
+    if (isTableSelectionValidated) {
+      setIsTableSelectionValidated(false);
+    }
+    formikActions.setFieldValue('tableUUIDs', tableUUIDs);
+  };
+
   const resetModalState = () => {
     setCurrentStep(FIRST_FORM_STEP);
     setBootstrapRequiredTableUUIDs([]);
@@ -394,12 +409,10 @@ export const CreateConfigModal = ({
                     setCurrentStep,
                     selectedTableUUIDs: values.tableUUIDs,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
-                      formik.current.setFieldValue('tableUUIDs', tableUUIDs),
+                      setSelectedTableUUIDs(tableUUIDs, formik.current),
                     tableType: tableType,
                     isFixedTableType: false,
                     setTableType,
-                    isTableSelectionValidated,
-                    setIsTableSelectionValidated,
                     selectedKeyspaces,
                     setSelectedKeyspaces,
                     selectionError: errors.tableUUIDs,

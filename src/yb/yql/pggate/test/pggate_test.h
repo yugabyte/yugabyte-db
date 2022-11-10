@@ -130,4 +130,3 @@ YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is
 
 }  // namespace pggate
 }  // namespace yb
-

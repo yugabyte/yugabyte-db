@@ -22,4 +22,3 @@ std::unique_ptr<encryption::UniverseKeyManager> GenerateTestUniverseKeyManager()
 
 }  // tserver
 }  // yb
-

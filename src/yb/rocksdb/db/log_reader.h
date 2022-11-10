@@ -170,4 +170,3 @@ class Reader {
 
 }  // namespace log
 }  // namespace rocksdb
-

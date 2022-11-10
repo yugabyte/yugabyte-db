@@ -40,4 +40,3 @@ class RedisTableTestBase : public YBTableTestBase {
 
 }  // namespace integration_tests
 }  // namespace yb
-

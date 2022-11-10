@@ -1180,6 +1180,103 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
       30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
+class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Enable colocation by default on the cluster.
+    options->extra_tserver_flags.push_back("--ysql_colocate_database_by_default=true");
+  }
+};
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTableColocationEnabledByDefaultTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseNameColocatedByDefault = "test_db_colocated_by_default";
+  const string kDatabaseNameColocatedExplicitly = "test_db_colocated_explicitly";
+  const string kDatabaseNameNotColocated = "test_db_not_colocated";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> foo_tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> bar_tablets;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Database without specifying colocation value must be created with colocation = true.
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseNameColocatedByDefault));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedByDefault));
+
+  // A parent table with one tablet should be created when the database is created.
+  auto colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedByDefault, 30s));
+  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a colocated index table.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // A table should be able to opt out of colocation.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo_non_colocated (a INT, PRIMARY KEY (a ASC)) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Database which explicitly specifies colocated = true should work as expected.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 WITH colocated = true", kDatabaseNameColocatedExplicitly));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
+
+  // A parent table with one tablet should be created when the database is created.
+  colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, 30s));
+  colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedExplicitly,
+      "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Database which explicitly opts out of colocation must work as expected.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = false",
+      kDatabaseNameNotColocated));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameNotColocated));
+
+  // Create two tables which shouldn't share the same tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (b INT)"));
+  auto table_id_foo =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "foo"));
+  auto table_id_bar =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "bar"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_foo, 0, &foo_tablets));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_bar, 0, &bar_tablets));
+  ASSERT_EQ(foo_tablets.size(), 1);
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), foo_tablets[0].tablet_id());
+  }
+}
+
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
     const string database_name, bool colocated, const string tablegroup_name) {
   auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
@@ -3037,14 +3134,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
   ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
-  // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
   ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
-                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
-                                  "ON CONFLICT DO NOTHING"));
-
-  // Remember the number of pre-existing databases.
-  size_t num_initial_databases = GetMasterCatalogVersionMap(&conn_yugabyte).size();
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
 
   LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
   cluster_->Shutdown();
@@ -3054,11 +3145,6 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->tablet_server(i)->mutable_flags()->push_back(
         "--TEST_enable_db_catalog_version_mode=true");
-    // Set --ysql_num_databases_reserved_in_db_catalog_version_mode to a large number
-    // that allows room for only one more database to be created.
-    cluster_->tablet_server(i)->mutable_flags()->push_back(
-        Format("--ysql_num_databases_reserved_in_db_catalog_version_mode=$0",
-               tserver::TServerSharedData::kMaxNumDbCatalogVersions - num_initial_databases - 1));
   }
   ASSERT_OK(cluster_->Restart());
 
@@ -3260,12 +3346,6 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
     ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
   }
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
-
-  // This create database will hit the limit.
-  result = conn_yugabyte.ExecuteFormat("CREATE DATABASE $0_2", kTestDatabase);
-  status = ResultToStatus(result);
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "too many databases");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {

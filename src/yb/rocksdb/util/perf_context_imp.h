@@ -65,4 +65,3 @@ namespace rocksdb {
 #endif
 
 } // namespace rocksdb
-

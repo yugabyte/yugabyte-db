@@ -125,4 +125,3 @@ bool IntentValueType(char ch);
 
 }  // namespace docdb
 }  // namespace yb
-

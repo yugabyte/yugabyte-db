@@ -79,8 +79,8 @@ class QLProcessor : public Rescheduler {
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
   // the parse tree.
   Status Prepare(const std::string& stmt, ParseTreePtr* parse_tree,
-                         bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
-                         const bool internal = false);
+                 bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+                 const bool internal = false);
 
   // Check whether the current user has the required permissions to execute the statment.
   bool CheckPermissions(const ParseTree& parse_tree, StatementExecutedCallback cb);
@@ -135,8 +135,8 @@ class QLProcessor : public Rescheduler {
 
   // Parse a SQL statement and generate a parse tree.
   Status Parse(const std::string& stmt, ParseTreePtr* parse_tree,
-                       bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
-                       const bool internal = false);
+               bool reparsed = false, const MemTrackerPtr& mem_tracker = nullptr,
+               const bool internal = false);
 
   // Semantically analyze a parse tree.
   Status Analyze(ParseTreePtr* parse_tree);
@@ -180,4 +180,3 @@ class QLProcessor : public Rescheduler {
 
 }  // namespace ql
 }  // namespace yb
-

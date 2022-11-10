@@ -100,4 +100,3 @@ inline bool IsSaneBool(bool b) {
   return *p <= 1;
 #endif
 }
-

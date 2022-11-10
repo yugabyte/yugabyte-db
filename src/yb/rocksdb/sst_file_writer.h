@@ -96,4 +96,3 @@ class SstFileWriter {
   Rep* rep_;
 };
 }  // namespace rocksdb
-

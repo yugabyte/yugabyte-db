@@ -408,4 +408,3 @@ typedef yb::Slice Slice;
 typedef yb::SliceParts SliceParts;
 
 }  // namespace rocksdb
-

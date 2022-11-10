@@ -85,4 +85,3 @@ class Jsonb;
 } // namespace common
 
 } // namespace yb
-

@@ -59,4 +59,3 @@ class TransactionParticipantContext {
 
 } // namespace tablet
 } // namespace yb
-

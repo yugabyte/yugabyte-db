@@ -66,4 +66,3 @@ bool IsWithinBounds(const KeyBounds* key_bounds, const Slice& key);
 
 }  // namespace docdb
 }  // namespace yb
-

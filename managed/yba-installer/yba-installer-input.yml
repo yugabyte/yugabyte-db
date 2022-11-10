@@ -142,7 +142,11 @@ prometheus:
 # Default password is the empty string (in which case a random password
 # will be generated), override if you wish to change the
 # password.
+
+# logPath: Directory to store YBA logs (will be created if it does not exist).
+
 platform:
+   logPath: "yb-platform/data/logs"
    platformDbUser: "postgres"
    platformDbPassword: ""
    useOauth: false

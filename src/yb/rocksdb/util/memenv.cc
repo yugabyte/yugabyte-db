@@ -34,7 +34,6 @@ namespace rocksdb {
 
 typedef yb::InMemoryFileState InMemoryFileState;
 
-#ifndef ROCKSDB_LITE
 
 namespace {
 
@@ -259,10 +258,5 @@ Env* NewMemEnv(Env* base_env) {
   return new InMemoryEnv(base_env);
 }
 
-#else  // ROCKSDB_LITE
-
-Env* NewMemEnv(Env* base_env) { return nullptr; }
-
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

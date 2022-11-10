@@ -88,4 +88,3 @@ void UpdateClock(const Response& resp, T* t) {
 
 } // namespace client
 } // namespace yb
-

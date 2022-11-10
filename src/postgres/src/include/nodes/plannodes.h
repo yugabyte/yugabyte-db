@@ -749,10 +749,10 @@ typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
 
-	/* 
+	/*
 	 * Only relevant if we're using the hash batching strategy.
 	 */
-	List	   *hashOps;		 /* List of operators to hash with for local 
+	List	   *hashOps;		 /* List of operators to hash with for local
 									join phase of batching */
 	List	   *innerHashAttNos; /* List of attributes of inner tuple that
 									are to be hashed if we are using the hash

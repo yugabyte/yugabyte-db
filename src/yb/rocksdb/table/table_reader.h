@@ -126,4 +126,3 @@ class TableReader {
 };
 
 }  // namespace rocksdb
-

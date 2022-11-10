@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_INTENT_AWARE_ITERATOR_INTERFACE_H_
-#define YB_DOCDB_INTENT_AWARE_ITERATOR_INTERFACE_H_
+#pragma once
 
 #include "yb/util/slice.h"
 
@@ -77,5 +76,3 @@ class IntentAwareIteratorIf {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_INTENT_AWARE_ITERATOR_INTERFACE_H_

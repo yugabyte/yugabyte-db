@@ -40,4 +40,3 @@ std::vector<CapabilityId> Capabilities();
   using capabilities::BOOST_PP_CAT(CAPABILITY_, name);
 
 } // namespace yb
-

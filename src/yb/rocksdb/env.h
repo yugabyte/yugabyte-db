@@ -738,4 +738,3 @@ Env* NewMemEnv(Env* base_env);
 Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
 }  // namespace rocksdb
-

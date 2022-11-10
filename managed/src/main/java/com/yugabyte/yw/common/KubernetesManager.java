@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -13,12 +15,16 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.ToString;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -218,6 +224,25 @@ public abstract class KubernetesManager {
       Map<String, Object> azOverrides,
       String azCode) {
     Set<String> errorsSet = new HashSet<>();
+    Map<String, Object> universeOverridesCopy = new HashMap<>();
+    Map<String, Object> azOverridesCopy = new HashMap<>();
+    ObjectMapper mapper = new ObjectMapper();
+    String universeOverridesString = "", azOverridesString = "";
+    try {
+      universeOverridesString = mapper.writeValueAsString(universeOverrides);
+      universeOverridesCopy = mapper.readValue(universeOverridesString, Map.class);
+      azOverridesString = mapper.writeValueAsString(azOverrides);
+      azOverridesCopy = mapper.readValue(azOverridesString, Map.class);
+    } catch (JsonProcessingException e) {
+      LOG.error(
+          String.format(
+              "Error in writing overrides map to string or string to map: "
+                  + "universe overrides: %s, azOverrides: %s",
+              universeOverrides, azOverrides),
+          e);
+      errorsSet.add("Error parsing one of the overrides");
+      return errorsSet;
+    }
     // TODO optimise this step. It is called for every AZ.
     String helmPackagePath, helmValuesStr;
     try {
@@ -231,8 +256,8 @@ public abstract class KubernetesManager {
     }
     Map<String, String> flatHelmValues =
         HelmUtils.flattenMap(HelmUtils.convertYamlToMap(helmValuesStr));
-    Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverrides);
-    Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverrides);
+    Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverridesCopy);
+    Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverridesCopy);
 
     Set<String> universeOverridesUnknownKeys = getUknownKeys(flatUnivOverrides, flatHelmValues);
     Set<String> universeOverridesNullValueKeys = getNullValueKeys(flatUnivOverrides);
@@ -265,8 +290,8 @@ public abstract class KubernetesManager {
               azCode, azOverridesNullValueKeys));
     }
 
-    HelmUtils.mergeYaml(azOverrides, universeOverrides);
-    String mergedOverrides = createTempFile(azOverrides);
+    HelmUtils.mergeYaml(universeOverridesCopy, azOverridesCopy);
+    String mergedOverrides = createTempFile(universeOverridesCopy);
 
     List<String> commandList =
         ImmutableList.of(
@@ -447,6 +472,8 @@ public abstract class KubernetesManager {
 
   public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
 
+  public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
+
   public abstract List<Pod> getPodInfos(
       Map<String, String> config, String universePrefix, String namespace);
 
@@ -501,4 +528,39 @@ public abstract class KubernetesManager {
 
   public abstract boolean storageClassAllowsExpansion(
       Map<String, String> config, String storageClassName);
+
+  public abstract String getCurrentContext(Map<String, String> azConfig);
+
+  public abstract String execCommandProcessErrors(
+      Map<String, String> config, List<String> commandList);
+
+  public abstract String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat);
+
+  public abstract String getEvents(Map<String, String> config, String namespace, String string);
+
+  public abstract String getK8sVersion(Map<String, String> config, String outputFormat);
+
+  public abstract String getPlatformNamespace();
+
+  public abstract String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat);
+
+  @Data
+  @ToString(includeFieldNames = true)
+  @AllArgsConstructor
+  public static class RoleData {
+    public String kind;
+    public String name;
+    public String namespace;
+  }
+
+  public abstract List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName);
+
+  public abstract String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat);
+
+  public abstract String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat);
 }

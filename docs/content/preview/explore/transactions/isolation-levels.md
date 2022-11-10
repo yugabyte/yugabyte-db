@@ -162,8 +162,7 @@ update account
   </tr>
 
   <tr>
-    <td>
-    </td>
+    <td></td>
     <td>
 
 Simultaneously, withdrawing $900 from the checking account is going to be a problem. This can't co-exist with the other transaction's activity. This transaction would fail immediately.

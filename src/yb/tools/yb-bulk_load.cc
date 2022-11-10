@@ -111,15 +111,15 @@ class BulkLoadTask : public Runnable {
   void Run();
  private:
   Status PopulateColumnValue(const string &column,
-                                     const DataType data_type,
-                                     QLExpressionPB *column_value);
+                             const DataType data_type,
+                             QLExpressionPB *column_value);
   Status InsertRow(const string &row,
-                           const Schema &schema,
-                           uint32_t schema_version,
-                           const IndexMap& index_map,
-                           BulkLoadDocDBUtil *const db_fixture,
-                           docdb::DocWriteBatch *const doc_write_batch,
-                           YBPartitionGenerator *const partition_generator);
+                   const Schema &schema,
+                   uint32_t schema_version,
+                   const IndexMap& index_map,
+                   BulkLoadDocDBUtil *const db_fixture,
+                   docdb::DocWriteBatch *const doc_write_batch,
+                   YBPartitionGenerator *const partition_generator);
   vector<pair<TabletId, string>> rows_;
   const std::set<int> skipped_cols_;
   BulkLoadDocDBUtil *const db_fixture_;
@@ -144,7 +144,7 @@ class BulkLoad {
   Status InitYBBulkLoad();
   Status InitDBUtil(const TabletId &tablet_id);
   Status FinishTabletProcessing(const TabletId &tablet_id,
-                                        vector<pair<TabletId, string>> rows);
+                                vector<pair<TabletId, string>> rows);
   Status RetryableSubmit(vector<pair<TabletId, string>> rows);
   Status CompactFiles();
 

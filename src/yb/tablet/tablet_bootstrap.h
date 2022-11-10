@@ -47,4 +47,3 @@ Status BootstrapTabletImpl(
 
 }  // namespace tablet
 }  // namespace yb
-

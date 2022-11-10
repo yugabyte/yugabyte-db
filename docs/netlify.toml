@@ -432,6 +432,18 @@
    to = "/preview/drivers-orms/csharp/postgres-npgsql/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-yb-pgx/"
+   to = "/preview/drivers-orms/go/yb-pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pgx/"
+   to = "/preview/drivers-orms/go/pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pq/"
+   to = "/preview/drivers-orms/go/pq/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
 

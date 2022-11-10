@@ -22,4 +22,3 @@ class UniverseKeysPB;
 
 }  // namespace encryption
 }  // namespace yb
-

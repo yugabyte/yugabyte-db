@@ -121,4 +121,3 @@ class StatementParameters {
 
 } // namespace ql
 } // namespace yb
-

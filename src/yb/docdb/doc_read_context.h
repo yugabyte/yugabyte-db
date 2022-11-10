@@ -69,4 +69,3 @@ struct DocReadContext {
 
 } // namespace docdb
 } // namespace yb
-

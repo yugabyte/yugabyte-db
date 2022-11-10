@@ -20,6 +20,7 @@
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <compare>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -108,7 +109,6 @@
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/atomic.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/debug-util.h"
@@ -118,8 +118,10 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"

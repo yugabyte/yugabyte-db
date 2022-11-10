@@ -1035,8 +1035,8 @@ PTOrderBy::Direction directionFromSortingType(SortingType sorting_type) {
 } // namespace
 
 Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
-                                                  const TableId& index_id,
-                                                  bool *is_forward_scan) {
+                                          const TableId& index_id,
+                                          bool *is_forward_scan) {
   if (order_by_clause_ == nullptr) {
     return Status::OK();
   }

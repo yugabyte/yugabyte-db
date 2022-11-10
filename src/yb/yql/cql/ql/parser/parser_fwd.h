@@ -20,4 +20,3 @@ class Parser;
 
 }  // namespace ql
 }  // namespace yb
-

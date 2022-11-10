@@ -142,4 +142,3 @@ extern Iterator* NewEmptyIterator();
 extern Iterator* NewErrorIterator(const Status& status);
 
 }  // namespace rocksdb
-

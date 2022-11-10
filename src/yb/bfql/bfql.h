@@ -368,4 +368,3 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
 // Because the tables must be initialized after the specification for "class BFExecApi", we have to
 // include header file "gen_bfunc_table.h" at the end of this file.
 #include "yb/bfql/gen_bfunc_table.h"
-

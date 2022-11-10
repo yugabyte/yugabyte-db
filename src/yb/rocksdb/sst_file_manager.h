@@ -94,4 +94,3 @@ yb::Result<SstFileManager*> NewSstFileManager(
     bool delete_exisitng_trash = true);
 
 }  // namespace rocksdb
-

@@ -56,4 +56,3 @@ class ScopedTSANIgnoreReadsAndWrites {
 
 } // namespace debug
 } // namespace yb
-

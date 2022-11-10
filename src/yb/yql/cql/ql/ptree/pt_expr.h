@@ -408,7 +408,7 @@ class PTCollectionExpr : public PTExpr {
 
   // Fill in udtype_field_values collection, copying values in accordance to UDT field order
   Status InitializeUDTValues(const QLTypePtr& expected_type,
-                                     ProcessContextBase* process_context);
+                             ProcessContextBase* process_context);
 
   int size() const {
     return static_cast<int>(values_.size());
@@ -1416,4 +1416,3 @@ class PTBindVar : public PTExpr {
 
 }  // namespace ql
 }  // namespace yb
-

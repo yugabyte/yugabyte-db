@@ -29,4 +29,3 @@ AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
 
 } // namespace rpc
 } // namespace yb
-

@@ -32,12 +32,12 @@ DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_int32(ysql_output_buffer_size);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(ysql_sequence_cache_minval);
-DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
+DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);

@@ -106,4 +106,3 @@ class YQLStorageIf {
 
 }  // namespace docdb
 }  // namespace yb
-

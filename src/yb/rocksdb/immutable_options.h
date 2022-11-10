@@ -139,4 +139,3 @@ struct ImmutableCFOptions {
 };
 
 }  // namespace rocksdb
-

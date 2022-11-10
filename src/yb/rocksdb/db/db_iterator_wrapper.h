@@ -95,4 +95,3 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
 };
 
 }  // namespace rocksdb
-
