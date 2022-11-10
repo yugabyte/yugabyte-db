@@ -126,6 +126,7 @@ container_cpu_usage:
   metric: "container_cpu_usage"
   function: "avg_over_time|avg"
   range : true
+  operator: "* 100"
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
