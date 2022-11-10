@@ -51,7 +51,7 @@ using yb::StackTraceLineFormat;
 
 using std::string;
 
-DEFINE_int32(test_timeout_after, 0,
+DEFINE_NON_RUNTIME_int32(test_timeout_after, 0,
              "Maximum total seconds allowed for all unit tests in the suite. Default: disabled");
 DECLARE_bool(TEST_promote_all_auto_flags);
 

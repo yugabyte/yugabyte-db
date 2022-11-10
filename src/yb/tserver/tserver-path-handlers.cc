@@ -71,6 +71,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
+#include "yb/util/flags.h"
 
 using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
@@ -94,7 +95,8 @@ using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
 
-DEFINE_bool(enable_intentsdb_page, false, "Enable displaying the contents of intentsdb page.");
+DEFINE_NON_RUNTIME_bool(enable_intentsdb_page, false,
+    "Enable displaying the contents of intentsdb page.");
 
 namespace {
 

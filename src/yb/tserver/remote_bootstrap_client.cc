@@ -72,11 +72,11 @@
 
 using namespace yb::size_literals;
 
-DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
+DEFINE_NON_RUNTIME_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
              "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
 TAG_FLAG(remote_bootstrap_begin_session_timeout_ms, hidden);
 
-DEFINE_int32(remote_bootstrap_end_session_timeout_sec, 15,
+DEFINE_NON_RUNTIME_int32(remote_bootstrap_end_session_timeout_sec, 15,
              "Tablet server RPC client timeout for EndRemoteBootstrapSession calls. "
              "The timeout is usually a large value because we have to wait for the remote server "
              "to get a CHANGE_ROLE config change accepted.");
@@ -88,7 +88,7 @@ DEFINE_RUNTIME_bool(remote_bootstrap_save_downloaded_metadata, false,
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, advanced);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, hidden);
 
-DEFINE_int32(committed_config_change_role_timeout_sec, 30,
+DEFINE_NON_RUNTIME_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);

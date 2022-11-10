@@ -125,10 +125,10 @@ using std::shared_ptr;
 
 using namespace std::literals;
 
-DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
-DEFINE_bool(flush_rocksdb_on_shutdown, true,
+DEFINE_NON_RUNTIME_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
+DEFINE_NON_RUNTIME_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
-DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
+DEFINE_NON_RUNTIME_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
 DEFINE_RUNTIME_bool(use_priority_thread_pool_for_flushes, false,
@@ -139,26 +139,26 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_int32(compaction_priority_start_bound, 10,
+DEFINE_NON_RUNTIME_int32(compaction_priority_start_bound, 10,
              "Compaction task of DB that has number of SST files less than specified will have "
              "priority 0.");
 
-DEFINE_int32(compaction_priority_step_size, 5,
+DEFINE_NON_RUNTIME_int32(compaction_priority_step_size, 5,
              "Compaction task of DB that has number of SST files greater that "
              "compaction_priority_start_bound will get 1 extra priority per every "
              "compaction_priority_step_size files.");
 
-DEFINE_int32(small_compaction_extra_priority, 1,
+DEFINE_NON_RUNTIME_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_int32(automatic_compaction_extra_priority, 50,
+DEFINE_NON_RUNTIME_int32(automatic_compaction_extra_priority, 50,
              "Assigns automatic compactions extra priority when automatic tablet splits are "
              "enabled. This deprioritizes manual compactions including those induced by the "
              "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_bool(rocksdb_use_logging_iterator, false,
+DEFINE_NON_RUNTIME_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
 DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),

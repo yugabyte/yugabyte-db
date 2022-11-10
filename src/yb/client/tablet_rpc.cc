@@ -41,15 +41,17 @@ DEFINE_test_flag(bool, assert_local_op, false,
 DEFINE_RUNTIME_bool(update_all_tablets_upon_network_failure, true,
     "If this is enabled, then pon receiving a network error, we mark the remote server as being "
     "unreachable for all tablets in metacache, instead of the single tablet which issued the rpc.");
-DEFINE_int32(force_lookup_cache_refresh_secs, 0, "When non-zero, specifies how often we send a "
-             "GetTabletLocations request to the master leader to update the tablet replicas cache. "
-             "This request is only sent if we are processing a ConsistentPrefix read.");
+DEFINE_NON_RUNTIME_int32(force_lookup_cache_refresh_secs, 0,
+    "When non-zero, specifies how often we send a "
+    "GetTabletLocations request to the master leader to update the tablet replicas cache. "
+    "This request is only sent if we are processing a ConsistentPrefix read.");
 
-DEFINE_int32(lookup_cache_refresh_secs, 60, "When non-zero, specifies how often we send a "
-             "GetTabletLocations request to the master leader to update the tablet replicas cache. "
-             "This request is only sent if we are processing a ConsistentPrefix read and the RPC "
-             "layer has determined that its view of the replicas is inconsistent with what the "
-             "master has reported");
+DEFINE_NON_RUNTIME_int32(lookup_cache_refresh_secs, 60,
+    "When non-zero, specifies how often we send a "
+    "GetTabletLocations request to the master leader to update the tablet replicas cache. "
+    "This request is only sent if we are processing a ConsistentPrefix read and the RPC "
+    "layer has determined that its view of the replicas is inconsistent with what the "
+    "master has reported");
 DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
                  "If greater than 0, this process will crash if the number of failed replicas for "
                  "a RemoteTabletServer is greater than the specified number.");

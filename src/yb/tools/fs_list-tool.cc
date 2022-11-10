@@ -43,7 +43,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
-DEFINE_bool(verbose, false,
+DEFINE_NON_RUNTIME_bool(verbose, false,
             "Print additional information (e.g., log segment headers)");
 
 namespace yb {

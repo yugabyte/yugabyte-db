@@ -33,14 +33,15 @@
 #include "yb/util/opid.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 using std::pair;
 
-DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
-DEFINE_string(master_flags, "", "Flags to pass through to masters");
+DEFINE_NON_RUNTIME_string(ts_flags, "", "Flags to pass through to tablet servers");
+DEFINE_NON_RUNTIME_string(master_flags, "", "Flags to pass through to masters");
 
-DEFINE_int32(num_tablet_servers, 3, "Number of tablet servers to start");
-DEFINE_int32(num_replicas, 3, "Number of replicas per tablet server");
+DEFINE_NON_RUNTIME_int32(num_tablet_servers, 3, "Number of tablet servers to start");
+DEFINE_NON_RUNTIME_int32(num_replicas, 3, "Number of replicas per tablet server");
 
 namespace yb {
 namespace tserver {

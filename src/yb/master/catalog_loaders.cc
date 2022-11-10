@@ -43,7 +43,7 @@
 
 using std::string;
 
-DEFINE_bool(master_ignore_deleted_on_load, true,
+DEFINE_NON_RUNTIME_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
   "This reduces failover time at the expense of garbage data." );
 

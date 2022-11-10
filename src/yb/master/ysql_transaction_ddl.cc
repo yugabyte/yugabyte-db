@@ -34,8 +34,9 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(ysql_transaction_bg_task_wait_ms, 200,
+DEFINE_NON_RUNTIME_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "
   "between runs");
 

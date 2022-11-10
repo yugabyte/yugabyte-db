@@ -48,8 +48,9 @@
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
+#include "yb/util/flags.h"
 
-DEFINE_bool(aggressive_compaction_for_read_amp, false,
+DEFINE_NON_RUNTIME_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
             "number of files alone, without regards to relative sizes of the SSTable files.");
 

@@ -104,7 +104,7 @@ DEFINE_RUNTIME_int32(heartbeat_interval_ms, 1000,
     "Interval at which the TS heartbeats to the master.");
 TAG_FLAG(heartbeat_interval_ms, advanced);
 
-DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
+DEFINE_NON_RUNTIME_int32(heartbeat_max_failures_before_backoff, 3,
              "Maximum number of consecutive heartbeat failures until the "
              "Tablet Server backs off to the normal heartbeat interval, "
              "rather than retrying.");

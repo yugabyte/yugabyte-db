@@ -70,6 +70,7 @@
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -106,7 +107,7 @@ using strings::Substitute;
     } while (false)
 
 //--------------------------------------------------------------------------------------------------
-DEFINE_bool(ycql_serial_operation_in_transaction_block, true,
+DEFINE_NON_RUNTIME_bool(ycql_serial_operation_in_transaction_block, true,
             "If true, operations within a transaction block must be executed in order, "
             "at least semantically speaking.");
 

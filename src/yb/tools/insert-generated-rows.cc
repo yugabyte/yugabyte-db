@@ -61,7 +61,7 @@
 
 using namespace std::literals;
 
-DEFINE_string(master_address, "localhost",
+DEFINE_NON_RUNTIME_string(master_address, "localhost",
               "Comma separated list of master addresses to run against.");
 
 namespace yb {

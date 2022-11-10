@@ -57,7 +57,7 @@ DECLARE_bool(ysql_disable_index_backfill);
 
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
-DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
+DEFINE_NON_RUNTIME_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
               "was received. It defines the moment in time when client has definitely timed out "
               "and if the request is yet in processing after the deadline, it can be canceled. "
@@ -66,7 +66,7 @@ DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
               "delays.");
 
-DEFINE_bool(pgsql_consistent_transactional_paging, true,
+DEFINE_NON_RUNTIME_bool(pgsql_consistent_transactional_paging, true,
             "Whether to enforce consistency of data returned for second page and beyond for YSQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
@@ -76,12 +76,12 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+DEFINE_NON_RUNTIME_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
-DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, false,
             "Whether to enable packed row for colocated tables.");
 
-DEFINE_uint64(
+DEFINE_NON_RUNTIME_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 

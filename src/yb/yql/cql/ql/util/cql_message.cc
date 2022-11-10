@@ -29,8 +29,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(cql_always_return_metadata_in_execute_response, false,
+DEFINE_NON_RUNTIME_bool(cql_always_return_metadata_in_execute_response, false,
             "Force returning the table metadata in the EXECUTE request response");
 
 namespace yb {

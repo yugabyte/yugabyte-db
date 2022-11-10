@@ -31,13 +31,13 @@
 
 using std::string;
 
-DEFINE_string(initial_sys_catalog_snapshot_path, "",
+DEFINE_NON_RUNTIME_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
 
 DEPRECATE_FLAG(bool, use_initial_sys_catalog_snapshot, "11_2022");
 
-DEFINE_bool(create_initial_sys_catalog_snapshot, false,
+DEFINE_NON_RUNTIME_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);

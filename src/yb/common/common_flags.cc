@@ -21,38 +21,39 @@
 #include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
-DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_NON_RUNTIME_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_NON_RUNTIME_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per YSQL table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_bool(ysql_disable_index_backfill, false,
+DEFINE_NON_RUNTIME_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
 
-DEFINE_bool(enable_automatic_tablet_splitting, true,
+DEFINE_NON_RUNTIME_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
 
-DEFINE_bool(log_ysql_catalog_versions, false,
+DEFINE_NON_RUNTIME_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022")
-DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
+DEFINE_NON_RUNTIME_bool(enable_deadlock_detection, false,
+    "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
-DEFINE_bool(enable_wait_queues, false,
+DEFINE_NON_RUNTIME_bool(enable_wait_queues, false,
             "If true, use pessimistic locking behavior in conflict resolution.");
 TAG_FLAG(enable_wait_queues, evolving);
 

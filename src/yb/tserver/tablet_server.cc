@@ -98,60 +98,64 @@ using yb::tablet::TabletPeer;
 using namespace yb::size_literals;
 using namespace std::placeholders;
 
-DEFINE_int32(tablet_server_svc_num_threads, -1,
+DEFINE_NON_RUNTIME_int32(tablet_server_svc_num_threads, -1,
              "Number of RPC worker threads for the TS service. If -1, it is auto configured.");
 TAG_FLAG(tablet_server_svc_num_threads, advanced);
 
-DEFINE_int32(ts_admin_svc_num_threads, 10,
+DEFINE_NON_RUNTIME_int32(ts_admin_svc_num_threads, 10,
              "Number of RPC worker threads for the TS admin service");
 TAG_FLAG(ts_admin_svc_num_threads, advanced);
 
-DEFINE_int32(ts_consensus_svc_num_threads, -1,
+DEFINE_NON_RUNTIME_int32(ts_consensus_svc_num_threads, -1,
              "Number of RPC worker threads for the TS consensus service. If -1, it is auto "
              "configured.");
 TAG_FLAG(ts_consensus_svc_num_threads, advanced);
 
-DEFINE_int32(ts_remote_bootstrap_svc_num_threads, 10,
+DEFINE_NON_RUNTIME_int32(ts_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC worker threads for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(tablet_server_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
-             "RPC queue length for the TS service.");
+DEFINE_NON_RUNTIME_int32(tablet_server_svc_queue_length,
+    yb::tserver::TabletServer::kDefaultSvcQueueLength,
+    "RPC queue length for the TS service.");
 TAG_FLAG(tablet_server_svc_queue_length, advanced);
 
-DEFINE_int32(ts_admin_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(ts_admin_svc_queue_length, 50,
              "RPC queue length for the TS admin service");
 TAG_FLAG(ts_admin_svc_queue_length, advanced);
 
-DEFINE_int32(ts_consensus_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
-             "RPC queue length for the TS consensus service.");
+DEFINE_NON_RUNTIME_int32(ts_consensus_svc_queue_length,
+    yb::tserver::TabletServer::kDefaultSvcQueueLength,
+    "RPC queue length for the TS consensus service.");
 TAG_FLAG(ts_consensus_svc_queue_length, advanced);
 
-DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
-DEFINE_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
-             "RPC queue length for the Pg Client service.");
+DEFINE_NON_RUNTIME_int32(pg_client_svc_queue_length,
+    yb::tserver::TabletServer::kDefaultSvcQueueLength,
+    "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
 
-DEFINE_bool(enable_direct_local_tablet_server_call,
+DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
 TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
 
-DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
-DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
+DEFINE_NON_RUNTIME_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
+DEFINE_NON_RUNTIME_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 
-DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
-DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+DEFINE_NON_RUNTIME_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
+DEFINE_NON_RUNTIME_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
-DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
-DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
+DEFINE_NON_RUNTIME_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
-DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
+    "Should metrics snapshotter be enabled");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
 
@@ -159,7 +163,7 @@ DECLARE_int32(num_concurrent_backfills_allowed);
 
 constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
-DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+DEFINE_NON_RUNTIME_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 

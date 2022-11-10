@@ -31,10 +31,11 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
+DEFINE_NON_RUNTIME_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
                                          "0 - no compression, 1 - gzip, 2 - snappy, 3 - lz4.");
 
 namespace yb {

@@ -63,20 +63,20 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 
-DEFINE_bool(enable_data_block_fsync, true,
+DEFINE_NON_RUNTIME_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "
             "Disabling this flag may cause data loss in the event of a system crash.");
 TAG_FLAG(enable_data_block_fsync, unsafe);
 
 DECLARE_string(fs_data_dirs);
 
-DEFINE_string(fs_wal_dirs, "",
+DEFINE_NON_RUNTIME_string(fs_wal_dirs, "",
               "Comma-separated list of directories for write-ahead logs. This is an optional "
                   "argument. If this is not specified, fs_data_dirs is used for write-ahead logs "
                   "also and that's a reasonable default for most use cases.");
 TAG_FLAG(fs_wal_dirs, stable);
 
-DEFINE_string(instance_uuid_override, "",
+DEFINE_NON_RUNTIME_string(instance_uuid_override, "",
               "When creating local instance metadata (for master or tserver) in an empty data "
               "directory, use this UUID instead of randomly-generated one. Can be used to replace "
               "a node that had its disk wiped in some scenarios.");

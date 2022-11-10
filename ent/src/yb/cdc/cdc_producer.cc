@@ -46,10 +46,10 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DEFINE_int32(cdc_transaction_timeout_ms, 0,
+DEFINE_NON_RUNTIME_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
 
-DEFINE_bool(cdc_enable_replicate_intents, true,
+DEFINE_NON_RUNTIME_bool(cdc_enable_replicate_intents, true,
             "Enable replication of intents before they've been committed.");
 
 DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,

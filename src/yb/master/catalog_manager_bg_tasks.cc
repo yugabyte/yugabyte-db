@@ -52,11 +52,11 @@ using std::vector;
 DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
     "Amount of time the catalog manager background task thread waits between runs");
 
-DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+DEFINE_NON_RUNTIME_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_bool(sys_catalog_respect_affinity_task, true,
+DEFINE_NON_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 

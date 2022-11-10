@@ -56,17 +56,18 @@
 
 using std::string;
 
-DEFINE_bool(enable_log_retention_by_op_idx, true,
+DEFINE_NON_RUNTIME_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 
-DEFINE_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "
+DEFINE_NON_RUNTIME_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "
              "deleted even if they contain cdc unreplicated entries. If 0, this flag will be "
              "ignored. This flag is ignored if a log segment contains entries that haven't been"
              "flushed to RocksDB.");
 
-DEFINE_int64(log_stop_retaining_min_disk_mb, 100 * 1024, "Stop retaining logs if the space "
-             "available for the logs falls below this limit. This flag is ignored if a log segment "
-             "contains unflushed entries.");
+DEFINE_NON_RUNTIME_int64(log_stop_retaining_min_disk_mb, 100 * 1024,
+    "Stop retaining logs if the space "
+    "available for the logs falls below this limit. This flag is ignored if a log segment "
+    "contains unflushed entries.");
 
 METRIC_DEFINE_counter(tablet, log_reader_bytes_read, "Bytes Read From Log",
                       yb::MetricUnit::kBytes,
@@ -88,7 +89,7 @@ DEFINE_test_flag(bool, record_segments_violate_min_space_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "
     "policy will be appended to LogReader::TEST_segments_violate_min_space_policy_.");
 
-DEFINE_bool(get_changes_honor_deadline, true,
+DEFINE_NON_RUNTIME_bool(get_changes_honor_deadline, true,
             "Toggle whether to honor the deadline passed to log reader");
 
 DEFINE_test_flag(int32, get_changes_read_loop_delay_ms, 0,

@@ -34,7 +34,8 @@
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_bool(allow_index_table_read_write, false, "Allow direct read and write of index tables");
+DEFINE_NON_RUNTIME_bool(allow_index_table_read_write, false,
+    "Allow direct read and write of index tables");
 TAG_FLAG(allow_index_table_read_write, hidden);
 
 namespace yb {

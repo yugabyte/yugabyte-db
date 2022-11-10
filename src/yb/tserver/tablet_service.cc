@@ -120,11 +120,11 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
-DEFINE_int32(max_wait_for_safe_time_ms, 5000,
+DEFINE_NON_RUNTIME_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
-DEFINE_int32(num_concurrent_backfills_allowed, -1,
+DEFINE_NON_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
              "Maximum number of concurrent backfill jobs that is allowed to run.");
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
@@ -188,7 +188,7 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
-DEFINE_bool(enable_ysql, true,
+DEFINE_NON_RUNTIME_bool(enable_ysql, true,
             "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
             "tablet from an initial snapshot (in case --initial_sys_catalog_snapshot_path is "
             "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "

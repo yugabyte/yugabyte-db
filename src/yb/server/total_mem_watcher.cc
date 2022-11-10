@@ -29,6 +29,7 @@
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
+#include "yb/util/flags.h"
 #endif
 
 using namespace std::literals;
@@ -41,12 +42,13 @@ const int kDefaultMemoryLimitTerminationPercent = 300;
 const int kDefaultMemoryLimitTerminationPercent = 200;
 #endif
 
-DEFINE_int32(memory_limit_termination_threshold_pct, kDefaultMemoryLimitTerminationPercent,
-             "If the RSS (resident set size) of the program reaches this percentage of the "
-             "root memory tracker limit, the program will exit. RSS is measured using operating "
-             "system means, not the memory allocator. Set to 0 to disable this behavior.");
+DEFINE_NON_RUNTIME_int32(memory_limit_termination_threshold_pct,
+    kDefaultMemoryLimitTerminationPercent,
+    "If the RSS (resident set size) of the program reaches this percentage of the "
+    "root memory tracker limit, the program will exit. RSS is measured using operating "
+    "system means, not the memory allocator. Set to 0 to disable this behavior.");
 
-DEFINE_int32(total_mem_watcher_interval_millis, 1000,
+DEFINE_NON_RUNTIME_int32(total_mem_watcher_interval_millis, 1000,
              "Interval in milliseconds between checking the total memory usage of the current "
              "process as seen by the operating system, and deciding whether to terminate in case "
              "of excessive memory consumption.");

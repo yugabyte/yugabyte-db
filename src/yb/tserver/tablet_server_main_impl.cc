@@ -100,14 +100,15 @@ using yb::pgwrapper::PgSupervisor;
 
 using namespace yb::size_literals;  // NOLINT
 
-DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet server");
+DEFINE_NON_RUNTIME_bool(start_redis_proxy, true,
+    "Starts a redis proxy along with the tablet server");
 
-DEFINE_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
-DEFINE_string(cql_proxy_broadcast_rpc_address, "",
+DEFINE_NON_RUNTIME_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
+DEFINE_NON_RUNTIME_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
-DEFINE_bool(start_pgsql_proxy, false,
+DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
 
 DECLARE_string(rpc_bind_addresses);

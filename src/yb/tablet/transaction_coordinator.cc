@@ -70,20 +70,21 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0,
+DEFINE_NON_RUNTIME_double(transaction_max_missed_heartbeat_periods, 10.0,
               "Maximum heartbeat periods that a pending transaction can miss before the "
               "transaction coordinator expires the transaction. The total expiration time in "
               "microseconds is transaction_heartbeat_usec times "
               "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
               "fractional.");
-DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
-DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
+DEFINE_NON_RUNTIME_uint64(transaction_check_interval_usec, 500000,
+    "Transaction check interval in usec.");
+DEFINE_NON_RUNTIME_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
-DEFINE_uint64(transaction_deadlock_detection_interval_usec, 60000000,
+DEFINE_NON_RUNTIME_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
-DEFINE_int64(avoid_abort_after_sealing_ms, 20,
+DEFINE_NON_RUNTIME_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
 

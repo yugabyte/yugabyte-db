@@ -67,12 +67,13 @@ DEFINE_RUNTIME_int32(txn_slow_op_threshold_ms, 0,
     "disables printing the collected traces.");
 TAG_FLAG(txn_slow_op_threshold_ms, advanced);
 
-DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
+DEFINE_NON_RUNTIME_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
               "Interval of transaction heartbeat in usec.");
-DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
+DEFINE_NON_RUNTIME_bool(transaction_disable_heartbeat_in_tests, false,
+    "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+DEFINE_NON_RUNTIME_bool(auto_promote_nonlocal_transactions_to_global, true,
             "Automatically promote transactions touching data outside of region to global.");
 
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,

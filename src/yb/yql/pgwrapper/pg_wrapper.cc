@@ -39,22 +39,22 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 
-DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
-DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
-DEFINE_bool(pg_transactions_enabled, true,
+DEFINE_NON_RUNTIME_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
+DEFINE_NON_RUNTIME_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
-DEFINE_string(yb_backend_oom_score_adj, "900",
+DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
-DEFINE_bool(yb_pg_terminate_child_backend, false,
+DEFINE_NON_RUNTIME_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
-DEFINE_bool(pg_verbose_error_log, false,
+DEFINE_NON_RUNTIME_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
-DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DEFINE_NON_RUNTIME_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 
 DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 // Default to 5MB
-DEFINE_int64(
+DEFINE_NON_RUNTIME_int64(
     pg_mem_tracker_tcmalloc_gc_release_bytes, 5 * 1024 * 1024,
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
     "defined in mem_tracker.cc. The overriding value is specifically "
@@ -64,26 +64,26 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
-DEFINE_bool(pg_stat_statements_enabled, true,
+DEFINE_NON_RUNTIME_bool(pg_stat_statements_enabled, true,
             "True to enable statement stats in PostgreSQL server");
 TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);
 
 // Top-level postgres configuration flags.
-DEFINE_bool(ysql_enable_auth, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_auth, false,
               "True to enforce password authentication for all connections");
 
 // Catch-all postgres configuration flags.
-DEFINE_string(ysql_pg_conf_csv, "",
+DEFINE_NON_RUNTIME_string(ysql_pg_conf_csv, "",
               "CSV formatted line represented list of postgres setting assignments");
-DEFINE_string(ysql_hba_conf_csv, "",
+DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 
-DEFINE_string(ysql_pg_conf, "",
+DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
               "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
               "Comma separated list of postgres setting assignments");
-DEFINE_string(ysql_hba_conf, "",
+DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);

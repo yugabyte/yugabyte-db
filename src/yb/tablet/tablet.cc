@@ -119,19 +119,19 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DEFINE_bool(tablet_do_dup_key_checks, true,
+DEFINE_NON_RUNTIME_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
             "Use at your own risk!");
 TAG_FLAG(tablet_do_dup_key_checks, unsafe);
 
-DEFINE_bool(tablet_do_compaction_cleanup_for_intents, true,
+DEFINE_NON_RUNTIME_bool(tablet_do_compaction_cleanup_for_intents, true,
             "Whether to clean up intents for aborted transactions in compaction.");
 
-DEFINE_int32(tablet_bloom_block_size, 4096,
+DEFINE_NON_RUNTIME_int32(tablet_bloom_block_size, 4096,
              "Block size of the bloom filters used for tablet keys.");
 TAG_FLAG(tablet_bloom_block_size, advanced);
 
-DEFINE_double(tablet_bloom_target_fp_rate, 0.01f,
+DEFINE_NON_RUNTIME_double(tablet_bloom_target_fp_rate, 0.01f,
               "Target false-positive rate (between 0 and 1) to size tablet key bloom filters. "
               "A lower false positive rate may reduce the number of disk seeks required "
               "in heavy insert workloads, at the expense of more space and RAM "
@@ -143,21 +143,21 @@ METRIC_DEFINE_entity(tablet);
 
 // TODO: use a lower default for truncate / snapshot restore Raft operations. The one-minute timeout
 // is probably OK for shutdown.
-DEFINE_int32(tablet_rocksdb_ops_quiet_down_timeout_ms, 60000,
+DEFINE_NON_RUNTIME_int32(tablet_rocksdb_ops_quiet_down_timeout_ms, 60000,
              "Max amount of time we can wait for read/write operations on RocksDB to finish "
              "so that we can perform exclusive-ownership operations on RocksDB, such as removing "
              "all data in the tablet by replacing the RocksDB instance with an empty one.");
 
-DEFINE_int32(intents_flush_max_delay_ms, 2000,
+DEFINE_NON_RUNTIME_int32(intents_flush_max_delay_ms, 2000,
              "Max time to wait for regular db to flush during flush of intents. "
              "After this time flush of regular db will be forced.");
 
-DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
+DEFINE_NON_RUNTIME_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
              "When writes to intents RocksDB are stopped and the number of Raft operations after "
              "the last write to the intents RocksDB "
              "is greater than this value, the intents RocksDB would be requested to flush.");
 
-DEFINE_bool(delete_intents_sst_files, true,
+DEFINE_NON_RUNTIME_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
 DEFINE_RUNTIME_uint64(backfill_index_write_batch_size, 128,
@@ -195,10 +195,10 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
-DEFINE_bool(cleanup_intents_sst_files, true,
+DEFINE_NON_RUNTIME_bool(cleanup_intents_sst_files, true,
     "Cleanup intents files that are no more relevant to any running transaction.");
 
-DEFINE_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
+DEFINE_NON_RUNTIME_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "Max amount of time we can wait for active transactions to abort on a tablet "
              "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
              "unresponsive_ts_rpc_timeout_ms");
@@ -213,7 +213,7 @@ DEFINE_test_flag(int32, backfill_drop_frequency, 0,
     "to create an inconsistency between the index and the indexed tables where n is the "
     "input parameter given.");
 
-DEFINE_bool(tablet_enable_ttl_file_filter, false,
+DEFINE_NON_RUNTIME_bool(tablet_enable_ttl_file_filter, false,
             "Enables compaction to directly delete files that have expired based on TTL, "
             "rather than removing them via the normal compaction process.");
 
