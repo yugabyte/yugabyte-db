@@ -967,9 +967,7 @@ struct DBWithColumnFamilies {
                    // Column families will be created and used to be queried.
   port::Mutex create_cf_mutex;  // Only one thread can execute CreateNewCf()
 
-  DBWithColumnFamilies()
-      : db(nullptr)
-  {
+  DBWithColumnFamilies() : db(nullptr) {
     cfh.clear();
     num_created = 0;
     num_hot = 0;

@@ -130,9 +130,9 @@ TAG_FLAG(ycql_ldap_bind_dn, sensitive_info);
 DEFINE_string(ycql_ldap_bind_passwd, "", "Password for username being used to perform the initial "
   "search when doing search + bind authentication");
 TAG_FLAG(ycql_ldap_bind_passwd, sensitive_info);
-DEFINE_string(ycql_ldap_search_attribute, "", "Attribute to match against the username in the "
-  "search when doing search + bind authentication. If no attribute is specified, the uid attribute "
-  "is used.");
+DEFINE_string(ycql_ldap_search_attribute, "",
+    "Attribute to match against the username in the search when doing search + bind "
+    "authentication. If no attribute is specified, the uid attribute is used.");
 DEFINE_string(ycql_ldap_search_filter, "", "The search filter to use when doing search + bind "
   "authentication.");
 

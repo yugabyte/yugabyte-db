@@ -26,6 +26,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
