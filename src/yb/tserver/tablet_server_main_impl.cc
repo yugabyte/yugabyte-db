@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include "yb/tserver/tablet_server_main_impl.h"
+
 #include <chrono>
 #include <iostream>
 
