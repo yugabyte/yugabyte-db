@@ -80,6 +80,11 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
     ReadHybridTime value;
   };
 
+  struct SessionData {
+    client::YBSessionPtr session;
+    client::YBTransactionPtr transaction;
+  };
+
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
 
   PgClientSession(
@@ -111,7 +116,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
-  Result<std::pair<client::YBSession*, UsedReadTimePtr>> SetupSession(
+  Result<std::pair<SessionData, UsedReadTimePtr>> SetupSession(
       const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit);
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
@@ -127,11 +132,6 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   // Set the read point to the databases xCluster safe time if consistent reads are enabled
   Status UpdateReadPointForXClusterConsistentReads(
       const PgPerformOptionsPB& options, ConsistentReadPoint* read_point);
-
-  struct SessionData {
-    client::YBSessionPtr session;
-    client::YBTransactionPtr transaction;
-  };
 
   const uint64_t id_;
   client::YBClient& client_;

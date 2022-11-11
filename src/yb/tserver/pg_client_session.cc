@@ -304,6 +304,7 @@ struct PerformData {
   PgPerformResponsePB* resp;
   rpc::RpcContext context;
   PgClientSessionOperations ops;
+  client::YBTransactionPtr transaction;
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
   PgResponseCache::Setter cache_setter;
@@ -357,10 +358,17 @@ struct PerformData {
       if (op_resp.has_rows_data_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(context.AddRpcSidecar(op->rows_data())));
       }
-      if (resp->has_catalog_read_time() && op_resp.has_paging_state()) {
-        // Prevent further paging reads from read restart errors.
-        // See the ProcessUsedReadTime(...) function for details.
-        *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
+      if (op_resp.has_paging_state()) {
+        if (resp->has_catalog_read_time()) {
+          // Prevent further paging reads from read restart errors.
+          // See the ProcessUsedReadTime(...) function for details.
+          *op_resp.mutable_paging_state()->mutable_read_time() = resp->catalog_read_time();
+        }
+        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
+          // Delete read time from paging state since a read time is not used in serializable
+          // isolation level.
+          op_resp.mutable_paging_state()->clear_read_time();
+        }
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
@@ -714,13 +722,14 @@ Status PgClientSession::Perform(
   const auto in_txn_limit = GetInTxnLimit(options, clock_.get());
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
-  auto* session = session_info.first;
+  auto* session = session_info.first.session.get();
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
   auto data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
     .resp = resp,
     .context = std::move(*context),
     .ops = std::move(ops),
+    .transaction = std::move(session_info.first.transaction),
     .table_cache = &table_cache_,
     .used_read_time = session_info.second,
     .cache_setter = std::move(setter),
@@ -792,7 +801,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
   return Status::OK();
 }
 
-Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
+Result<std::pair<PgClientSession::SessionData, PgClientSession::UsedReadTimePtr>>
 PgClientSession::SetupSession(
     const PgPerformRequestPB& req, CoarseTimePoint deadline, HybridTime in_txn_limit) {
   const auto& options = req.options();
@@ -882,7 +891,7 @@ PgClientSession::SetupSession(
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
   }
 
-  return std::make_pair(session, used_read_time);
+  return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
 }
 
 std::string PgClientSession::LogPrefix() {

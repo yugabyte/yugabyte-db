@@ -1829,6 +1829,38 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   }, 15s, "Create table"));
 }
 
+class PgSmallPrefetchTest : public PgMiniSingleTServerTest {
+ protected:
+  void SetUp() override {
+    FLAGS_ysql_prefetch_limit = 1;
+    PgMiniSingleTServerTest::SetUp();
+  }
+};
+
+TEST_F_EX(
+    PgMiniSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestPagingInSerializableIsolation),
+    PgSmallPrefetchTest) {
+  // This test is related to #14284, #13041. As part of a regression, the read time set in the
+  // paging state returned by the tserver to YSQL, was sent back by YSQL in subsequent read
+  // requests even for serializable isolation level. This is only correct for the other isolation
+  // levels. In serializable isolation level, a read time is invalid since each read is supposed to
+  // read and lock the latest data. This resulted in the tserver crashing with -
+  // "Read time should NOT be specified for serializable isolation level".
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT GENERATE_SERIES(1, 10)"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Execute("DECLARE c CURSOR FOR SELECT * FROM test"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
  protected:
   void SetUp() override {
