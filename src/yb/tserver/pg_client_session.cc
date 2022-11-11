@@ -441,10 +441,17 @@ struct PerformData {
       if (op->has_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(op->sidecar_index()));
       }
-      if (resp.has_catalog_read_time() && op_resp.has_paging_state()) {
-        // Prevent further paging reads from read restart errors.
-        // See the ProcessUsedReadTime(...) function for details.
-        *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
+      if (op_resp.has_paging_state()) {
+        if (resp.has_catalog_read_time()) {
+          // Prevent further paging reads from read restart errors.
+          // See the ProcessUsedReadTime(...) function for details.
+          *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
+        }
+        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
+          // Delete read time from paging state since a read time is not used in serializable
+          // isolation level.
+          op_resp.mutable_paging_state()->clear_read_time();
+        }
       }
       op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
@@ -884,6 +891,7 @@ struct RpcPerformQuery : public PerformData {
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  VLOG(5) << "Perform rpc: " << req->ShortDebugString();
   auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context);
   auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
   if (!status.ok()) {
