@@ -79,15 +79,19 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. 
 
-Set the `YBA_NAMESPACE` environment variable to the namespace where you have installed YugabyteDB Anywhere. This variable will used by the rest of the commands from this document.
+Set the `YBA_NAMESPACE` environment variable to the namespace where your YugabyteDB Anywhere is installed, as follows:
 
 ```sh
 export YBA_NAMESPACE="yb-platform"
 ```
 
+Note that the `YBA_NAMESPACE` variable is used in the commands throughout this document.
+
 Run the following `kubectl` command to apply the YAML file:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n ${YBA_NAMESPACE}
 ```
 
@@ -106,6 +110,8 @@ The tasks you can perform depend on your access level.
 **Global Admin** can grant broad cluster level admin access by executing the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
   | kubectl apply -n ${YBA_NAMESPACE} -f -
@@ -114,6 +120,8 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
 **Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
   | kubectl apply -n ${YBA_NAMESPACE} -f -
@@ -124,6 +132,8 @@ This contains ClusterRoles and ClusterRoleBindings for the required set of permi
 **Namespace Admin** can grant namespace-level admin access by using the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
   | kubectl apply -n ${YBA_NAMESPACE} -f -
@@ -136,6 +146,8 @@ If you have multiple target namespaces, then you have to apply the YAML in all o
 For example, if your goal is to allow YugabyteDB Anywhere to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
   | kubectl apply -n ${YBA_NAMESPACE} -f -
@@ -154,6 +166,8 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 2. Run the following command to generate the `kubeconfig` file:
 
     ```sh
+    export YBA_NAMESPACE="yb-platform"
+
     python generate_kubeconfig.py -s yugabyte-platform-universe-management -n ${YBA_NAMESPACE}
     ```
 
