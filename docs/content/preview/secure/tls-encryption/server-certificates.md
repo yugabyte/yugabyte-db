@@ -253,11 +253,21 @@ Repeat the following steps for each node, replacing `<node-ip-address>` with the
    [ req ]
    prompt=no
    distinguished_name = my_distinguished_name
-   
+      
    [ my_distinguished_name ]
    organizationName = Yugabyte
    # Required value for commonName, do not change
    commonName = <node-ip-address>
+      
+   # Multiple subject alternative names (SANs) such as IP Address, 
+   # DNS Name, Email, URI, and so on, can be specified under this section
+   [ req_ext]
+   SubjectAltName = @alt_names
+   [alt_names]
+   IP.1 = <IP Address>
+   IP.2 = <IP Address>
+   DNS.1 = <DNS Name> 
+   DNS.2 = <DNS Name>
    ```
 
 3. After pasting the content in step 2 and replacing `<node-ip-address>` with the node IP address, save and close the file by entering `Ctl+D`.
@@ -327,21 +337,6 @@ You should see the following output, displaying the node IP address:
 
 ```output
 X.X.X.X/node.X.X.X.X.crt: OK
-```
-
-### Specify Subject Alternative Name 
-
-Recently, the `commonName` field for server certificates has been deprecated, with some browsers no longer supporting it and others ignoring the value and checking the `subjectAltName` field instead. 
-
-You can create certificates using the Subject Alternative Name (SAN) extension by following [OpenSSL x509v3_config documentation](https://www.openssl.org/docs/man1.1.1/man5/x509v3_config.html).
-
-Consider the following as a guideline:
-
-```sh
-subjectAltName=@subject_alt_section
-
-[ subject_alt_section ]
-subjectAltName=URI:ldap://somehost.com/CN=foo,OU=bar
 ```
 
 ## Copy configuration files to the nodes
