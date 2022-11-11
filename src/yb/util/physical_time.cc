@@ -31,11 +31,11 @@ DEFINE_RUNTIME_uint64(max_clock_sync_error_usec, 10 * 1000 * 1000,
     "Maximum allowed clock synchronization error as reported by NTP "
     "before the server will abort.");
 TAG_FLAG(max_clock_sync_error_usec, advanced);
-DEFINE_bool(disable_clock_sync_error, true,
+DEFINE_UNKNOWN_bool(disable_clock_sync_error, true,
             "Whether or not we should keep running if we detect a clock synchronization issue.");
 TAG_FLAG(disable_clock_sync_error, advanced);
 
-DEFINE_uint64(max_clock_skew_usec, 500 * 1000,
+DEFINE_UNKNOWN_uint64(max_clock_skew_usec, 500 * 1000,
               "Transaction read clock skew in usec. "
               "This is the maximum allowed time delta between servers of a single cluster.");
 

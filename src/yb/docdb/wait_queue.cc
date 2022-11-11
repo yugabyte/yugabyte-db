@@ -49,7 +49,7 @@ DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
 
-DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
+DEFINE_UNKNOWN_uint64(force_single_shard_waiter_retry_ms, 30000,
               "The amount of time to wait before sending the client of a single shard transaction "
               "a retryable error. Such clients are periodically sent a retryable error to ensure "
               "we don't maintain waiters in the wait queue for unresponsive or disconnected "

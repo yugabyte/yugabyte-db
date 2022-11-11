@@ -60,19 +60,19 @@ using std::vector;
 
 // Because every binary initializes its flags here, we use it as a convenient place
 // to offer some global flags as well.
-DEFINE_bool(dump_metrics_json, false,
+DEFINE_UNKNOWN_bool(dump_metrics_json, false,
             "Dump a JSON document describing all of the metrics which may be emitted "
             "by this binary.");
 TAG_FLAG(dump_metrics_json, hidden);
 
-DEFINE_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
+DEFINE_UNKNOWN_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
     "profiling for the lifetime of the process. Profile output will be stored in the "
     "directory specified by -heap_profile_path. Enabling this option will disable the "
     "on-demand/remote server profile handlers.");
 TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
 TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
 
-DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
+DEFINE_UNKNOWN_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
     "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
@@ -81,14 +81,14 @@ DEPRECATE_FLAG(int32, svc_queue_length_default, "11_2022");
 
 // This provides a more accurate representation of default gFlag values for application like
 // yb-master which override the hard coded values at process startup time.
-DEFINE_bool(dump_flags_xml, false,
+DEFINE_UNKNOWN_bool(dump_flags_xml, false,
     "Dump a XLM document describing all of gFlags used in this binary. Differs from helpxml by "
     "displaying the current runtime value as the default instead of the hard coded values from the "
     "flag definitions. ");
 TAG_FLAG(dump_flags_xml, stable);
 TAG_FLAG(dump_flags_xml, advanced);
 
-DEFINE_bool(help_auto_flag_json, false,
+DEFINE_UNKNOWN_bool(help_auto_flag_json, false,
     "Dump a JSON document describing all of the AutoFlags available in this binary.");
 TAG_FLAG(help_auto_flag_json, stable);
 TAG_FLAG(help_auto_flag_json, advanced);
@@ -250,7 +250,7 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
-DEFINE_string(
+DEFINE_UNKNOWN_string(
     dynamically_linked_exe_suffix, "",
     "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
     "generation of Link Time Optimized builds.");

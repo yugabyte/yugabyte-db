@@ -56,11 +56,12 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_connections_to_server, 8,
+DEFINE_UNKNOWN_int32(num_connections_to_server, 8,
              "Number of underlying connections to each server");
 
-DEFINE_int32(proxy_resolve_cache_ms, 5000,
+DEFINE_UNKNOWN_int32(proxy_resolve_cache_ms, 5000,
              "Time in milliseconds to cache resolution result in Proxy");
 
 using namespace std::literals;

@@ -83,20 +83,20 @@ DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
     "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 
-DEFINE_int32(follower_unavailable_considered_failed_sec, 900,
+DEFINE_UNKNOWN_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
              "evicted from the config.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 
-DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
+DEFINE_UNKNOWN_int32(consensus_inject_latency_ms_in_notifications, 0,
              "Injects a random sleep between 0 and this many milliseconds into "
              "asynchronous notifications from the consensus queue back to the "
              "consensus implementation.");
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
-DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "Interval up to which CDC consumer's checkpoint is considered for retaining log cache."
              "If we haven't received an updated checkpoint from CDC consumer within the interval "
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
@@ -122,7 +122,7 @@ TAG_FLAG(cdc_intent_retention_ms, advanced);
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     remote_bootstrap_from_leader_only, true,
     "Whether to instruct the peer to attempt bootstrap from the closest peer instead of "
     "the leader. The leader too could be the closest peer depending on the new peer's "

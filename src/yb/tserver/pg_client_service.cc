@@ -50,10 +50,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(pg_client_session_expiration_ms, 60000,
+DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
               "Pg client session expiration time in milliseconds.");
 
 namespace yb {

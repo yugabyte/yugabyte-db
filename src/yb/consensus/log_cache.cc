@@ -63,19 +63,19 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_int32(log_cache_size_limit_mb, 128,
+DEFINE_UNKNOWN_int32(log_cache_size_limit_mb, 128,
              "The total per-tablet size of consensus entries which may be kept in memory. "
              "The log cache attempts to keep all entries which have not yet been replicated "
              "to all followers in memory, but if the total size of those entries exceeds "
              "this limit within an individual tablet, the oldest will be evicted.");
 TAG_FLAG(log_cache_size_limit_mb, advanced);
 
-DEFINE_int32(global_log_cache_size_limit_mb, 1024,
+DEFINE_UNKNOWN_int32(global_log_cache_size_limit_mb, 1024,
              "Server-wide version of 'log_cache_size_limit_mb'. The total memory used for "
              "caching log entries across all tablets is kept under this threshold.");
 TAG_FLAG(global_log_cache_size_limit_mb, advanced);
 
-DEFINE_int32(global_log_cache_size_limit_percentage, 5,
+DEFINE_UNKNOWN_int32(global_log_cache_size_limit_percentage, 5,
              "The maximum percentage of root process memory that can be used for caching log "
              "entries across all tablets. Default is 5.");
 TAG_FLAG(global_log_cache_size_limit_percentage, advanced);
