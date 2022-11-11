@@ -833,13 +833,16 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    UUID clusterUUID = UUID.randomUUID();
+    JsonNode clusterJson =
+        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
     ObjectNode nodeDetails = Json.newObject();
     nodeDetails.put("nodeName", "testing-1");
     nodeDetails.set("cloudInfo", cloudInfo);
+    nodeDetails.put("placementUuid", clusterUUID.toString());
     ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", nodeDetailsSet);
@@ -905,14 +908,16 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
-    ArrayNode clustersJsonArray =
-        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
-
+    UUID clusterUUID = UUID.randomUUID();
+    JsonNode clusterJson =
+        Json.newObject().put("uuid", clusterUUID.toString()).set("userIntent", userIntentJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
     ObjectNode cloudInfo = Json.newObject();
     cloudInfo.put("region", "region1");
     ObjectNode nodeDetails = Json.newObject();
     nodeDetails.put("nodeName", "testing-1");
     nodeDetails.set("cloudInfo", cloudInfo);
+    nodeDetails.put("placementUuid", clusterUUID.toString());
     ArrayNode nodeDetailsSet = Json.newArray().add(nodeDetails);
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", nodeDetailsSet);

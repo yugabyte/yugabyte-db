@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
@@ -412,7 +413,7 @@ public class BackupsController extends AuthenticatedController {
         });
 
     taskParams.customerUUID = customerUUID;
-
+    taskParams.prefixUUID = UUID.randomUUID();
     UUID universeUUID = taskParams.universeUUID;
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {

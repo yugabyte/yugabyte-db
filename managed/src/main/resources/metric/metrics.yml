@@ -172,6 +172,7 @@ container_cpu_usage:
   metric: "container_cpu_usage"
   function: "avg_over_time|avg"
   range : true
+  operator: "* 100"
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
@@ -2867,7 +2868,6 @@ table_read_rps:
     yaxis:
       alias:
         "ql_read_latency_count": "Read"
-      ticksuffix: "&nbsp;\u00B5s"
 
 table_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"

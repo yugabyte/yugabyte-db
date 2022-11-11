@@ -54,9 +54,6 @@ public class PublicCloudConstants {
     x86_64(
         "glob:**yugabyte*{centos,alma,linux,el}*x86_64.tar.gz",
         "glob:**ybc*{centos,alma,linux,el}*x86_64.tar.gz"),
-    arm64(
-        "glob:**yugabyte*{centos,alma,linux,el}*aarch64.tar.gz",
-        "glob:**ybc*{centos,alma,linux,el}*aarch64.tar.gz"),
     aarch64(
         "glob:**yugabyte*{centos,alma,linux,el}*aarch64.tar.gz",
         "glob:**ybc*{centos,alma,linux,el}*aarch64.tar.gz");

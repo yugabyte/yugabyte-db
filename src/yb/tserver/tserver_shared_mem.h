@@ -30,7 +30,7 @@ class TServerSharedData {
  public:
   // In per-db catalog version mode, this puts a limit on the maximum number of databases
   // that can exist in a cluster.
-  static constexpr int32 kMaxNumDbCatalogVersions = 10000;
+  static constexpr uint32_t kMaxNumDbCatalogVersions = 10000;
 
   TServerSharedData() {
     // All atomics stored in shared memory must be lock-free. Non-robust locks

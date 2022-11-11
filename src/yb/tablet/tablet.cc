@@ -1888,8 +1888,7 @@ Status Tablet::RemoveIntents(
 
 // We batch this as some tx could be very large and may not fit in one batch
 Status Tablet::GetIntents(
-    const TransactionId& id,
-    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_read_operation);

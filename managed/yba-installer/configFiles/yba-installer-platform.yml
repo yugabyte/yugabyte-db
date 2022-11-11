@@ -5,6 +5,8 @@ services:
     contents: |
       include classpath("application.common.conf")
 
+      log.override.path="{{ installRoot }}/{{ yamlPath ".platform.logPath" }}"
+
       play.crypto.secret="{{ yamlPath ".platform.appSecret" }}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
       play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"

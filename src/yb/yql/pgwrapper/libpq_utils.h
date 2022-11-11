@@ -194,5 +194,7 @@ class PGConnBuilder {
 
 bool HasTryAgain(const Status& status);
 
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+
 } // namespace pgwrapper
 } // namespace yb

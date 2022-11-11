@@ -10,7 +10,7 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
-type: homepage
+    type: homepage
 resourcesIntro: Quick Links
 resources:
   - title: What's new in YugabyteDB Anywhere

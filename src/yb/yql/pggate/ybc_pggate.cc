@@ -1277,7 +1277,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict
+      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default
   };
   return &accessor;
 }

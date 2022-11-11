@@ -871,8 +871,10 @@ Result<ApplyTransactionState> GetIntentsBatch(
             auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
 
             IntentKeyValueForCDC intent_metadata;
-            intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
-            intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
+            Slice(key_parts, &(intent_metadata.key_buf));
+            intent_metadata.key = intent.doc_path;
+            Slice(value_parts, &(intent_metadata.value_buf));
+            intent_metadata.value = decoded_value.body;
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
             intent_metadata.intent_ht = doc_ht;

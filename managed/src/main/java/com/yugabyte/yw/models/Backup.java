@@ -122,6 +122,7 @@ public class Backup extends Model {
           .put(BackupState.Completed, BackupState.Stopped)
           .put(BackupState.Failed, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.QueuedForDeletion)
+          .put(BackupState.Stopped, BackupState.InProgress)
           .put(BackupState.Stopping, BackupState.QueuedForDeletion)
           .put(BackupState.InProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Completed, BackupState.QueuedForDeletion)
@@ -345,9 +346,11 @@ public class Backup extends Model {
     }
     if (params.backupList != null) {
       params.backupUuid = backup.backupUUID;
+      params.baseBackupUUID = backup.baseBackupUUID;
       // In event of universe backup
       for (BackupTableParams childBackup : params.backupList) {
         childBackup.backupUuid = backup.backupUUID;
+        childBackup.baseBackupUUID = backup.baseBackupUUID;
         if (childBackup.storageLocation == null) {
           BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.category);
         }
@@ -382,6 +385,8 @@ public class Backup extends Model {
       save();
       return true;
     }
+    this.taskUUID = taskUUID;
+    save();
     return false;
   }
 
@@ -390,24 +395,47 @@ public class Backup extends Model {
     save();
   }
 
-  public void onCompletion(long totalTimeTaken, long totalSizeInBytes, boolean unsetExpiry) {
-    this.completionTime = new Date(this.createTime.getTime() + totalTimeTaken);
-    this.backupInfo.backupSizeInBytes = totalSizeInBytes;
+  public BackupCategory getBackupCategory() {
+    return this.category;
+  }
+
+  public void onCompletion() {
+    this.backupInfo.backupSizeInBytes =
+        this.backupInfo.backupList.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
     // Full chain size is same as total size for single backup.
-    this.backupInfo.fullChainSizeInBytes = totalSizeInBytes;
-    if (unsetExpiry) {
-      this.expiry = null;
-    }
+    this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
+
+    // Total time is the sum of each keyspace time taken currently.
+    // Will be max when we do parallel backups.
+    long totalTimeTaken =
+        this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
     this.state = BackupState.Completed;
     this.save();
   }
 
-  public void onIncrementCompletion(Date incrementCreateDate, long incrementSizeInBytes) {
-    Date newExpiryDate = new Date(incrementCreateDate.getTime() + this.backupInfo.timeBeforeDelete);
-    if (this.getExpiry() != null && this.getExpiry().before(newExpiryDate)) {
-      this.expiry = newExpiryDate;
+  public void onPartialCompletion(int idx, long totalTimeTaken, long totalSizeInBytes) {
+    this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
+    this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
+    this.save();
+  }
+
+  public void unsetExpiry() {
+    this.expiry = null;
+    this.save();
+  }
+
+  public void onIncrementCompletion(Date incrementExpiryDate) {
+    if (incrementExpiryDate == null
+        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
+      this.expiry = incrementExpiryDate;
     }
-    this.backupInfo.fullChainSizeInBytes += incrementSizeInBytes;
+    this.backupInfo.fullChainSizeInBytes =
+        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.baseBackupUUID)
+            .stream()
+            .filter(b -> b.state == BackupState.Completed)
+            .mapToLong(b -> b.backupInfo.backupSizeInBytes)
+            .sum();
     this.save();
   }
 

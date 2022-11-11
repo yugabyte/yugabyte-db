@@ -4100,7 +4100,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
             << ns->ToString() << " per request from " << RequestorString(rpc);
-  background_tasks_->Wake();
+  // Kick the background task to start asynchronously creating tablets and assigning tablet leaders.
+  // If the table is joining an existing colocated group there's no work to do.
+  if (!joining_colocation_group) {
+    background_tasks_->Wake();
+  }
 
   // Add the new table's entry to the in-memory structure cdc_stream_map_.
   // This will be used by the background task to determine if the table needs to associated to an
