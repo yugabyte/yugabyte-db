@@ -45,6 +45,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/cast.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
@@ -3106,11 +3107,11 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
       tserver::GetSharedDataResponsePB shared_data_resp;
       RETURN_NOT_OK(proxy.GetSharedData(shared_data_req, &shared_data_resp, &controller));
       const auto& data = shared_data_resp.data();
-      SCHECK_EQ(
-          data.size(), sizeof(tserver::TServerSharedData),
-          IllegalState, "Unexpected response size");
       tserver::TServerSharedData tserver_shared_data;
-      memcpy(&tserver_shared_data, data.c_str(), data.size());
+      SCHECK_EQ(
+          data.size(), sizeof(tserver_shared_data),
+          IllegalState, "Unexpected response size");
+      memcpy(pointer_cast<void*>(&tserver_shared_data), data.c_str(), data.size());
       size_t initialized_slots_count = 0;
       for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
         if (tserver_shared_data.ysql_db_catalog_version(i)) {
