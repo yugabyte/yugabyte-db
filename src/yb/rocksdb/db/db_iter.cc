@@ -181,6 +181,9 @@ class DBIter: public Iterator {
   void Seek(const Slice& target) override;
   void SeekToFirst() override;
   void SeekToLast() override;
+  bool ScanForward(
+      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) override;
 
   void RevalidateAfterUpperBoundChange() override {
     if (iter_->Valid() && direction_ == kForward) {
@@ -857,6 +860,13 @@ void DBIter::SeekToLast() {
   }
 }
 
+bool DBIter::ScanForward(
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    ScanCallback* scan_callback) {
+  status_ = STATUS(NotSupported, "ScanForward is not yet supported in DBIter");
+  return false;
+}
+
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                         const Comparator* user_key_comparator,
                         InternalIterator* internal_iter,
@@ -909,6 +919,12 @@ void ArenaWrappedDBIter::RegisterCleanup(CleanupFunction function, void* arg1,
 
 void ArenaWrappedDBIter::RevalidateAfterUpperBoundChange() {
   db_iter_->RevalidateAfterUpperBoundChange();
+}
+
+bool ArenaWrappedDBIter::ScanForward(
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    ScanCallback* scan_callback) {
+  return db_iter_->ScanForward(upperbound, key_filter_callback, scan_callback);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(
