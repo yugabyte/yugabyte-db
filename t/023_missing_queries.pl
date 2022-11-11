@@ -34,14 +34,18 @@ use strict;
 use warnings;
 use File::Basename;
 use File::Compare;
-use PostgresNode;
+use File::Copy;
 use Test::More;
+use lib 't';
+use pgsm;
+
+# Get filename and create out file name and dirs where requried
+PGSM::setup_files_dir(basename($0));
 
 # Create new PostgreSQL node and do initdb
-my $node = PostgresNode->get_new_node('test');
+my $node = PGSM->pgsm_init_pg();
 my $pgdata = $node->data_dir;
-$node->dump_info;
-$node->init;
+
 $node->append_conf('postgresql.conf', "shared_preload_libraries = 'pg_stat_monitor'");
 # Set bucket duration to 14 seconds so tests don't take too long.
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_bucket_time = 14");
