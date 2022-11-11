@@ -14,11 +14,13 @@ type: docs
 
 ## Synopsis
 
-<b>`HEXISTS key field`</b><br>
+**`HEXISTS key field**
+
 This is a predicate to check whether or not the given `field` exists in the hash that is specified by the given `key`.
-<li>If the given `key` and `field` exist, 1 is returned.</li>
-<li>If the given `key` or `field` does not exist, 0 is returned.</li>
-<li>If the given `key` is associated with non-hash data, an error is raised.</li>
+
+- If the given `key` and `field` exist, 1 is returned.
+- If the given `key` or `field` does not exist, 0 is returned.
+- If the given `key` is associated with non-hash data, an error is raised.
 
 ## Return value
 

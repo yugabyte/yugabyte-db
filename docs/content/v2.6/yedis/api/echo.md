@@ -10,10 +10,13 @@ type: docs
 ---
 
 ## Synopsis
-<b>`ECHO message`</b><br>
+
+**`ECHO message`**
+
 This command outputs the given `message`.
 
 ## Return Value
+
 Returns the message.
 
 ## Examples
