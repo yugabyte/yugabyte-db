@@ -32,8 +32,9 @@
 #include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(verify_encrypted_meta_block_checksums, true,
+DEFINE_UNKNOWN_bool(verify_encrypted_meta_block_checksums, true,
             "Whether to verify checksums for meta blocks of encrypted SSTables.");
 
 namespace rocksdb {

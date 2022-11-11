@@ -30,12 +30,13 @@
 #include "yb/util/redis_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/flags.h"
 
 using std::string;
 using std::numeric_limits;
 using std::vector;
 
-DEFINE_bool(emulate_redis_responses,
+DEFINE_UNKNOWN_bool(emulate_redis_responses,
     true,
     "If emulate_redis_responses is false, we hope to get slightly better performance by just "
     "returning OK for commands that might require us to read additional records viz. SADD, HSET, "

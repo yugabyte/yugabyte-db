@@ -68,7 +68,7 @@ METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       yb::MetricUnit::kConnections,
                       "Number of incoming TCP connections made to the RPC server");
 
-DEFINE_int32(rpc_acceptor_listen_backlog, 128,
+DEFINE_UNKNOWN_int32(rpc_acceptor_listen_backlog, 128,
              "Socket backlog parameter used when listening for RPC connections. "
              "This defines the maximum length to which the queue of pending "
              "TCP connections inbound to the RPC server may grow. If a connection "

@@ -59,7 +59,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
+DEFINE_UNKNOWN_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
              "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
              "unit testing purposes only.");
 TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, unsafe);

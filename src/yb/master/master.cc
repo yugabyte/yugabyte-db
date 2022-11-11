@@ -82,11 +82,11 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(master_rpc_timeout_ms, 1500,
+DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
-DEFINE_int32(master_yb_client_default_timeout_ms, 60000,
+DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
 
 METRIC_DEFINE_entity(cluster);
@@ -101,35 +101,35 @@ using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 using strings::Substitute;
 
-DEFINE_int32(master_tserver_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");
 TAG_FLAG(master_tserver_svc_num_threads, advanced);
 
-DEFINE_int32(master_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master service");
 TAG_FLAG(master_svc_num_threads, advanced);
 
-DEFINE_int32(master_consensus_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_consensus_svc_num_threads, 10,
              "Number of RPC threads for the master consensus service");
 TAG_FLAG(master_consensus_svc_num_threads, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC threads for the master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(master_tserver_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_int32(master_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_int32(master_consensus_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 

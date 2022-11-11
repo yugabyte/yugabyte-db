@@ -35,7 +35,7 @@
 
 using namespace std::literals;
 
-DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
+DEFINE_UNKNOWN_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
 DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,

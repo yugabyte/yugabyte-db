@@ -35,14 +35,15 @@
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_kill.h"
+#include "yb/util/flags.h"
 
 using std::unique_ptr;
 
-DEFINE_bool(allow_preempting_compactions, true,
+DEFINE_UNKNOWN_bool(allow_preempting_compactions, true,
             "Whether a compaction may be preempted in favor of another compaction with higher "
             "priority");
 
-DEFINE_int32(rocksdb_file_starting_buffer_size, 8192,
+DEFINE_UNKNOWN_int32(rocksdb_file_starting_buffer_size, 8192,
              "Starting buffer size for writable files, grows by 2x every new allocation.");
 
 namespace rocksdb {
