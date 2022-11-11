@@ -17,8 +17,6 @@ resources:
     url: /preview/releases/release-notes/v2.15/
   - title: YugabyteDB Anywhere FAQ
     url: /preview/faq/yugabyte-platform/
-  - title: Troubleshoot
-    url: /preview/yugabyte-platform/troubleshoot/
 body_class: yb-page-style
 ---
 
@@ -36,7 +34,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
       <div class="body">
         <div class="box-top">
           <a class="button-style purple" target="_blank" href="https://www.yugabyte.com/anywhere/"><span>Try</span></a>
-          <span>Request a free trial</span>
+          <span>YugabyteDB Anywhere</span>
         </div>
         <div class="body-content">Request a free 30-day trial of YugabyteDB Anywhere. No credit card required.</div>
         <a class="text-link" href="install-yugabyte-platform/" title="Learn more">Learn more</a>
@@ -50,11 +48,11 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="cloud-basics/"><span>Deploy</span></a>
-          <span><strong>Dedicated</strong> clusters</span>
+          <a class="button-style orange" href="install-yugabyte-platform/"><span>Install</span></a>
+          <span>YugabyteDB Anywhere</span>
         </div>
-        <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
-        <a class="text-link" href="cloud-basics/" title="Learn more">Learn more</a>
+        <div class="body-content">Install on any environment, including Kubernetes, public cloud, or private cloud.</div>
+        <a class="text-link" href="install-yugabyte-platform/prerequisites/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -63,42 +61,143 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
   </div>
 </div>
 
-
-
-
-
-
-
-
-
-
-
-### Get started
-
-<div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-yugabyte-platform/install/public-cloud/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Install</div>
-      </div>
-      <div class="body">
-        Installing YugabyteDB Anywhere in any environment
-      </div>
-    </a>
+<div class="three-box-row">
+  <div class="row">
+    <h2 class="col-12">Get started</h2>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="configure-yugabyte-platform/" title="Configure">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Configure</div>
+            <div class="detail-copy">Configure cloud providers, backup targets, users, monitoring.</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="create-deployments/" title="Deploy">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Deploy</div>
+            <div class="detail-copy">Deploy multi-region, multi-zone, and multi-cloud universes.</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="manage-deployments/" title="Manage">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Manage</div>
+            <div class="detail-copy">Modify universes and their nodes, upgrade YugabyteDB software.</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="back-up-restore-universes/" title="Backup">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Backup</div>
+            <div class="detail-copy">Configure storage, back up and restore universe data.</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="security/" title="Secure">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Secure</div>
+            <div class="detail-copy">Configure authentication and authorization, use key management, enable encryption, provide network security.</div>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="alerts-monitoring/" title="Monitor">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Monitor</div>
+            <div class="detail-copy">Configure alerts to monitor YugabyteDB universe data.</div>
+          </div>
+        </div>
+      </a>
+    </div>    
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="troubleshoot/" title="Troubleshoot">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Troubleshoot</div>
+            <div class="detail-copy">Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere.</div>
+          </div>
+        </div>
+      </a>
+    </div>        
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="administer-yugabyte-platform/" title="Administer">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Administer</div>
+            <div class="detail-copy">Back up and restore the server, as well as configure authentication for the server login.</div>
+          </div>
+        </div>
+      </a>
+    </div>        
+    <div class="col-12 col-md-6 col-lg-4">
+      <a href="upgrade/" title="Upgrade">
+        <div class="box border">
+          <div class="other-content">
+            <div class="heading">Upgrade</div>
+            <div class="detail-copy">Upgrade to a newer version of YugabyteDB Anywhere.</div>
+          </div>
+        </div>
+      </a>
+    </div>            
+    
   </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure-yugabyte-platform/configure/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Configure</div>
-      </div>
-      <div class="body">
-        Configuring YugabyteDB Anywhere for various cloud providers
-      </div>
-    </a>
-  </div>
-
 </div>
+
+
+
+
+<div class="three-box-row">
+  <div class="row">
+    <h2 class="col-12">Additional resources</h2>
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="box border two-side">
+        <div class="other-content">
+          <div class="heading">Build applications</div>
+          <div class="detail-copy">Start coding in your favorite programming language using examples.</div>
+          <a class="text-link" href="../develop/build-apps/" title="Get started">Get started</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="box border two-side">
+        <div class="other-content">
+          <div class="heading">Yugabyte University</div>
+          <div class="detail-copy">Take free courses and workshops to learn YugabyteDB, YSQL, and YCQL.</div>
+          <ul>
+            <li><a class="text-link" target="_blank" href="https://university.yugabyte.com/collections/builder-workshop" title="Course 2" target="_blank" rel="noopener">Developer workshops</a></li>
+            <li><a class="text-link" target="_blank" href="https://university.yugabyte.com/courses/ysql-exercises-simple-queries" title="Course 3" target="_blank" rel="noopener">YSQL exercises</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>    
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="box border two-side">
+        <div class="other-content">
+          <div class="heading">Support</div>
+          <div class="detail-copy">Ask questions, request assistance from our team, and participate in our journey.</div>
+          <ul>
+            <li><a class="text-link" target="_blank" href="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431" title="Contact Support">Contact Support</a></li>
+            <li><a class="text-link" target="_blank" href="https://communityinviter.com/apps/yugabyte-db/register" title="Join our community">Join our community</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
