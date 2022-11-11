@@ -107,13 +107,14 @@ For testing and learning YugabyteDB on your computer, use the [yugabyted](../ref
 You can create a single-node local cluster with a replication factor (RF) of 1 by running the following command:
 
 ```sh
-./bin/yugabyted start
+./bin/yugabyted start --advertise_address=127.0.0.1
 ```
 
 Or, if you are running macOS Monterey:
 
 ```sh
-./bin/yugabyted start --master_webserver_port=9999
+./bin/yugabyted start --advertise_address=127.0.0.1 \
+                      --master_webserver_port=9999
 ```
 
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
@@ -132,24 +133,46 @@ Start a local three-node cluster with a replication factor of `3`by first creati
 
 ```sh
 ./bin/yugabyted start \
-                --listen=127.0.0.1 \
-                --base_dir=/tmp/ybd1
+                --advertise_address=127.0.0.1 \
+                --base_dir=/tmp/ybd1 \
+                --cloud_location=aws.us-east.us-east-1a
+```
+
+On MacOS and Linux, the additional nodes need loopback addresses configured:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
 ```
 
 Next, join two more nodes with the previous node. By default, [yugabyted](../reference/configuration/yugabyted/) creates a cluster with a replication factor of `3` on starting a 3 node cluster.
 
 ```sh
 ./bin/yugabyted start \
-                --listen=127.0.0.2 \
+                --advertise_address=127.0.0.2 \
                 --base_dir=/tmp/ybd2 \
+                --cloud_location=aws.us-east.us-east-2a \
                 --join=127.0.0.1
 ```
 
 ```sh
 ./bin/yugabyted start \
-                --listen=127.0.0.3 \
+                --advertise_address=127.0.0.3 \
                 --base_dir=/tmp/ybd3 \
+                --cloud_location=aws.us-east.us-east-3a \
                 --join=127.0.0.1
+```
+
+```sh
+./bin/yugabyted configure --fault_tolerance=zone
+```
+
+To destroy the multi-node cluster, do the following:
+
+```sh
+./bin/yugabyted destroy --base_dir=/tmp/ybd1
+./bin/yugabyted destroy --base_dir=/tmp/ybd2
+./bin/yugabyted destroy --base_dir=/tmp/ybd3
 ```
 
   {{% /tab %}}
