@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -936,7 +935,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
         HelmUtils.mergeYaml(overrides, azOverrides);
       }
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       log.error(
           String.format(
               "Error in writing overrides map to string or string to map: "
