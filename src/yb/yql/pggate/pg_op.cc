@@ -26,6 +26,7 @@
 
 #include "yb/qlexpr/doc_scanspec_util.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -92,6 +93,8 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   req->clear_backfill_spec();
 
   if (paging_state.has_read_time()) {
+    VLOG(4) << "Setting read time for next request: "
+            << paging_state.read_time().ShortDebugString();
     read_op->set_read_time(ReadHybridTime::FromPB(paging_state.read_time()));
   }
 

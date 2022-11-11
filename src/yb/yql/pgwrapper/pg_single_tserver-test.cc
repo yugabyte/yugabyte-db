@@ -25,6 +25,7 @@
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -246,7 +247,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
 }
 
-class PgNoPrefetchTest : public PgSingleTServerTest {
+class PgSmallPrefetchTest : public PgSingleTServerTest {
  protected:
   Status SetupConnection(PGConn* conn) const override {
     return conn->Execute("SET yb_fetch_row_limit = 1");
@@ -262,12 +263,36 @@ class PgNoPrefetchTest : public PgSingleTServerTest {
   }
 };
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgNoPrefetchTest) {
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(SingleRowScan), PgSmallPrefetchTest) {
   constexpr int kRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
   constexpr int kBlockSize = 100;
   constexpr int kReads = 3;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(
+    PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(TestPagingInSerializableIsolation),
+    PgSmallPrefetchTest) {
+  // This test is related to #14284, #13041. As part of a regression, the read time set in the
+  // paging state returned by the tserver to YSQL, was sent back by YSQL in subsequent read
+  // requests even for serializable isolation level. This is only correct for the other isolation
+  // levels. In serializable isolation level, a read time is invalid since each read is supposed to
+  // read and lock the latest data. This resulted in the tserver crashing with -
+  // "Read time should NOT be specified for serializable isolation level".
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT GENERATE_SERIES(1, 10)"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Execute("DECLARE c CURSOR FOR SELECT * FROM test"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Fetch("FETCH c"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 // Microbenchmark, see
@@ -342,7 +367,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
 }
 
 TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ColocatedJoinPerformance),
-          PgNoPrefetchTest) {
+          PgSmallPrefetchTest) {
   const std::string kDatabaseName = "testdb";
   constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 1000, 100);
   auto conn = ASSERT_RESULT(Connect());
