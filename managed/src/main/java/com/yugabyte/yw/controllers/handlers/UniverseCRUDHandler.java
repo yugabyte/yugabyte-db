@@ -563,9 +563,9 @@ public class UniverseCRUDHandler {
             && Util.compareYbVersions(
                     primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
                 < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot install universe with DB version lower than "
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
                   + Util.YBC_COMPATIBLE_DB_VERSION);
         }
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {

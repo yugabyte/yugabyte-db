@@ -10,10 +10,11 @@ import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
-import static com.yugabyte.yw.models.Hook.ExecutionLang.*;
+import static com.yugabyte.yw.models.Hook.ExecutionLang.Bash;
+import static com.yugabyte.yw.models.Hook.ExecutionLang.Python;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Audit;
@@ -56,10 +58,9 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
-import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
-public class HookControllerTest extends WithApplication {
+public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Mock Config mockConfig;
   @Mock Commissioner mockCommissioner;

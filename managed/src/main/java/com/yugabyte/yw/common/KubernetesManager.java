@@ -71,6 +71,7 @@ public abstract class KubernetesManager {
             "install",
             helmReleaseName,
             helmPackagePath,
+            "--debug",
             "--namespace",
             namespace,
             "-f",
@@ -165,6 +166,7 @@ public abstract class KubernetesManager {
             "upgrade",
             helmReleaseName,
             helmPackagePath,
+            "--debug",
             "-f",
             overridesFile,
             "--namespace",
@@ -178,7 +180,8 @@ public abstract class KubernetesManager {
 
   public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
+    List<String> commandList =
+        ImmutableList.of("helm", "delete", helmReleaseName, "--debug", "-n", namespace);
     execCommand(config, commandList);
   }
 
@@ -196,10 +199,10 @@ public abstract class KubernetesManager {
     return null;
   }
 
-  // userMap - flattened user provided yaml. valuesMap - flattened chart's values yaml.
+  // userMap - user provided yaml. valuesMap - chart's values yaml.
   // Return userMap keys which are not in valuesMap.
   // It doesn't check if returnred keys are actually not present in chart templates.
-  private Set<String> getUknownKeys(Map<String, String> userMap, Map<String, String> valuesMap) {
+  private Set<String> getUknownKeys(Map<String, Object> userMap, Map<String, Object> valuesMap) {
     return Sets.difference(userMap.keySet(), valuesMap.keySet());
   }
 
@@ -214,8 +217,7 @@ public abstract class KubernetesManager {
 
   // Checks if override keys are present in values.yaml in the chart.
   // Runs helm template.
-  // Returns K8sOverridesResponse = {universeOverridesErrors, azOverridesErrors,
-  // helmTemplateErrors}.
+  // Returns set of error strings.
   public Set<String> validateOverrides(
       String ybSoftwareVersion,
       Map<String, String> config,
@@ -233,7 +235,7 @@ public abstract class KubernetesManager {
       universeOverridesCopy = mapper.readValue(universeOverridesString, Map.class);
       azOverridesString = mapper.writeValueAsString(azOverrides);
       azOverridesCopy = mapper.readValue(azOverridesString, Map.class);
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       LOG.error(
           String.format(
               "Error in writing overrides map to string or string to map: "
@@ -254,14 +256,13 @@ public abstract class KubernetesManager {
       errorsSet.add(errMsg);
       return errorsSet;
     }
-    Map<String, String> flatHelmValues =
-        HelmUtils.flattenMap(HelmUtils.convertYamlToMap(helmValuesStr));
+    Map<String, Object> helmValues = HelmUtils.convertYamlToMap(helmValuesStr);
     Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverridesCopy);
     Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverridesCopy);
 
-    Set<String> universeOverridesUnknownKeys = getUknownKeys(flatUnivOverrides, flatHelmValues);
+    Set<String> universeOverridesUnknownKeys = getUknownKeys(universeOverridesCopy, helmValues);
     Set<String> universeOverridesNullValueKeys = getNullValueKeys(flatUnivOverrides);
-    Set<String> azOverridesUnknownKeys = getUknownKeys(flatAZOverrides, flatHelmValues);
+    Set<String> azOverridesUnknownKeys = getUknownKeys(azOverridesCopy, helmValues);
     Set<String> azOverridesNullValueKeys = getNullValueKeys(flatAZOverrides);
 
     if (universeOverridesUnknownKeys.size() != 0) {
@@ -298,6 +299,7 @@ public abstract class KubernetesManager {
             "helm",
             "template",
             "yb-validate-k8soverrides" /* dummy name */,
+            "--debug",
             helmPackagePath,
             "-f",
             mergedOverrides,
@@ -471,6 +473,8 @@ public abstract class KubernetesManager {
   public abstract void createNamespace(Map<String, String> config, String universePrefix);
 
   public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
+
+  public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
 
   public abstract List<Pod> getPodInfos(
       Map<String, String> config, String universePrefix, String namespace);

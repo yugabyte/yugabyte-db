@@ -1331,9 +1331,21 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
   return result;
 }
 
-void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
+Status ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
     const MajorityReplicatedData& majority_replicated_data,
     EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags) {
+  if (!leader_no_op_committed_) {
+    // Don't setting leader lease until NoOp at current term is committed.
+    // If the older leader containing old, unreplicated operations is elected as leader again,
+    // when replicating old operations to current node, might have a too low hybrid time.
+    // See https://github.com/yugabyte/yugabyte-db/issues/14225 for more details.
+    return STATUS_FORMAT(IllegalState,
+                         "NoOp of current term is not committed "
+                         "(majority_replicated_lease_expiration_ = $0, "
+                         "majority_replicated_ht_lease_expiration_ = $1)",
+                         majority_replicated_lease_expiration_,
+                         majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire));
+  }
   majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
   majority_replicated_ht_lease_expiration_.store(majority_replicated_data.ht_lease_expiration,
                                                  std::memory_order_release);
@@ -1355,6 +1367,7 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
   cond_.notify_all();
+  return Status::OK();
 }
 
 uint64_t ReplicaState::OnDiskSize() const {
