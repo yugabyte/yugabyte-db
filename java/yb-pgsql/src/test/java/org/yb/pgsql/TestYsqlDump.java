@@ -138,14 +138,16 @@ public class TestYsqlDump extends BasePgSQLTest {
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
     // Create the data
-    List<String> inputLines =
-        FileUtils.readLines(new File(pgRegressDir, inputFileRelativePath),
-                            StandardCharsets.UTF_8);
-    try (Statement statement = connection.createStatement()) {
-      for (String inputLine : inputLines) {
-        statement.execute(inputLine);
-      }
-    }
+    int tserverIndex = 0;
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    File inputFile  = new File(pgRegressDir, inputFileRelativePath);
+    ProcessUtil.executeSimple(Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", TEST_PG_USER,
+      "-f", inputFile.toString()
+    ), "ysqlsh");
 
     // Dump and validate the data
     File pgBinDir     = PgRegressBuilder.getPgBinDir();
@@ -154,8 +156,6 @@ public class TestYsqlDump extends BasePgSQLTest {
     File expected = new File(pgRegressDir, expectedDumpRelativePath);
     File actual   = new File(pgRegressDir, outputFileRelativePath);
     actual.getParentFile().mkdirs();
-
-    int tserverIndex = 0;
 
     List<String> args = new ArrayList<>(Arrays.asList(
       ysqlDumpExec.toString(),
@@ -170,8 +170,6 @@ public class TestYsqlDump extends BasePgSQLTest {
     ProcessUtil.executeSimple(args, binaryName);
 
     assertOutputFile(expected, actual);
-
-    File ysqlshExec = new File(pgBinDir, "ysqlsh");
 
     File inputDesc    = new File(pgRegressDir, inputDescribeFileRelativePath);
     File expectedDesc = new File(pgRegressDir, expectedDescribeFileRelativePath);
