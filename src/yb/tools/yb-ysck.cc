@@ -60,17 +60,17 @@ using std::vector;
 using std::string;
 using strings::Substitute;
 
-DEFINE_string(master_address, "",
+DEFINE_UNKNOWN_string(master_address, "",
               "Address of master server to run against.");
 
-DEFINE_bool(checksum_scan, false,
+DEFINE_UNKNOWN_bool(checksum_scan, false,
             "Perform a checksum scan on data in the cluster.");
 
-DEFINE_string(tables, "",
+DEFINE_UNKNOWN_string(tables, "",
               "Tables to check (comma-separated list of names). "
               "If not specified, checks all tables.");
 
-DEFINE_string(tablets, "",
+DEFINE_UNKNOWN_string(tablets, "",
               "Tablets to check (comma-separated list of IDs) "
               "If not specified, checks all tablets.");
 

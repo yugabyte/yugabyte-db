@@ -21,10 +21,10 @@
 
 using std::string;
 
-DEFINE_string(csv_delimiter, ",", "The character used to separate different columns.");
-DEFINE_string(
+DEFINE_UNKNOWN_string(csv_delimiter, ",", "The character used to separate different columns.");
+DEFINE_UNKNOWN_string(
     csv_quote_character, "\"", "The character used to quote a column that may have a delimiter.");
-DEFINE_string(skipped_cols, "", "Comma separated list of 0-indexed columns to skip");
+DEFINE_UNKNOWN_string(skipped_cols, "", "Comma separated list of 0-indexed columns to skip");
 
 namespace {
 static bool CSVSeparatorValidator(const char* flagname, const string& value) {

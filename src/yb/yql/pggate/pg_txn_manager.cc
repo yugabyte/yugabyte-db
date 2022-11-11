@@ -34,8 +34,9 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_node_hostname_for_local_tserver, false,
+DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
 
 // A macro for logging the function name and the state of the current transaction.
@@ -126,7 +127,7 @@ const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
 const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
 #endif
 
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
              "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
 
 PgTxnManager::PgTxnManager(

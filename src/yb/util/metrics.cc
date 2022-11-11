@@ -45,11 +45,12 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(expose_metric_histogram_percentiles, true,
+DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
-DEFINE_int32(max_tables_metrics_breakdowns, INT32_MAX,
+DEFINE_UNKNOWN_int32(max_tables_metrics_breakdowns, INT32_MAX,
              "The maxmimum number of tables to retrieve metrics for");
 
 // Process/server-wide metrics should go into the 'server' entity.
