@@ -77,7 +77,7 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. 
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere.
 
 Set the `YBA_NAMESPACE` environment variable to the namespace where your YugabyteDB Anywhere is installed, as follows:
 
