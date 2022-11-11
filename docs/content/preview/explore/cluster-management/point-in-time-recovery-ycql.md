@@ -38,7 +38,7 @@ You can try out PITR by creating a namespace and populating it, creating a snaps
 
 {{< note title="Setup" >}}
 
-Local single-node cluster. See [Set up your environment](../../../explore/#set-up-your-environment).
+Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
 
 {{< /note >}}
 

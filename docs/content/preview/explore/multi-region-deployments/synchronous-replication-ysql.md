@@ -81,7 +81,7 @@ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone universe load](/images/ce/online-reconfig-multi-zone-load.png)
+![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
 
 ## Add nodes
 

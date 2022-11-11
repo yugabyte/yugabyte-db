@@ -15,6 +15,8 @@ type: docs
 
 This section describes how to partition tables in YugabyteDB using YSQL.
 
+{{% explore-setup-single %}}
+
 ## Overview
 
 Partitioning is another term for physically dividing large tables in YugabyteDB into smaller, more manageable tables to improve performance. Typically, tables with columns containing timestamps are subject to partitioning because of the historical and predictable nature of their data.

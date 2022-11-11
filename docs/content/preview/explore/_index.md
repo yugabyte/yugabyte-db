@@ -17,31 +17,31 @@ showRightNav: true
 
 The Explore section introduces you to YugabyteDB's features and provides examples.
 
-Most examples demonstrating database features such as API compatibility can be run on a single-node cluster on your laptop or using the free Sandbox cluster in YugabyteDB Managed. More advanced scenarios use a multi-node deployment. Refer to [Set up your environment](#set-up-your-environment) for instructions on creating clusters to run the examples.
+Most examples demonstrating database features such as API compatibility can be run on a single-node cluster on your laptop or using the free Sandbox cluster in YugabyteDB Managed. More advanced scenarios use a multi-node deployment. Refer to [Set up your YugabyteDB cluster](#set-up-your-yugabytedb-cluster) for instructions on creating clusters to run the examples.
 
 The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node cluster).
 
-| Section | Purpose | [Setup](#set-up-your-environment) |
+| Section | Purpose | [Cluster&nbsp;Setup](#set-up-your-yugabytedb-cluster) |
 | :--- | :--- | :--- |
-| [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node cluster<br/>Local instance |
-| [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node cluster<br/>Local instance |
-| [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node cluster<br/>Local instance |
-| [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [JSON support](json-support/jsonb-ysql/) | YugabyteDB support for JSON is nearly identical to that in PostgreSQL - learn about JSON-specific functions and operators in YugabyteDB. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region deployment topologies that you can deploy using YugabyteDB. | Multi-node cluster<br/>Local instance |
-| [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single-node cluster<br/>Local instance |
+| [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single&nbsp;node<br/>Local/Cloud |
+| [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi node<br/>Local |
+| [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi&nbsp;node<br/>Local |
+| [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi node<br/>Local |
+| [Transactions](transactions/) | Understand how distributed transactions and isolation levels work in YugabyteDB. | Single&nbsp;node<br/>Local/Cloud |
+| [Indexes and constraints](indexes-constraints/) | Explore indexes in YugabyteDB, including primary and foreign keys, secondary, unique, partial, and expression indexes, and more. | Single&nbsp;node<br/>Local/Cloud |
+| [JSON support](json-support/jsonb-ysql/) | YugabyteDB support for JSON is nearly identical to that in PostgreSQL - learn about JSON-specific functions and operators in YugabyteDB. | Single&nbsp;node<br/>Local/Cloud |
+| [Multi-region deployments](multi-region-deployments/) | Learn about the different multi-region topologies that you can deploy using YugabyteDB. | Multi node<br/>Local |
+| [Query tuning](query-1-performance/) | Learn about the tools available to identify and optimize queries in YSQL. | Single&nbsp;node<br/>Local/Cloud |
+| [Cluster management](cluster-management/) | Learn how to roll back database changes to a specific point in time using point in time recovery. | Single&nbsp;node<br/>Local |
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
-| [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node cluster<br/>Local instance or YugabyteDB Managed |
-| [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node cluster<br/>Local instance |
+| [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single&nbsp;node<br/>Local/Cloud |
+| [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi node<br/>Local |
 
-## Set up your environment
+## Set up your YugabyteDB cluster
 
 The examples in Explore can be run on your local machine, or in the cloud using a cluster in YugabyteDB Managed.
 
-This section assumes that you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup) in YugabyteDB Managed or [installed YugabyteDB](../quick-start/linux/) on your local computer.
+This section assumes that you have either [created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed or [installed YugabyteDB](../quick-start/linux/) on your local computer.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >

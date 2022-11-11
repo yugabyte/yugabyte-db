@@ -15,7 +15,7 @@ You can monitor your local YugabyteDB cluster with a local instance of [Promethe
 
 {{< note title="Setup" >}}
 
-Local multi-node cluster. See [Set up your environment](../../../explore/#set-up-your-environment).
+Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../../explore/#set-up-your-yugabytedb-cluster).
 
 {{< /note >}}
 

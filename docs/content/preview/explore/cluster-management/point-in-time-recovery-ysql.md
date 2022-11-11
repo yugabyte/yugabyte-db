@@ -37,7 +37,7 @@ You can try out the PITR feature by creating a database and populating it, creat
 
 {{< note title="Setup" >}}
 
-Local single-node cluster. See [Set up your environment](../../../explore/#set-up-your-environment).
+Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
 
 {{< /note >}}
 
