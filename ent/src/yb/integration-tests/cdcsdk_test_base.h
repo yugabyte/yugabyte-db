@@ -183,10 +183,12 @@ class CDCSDKTestBase : public YBTest {
   void InitCreateStreamRequest(
       CreateCDCStreamRequestPB* create_req,
       const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
+      const CDCRecordType& record_type = CDCRecordType::CHANGE,
       const std::string& namespace_name = kNamespaceName);
 
   Result<std::string> CreateDBStream(
-      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT);
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.
