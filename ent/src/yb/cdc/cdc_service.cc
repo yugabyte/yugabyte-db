@@ -3579,16 +3579,16 @@ bool RecordHasValidOp(const CDCSDKProtoRecordPB& record) {
 // Find the right-most proto record from the cdc_sdk_proto_records
 // having valid commit_time, which will be used to calculate
 // CDCSDK lag metrics cdcsdk_sent_lag_micros.
-uint64 GetCDCSDKLastSendRecordTime(const GetChangesResponsePB* resp) {
+boost::optional<MicrosTime> GetCDCSDKLastSendRecordTime(const GetChangesResponsePB* resp) {
   int cur_idx = resp->cdc_sdk_proto_records_size() - 1;
   while (cur_idx >= 0) {
-    auto& ech_record = resp->cdc_sdk_proto_records(cur_idx);
-    if (RecordHasValidOp(ech_record)) {
-      return ech_record.row_message().commit_time();
+    auto& each_record = resp->cdc_sdk_proto_records(cur_idx);
+    if (RecordHasValidOp(each_record)) {
+      return HybridTime(each_record.row_message().commit_time()).GetPhysicalValueMicros();
     }
     cur_idx -= 1;
   }
-  return 0;
+  return boost::optional<MicrosTime>{};
 }
 
 void CDCServiceImpl::UpdateCDCTabletMetrics(
@@ -3610,9 +3610,12 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
     if (resp->cdc_sdk_proto_records_size() > 0) {
       tablet_metric->cdcsdk_traffic_sent->IncrementBy(
           resp->cdc_sdk_proto_records_size() * resp->cdc_sdk_proto_records(0).ByteSize());
-      uint64 last_record_time = GetCDCSDKLastSendRecordTime(resp);
+      auto last_record_time = GetCDCSDKLastSendRecordTime(resp);
+      auto last_record_micros =
+          last_record_time
+              ? last_record_time.get()
+              : tablet_metric->cdcsdk_last_sent_physicaltime->value();
       auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
-      auto last_record_micros = HybridTime(last_record_time).GetPhysicalValueMicros();
       tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
       tablet_metric->cdcsdk_sent_lag_micros->set_value(last_replicated_micros - last_record_micros);
 
