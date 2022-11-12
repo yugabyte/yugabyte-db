@@ -63,21 +63,29 @@ This section assumes that you have either [created an account](https://cloud.yug
 <div class="tab-content">
   <div id="cloud" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
-To run the Explore examples in YugabyteDB Managed, create a single- or multi-node cluster as follows:
+To run the Explore examples in YugabyteDB Managed, create a single- or multi-node cluster as follows.
 
-- Single node
+{{< tabpane text=true >}}
 
-  Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+  {{% tab header="Single-node cluster" lang="YBM Single" %}}
 
-  If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
+Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
-  Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
+If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
-- Multi-node
+Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
-  Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+  {{% /tab %}}
 
-  To create a single region multi-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
+  {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
+
+Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+
+To create a single region multi-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 **Connect to your clusters**
 
@@ -118,6 +126,12 @@ Or, if you are running macOS Monterey:
 ```
 
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
+
+To stop a single-node cluster, do the following:
+
+```sh
+./bin/yugabyted destroy
+```
 
   {{% /tab %}}
 
