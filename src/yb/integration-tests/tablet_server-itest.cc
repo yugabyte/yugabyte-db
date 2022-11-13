@@ -15,8 +15,10 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
-
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/status_log.h"
+
+DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
 
 using std::string;
 
@@ -29,6 +31,17 @@ class TabletServerITest : public TabletServerIntegrationTestBase {
 // Given a host:port string, return the host part as a string.
 std::string GetHost(const std::string& val) {
   return CHECK_RESULT(HostPort::FromString(val, 0)).host();
+}
+
+TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
+  // Testing tablet server crash at startup because of empty UUID
+  FLAGS_TEST_simulate_fs_create_with_empty_uuid = true;
+  auto mini_ts =
+      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  CHECK_OK(mini_ts);
+  mini_server_ = std::move(*mini_ts);
+  auto status = mini_server_->Start();
+  ASSERT_TRUE(status.IsCorruption());
 }
 
 TEST_F(TabletServerITest, TestProxyAddrs) {
