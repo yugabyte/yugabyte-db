@@ -10,11 +10,12 @@ menu:
     parent: drivers-orms
     weight: 590
 type: indexpage
+showRightNav: true
 ---
 
-The following projects are recommended for implementing Ruby applications using the YugabyteDB YSQL/YCQL API.
-
 ## Supported projects
+
+The following projects are recommended for implementing Ruby applications using the YugabyteDB YSQL/YCQL API.
 
 | Driver | Documentation and Guides |
 | :----- | :----------------------- |

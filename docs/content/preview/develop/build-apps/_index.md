@@ -26,7 +26,7 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-12 col-lg-6 col-xl-6">
   <a class="section-link icon-offset" href="cloud-add-ip/">
     <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
@@ -39,11 +39,11 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
   </div>
 </div>
 
-## Choose your language
+### Choose your language
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="java/cloud-ysql-yb-jdbc/">
       <div class="head">
         <div class="icon">
@@ -51,13 +51,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">Java</div>
       </div>
-      <div class="body">
-        Build applications using Java.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="go/cloud-ysql-go/">
       <div class="head">
         <div class="icon">
@@ -65,13 +62,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">Go</div>
       </div>
-      <div class="body">
-        Build applications using Go.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="python/cloud-ysql-python/">
       <div class="head">
         <div class="icon">
@@ -79,13 +73,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">Python</div>
       </div>
-      <div class="body">
-        Build applications using Python.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="nodejs/cloud-ysql-node/">
       <div class="head">
         <div class="icon">
@@ -93,13 +84,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">NodeJS</div>
       </div>
-      <div class="body">
-        Build applications using NodeJS.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="c/cloud-ysql-c/">
       <div class="head">
         <div class="icon">
@@ -107,13 +95,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">C</div>
       </div>
-      <div class="body">
-        Build applications using C.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="cpp/cloud-ysql-cpp/">
       <div class="head">
         <div class="icon">
@@ -121,13 +106,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">C++</div>
       </div>
-      <div class="body">
-        Build applications using C++.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="csharp/cloud-ysql-csharp/">
       <div class="head">
         <div class="icon">
@@ -135,13 +117,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">C#</div>
       </div>
-      <div class="body">
-        Build applications using C#.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="ruby/cloud-ysql-ruby/">
       <div class="head">
         <div class="icon">
@@ -149,13 +128,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">Ruby</div>
       </div>
-      <div class="body">
-        Build applications using Ruby.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="rust/cloud-ysql-rust/">
       <div class="head">
         <div class="icon">
@@ -163,13 +139,10 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">Rust</div>
       </div>
-      <div class="body">
-        Build applications using Rust.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="php/cloud-ysql-php/">
       <div class="head">
         <div class="icon">
@@ -177,22 +150,16 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
         </div>
         <div class="title">PHP</div>
       </div>
-      <div class="body">
-        Build applications using PHP.
-      </div>
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-6 col-lg-4 col-xl-3">
     <a class="section-link icon-offset" href="scala/ycql/">
       <div class="head">
         <div class="icon">
           <i class="icon-scala"></i>
         </div>
         <div class="title">Scala</div>
-      </div>
-      <div class="body">
-        Build applications using Scala.
       </div>
     </a>
   </div>

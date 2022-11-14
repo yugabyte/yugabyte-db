@@ -10,11 +10,12 @@ menu:
     parent: drivers-orms
     weight: 560
 type: indexpage
+showRightNav: true
 ---
 
-The following projects are recommended for implementing C applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following project is recommended for implementing C applications using the YugabyteDB YSQL API.
 
 | Project | Example apps |
 | :------ | :----------- |
