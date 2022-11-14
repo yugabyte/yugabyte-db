@@ -474,6 +474,21 @@ Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   return Status::OK();
 }
 
+Status DocRowwiseIterator::Iterate(const YQLScanCallback& callback) {
+  QLTableRow row;
+  auto& projection = schema();
+  while (VERIFY_RESULT(HasNext())) {
+    row.Clear();
+
+    RETURN_NOT_OK(DoNextRow(projection, &row));
+    if (!VERIFY_RESULT(callback(row))) {
+      break;
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<Slice> DocRowwiseIterator::GetTupleId() const {
   // Return tuple id without cotable id / colocation id if any.
   Slice tuple_id = row_key_;
