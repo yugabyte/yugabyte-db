@@ -51,7 +51,7 @@ TAG_FLAG(encryption_counter_max, hidden);
 
 DEFINE_test_flag(bool, encryption_use_openssl_compatible_counter_overflow, true,
                  "Overflow into the rest of the initialization vector when computing counter"
-                 "increment for newly created keys.")
+                 "increment for newly created keys.");
 
 namespace yb {
 namespace encryption {

@@ -135,11 +135,11 @@ DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
 
 DEFINE_test_flag(bool, dump_docdb_before_tablet_bootstrap, false,
                  "Dump the contents of DocDB before tablet bootstrap. Should only be used when "
-                 "data is small.")
+                 "data is small.");
 
 DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
                  "Dump the contents of DocDB after tablet bootstrap. Should only be used when "
-                 "data is small.")
+                 "data is small.");
 
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
