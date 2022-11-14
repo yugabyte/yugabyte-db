@@ -695,9 +695,10 @@ class NodeChecker():
 
     def http_request(self, endpoint, output_status=False):
         if output_status:
-            cmd = 'curl -s -o /dev/null --head -w "%{{http_code}}" {}'.format(endpoint)
+            cmd = 'curl -s -L --insecure -o /dev/null --head ' \
+                     '-w "%{{http_code}}" {}'.format(endpoint)
         else:
-            cmd = 'curl -s {}'.format(endpoint)
+            cmd = 'curl -s -L --insecure {}'.format(endpoint)
 
         output = self._check_output(cmd).strip()
         if has_errors(output):
