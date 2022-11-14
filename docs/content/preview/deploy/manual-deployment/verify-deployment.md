@@ -37,7 +37,7 @@ You should now be able to view the master dashboard on the IP address of any mas
 
 {{< tip title="Tip" >}}
 
-If this is a public cloud deployment, remember to use the public IP for the nodes, or a http proxy to view these pages.
+If this is a public cloud deployment, remember to use the public IP for the nodes, or a HTTP proxy to view these pages.
 
 {{< /tip >}}
 
