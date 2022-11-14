@@ -417,7 +417,7 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
+DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
 DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
     "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
