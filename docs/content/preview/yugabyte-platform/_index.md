@@ -2,7 +2,7 @@
 title: YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere
 linkTitle: YugabyteDB Anywhere
-description: YugabyteDB delivered as a private database-as-a-service for enterprises.
+headcontent: YugabyteDB delivered as a private database-as-a-service for enterprises.
 aliases:
   - /preview/yugabyte-platform/overview/
 menu:
@@ -10,14 +10,14 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
-    type: homepage
+breadcrumbDisable: true
+body_class: yb-page-style
 resourcesIntro: Quick Links
 resources:
   - title: What's new in YugabyteDB Anywhere
     url: /preview/releases/release-notes/v2.15/
   - title: YugabyteDB Anywhere FAQ
     url: /preview/faq/yugabyte-platform/
-body_class: yb-page-style
 ---
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.
@@ -154,7 +154,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
         </div>
       </a>
     </div>            
-    
+
   </div>
 </div>
 
