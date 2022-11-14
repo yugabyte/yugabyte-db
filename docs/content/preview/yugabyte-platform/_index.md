@@ -10,6 +10,7 @@ menu:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
+type: indexpage
 breadcrumbDisable: true
 body_class: yb-page-style
 resourcesIntro: Quick Links
@@ -33,8 +34,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style purple" target="_blank" href="https://www.yugabyte.com/anywhere/"><span>Try</span></a>
-          <span>YugabyteDB Anywhere</span>
+          <span>Try YugabyteDB Anywhere</span>
         </div>
         <div class="body-content">Request a free 30-day trial of YugabyteDB Anywhere. No credit card required.</div>
         <a class="text-link" href="install-yugabyte-platform/" title="Learn more">Learn more</a>
@@ -48,8 +48,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="install-yugabyte-platform/"><span>Install</span></a>
-          <span>YugabyteDB Anywhere</span>
+          <span>Install YugabyteDB Anywhere</span>
         </div>
         <div class="body-content">Install on any environment, including Kubernetes, public cloud, or private cloud.</div>
         <a class="text-link" href="install-yugabyte-platform/prerequisites/" title="Learn more">Learn more</a>
@@ -123,7 +122,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
           </div>
         </div>
       </a>
-    </div>    
+    </div>
     <div class="col-12 col-md-6 col-lg-4">
       <a href="troubleshoot/" title="Troubleshoot">
         <div class="box border">
@@ -133,7 +132,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
           </div>
         </div>
       </a>
-    </div>        
+    </div>
     <div class="col-12 col-md-6 col-lg-4">
       <a href="administer-yugabyte-platform/" title="Administer">
         <div class="box border">
@@ -143,7 +142,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
           </div>
         </div>
       </a>
-    </div>        
+    </div>
     <div class="col-12 col-md-6 col-lg-4">
       <a href="upgrade/" title="Upgrade">
         <div class="box border">
@@ -153,19 +152,16 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
           </div>
         </div>
       </a>
-    </div>            
+    </div>
 
   </div>
 </div>
-
-
-
 
 <div class="three-box-row">
   <div class="row">
     <h2 class="col-12">Additional resources</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Build applications</div>
           <div class="detail-copy">Start coding in your favorite programming language using examples.</div>
@@ -174,7 +170,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Yugabyte University</div>
           <div class="detail-copy">Take free courses and workshops to learn YugabyteDB, YSQL, and YCQL.</div>
@@ -184,9 +180,9 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
           </ul>
         </div>
       </div>
-    </div>    
+    </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Support</div>
           <div class="detail-copy">Ask questions, request assistance from our team, and participate in our journey.</div>
@@ -199,5 +195,3 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     </div>
   </div>
 </div>
-
-
