@@ -112,7 +112,7 @@ The import data instructions are organized by the size of the input datasets, ra
 
 ### Small datasets
 
-Cassandra's CQL shell provides the  [`COPY FROM`](../../../admin/ycqlsh/#copy-from)  command which allows importing data from CSV files:
+Cassandra's CQL shell provides the [`COPY FROM`](../../../admin/ycqlsh/#copy-from) command, which allows importing data from CSV files:
 
 ```sql
 ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
