@@ -34,10 +34,10 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span>Try YugabyteDB Anywhere</span>
+          <span>Try it out</span>
         </div>
         <div class="body-content">Request a free 30-day trial of YugabyteDB Anywhere. No credit card required.</div>
-        <a class="text-link" href="install-yugabyte-platform/" title="Learn more">Learn more</a>
+        <a class="text-link" href="https://www.yugabyte.com/anywhere/" title="Try">Try</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
@@ -48,10 +48,11 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span>Install YugabyteDB Anywhere</span>
+          <span>Install</span>
         </div>
         <div class="body-content">Install on any environment, including Kubernetes, public cloud, or private cloud.</div>
-        <a class="text-link" href="install-yugabyte-platform/prerequisites/" title="Learn more">Learn more</a>
+        <a class="text-link" href="install-yugabyte-platform/" title="Install">Install</a>
+        <a class="text-link" href="configure-yugabyte-platform/" title="Configure">Configure</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -62,17 +63,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
 
 <div class="three-box-row">
   <div class="row">
-    <h2 class="col-12">Get started</h2>
-    <div class="col-12 col-md-6 col-lg-4">
-      <a href="configure-yugabyte-platform/" title="Configure">
-        <div class="box border">
-          <div class="other-content">
-            <div class="heading">Configure</div>
-            <div class="detail-copy">Configure cloud providers, backup targets, users, monitoring.</div>
-          </div>
-        </div>
-      </a>
-    </div>
+    <h2 class="col-12">Use YugabyteDB Anywhere</h2>
     <div class="col-12 col-md-6 col-lg-4">
       <a href="create-deployments/" title="Deploy">
         <div class="box border">
@@ -103,6 +94,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
         </div>
       </a>
     </div>
+    <!--
     <div class="col-12 col-md-6 col-lg-4">
       <a href="security/" title="Secure">
         <div class="box border">
@@ -153,7 +145,7 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
         </div>
       </a>
     </div>
-
+-->
   </div>
 </div>
 
