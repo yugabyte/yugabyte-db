@@ -51,15 +51,15 @@ You can specify the maximum staleness of data when reading from tablet followers
 
 In this tutorial, you update a single key-value over and over, and read it from the tablet leader. While that workload is running, you start another workload to read from a follower and verify that you are able to read from a tablet follower.
 
-### Create universe
+### Create a cluster
 
-If you have a previously running local universe, destroy it by executing the following command:
+If you have a previously running cluster, destroy it by executing the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with three nodes and a replication factor (RF) of `3`, as follows:
+Start a new local cluster with three nodes and a replication factor (RF) of `3`, as follows:
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -79,9 +79,9 @@ Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-samp
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the universe.
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
 
-Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local universe, as follows:
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -154,6 +154,5 @@ $ ./bin/yb-ctl destroy
 
 ## Read more
 
-- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/).
-
-- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/) in YCQL.
+- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/)

@@ -58,6 +58,8 @@ yugabyte=# drop extension pg_stat_statements;
 
 ## Examples
 
+{{% explore-setup-single %}}
+
 Describe the columns in the view:
 
 ```sql
