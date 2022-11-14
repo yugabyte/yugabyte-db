@@ -15,13 +15,13 @@ type: docs
   <li>
     <a href="../ysql-entity-framework/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Entity Framework
+      Entity Framework ORM
     </a>
   </li>
   <li>
     <a href="../ysql-dapper/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Dapper
+      Dapper ORM
     </a>
   </li>
 </ul>
