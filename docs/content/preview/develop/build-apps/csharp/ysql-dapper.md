@@ -64,7 +64,7 @@ To modify the database connection settings, change the `DefaultConnection` field
 
 ## Start the REST API server
 
-To change default port for REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field under the `DapperORM` field.
+To change default port for the REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field under the `DapperORM` field.
 
 - Build the REST API server.
 
@@ -78,7 +78,7 @@ To change default port for REST API Server, go to `Properties/launchSettings.jso
   $ dotnet run
   ```
 
-The REST server will run at `http://localhost:8080` by default.
+The REST server runs at `http://localhost:8080` by default.
 
 ## Send requests to the application
 
