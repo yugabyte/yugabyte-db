@@ -64,7 +64,7 @@ To modify the database connection settings, change the `DefaultConnection` field
 
 ## Start the REST API server
 
-To change default port for REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field under the `DapperORM` field.
+To change default port for the REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field under the `DapperORM` field.
 
 - Build the REST API server.
 
