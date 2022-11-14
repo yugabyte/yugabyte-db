@@ -15,16 +15,25 @@ type: docs
   <li >
     <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Sequelize
+      Sequelize ORM
     </a>
   </li>
   <li>
     <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YSQL - Prisma
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Prisma ORM
     </a>
   </li>
 </ul>
+
+The following tutorial implements a REST API server using the [Prisma](https://prisma.io) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Prisma. It includes the following tables:
+
+- `users` — the users of the e-commerce site
+- `products` — the products being sold
+- `orders` — the orders placed by the users
+- `orderline` — each line item of an order
+
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/node/prisma) repository.
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
 
@@ -41,14 +50,6 @@ This tutorial assumes that you have installed YugabyteDB and created a cluster. 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
-
-This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the [Prisma](https://prisma.io). It consists of the following:
-
-- The `users` table contains the users of the e-commerce site.
-- The `products` table contains a list of products the e-commerce site sells.
-- Orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
-
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).
 
 ## Build the application
 
