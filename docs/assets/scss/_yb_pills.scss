@@ -1,0 +1,56 @@
+
+ul.nav.yb-pills {
+  display: flex;
+  gap: 16px;
+
+  li {
+    background: #fff;
+    border: 1px solid #d7dee4;
+    box-shadow: 0 0 0 1px transparent;
+    border-radius: 8px;
+    width: 350px;
+    max-width: calc(33.3% - 11px);
+    display: flex;
+    align-items: center;
+    padding: 0;
+
+    @media (max-width: 991px) {
+      max-width: calc(50% - 10px);
+    }
+
+    @media (max-width: 600px) {
+      max-width: calc(100%);
+      margin: 0 auto;
+    }
+
+    &:hover {
+      background: #f2f6ff;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px #cbdbff;
+      border: 1px solid #cbdbff;
+      border-radius: 8px;
+    }
+
+    a {
+      width: 100%;
+      background: transparent;
+      display: flex;
+      text-decoration: none !important;
+      align-items: center;
+      position: static;
+      padding: 24px;
+      font-size: 14px;
+      line-height: 24px;
+      color: #000;
+
+      img,
+      i {
+        font-size: 24px;
+        margin: 0 16px 0 0;
+        align-items: center;
+        height: 24px;
+        width: 24px;
+      }
+    }
+  }
+}
