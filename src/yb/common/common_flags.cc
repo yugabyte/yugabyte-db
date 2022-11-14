@@ -38,7 +38,7 @@ DEFINE_UNKNOWN_bool(ysql_disable_index_backfill, false,
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022")
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022");
 
 DEFINE_UNKNOWN_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
@@ -47,7 +47,7 @@ DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022")
+DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
 DEFINE_UNKNOWN_bool(enable_deadlock_detection, false,
     "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
