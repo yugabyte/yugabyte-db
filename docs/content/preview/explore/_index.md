@@ -23,7 +23,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 | Section | Purpose | [Cluster&nbsp;Setup](#set-up-your-yugabytedb-cluster) |
 | :--- | :--- | :--- |
-| [SQL features](ysql-language-features/) | Learn about YugabyteDB's wire-compatibility with PostgreSQL, including data types, queries, expressions, operators and functions, and more. | Single&nbsp;node<br/>Local/Cloud |
+| [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single&nbsp;node<br/>Local/Cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi node<br/>Local |
 | [Fault tolerance](fault-tolerance/macos/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi&nbsp;node<br/>Local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi node<br/>Local |
