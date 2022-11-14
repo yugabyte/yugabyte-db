@@ -30,7 +30,7 @@ This section covers deployment for a single region or data center in a multi-zon
 
 ## Run YB-TServer with command line flags
 
-Run the `yb-tserver` server on each of the six nodes as shown below. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
+Run the `yb-tserver` server on each of the six nodes as follows. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
 ```sh
 $ ./bin/yb-tserver \
