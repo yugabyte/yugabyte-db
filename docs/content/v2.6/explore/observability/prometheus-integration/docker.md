@@ -14,21 +14,21 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/macos" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/docker" class="nav-link active">
+    <a href="../docker/" class="nav-link active">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>

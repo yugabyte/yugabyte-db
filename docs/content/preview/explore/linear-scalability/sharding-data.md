@@ -136,9 +136,9 @@ In this tutorial, you'll explore automatic sharding inside YugabyteDB. First, yo
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
-### Create a universe
+### Create a cluster
 
-To create a universe, do the following:
+To create a cluster, do the following:
 
 1. Create a single node cluster by running the following command:
 
@@ -321,7 +321,7 @@ Here, the key has been written to one of the tablets. In this example, the table
 
 ### Automatic sharding when adding nodes
 
-1. Add one more node to the universe for a total of 4 nodes:
+1. Add one more node to the cluster for a total of 4 nodes:
 
     ```sh
     $ ./bin/yugabyted start \
@@ -335,7 +335,7 @@ Here, the key has been written to one of the tablets. In this example, the table
 
     ![Auto-sharding when adding one node](/images/ce/sharding_4nodes.png)
 
-1. Add 2 more nodes to the universe, making it a total of 6 nodes:
+1. Add 2 more nodes to the cluster, making it a total of 6 nodes:
 
     ```sh
     $ ./bin/yugabyted start \
