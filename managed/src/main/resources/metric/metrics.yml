@@ -2868,7 +2868,6 @@ table_read_rps:
     yaxis:
       alias:
         "ql_read_latency_count": "Read"
-      ticksuffix: "&nbsp;\u00B5s"
 
 table_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"

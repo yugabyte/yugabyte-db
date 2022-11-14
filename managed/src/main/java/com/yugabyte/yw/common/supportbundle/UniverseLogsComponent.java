@@ -10,6 +10,8 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,118 +48,115 @@ class UniverseLogsComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    String destDir = bundlePath.toString() + "/" + "universe_logs";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-
-    // Downloads the /mnt/d0/yb-data/master/logs and /mnt/d0/yb-data/tserver/logs from each node
-    // in the universe into the bundle path
-    for (NodeDetails node : nodes) {
-      // Get source file path prefix
-      String mountPath =
-          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
-      String nodeHomeDir = mountPath + "/yb-data";
-
-      // Get target file path
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
-
-      log.debug(
-          "Gathering universe logs for node: {}, source path: {}, target path: {}",
-          nodeName,
-          nodeHomeDir,
-          nodeTargetFile.toString());
-
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer, universe, node, nodeHomeDir, "master/logs;tserver/logs", nodeTargetFile);
-    }
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+    String errMsg =
+        String.format(
+            "downloadComponent() method not applicable "
+                + "for 'UniverseLogsComponent' without start and end date, on universe = '%s'",
+            universe.name);
+    throw new RuntimeException(errMsg);
   }
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
-      throws IOException, ParseException {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    String destDir = bundlePath.toString() + "/" + "universe_logs";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
     // Downloads the /mnt/d0/yb-data/master/logs and /mnt/d0/yb-data/tserver/logs from each node
     // in the universe into the bundle path
-    for (NodeDetails node : nodes) {
-      // Get source file path prefix
-      String mountPath =
-          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
-      String nodeHomeDir = mountPath + "/yb-data";
+    // Get source file path prefix
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/yb-data";
 
-      // Get target file path
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
+    // Get target file path
+    String nodeName = node.getNodeName();
+    Path nodeTargetFile =
+        Paths.get(bundlePath.toString(), this.getClass().getSimpleName() + ".tar.gz");
 
+    log.debug(
+        "Gathering universe logs for node: {}, source path: {}, target path: {}, "
+            + "between start date: {}, end date: {}",
+        nodeName,
+        nodeHomeDir,
+        nodeTargetFile.toString(),
+        startDate,
+        endDate);
+
+    String universeLogsRegexPattern =
+        config.getString("yb.support_bundle.universe_logs_regex_pattern");
+
+    // Get and filter master log files that fall within given dates
+    String masterLogsPath = nodeHomeDir + "/master/logs";
+    List<String> masterLogFilePaths = new ArrayList<>();
+    if (checkNodeIfFileExists(node, universe, masterLogsPath)) {
+      masterLogFilePaths =
+          getNodeFilePaths(node, universe, masterLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+      masterLogFilePaths =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              masterLogFilePaths, universeLogsRegexPattern, startDate, endDate, false);
+    }
+
+    // Get and filter tserver log files that fall within given dates
+    String tserverLogsPath = nodeHomeDir + "/tserver/logs";
+    List<String> tserverLogFilePaths = new ArrayList<>();
+    if (checkNodeIfFileExists(node, universe, tserverLogsPath)) {
+      tserverLogFilePaths =
+          getNodeFilePaths(node, universe, tserverLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+      tserverLogFilePaths =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              tserverLogFilePaths, universeLogsRegexPattern, startDate, endDate, false);
+    }
+
+    // Combine both master and tserver files to download all the files together
+    List<String> allLogFilePaths =
+        Stream.concat(masterLogFilePaths.stream(), tserverLogFilePaths.stream())
+            .collect(Collectors.toList());
+
+    if (allLogFilePaths.size() > 0) {
+      Path targetFile =
+          universeInfoHandler.downloadNodeFile(
+              customer,
+              universe,
+              node,
+              nodeHomeDir,
+              String.join(";", allLogFilePaths),
+              nodeTargetFile);
+      try {
+        if (Files.exists(targetFile)) {
+          File unZippedFile =
+              supportBundleUtil.unGzip(
+                  new File(targetFile.toAbsolutePath().toString()),
+                  new File(bundlePath.toAbsolutePath().toString()));
+          Files.delete(targetFile);
+          supportBundleUtil.unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+          unZippedFile.delete();
+        } else {
+          log.debug(
+              String.format(
+                  "No universe log files downloaded from the source path '%s' for universe '%s'.",
+                  nodeHomeDir, universe.name));
+        }
+      } catch (Exception e) {
+        log.error(
+            "Something went wrong while trying to untar the files from "
+                + "component 'UniverseLogsComponent' in the DB node: ",
+            e);
+      }
+    } else {
       log.debug(
-          "Gathering universe logs for node: {}, source path: {}, target path: {}, "
-              + "between start date: {}, end date: {}",
+          "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
+              + "between start date: {}, end date: {}.",
           nodeName,
           nodeHomeDir,
           nodeTargetFile.toString(),
           startDate,
           endDate);
-
-      String universeLogsRegexPattern =
-          config.getString("yb.support_bundle.universe_logs_regex_pattern");
-
-      // Get and filter master log files that fall within given dates
-      String masterLogsPath = nodeHomeDir + "/master/logs";
-      List<String> masterLogFilePaths = new ArrayList<>();
-      if (checkNodeIfFileExists(node, universe, masterLogsPath)) {
-        masterLogFilePaths =
-            getNodeFilePaths(node, universe, masterLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-        masterLogFilePaths =
-            supportBundleUtil.filterFilePathsBetweenDates(
-                masterLogFilePaths, universeLogsRegexPattern, startDate, endDate, false);
-      }
-
-      // Get and filter tserver log files that fall within given dates
-      String tserverLogsPath = nodeHomeDir + "/tserver/logs";
-      List<String> tserverLogFilePaths = new ArrayList<>();
-      if (checkNodeIfFileExists(node, universe, tserverLogsPath)) {
-        tserverLogFilePaths =
-            getNodeFilePaths(node, universe, tserverLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-        tserverLogFilePaths =
-            supportBundleUtil.filterFilePathsBetweenDates(
-                tserverLogFilePaths, universeLogsRegexPattern, startDate, endDate, false);
-      }
-
-      // Combine both master and tserver files to download all the files together
-      List<String> allLogFilePaths =
-          Stream.concat(masterLogFilePaths.stream(), tserverLogFilePaths.stream())
-              .collect(Collectors.toList());
-
-      if (allLogFilePaths.size() > 0) {
-        Path targetFile =
-            universeInfoHandler.downloadNodeFile(
-                customer,
-                universe,
-                node,
-                nodeHomeDir,
-                String.join(";", allLogFilePaths),
-                nodeTargetFile);
-      } else {
-        log.debug(
-            "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
-                + "between start date: {}, end date: {}",
-            nodeName,
-            nodeHomeDir,
-            nodeTargetFile.toString(),
-            startDate,
-            endDate);
-      }
     }
   }
 

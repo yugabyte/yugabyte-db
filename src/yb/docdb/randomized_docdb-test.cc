@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/flags.h"
 
 // Use a lower default number of tests when running on ASAN/TSAN so as not to exceed the test time
 // limit.
@@ -31,10 +32,10 @@ static constexpr int kDefaultTestNumIter = 20000;
 static constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
 #endif
 
-DEFINE_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
+DEFINE_UNKNOWN_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
              "Number iterations for randomized history cleanup DocDB tests.");
 
-DEFINE_int32(test_num_iter, kDefaultTestNumIter,
+DEFINE_UNKNOWN_int32(test_num_iter, kDefaultTestNumIter,
              "Number iterations for randomized DocDB tests, except those involving logical DocDB "
              "snapshots.");
 

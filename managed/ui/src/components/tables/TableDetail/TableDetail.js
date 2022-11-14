@@ -144,6 +144,7 @@ export default class TableDetail extends Component {
       isNonEmptyObject(currentUniverse.data) &&
       isNonEmptyObject(currentTableDetail.tableDetails)
     ) {
+
       universeState = (
         <Col lg={10} sm={8} xs={6}>
           {/* UNIVERSE NAME */}
@@ -163,6 +164,7 @@ export default class TableDetail extends Component {
               currentUniverse={currentUniverse.data}
               showLabelText={true}
               refreshUniverseData={this.getUniverseInfo}
+              shouldDisplayTaskButton={true}
             />
           </div>
         </Col>

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
@@ -35,6 +36,7 @@ func (plat Platform) Install() {
 	createDevopsAndYugawareDirectories(plat.Version)
 	untarDevopsAndYugawarePackages(plat.Version)
 	copyYugabyteReleaseFile(plat.Version)
+	copyYbcPackages(plat.Version)
 	renameAndCreateSymlinks(plat.Version)
 	configureConfHTTPS()
 
@@ -73,6 +75,8 @@ func createNecessaryDirectories(version string) {
 	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_rules", os.ModePerm)
 	os.MkdirAll(INSTALL_ROOT+"/yb-platform/data", os.ModePerm)
 	os.MkdirAll(INSTALL_ROOT+"/yb-platform/third-party", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/release", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/releases", os.ModePerm)
 
 }
 
@@ -150,6 +154,24 @@ func copyYugabyteReleaseFile(version string) {
 	}
 }
 
+func copyYbcPackages(version string) {
+	packageFolderPath := INSTALL_VERSION_DIR + "/packages/yugabyte-" + version
+	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
+
+	matches, err := filepath.Glob(ybcPattern)
+	if err != nil {
+		LogError(
+			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
+									packageFolderPath, err.Error()))
+	}
+
+	for _, f := range matches {
+		_, fileName := filepath.Split(f)
+		// TODO: Check if file does not already exist?
+		CopyFileGolang(f, INSTALL_ROOT+"/yb-platform/ybc/release/" + fileName)
+	}
+
+}
 func renameAndCreateSymlinks(version string) {
 
 	packageFolder := "yugabyte-" + version

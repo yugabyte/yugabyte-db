@@ -200,6 +200,8 @@ func WriteTextIfNotExistsGolang(fileName string, textToWrite string) {
 	}
 }
 
+// CopyFileGolang copies src file to dst.
+// Assumes both src/dst are valid absolute paths and dst file parent directory is already created.
 func CopyFileGolang(src string, dst string) {
 
 	bytesRead, errSrc := ioutil.ReadFile(src)

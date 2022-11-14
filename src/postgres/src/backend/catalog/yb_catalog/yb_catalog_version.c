@@ -41,7 +41,6 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version);
-static bool YbIsSystemCatalogChange(Relation rel);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(
 	Relation catalog_version_rel, Oid db_oid);
 
@@ -331,7 +330,7 @@ YbCatalogVersionType YbGetCatalogVersionType()
  */
 bool YbIsSystemCatalogChange(Relation rel)
 {
-	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
+	return IsCatalogRelation(rel) && !IsBootstrapProcessingMode();
 }
 
 

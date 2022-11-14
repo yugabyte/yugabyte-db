@@ -736,6 +736,48 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   /**
+   * Tests that basic DML operations on system tables also update Postgres system caches.
+   * <p>
+   * This test is not limited to YSQL upgrade.
+   */
+  @Test
+  public void dmlsUpdatePgCache() throws Exception {
+    // Querying pg_sequence_parameters involves pg_sequence cache lookup, not an actual table scan.
+    // Let's use this fact to make sure INSERT, UPDATE and DELETE properly update this cache.
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setAllowNonDdlTxnsGuc(stmt, true);
+
+      String getCachedIncrementSql =
+          "SELECT increment FROM pg_sequence_parameters('my_seq'::regclass)";
+
+      stmt.execute("CREATE SEQUENCE my_seq INCREMENT BY 1");
+      assertOneRow(stmt, getCachedIncrementSql, 1);
+
+      // Single-row UPDATE
+      stmt.execute("UPDATE pg_sequence SET seqincrement = 20 WHERE seqrelid = 'my_seq'::regclass");
+      assertOneRow(stmt, getCachedIncrementSql, 20);
+
+      // Mutli-row UPDATE
+      stmt.execute("UPDATE pg_sequence SET seqincrement = 21");
+      assertOneRow(stmt, getCachedIncrementSql, 21);
+
+      // Single-row DELETE
+      stmt.execute("DELETE FROM pg_sequence WHERE seqrelid = 'my_seq'::regclass");
+      runInvalidQuery(stmt, getCachedIncrementSql, "cache lookup failed for sequence");
+
+      // INSERT
+      stmt.execute("INSERT INTO pg_sequence VALUES "
+          + "('my_seq'::regclass, 'bigint'::regtype, 1, 30, 9223372036854775807, 1, 1, false)");
+      assertOneRow(stmt, getCachedIncrementSql, 30);
+
+      // Multi-row DELETE
+      stmt.execute("DELETE FROM pg_sequence");
+      runInvalidQuery(stmt, getCachedIncrementSql, "cache lookup failed for sequence");
+    }
+  }
+
+  /**
    * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
    * migrations.
    */
@@ -1350,6 +1392,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private void setSystemRelsModificationGuc(Statement stmt, boolean value) throws Exception {
     stmt.execute("SET ysql_upgrade_mode TO " + Boolean.toString(value));
     stmt.execute("SET yb_test_system_catalogs_creation TO " + Boolean.toString(value));
+  }
+
+  private void setAllowNonDdlTxnsGuc(Statement stmt, boolean value) throws Exception {
+    stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO " + Boolean.toString(value));
   }
 
   /** Since YB expects OIDs to never get reused, we need to always pick a previously unused OID. */

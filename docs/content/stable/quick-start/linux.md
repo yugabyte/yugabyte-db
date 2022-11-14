@@ -6,53 +6,49 @@ description: Get started using YugabyteDB in less than five minutes on Linux.
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../../quick-start/" class="nav-link">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
 Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li>
-      <a href="../" class="nav-link">
-        <i class="fa-brands fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li class="active">
-      <a href="../linux/" class="nav-link">
-        <i class="fa-brands fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../docker/" class="nav-link">
-        <i class="fa-brands fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../kubernetes/" class="nav-link">
-        <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li class="active">
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 

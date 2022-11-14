@@ -265,10 +265,10 @@ class UniverseDetail extends Component {
       pathname.indexOf('edit') < 0
         ? 'Create'
         : this.props.params.type
-        ? this.props.params.type === 'primary'
-          ? 'Edit'
-          : 'Async'
-        : 'Edit';
+          ? this.props.params.type === 'primary'
+            ? 'Edit'
+            : 'Async'
+          : 'Edit';
 
     if (pathname === '/universes/create') {
       return <UniverseFormContainer type="Create" />;
@@ -468,40 +468,40 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-              <Tab.Pane
-                eventKey={'backups'}
-                tabtitle={<>Backups</>}
-                key="backups-tab"
-                mountOnEnter={true}
-                unmountOnExit={true}
-                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-              >
-                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
-                  <UniverseLevelBackup />
-                ) : (
-                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
-                )}
-              </Tab.Pane>
-            ),
+          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+            <Tab.Pane
+              eventKey={'backups'}
+              tabtitle={<>Backups</>}
+              key="backups-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+            >
+              {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                <UniverseLevelBackup />
+              ) : (
+                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+              )}
+            </Tab.Pane>
+          ),
 
-            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-              <Tab.Pane
-                eventKey={'health'}
-                tabtitle="Health"
-                key="health-tab"
-                mountOnEnter={true}
-                unmountOnExit={true}
-                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-              >
-                <UniverseHealthCheckList
-                  universe={universe}
-                  currentCustomer={currentCustomer}
-                  currentUser={currentUser}
-                />
-              </Tab.Pane>
-            )
-          ])
+          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+            <Tab.Pane
+              eventKey={'health'}
+              tabtitle="Health"
+              key="health-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+            >
+              <UniverseHealthCheckList
+                universe={universe}
+                currentCustomer={currentCustomer}
+                currentUser={currentUser}
+              />
+            </Tab.Pane>
+          )
+        ])
     ].filter((element) => element);
 
     const currentBreadCrumb = (
@@ -562,6 +562,7 @@ class UniverseDetail extends Component {
             currentUniverse={currentUniverse.data}
             showLabelText={true}
             refreshUniverseData={this.getUniverseInfo}
+            shouldDisplayTaskButton={true}
           />
         </div>
         {isNotHidden(currentCustomer.data.features, 'universes.details.pageActions') && (
@@ -742,28 +743,28 @@ class UniverseDetail extends Component {
 
                       {(featureFlags.test['supportBundle'] ||
                         featureFlags.released['supportBundle']) && (
-                        <>
-                          <MenuItem divider />
-                          {!universePaused && (
-                            <UniverseSupportBundle
-                              currentUniverse={currentUniverse.data}
-                              modal={modal}
-                              closeModal={closeModal}
-                              button={
-                                <YBMenuItem
-                                  disabled={updateInProgress}
-                                  onClick={showSupportBundleModal}
-                                >
-                                  <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                    Support Bundles
-                                  </YBLabelWithIcon>
-                                </YBMenuItem>
-                              }
-                            />
-                          )}
-                          <MenuItem divider />
-                        </>
-                      )}
+                          <>
+                            <MenuItem divider />
+                            {!universePaused && (
+                              <UniverseSupportBundle
+                                currentUniverse={currentUniverse.data}
+                                modal={modal}
+                                closeModal={closeModal}
+                                button={
+                                  <YBMenuItem
+                                    disabled={updateInProgress}
+                                    onClick={showSupportBundleModal}
+                                  >
+                                    <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                      Support Bundles
+                                    </YBLabelWithIcon>
+                                  </YBMenuItem>
+                                }
+                              />
+                            )}
+                            <MenuItem divider />
+                          </>
+                        )}
 
                       {!universePaused && (
                         <YBMenuItem
@@ -782,7 +783,7 @@ class UniverseDetail extends Component {
                             }
                           >
                             {currentUniverse.data.universeConfig &&
-                            currentUniverse.data.universeConfig.takeBackups === 'true'
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
                               ? 'Disable Backup'
                               : 'Enable Backup'}
                           </YBLabelWithIcon>

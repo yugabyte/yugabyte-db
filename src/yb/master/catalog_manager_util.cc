@@ -25,7 +25,7 @@
 using std::string;
 using std::vector;
 
-DEFINE_double(balancer_load_max_standard_deviation, 2.0,
+DEFINE_UNKNOWN_double(balancer_load_max_standard_deviation, 2.0,
     "The standard deviation among the tserver load, above which that distribution "
     "is considered not balanced.");
 TAG_FLAG(balancer_load_max_standard_deviation, advanced);

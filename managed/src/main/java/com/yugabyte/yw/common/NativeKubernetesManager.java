@@ -111,6 +111,13 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
+    try (KubernetesClient client = getClient(config)) {
+      return client.pods().inNamespace(namespace).withName(podName).get();
+    }
+  }
+
+  @Override
   public String getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,

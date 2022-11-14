@@ -142,17 +142,15 @@ update account
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    </td>
+    <td style="width:50%;"></td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
     Simultaneously, withdrawing $900 from the checking account is going to be a problem. This cannot co-exist with the other transaction's activity. This transaction would fail immediately.
     <pre><code style="padding: 0 10px;">
 update account
   set balance = balance - 900::money
   where name = 'kevin' and type = 'checking';
-
-ERROR:  40001: Operation failed.
-  Try again.: Transaction aborted: XXXX
+&nbsp; 
+ERROR:  40001: Operation failed. Try again.: Transaction aborted: XXXX
     </code></pre>
     </td>
   </tr>

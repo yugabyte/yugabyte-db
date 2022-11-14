@@ -66,6 +66,11 @@ services:
         url = "{{ yamlPath ".platform.ywUrl" }}"
       }
 
+      ybc {
+        releases.path = "{{ installRoot }}/yb-platform/ybc/releases"
+        docker.release = "{{ installRoot }}/yb-platform/ybc/release"
+      }
+
       play.filters {
         # CSRF config
         csrf {

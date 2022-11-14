@@ -97,24 +97,24 @@ constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 3000;
 #endif
 
-DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
+DEFINE_UNKNOWN_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeoutMs,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
 
 // In order to support up to three 64MB strings along with other strings,
 // we have the total size of a redis command at 253_MB, which is less than the consensus size
 // to account for the headers in the consensus layer.
-DEFINE_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
+DEFINE_UNKNOWN_uint64(redis_max_command_size, 253_MB, "Maximum size of the command in redis");
 
 // Maximum value size is 64MB
-DEFINE_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
-DEFINE_int32(redis_callbacks_threadpool_size, 64,
+DEFINE_UNKNOWN_uint64(redis_max_value_size, 64_MB, "Maximum size of the value in redis");
+DEFINE_UNKNOWN_int32(redis_callbacks_threadpool_size, 64,
              "The maximum size for the threadpool which handles callbacks from the ybclient layer");
 
-DEFINE_int32(redis_password_caching_duration_ms, 5000,
+DEFINE_UNKNOWN_int32(redis_password_caching_duration_ms, 5000,
              "The duration for which we will cache the redis passwords. 0 to disable.");
 
-DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
-DEFINE_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
+DEFINE_UNKNOWN_bool(redis_safe_batch, true, "Use safe batching with Redis service");
+DEFINE_UNKNOWN_bool(enable_redis_auth, true, "Enable AUTH for the Redis service");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);

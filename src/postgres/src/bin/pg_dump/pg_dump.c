@@ -16262,6 +16262,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				/* For range-table. */
 				char *range_split_clause = getYbSplitClause(fout, tbinfo);
 				appendPQExpBuffer(q, "\n%s", range_split_clause);
+				free(range_split_clause);
 			}
 			/* else - single shard table - supported, no need to add anything */
 
@@ -19111,7 +19112,7 @@ getYbSplitClause(Archive *fout, TableInfo *tbinfo)
 	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
 	int i_range_split_clause = PQfnumber(res, "range_split_clause");
 
-	char *range_split_clause = PQgetvalue(res, 0, i_range_split_clause);
+	char *range_split_clause = pg_strdup(PQgetvalue(res, 0, i_range_split_clause));
 
 	PQclear(res);
 	destroyPQExpBuffer(query);

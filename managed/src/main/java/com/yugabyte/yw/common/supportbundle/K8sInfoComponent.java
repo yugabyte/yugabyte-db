@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesCluster;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,7 +37,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.io.IOException;
-import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -284,8 +284,8 @@ class K8sInfoComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
     try {
       log.debug("Starting downloadComponent() on K8sInfoComponent");
 
@@ -417,8 +417,13 @@ class K8sInfoComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
-      throws IOException, ParseException {
-    this.downloadComponent(customer, universe, bundlePath);
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    this.downloadComponent(customer, universe, bundlePath, node);
   }
 }
