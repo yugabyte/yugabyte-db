@@ -184,8 +184,8 @@ public class AppInit {
       // initialize prometheus exports
       DefaultExports.initialize();
 
-      // Fail incomplete tasks
-      taskManager.failAllPendingTasks();
+      // Handle incomplete tasks
+      taskManager.handleAllPendingTasks();
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();

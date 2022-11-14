@@ -32,9 +32,9 @@
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
-DEFINE_bool(enable_transaction_sealing, false,
+DEFINE_UNKNOWN_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
-DEFINE_int32(txn_max_apply_batch_records, 100000,
+DEFINE_UNKNOWN_int32(txn_max_apply_batch_records, 100000,
              "Max number of apply records allowed in single RocksDB batch. "
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");

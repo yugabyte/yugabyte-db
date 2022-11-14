@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -36,10 +37,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Universe;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -97,7 +101,7 @@ public class BackupUtil {
   public static final String UNIVERSE_UUID_IDENTIFIER_STRING =
       "(univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
   public static final String BACKUP_IDENTIFIER_STRING =
-      "(.*?)" + "(yugabyte_backup/)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
+      "(.*?)" + "(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
       "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
@@ -207,6 +211,28 @@ public class BackupUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incremental backup frequency should be lower than full backup frequency.");
     }
+  }
+
+  public static List<BackupStorageInfo> sortBackupStorageInfo(
+      List<BackupStorageInfo> backupStorageInfoList) {
+    backupStorageInfoList.sort(BackupUtil::compareBackupStorageInfo);
+    return backupStorageInfoList;
+  }
+
+  public static int compareBackupStorageInfo(
+      BackupStorageInfo backupStorageInfo1, BackupStorageInfo backupStorageInfo2) {
+    return backupStorageInfo1.storageLocation.compareTo(backupStorageInfo2.storageLocation);
+  }
+
+  public static RestoreBackupParams createRestoreKeyParams(
+      RestoreBackupParams restoreBackupParams, BackupStorageInfo backupStorageInfo) {
+    if (KmsConfig.get(restoreBackupParams.kmsConfigUUID) != null) {
+      RestoreBackupParams restoreKeyParams =
+          new RestoreBackupParams(
+              restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE_KEYS);
+      return restoreKeyParams;
+    }
+    return null;
   }
 
   public static long extractBackupSize(JsonNode backupResponse) {
@@ -389,8 +415,7 @@ public class BackupUtil {
         backupLocation = configData.backupLocation;
         if (category.equals(BackupCategory.YB_CONTROLLER))
           // We allow / as nfs location, so add the check here.
-          backupLocation =
-              getCloudpathWithConfigSuffix(backupLocation, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET);
+          backupLocation = getCloudpathWithConfigSuffix(backupLocation, configData.nfsBucket);
       } else {
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
@@ -430,14 +455,17 @@ public class BackupUtil {
    * Get exact storage location for regional locations, while persisting in backup object
    *
    * @param backupLocation The default location of the backup, containing the md/success file
-   * @param configDefaultLocation The default config location
    * @param configRegionLocation The regional location from the config
    * @return
    */
   public static String getExactRegionLocation(String backupLocation, String configRegionLocation) {
-    String backupIdentifier = getBackupIdentifier(backupLocation, false);
-    String location = getCloudpathWithConfigSuffix(configRegionLocation, backupIdentifier);
-    return location;
+    return getExactRegionLocation(backupLocation, configRegionLocation, "");
+  }
+
+  public static String getExactRegionLocation(
+      String backupLocation, String configRegionLocation, String nfsBucket) {
+    return getCloudpathWithConfigSuffix(
+        configRegionLocation, getBackupIdentifier(backupLocation, false, nfsBucket));
   }
 
   /**
@@ -451,21 +479,29 @@ public class BackupUtil {
   }
 
   /**
-   * Returns the univ-<>/backup-<>-<>/some_value extracted from the default backup location or
-   * yugabyte_backup/univ-<>/backup-<>-<>/some_value if YBC NFS backup and checkYbcNfs is false. If
-   * checkYbcNfs is set to true, it additionally checks for yugabyte_bucket/ in the location and
-   * removes it.
+   * Returns the univ-<>/backup-<>-<>/some_value extracted from the default backup location or <NFS
+   * bucket>/univ-<>/backup-<>-<>/some_value if YBC NFS backup and checkYbcNfs is false. If
+   * checkYbcNfs is set to true, it additionally checks for NFS bucket in the location and removes
+   * it.
    *
    * @param checkYbcNfs Remove default nfs bucket name if true
    * @param defaultbackupLocation The default location of the backup, containing the md/success file
    */
   public static String getBackupIdentifier(String defaultBackupLocation, boolean checkYbcNfs) {
+    return getBackupIdentifier(defaultBackupLocation, checkYbcNfs, "");
+  }
+
+  public static String getBackupIdentifier(
+      String defaultBackupLocation, boolean checkYbcNfs, String nfsBucket) {
+    String pattern =
+        String.format(
+            BACKUP_IDENTIFIER_STRING, StringUtils.isEmpty(nfsBucket) ? "" : nfsBucket + "/");
     // Group 1: config prefix
-    // Group 2: yugabyte_backup/ NFS bucket
+    // Group 2: NFS bucket
     // Group 3: univ-<uuid>/
     // Group 4: suffix after universe
     // Group 5: ybc_ identifier
-    Matcher m = Pattern.compile(BACKUP_IDENTIFIER_STRING).matcher(defaultBackupLocation);
+    Matcher m = Pattern.compile(pattern).matcher(defaultBackupLocation);
     m.matches();
     String backupIdentifier = m.group(3).concat(m.group(4));
     if (checkYbcNfs || StringUtils.isBlank(m.group(2)) || StringUtils.isBlank(m.group(5))) {

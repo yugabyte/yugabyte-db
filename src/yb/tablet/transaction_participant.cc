@@ -66,13 +66,13 @@ using std::vector;
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_uint64(transaction_min_running_check_delay_ms, 50,
+DEFINE_UNKNOWN_uint64(transaction_min_running_check_delay_ms, 50,
               "When transaction with minimal start hybrid time is updated at transaction "
               "participant, we wait at least this number of milliseconds before checking its "
               "status at transaction coordinator. Used for the optimization that deletes "
               "provisional records RocksDB SSTable files.");
 
-DEFINE_uint64(transaction_min_running_check_interval_ms, 250,
+DEFINE_UNKNOWN_uint64(transaction_min_running_check_interval_ms, 250,
               "While transaction with minimal start hybrid time remains the same, we will try "
               "to check its status at transaction coordinator at regular intervals this "
               "long (ms). Used for the optimization that deletes "
@@ -83,16 +83,17 @@ DEFINE_test_flag(double, transaction_ignore_applying_probability, 0,
 DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
                  "Fail when applying intents if metadata is not found.");
 
-DEFINE_int32(max_transactions_in_status_request, 128,
+DEFINE_UNKNOWN_int32(max_transactions_in_status_request, 128,
              "Request status for at most specified number of transactions at once. "
                  "0 disables load time transaction status resolution.");
 
-DEFINE_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
+DEFINE_UNKNOWN_uint64(transactions_cleanup_cache_size, 256, "Transactions cleanup cache size.");
 
-DEFINE_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_uint64(transactions_status_poll_interval_ms, 500 * yb::kTimeMultiplier,
               "Transactions poll interval.");
 
-DEFINE_bool(transactions_poll_check_aborted, true, "Check aborted transactions during poll.");
+DEFINE_UNKNOWN_bool(transactions_poll_check_aborted, true,
+    "Check aborted transactions during poll.");
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 

@@ -49,6 +49,11 @@ import org.yb.master.CatalogEntityInfo;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.client.utils.Serialization;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
@@ -90,9 +95,14 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
 
     try {
-      String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
-      PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
-      when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
+      try {
+        File jsonFile = new File("src/test/resources/testPod.json");
+        InputStream jsonStream = new FileInputStream(jsonFile);
+
+        Pod testPod = Serialization.unmarshal(jsonStream, Pod.class);
+        when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+      } catch (Exception e) {
+      }
       YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);

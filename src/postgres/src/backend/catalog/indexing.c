@@ -319,7 +319,7 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 									ONCONFLICT_NONE,
 									&ybctid);
 		/* Update the local cache automatically */
-		YBSetSysCacheTuple(heapRel, tup);
+		YbSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -388,7 +388,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 									ONCONFLICT_NONE,
 									&ybctid);
 		/* Update the local cache automatically */
-		YBSetSysCacheTuple(heapRel, tup);
+		YbSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -437,7 +437,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
-		YBSetSysCacheTuple(heapRel, tup);
+		YbSetSysCacheTuple(heapRel, tup);
 
 		if (has_indices)
 			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);
@@ -483,7 +483,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
-		YBSetSysCacheTuple(heapRel, tup);
+		YbSetSysCacheTuple(heapRel, tup);
 
 		if (has_indices)
 			CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */);

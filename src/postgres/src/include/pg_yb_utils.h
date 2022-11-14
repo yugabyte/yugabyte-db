@@ -497,7 +497,10 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
+/* Get a string representation of a bitmapset (for debug purposes only!) */
+extern const char* YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.

@@ -563,9 +563,9 @@ public class UniverseCRUDHandler {
             && Util.compareYbVersions(
                     primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
                 < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot install universe with DB version lower than "
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
                   + Util.YBC_COMPATIBLE_DB_VERSION);
         }
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -614,6 +614,10 @@ public class UniverseCRUDHandler {
             // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
             taskParams.cmkArn = new String(cmkArnBytes);
           }
+        }
+        if (Universe.shouldEnableHttpsUI(
+            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+          universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
       }
 

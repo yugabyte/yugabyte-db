@@ -56,7 +56,7 @@ using namespace std::literals;
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
-DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {

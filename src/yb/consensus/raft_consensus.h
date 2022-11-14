@@ -263,9 +263,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
-    const yb::OpId& from,
-    int64_t* last_replicated_opid_index,
-    const CoarseTimePoint deadline = CoarseTimePoint::max()) override;
+      const yb::OpId& from,
+      int64_t* last_replicated_opid_index,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const bool fetch_single_entry = false) override;
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 

@@ -18,10 +18,11 @@
 
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
              "Timeout used by transaction related RPCs in milliseconds.");
 
 namespace yb {

@@ -2,8 +2,11 @@
 
 import React, { Component } from 'react';
 import { ProgressBar } from 'react-bootstrap';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { browserHistory } from 'react-router';
+import { toast } from 'react-toastify';
 
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { YBButton } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
   getUniversePendingTask,
@@ -32,12 +35,33 @@ export default class UniverseStatus extends Component {
     }
   }
 
+  redirectToTaskLogs = (taskUUID, universeUUID) => {
+    taskUUID ? browserHistory.push(`/tasks/${taskUUID}`)
+      : browserHistory.push(`/universes/${universeUUID}/tasks`);
+  }
+
+  handleRetryTaskClick = (taskUUID) => {
+    this.props.retryCurrentTask(taskUUID).then((response) => {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
+        browserHistory.push('/tasks');
+      } else {
+        const taskResponse = response?.payload?.response;
+        const toastMessage = taskResponse?.data?.error
+          ? taskResponse?.data?.error
+          : taskResponse?.statusText;
+        toast.error(toastMessage);
+      }
+    });
+  };
+
   render() {
     const {
       currentUniverse,
       showLabelText,
       tasks: { customerTaskList },
-      showAlertsBadge
+      showAlertsBadge,
+      shouldDisplayTaskButton
     } = this.props;
 
     const universeStatus = getUniverseStatus(currentUniverse);
@@ -99,10 +123,23 @@ export default class UniverseStatus extends Component {
       universeStatus.state === universeState.BAD ||
       universeStatus.state === universeState.WARNING
     ) {
+      const currentUniverseFailedTask = customerTaskList?.filter((task) => {
+        return ((task.targetUUID === currentUniverse.universeUUID) && task.status === "Failure")
+      });
+      const failedTask = currentUniverseFailedTask?.[0];
       statusDisplay = (
-        <div>
+        <div className={showLabelText ? "status-error" : ""}>
           <i className="fa fa-warning" />
-          {showLabelText && universeStatus.state.text && <span>{universeStatus.state.text}</span>}
+          {showLabelText && failedTask && <span className="status-error__reason">{`${failedTask.type} ${failedTask.target} failed`}</span>}
+          {shouldDisplayTaskButton
+            && !universePendingTask
+            && (failedTask?.retryable
+              ? <YBButton btnText={'Retry'} btnClass="btn btn-default retry-task-btn" onClick={() =>
+                this.handleRetryTaskClick(failedTask.id)} />
+              : <YBButton btnText={'View Details'} btnClass="btn btn-default view-task-details-btn" onClick={() =>
+                this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)} />
+            )
+          }
         </div>
       );
     }
