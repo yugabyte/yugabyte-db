@@ -25,7 +25,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
@@ -47,12 +46,11 @@ class UniverseKeyClient {
  private:
 
   void ProcessGetUniverseKeyRegistryResponse(
-      std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
-      std::shared_ptr<rpc::RpcController> rpc,
-      HostPort hp,
-      CoarseBackoffWaiter backoff_waiter);
+    std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
+    std::shared_ptr<rpc::RpcController> rpc,
+    HostPort hp);
 
-  void SendAsyncRequest(HostPort host_port, CoarseBackoffWaiter backoff_waiter);
+  void SendAsyncRequest(HostPort host_port);
 
   mutable std::mutex mutex_;
   mutable std::condition_variable cond_;
