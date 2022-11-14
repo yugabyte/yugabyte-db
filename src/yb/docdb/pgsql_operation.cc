@@ -1225,23 +1225,22 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Fetching data.
   int match_count = 0;
-  QLTableRow row;
-  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
-         !scan_time_exceeded) {
+  QLTableRow table_row;
+  YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
     bool is_match = true;
-    row.Clear();
 
+    const QLTableRow* row_ptr = &row;
     if (request_.has_index_request()) {
-      // Index scan over colocated table case, get next index row
-      RETURN_NOT_OK(iter->NextRow(&row));
       // Check index conditions
       RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
+
       if (!is_match) {
-        // If no match continue with next tuple from the iterator
+        // If no match continue with next tuple from the iterator.
         VLOG(1) << "Row filtered out by colocated index condition";
-        continue;
+        return ContinueScan::kTrue;
       }
-      // Index matches the condition, get the ybctid of the target row
+
+      // Index matches the condition, get the ybctid of the target row.
       const auto& tuple_id = row.GetValue(ybbasectid_id);
       SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
       // Seek the target row using main table iterator
@@ -1259,32 +1258,38 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
               request_.index_request().table_id());
         }
       }
-      // Remove index row currently held by the variable
-      row.Clear();
+      // Remove table row currently held by the variable.
+      table_row.Clear();
       // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &row));
-    } else {
-      // Fetch main table row
-      RETURN_NOT_OK(iter->NextRow(doc_projection, &row));
+      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &table_row));
+
+      row_ptr = &table_row;
     }
 
     // Match the row with the where condition before adding to the row block.
-    RETURN_NOT_OK(doc_expr_exec.Exec(row, nullptr, &is_match));
-    if (is_match) {
-      match_count++;
-      if (request_.is_aggregate()) {
-        RETURN_NOT_OK(EvalAggregate(row));
-      } else {
-        RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-        ++fetched_rows;
-      }
-    } else {
+    RETURN_NOT_OK(doc_expr_exec.Exec(*row_ptr, nullptr, &is_match));
+
+    if (!is_match) {
       VLOG(1) << "Row filtered out by the condition";
+      return ContinueScan::kTrue;
+    }
+
+    match_count++;
+    if (request_.is_aggregate()) {
+      RETURN_NOT_OK(EvalAggregate(*row_ptr));
+    } else {
+      RETURN_NOT_OK(PopulateResultSet(*row_ptr, result_buffer));
+      ++fetched_rows;
     }
 
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
-  }
+
+    return (fetched_rows < row_count_limit && !scan_time_exceeded) ? ContinueScan::kTrue
+                                                                   : ContinueScan::kFalse;
+  };
+
+  RETURN_NOT_OK(iter->Iterate(std::move(callback)));
 
   VLOG(1) << "Stopped iterator after " << match_count << " matches, "
           << fetched_rows << " rows fetched";
@@ -1292,7 +1297,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Output aggregate values accumulated while looping over rows
   if (request_.is_aggregate() && match_count > 0) {
-    RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
+    RETURN_NOT_OK(PopulateAggregate(result_buffer));
     ++fetched_rows;
   }
 
@@ -1441,8 +1446,7 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
   return Status::OK();
 }
 
-Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
-                                             WriteBuffer *result_buffer) {
+Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
   int column_count = request_.targets().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));

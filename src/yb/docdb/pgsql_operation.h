@@ -203,8 +203,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status EvalAggregate(const QLTableRow& table_row);
 
-  Status PopulateAggregate(const QLTableRow& table_row,
-                           WriteBuffer *result_buffer);
+  Status PopulateAggregate(WriteBuffer *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
