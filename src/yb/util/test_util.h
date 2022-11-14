@@ -192,6 +192,8 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
+std::string GetCertsDir();
+
 int CalcNumTablets(size_t num_tablet_servers);
 
 template<uint32_t limit>
