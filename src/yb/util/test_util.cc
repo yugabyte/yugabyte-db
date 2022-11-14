@@ -42,6 +42,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -288,6 +289,11 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
   const string tool_path = JoinPathSegments(binroot, tool_name);
   CHECK(Env::Default()->FileExists(tool_path)) << tool_name << " tool not found at " << tool_path;
   return tool_path;
+}
+
+string GetCertsDir() {
+  const auto sub_dir = JoinPathSegments("ent", "test_certs");
+  return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
 }
 
 int CalcNumTablets(size_t num_tablet_servers) {
