@@ -42,6 +42,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Before
   public void setUp() {
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
 
     JsonNode configJson =
         Json.parse(
@@ -241,7 +242,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Test
   public void testNativeMetrics() throws Exception {
-    when(mockAppConfig.getBoolean(eq("yb.metrics.useNative"), eq(false))).thenReturn(true);
+    when(mockAppConfig.getBoolean(eq("yb.metrics.useNative"))).thenReturn(true);
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");

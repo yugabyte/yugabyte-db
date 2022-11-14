@@ -95,7 +95,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Test
   public void testQuerySingleMetricWithoutEndTime() {
-    DateTime date = DateTime.now().minusMinutes(1);
+    DateTime date = DateTime.now().minusMinutes(2);
     Integer startTimestamp = Math.toIntExact(date.getMillis() / 1000);
     HashMap<String, String> params = new HashMap<>();
     params.put("start", startTimestamp.toString());

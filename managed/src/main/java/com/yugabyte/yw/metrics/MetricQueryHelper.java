@@ -49,7 +49,7 @@ public class MetricQueryHelper {
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
-  @Inject play.Config appConfig;
+  @Inject Config appConfig;
 
   @Inject ApiHelper apiHelper;
 
@@ -143,7 +143,7 @@ public class MetricQueryHelper {
     }
 
     String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
     if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
       return Json.newObject();

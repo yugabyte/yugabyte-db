@@ -4,7 +4,9 @@ package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.MetricConfig;
 import java.net.URLEncoder;
@@ -22,7 +24,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private ApiHelper apiHelper;
-  private play.Configuration appConfig;
+  private Config appConfig;
   private YBMetricQueryComponent ybMetricQueryComponent;
 
   private Map<String, String> queryParam = new HashMap<>();
@@ -33,7 +35,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   private boolean isRecharts;
 
   public MetricQueryExecutor(
-      play.Configuration appConfig,
+      Config appConfig,
       ApiHelper apiHelper,
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
@@ -42,7 +44,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   }
 
   public MetricQueryExecutor(
-      play.Configuration appConfig,
+      Config appConfig,
       ApiHelper apiHelper,
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
@@ -54,7 +56,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     this.additionalFilters.putAll(additionalFilters);
     this.ybMetricQueryComponent = ybMetricQueryComponent;
     this.isRecharts = isRecharts;
-    int scrapeIntervalSecs = appConfig.getInt("yb.metrics.scrape_interval_secs", 10);
+    int scrapeIntervalSecs = (int) SwamperHelper.getScrapeIntervalSeconds(appConfig);
     if (queryParam.containsKey("step")) {
       // Rate queries like rate(rpc_latency_count[rate_interval]) are performed over multiple
       // windows of size "step" in the query range (start, end). We set rate_interval to the step
@@ -92,7 +94,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   }
 
   private JsonNode getMetrics() {
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
     if (useNativeMetrics) {
       return ybMetricQueryComponent.query(queryParam);
     } else {
