@@ -15,20 +15,30 @@ type: docs
   <li >
     <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Sequelize
+      Sequelize ORM
     </a>
   </li>
   <li>
     <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YSQL - Prisma
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Prisma ORM
     </a>
   </li>
 </ul>
 
+The following tutorial implements a REST API server using the [Sequelize](https://sequelize.org/) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It includes the following tables:
+
+- `users` — the users of the e-commerce site
+- `products` — the products being sold
+- `orders` — the orders placed by the users
+- `orderline` — each line item of an order
+
+The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
+
 ## Prerequisites
 
 This tutorial assumes that you have installed:
+
 - YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
@@ -37,14 +47,6 @@ This tutorial assumes that you have installed:
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
-
-This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following:
-
-- The `users` table contains the users of the e-commerce site.
-- The `products` table contains a list of products the e-commerce site sells.
-- Orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
-
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
 
 ## Build the application
 
@@ -56,10 +58,12 @@ $ cd ./node/sequelize/
 npm install
 ```
 
-## Specifying SSL configuration
+## Specify SSL configuration
+
 This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
 
 Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
+
 ```js
 sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
     dialect: 'postgres',

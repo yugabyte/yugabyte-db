@@ -10,7 +10,10 @@ menu:
     parent: drivers-orms
     weight: 570
 type: indexpage
+showRightNav: true
 ---
+
+## Supported projects
 
 The following projects are recommended for implementing Rust applications using the YugabyteDB YSQL/YCQL API.
 
