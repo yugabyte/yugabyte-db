@@ -51,7 +51,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
 
 ## Database configuration
 
-- To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
+To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
 
 `Host=$hostName; Port=$dbPort; Username=$dbUser; Password=$dbPassword; Database=$database`
 

@@ -153,7 +153,7 @@ $ curl \
 ### Use the YSQL shell
 
 ```sql
-ysql_dapper=# SELECT count(*) FROM users;
+yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -164,7 +164,7 @@ ysql_dapper=# SELECT count(*) FROM users;
 ```
 
 ```sql
-ysql_dapper=# SELECT count(*) FROM products;
+yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -175,7 +175,7 @@ ysql_dapper=# SELECT count(*) FROM products;
 ```
 
 ```sql
-ysql_dapper=# SELECT count(*) FROM orders;
+yugabyte=# SELECT count(*) FROM orders;
 ```
 
 ```output
