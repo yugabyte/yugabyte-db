@@ -72,11 +72,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
     DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
   }
 
-  virtual std::string CertsDir() {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    auto root_dir = env_util::GetRootDir(sub_dir);
-    return JoinPathSegments(root_dir, sub_dir);
-  }
+  virtual std::string CertsDir() { return GetCertsDir(); }
 
   Status CreateClient() override {
     auto host = "127.0.0.52";
@@ -214,11 +210,7 @@ class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {
     SecureConnectionTest::SetUp();
   }
 
-  std::string CertsDir() override {
-    const auto sub_dir = JoinPathSegments("ent", "test_certs", "named");
-    auto root_dir = env_util::GetRootDir(sub_dir);
-    return JoinPathSegments(root_dir, sub_dir);
-  }
+  std::string CertsDir() override { return JoinPathSegments(GetCertsDir(), "named"); }
 };
 
 TEST_F_EX(SecureConnectionTest, VerifyNameOnly, SecureConnectionVerifyNameOnlyTest) {
