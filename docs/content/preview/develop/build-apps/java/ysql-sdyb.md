@@ -10,16 +10,15 @@ menu:
     weight: 550
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav yb-pills">
   <li >
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Hibernate
     </a>
   </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link active">
+  <li class="active">
+    <a href="../ysql-sdyb/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data YugabyteDB
     </a>

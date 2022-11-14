@@ -12,20 +12,20 @@ type: docs
 ---
 
 <ul class="nav yb-pills">
-  <li >
+  <li>
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Hibernate
     </a>
   </li>
-  <li >
+  <li>
     <a href="../ysql-sdyb/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data YugabyteDB
     </a>
   </li>
-  <li >
-    <a href="../ysql-spring-data/" class="nav-link active">
+  <li class="active">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>

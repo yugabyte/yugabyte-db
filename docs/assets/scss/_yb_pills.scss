@@ -2,6 +2,7 @@
 ul.nav.yb-pills {
   display: flex;
   gap: 16px;
+  margin: 20px 0;
 
   li {
     background: #fff;
@@ -23,6 +24,7 @@ ul.nav.yb-pills {
       margin: 0 auto;
     }
 
+    &.active,
     &:hover {
       background: #f2f6ff;
       cursor: pointer;
