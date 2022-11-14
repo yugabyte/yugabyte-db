@@ -78,7 +78,7 @@ To change default port for the REST API Server, go to `Properties/launchSettings
   $ dotnet run
   ```
 
-The REST server will run at `http://localhost:8080` by default.
+The REST server runs at `http://localhost:8080` by default.
 
 ## Send requests to the application
 
