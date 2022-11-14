@@ -15,7 +15,7 @@ showRightNav: true
 
 ## Supported projects
 
-The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
+The following projects can be used to implement Golang applications using the YugabyteDB YSQL and YCQL APIs.
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|

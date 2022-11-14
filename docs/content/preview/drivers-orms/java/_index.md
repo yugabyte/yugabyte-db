@@ -15,7 +15,7 @@ showRightNav: true
 
 ## Supported projects
 
-The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
+The following projects can be used to implement Java applications using the YugabyteDB YSQL and YCQL APIs.
 
 | Driver | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
