@@ -116,8 +116,9 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT planid              text,
     OUT query               text,
     OUT query_plan          text,
+    OUT state_code 			int8,
     OUT top_queryid         text,
-    OUT top_query           text,
+	OUT top_query           text,
 	OUT application_name	text,
 
 	OUT relations			text, -- 11
@@ -181,7 +182,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
     queryid,
-    toplevel,
     top_queryid,
     query,
 	comments,
@@ -197,10 +197,10 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	message,
     calls,
 	total_exec_time,
-	min_exec_time,
-	max_exec_time,
-	mean_exec_time,
-	stddev_exec_time,
+	min_time,
+	max_time,
+	mean_time,
+	stddev_time,
 	rows_retrieved,
 	shared_blks_hit,
     shared_blks_read,
@@ -352,13 +352,13 @@ $$
     DECLARE ver integer;
     BEGIN
         SELECT current_setting('server_version_num') INTO ver;
-    IF (ver >= 14000) THEN
+    IF (ver >= 140000) THEN
         return pgsm_create_14_view();
     END IF;
-    IF (ver >= 13000) THEN
+    IF (ver >= 130000) THEN
         return pgsm_create_13_view();
     END IF;
-    IF (ver >= 11000) THEN
+    IF (ver >= 110000) THEN
         return pgsm_create_11_view();
     END IF;
     RETURN 0;
