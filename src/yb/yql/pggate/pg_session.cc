@@ -538,13 +538,9 @@ Result<PerformFuture> PgSession::Perform(
   }
   options.set_force_global_transaction(global_transaction);
 
-  auto use_xcluster_database_consistency =
-      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE;
-  if (use_catalog_session || pg_txn_manager_->IsDdlMode()) {
-    // For Catalog sessions and DDLs we always want to read our universe's latest data.
-    use_xcluster_database_consistency = false;
-  }
-  options.set_use_xcluster_database_consistency(use_xcluster_database_consistency);
+  options.set_use_xcluster_database_consistency(
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
+      !(use_catalog_session || pg_txn_manager_->IsDdlMode()));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
