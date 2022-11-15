@@ -10,6 +10,13 @@ type: docs
 
 ## Releases
 
+### November 15, 2022
+
+**New Features**
+
+- Ability to view cluster health. YugabyteDB Managed monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
+- Ability to set alerts for failed nodes. Get notified when the number of failed nodes exceeds the threshold.
+
 ### November 4, 2022
 
 **New Features**
