@@ -14,11 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HVALS key`</b><br>
+**`HVALS key`**
+
 This command selects all the values in the hash that is associated with the given `key`.
 
-<li>If the `key` does not exist, an empty list is returned.</li>
-<li>if the `key` is associated with a non-hash data, an error is raised.</li>
+- If the `key` does not exist, an empty list is returned.
+- if the `key` is associated with a non-hash data, an error is raised.
 
 ## Return value
 

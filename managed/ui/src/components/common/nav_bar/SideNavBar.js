@@ -81,7 +81,7 @@ export default class SideNavBar extends Component {
                       to="/metrics"
                       icon="fa fa-line-chart"
                       text="Metrics"
-                      display={getFeatureState(currentCustomer.data.features, 'menu.metrics')}
+                      display={getFeatureState(currentCustomer.data.features, 'menu.metrics', "hidden")}
                     />
                     <NavLink
                       to="/tasks"

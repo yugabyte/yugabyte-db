@@ -23,7 +23,6 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as co
 interface ExpandedTableSelectProps {
   row: KeyspaceRow;
   selectedTableUUIDs: string[];
-  minPageSize: number;
   tableType: XClusterTableType;
   handleTableSelect: (row: XClusterTableCandidate, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTableCandidate[]) => boolean;

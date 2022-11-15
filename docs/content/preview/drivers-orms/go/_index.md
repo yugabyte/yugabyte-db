@@ -10,11 +10,12 @@ menu:
     parent: drivers-orms
     weight: 550
 type: indexpage
+showRightNav: true
 ---
 
-The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following projects can be used to implement Golang applications using the YugabyteDB YSQL and YCQL APIs.
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
@@ -32,7 +33,7 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/go/pgx-reference/) pages.
 
-### Prerequisites
+## Prerequisites
 
 To develop Golang applications for YugabyteDB, you need the following:
 

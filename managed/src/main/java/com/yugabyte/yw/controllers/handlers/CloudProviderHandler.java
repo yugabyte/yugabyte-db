@@ -140,12 +140,13 @@ public class CloudProviderHandler {
           BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
     Provider provider = Provider.create(customer.uuid, providerCode, providerName);
+    maybeUpdateVPC(provider, providerConfig);
     if (!providerConfig.isEmpty()) {
       // Perform for all cloud providers as it does validation.
       maybeUpdateProviderConfig(provider, providerConfig, anyProviderRegion);
-      switch (provider.code) {
-        case "aws": // Fall through to the common code.
-        case "azu":
+      switch (provider.getCloudCode()) {
+        case aws: // Fall through to the common code.
+        case azu:
           // TODO: Add this validation. But there is a bad test.
           //  if (anyProviderRegion == null || anyProviderRegion.isEmpty()) {
           //    throw new YWServiceException(BAD_REQUEST, "Must have at least one region");
@@ -155,7 +156,7 @@ public class CloudProviderHandler {
             validateAndUpdateHostedZone(provider, hostedZoneId);
           }
           break;
-        case "kubernetes":
+        case kubernetes:
           updateKubeConfig(provider, providerConfig, false);
           try {
             createKubernetesInstanceTypes(customer, provider);
@@ -774,6 +775,37 @@ public class CloudProviderHandler {
     existingConfig = new HashMap<>(existingConfig);
     existingConfig.putAll(providerConfig);
     toProvider.setConfig(existingConfig);
+  }
+
+  private void maybeUpdateVPC(Provider provider, Map<String, String> providerConfig) {
+    switch (provider.getCloudCode()) {
+      case gcp:
+        if (providerConfig.getOrDefault("use_host_vpc", "false").equalsIgnoreCase("true")) {
+          JsonNode currentHostInfo = queryHelper.getCurrentHostInfo(provider.getCloudCode());
+          if (!hasHostInfo(currentHostInfo)) {
+            throw new IllegalStateException("Cannot use host vpc as there is no vpc");
+          }
+          String network = currentHostInfo.get("network").asText();
+          provider.hostVpcId = network;
+          provider.destVpcId = network;
+          providerConfig.put("GCE_HOST_PROJECT", currentHostInfo.get("host_project").asText());
+          provider.save();
+        }
+        break;
+      case aws:
+        JsonNode currentHostInfo = queryHelper.getCurrentHostInfo(provider.getCloudCode());
+        if (hasHostInfo(currentHostInfo)) {
+          provider.hostVpcRegion = currentHostInfo.get("region").asText();
+          provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
+          provider.save();
+        }
+        break;
+      default:
+    }
+  }
+
+  private boolean hasHostInfo(JsonNode hostInfo) {
+    return (hostInfo != null && !hostInfo.isEmpty() && !hostInfo.has("error"));
   }
 
   private boolean maybeUpdateProviderConfig(

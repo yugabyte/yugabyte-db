@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`EXPIREAT key ttl-as-timestamp`</b><br>
+**`EXPIREAT key ttl-as-timestamp`**
+
 EXPIREAT has the same effect as EXPIRE, but instead of specifying the number of seconds representing the TTL (time to live), it takes an absolute Unix timestamp (seconds since January 1, 1970). A timestamp in the past will delete the key immediately.
 
 ## Return value

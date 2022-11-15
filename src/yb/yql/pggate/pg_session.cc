@@ -56,7 +56,7 @@ using namespace std::literals;
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
-DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
+DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {
@@ -538,10 +538,13 @@ Result<PerformFuture> PgSession::Perform(
   }
   options.set_force_global_transaction(global_transaction);
 
-  // For DDLs we always read latest data.
-  options.set_use_xcluster_database_consistency(
-      !pg_txn_manager_->IsDdlMode() &&
-      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
+  auto use_xcluster_database_consistency =
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE;
+  if (use_catalog_session || pg_txn_manager_->IsDdlMode()) {
+    // For Catalog sessions and DDLs we always want to read our universe's latest data.
+    use_xcluster_database_consistency = false;
+  }
+  options.set_use_xcluster_database_consistency(use_xcluster_database_consistency);
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 

@@ -985,7 +985,7 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char*
-YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
+YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 {
 	Datum attr = (Datum) 0;
 	int natts = tupleDesc->natts;
@@ -1011,6 +1011,14 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
+}
+
+const char*
+YbBitmapsetToString(Bitmapset *bms)
+{
+	StringInfo str = makeStringInfo();
+	outBitmapset(str, bms);
+	return str->data;
 }
 
 bool

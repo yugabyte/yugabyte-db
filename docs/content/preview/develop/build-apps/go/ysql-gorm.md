@@ -15,13 +15,13 @@ type: docs
   <li >
     <a href="../ysql-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG
+      PG ORM
     </a>
   </li>
   <li >
     <a href="../ysql-gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - GORM
+      GORM
     </a>
   </li>
 </ul>

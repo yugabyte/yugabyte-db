@@ -129,7 +129,8 @@ class GraphPanelHeader extends Component {
       refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel,
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
-      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
+      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
+      isSingleNodeSelected: false
     };
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
@@ -204,7 +205,7 @@ class GraphPanelHeader extends Component {
         getPromiseState(universe.currentUniverse).isEmpty() ||
         getPromiseState(universe.currentUniverse).isInit()
       ) {
-        currentUniverse = universeList.data.find(function (item) {
+        currentUniverse = universeList?.data?.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         });
         if (!isNonEmptyObject(currentUniverse)) {
@@ -305,7 +306,7 @@ class GraphPanelHeader extends Component {
     const selectedUniverseUUID = universeUUID;
     const self = this;
     const newParams = this.state;
-    const matchedUniverse = universeList.data.find((u) => u.universeUUID === selectedUniverseUUID);
+    const matchedUniverse = universeList?.data?.find((u) => u.universeUUID === selectedUniverseUUID);
     if (matchedUniverse) {
       self.setState({
         currentSelectedUniverse: matchedUniverse,
@@ -315,7 +316,8 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value
+        metricMeasure: metricMeasureTypes[0].value,
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = matchedUniverse.universeDetails.nodePrefix;
     } else {
@@ -326,7 +328,8 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value
+        metricMeasure: metricMeasureTypes[0].value,
+        isSingleNodeSelected: false
       });
       newParams.nodePrefix = null;
     }
@@ -378,8 +381,18 @@ class GraphPanelHeader extends Component {
     newParams.selectedZoneName = selectedZoneName;
     this.setState({
       nodeName: nodeName,
-      selectedZoneName: selectedZoneName
+      selectedZoneName: selectedZoneName,
+      isSingleNodeSelected: nodeName && nodeName !== MetricConsts.ALL
     });
+
+    // When a single node is selected, button focus should move to Overall 
+    // and Outlier Node should be disabled
+    if (this.state.metricMeasure === MetricMeasure.OUTLIER) {
+      this.setState({
+        metricMeasure: MetricMeasure.OVERALL
+      });
+      newParams.metricMeasure = MetricMeasure.OVERALL;
+    }
 
     this.updateUrlQueryParams(newParams);
   };
@@ -391,6 +404,7 @@ class GraphPanelHeader extends Component {
       selectedRegionClusterUUID: clusterId,
       selectedRegionCode: regionCode,
       nodeName: MetricConsts.ALL,
+      isSingleNodeSelected: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
       selectedZoneName: null,
     });
@@ -506,7 +520,6 @@ class GraphPanelHeader extends Component {
       closeModal,
       visibleModal,
       enableNodeComparisonModal,
-      enableTopNodes,
       enableTopKMetrics
     } = this.props;
     const {
@@ -622,7 +635,6 @@ class GraphPanelHeader extends Component {
                         nodeItemChangedOld={this.nodeItemChangedOld}
                         selectedUniverse={this.state.currentSelectedUniverse}
                         selectedNode={this.state.nodeName}
-                        topNodesSelection={enableTopNodes}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
                         enableTopKMetrics={enableTopKMetrics}
@@ -740,6 +752,7 @@ class GraphPanelHeader extends Component {
                       metricMeasureTypes={metricMeasureTypes}
                       selectedMetricMeasureValue={this.state.metricMeasure}
                       onMetricMeasureChanged={this.onMetricMeasureChanged}
+                      isSingleNodeSelected={this.state.isSingleNodeSelected}
                     />
                   }
                 </FlexGrow>
@@ -808,8 +821,7 @@ class UniversePicker extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    let universeItems = universeList?.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <MenuItem
@@ -847,6 +859,10 @@ class UniversePicker extends Component {
       currentUniverseValue = selectedUniverse.name;
     }
 
+    // If we fail to retrieve list of Universes, still display the Universe dropdown with "All" option
+    if (!universeItems) {
+      universeItems = [];
+    }
     universeItems.splice(0, 0, defaultMenuItem);
     return (
       <div className="universe-picker-container">
@@ -877,8 +893,7 @@ class UniversePickerOld extends Component {
       selectedUniverse
     } = this.props;
 
-    const universeItems = universeList.data
-      .sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    const universeItems = universeList.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <option key={idx} value={item.universeUUID} name={item.name}>

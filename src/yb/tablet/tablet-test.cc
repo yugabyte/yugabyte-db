@@ -59,6 +59,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/flags.h"
 
 using std::shared_ptr;
 using std::unordered_set;
@@ -68,7 +69,7 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-DEFINE_int32(testiterator_num_inserts, 1000,
+DEFINE_UNKNOWN_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
 static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==

@@ -99,7 +99,7 @@ DEFINE_RUNTIME_uint64(webserver_compression_threshold_kb, 4,
     "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
 
-DEFINE_bool(webserver_redirect_http_to_https, false,
+DEFINE_UNKNOWN_bool(webserver_redirect_http_to_https, false,
             "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");
 
 DEFINE_test_flag(bool, mini_cluster_mode, false,

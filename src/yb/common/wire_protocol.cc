@@ -53,11 +53,12 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/flags.h"
 
 using google::protobuf::RepeatedPtrField;
 using std::vector;
 
-DEFINE_string(use_private_ip, "never",
+DEFINE_UNKNOWN_string(use_private_ip, "never",
               "When to use private IP for connection. "
               "cloud - would use private IP if destination node is located in the same cloud. "
               "region - would use private IP if destination node is located in the same cloud and "

@@ -40,7 +40,12 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.client.utils.Serialization;
+
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,10 +75,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private Map<String, String> config = new HashMap<>();
 
   private void setup() {
-    String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
-    PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
-    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
+    try {
+      File jsonFile = new File("src/test/resources/testPod.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
 
+      Pod testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
     YBClient mockClient = mock(YBClient.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
@@ -481,7 +490,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(3))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(

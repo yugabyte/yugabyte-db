@@ -4,11 +4,11 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
+
 import { YBLoading } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBCost, DescriptionItem } from '../../../components/common/descriptors';
 import { UniverseStatusContainer } from '../../../components/universes';
-import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBButton } from '../../common/forms/fields';
 import {
@@ -19,6 +19,8 @@ import {
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
+
+import './UniverseDisplayPanel.scss';
 
 class CTAButton extends Component {
   render() {
@@ -72,6 +74,7 @@ class UniverseDisplayItem extends Component {
     ) : (
       ''
     );
+
     return (
       <Col sm={4} md={3} lg={2}>
         <Link to={'/universes/' + universe.universeUUID}>
@@ -80,6 +83,7 @@ class UniverseDisplayItem extends Component {
               <UniverseStatusContainer
                 currentUniverse={universe}
                 refreshUniverseData={refreshUniverseData}
+                shouldDisplayTaskButton={false}
               />
             </div>
             <div className="display-name">{universe.name}</div>

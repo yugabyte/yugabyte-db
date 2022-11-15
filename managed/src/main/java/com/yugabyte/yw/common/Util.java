@@ -93,11 +93,13 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   public static final String YB_RELEASES_PATH = "yb.releases.path";
+
+  public static final String YB_NODE_UI_WS_KEY = "yb.node_ui.ws";
 
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
@@ -681,8 +683,7 @@ public class Util {
     String archType = null;
     if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
       archType = Architecture.x86_64.name();
-    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
-        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
       throw new RuntimeException(

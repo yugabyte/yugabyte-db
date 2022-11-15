@@ -3140,7 +3140,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
-  UserFrontier* flushed_frontier = nullptr;
+  UserFrontierPtr flushed_frontier;
   int count __attribute__((unused)) = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
@@ -3245,7 +3245,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
       }
 
       if (edit.flushed_frontier_) {
-        flushed_frontier = edit.flushed_frontier_.get();
+        flushed_frontier = edit.flushed_frontier_;
       }
 
       if (edit.max_column_family_) {
@@ -3302,7 +3302,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
     next_file_number_.store(next_file + 1);
     SetLastSequenceNoSanityChecking(last_sequence);
-    if (flushed_frontier) {
+    if (flushed_frontier && FlushedFrontier()) {
       DCHECK_EQ(*flushed_frontier, *FlushedFrontier());
     }
     prev_log_number_ = previous_log_number;
@@ -3312,7 +3312,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
         "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u flushed_values %s\n",
         next_file_number_.load(), last_sequence, previous_log_number,
         column_family_set_->GetMaxColumnFamily(),
-        yb::ToString(flushed_frontier).c_str());
+        yb::ToString(flushed_frontier.get()).c_str());
   }
 
   return s;

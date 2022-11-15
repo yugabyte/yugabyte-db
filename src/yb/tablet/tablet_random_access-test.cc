@@ -61,12 +61,13 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
-DEFINE_int32(runtime_seconds, 1, "number of seconds to run the test");
-DEFINE_int32(sleep_between_background_ops_ms, 100,
+DEFINE_UNKNOWN_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
+DEFINE_UNKNOWN_int32(runtime_seconds, 1, "number of seconds to run the test");
+DEFINE_UNKNOWN_int32(sleep_between_background_ops_ms, 100,
              "number of milliseconds to sleep between flushing or compacting");
-DEFINE_int32(update_delete_ratio, 4, "ratio of update:delete when mutating existing rows");
+DEFINE_UNKNOWN_int32(update_delete_ratio, 4, "ratio of update:delete when mutating existing rows");
 
 using std::string;
 using std::vector;

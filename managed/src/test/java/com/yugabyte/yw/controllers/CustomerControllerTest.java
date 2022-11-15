@@ -1061,10 +1061,8 @@ public class CustomerControllerTest extends FakeDBApplication {
   @Test
   public void testCustomerHostInfo() {
     JsonNode response = Json.parse("{\"foo\": \"bar\"}");
-    when(mockCloudQueryHelper.currentHostInfo(
-            Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")))
-        .thenReturn(response);
-    when(mockCloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null)).thenReturn(response);
+    when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws)).thenReturn(response);
+    when(mockCloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp)).thenReturn(response);
     Result result = getHostInfo(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

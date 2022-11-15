@@ -46,11 +46,11 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
-DEFINE_bool(ycql_allow_in_op_with_order_by, false,
+DEFINE_UNKNOWN_bool(ycql_allow_in_op_with_order_by, false,
             "Allow IN to be used with ORDER BY clause");
 TAG_FLAG(ycql_allow_in_op_with_order_by, advanced);
 
-DEFINE_bool(enable_uncovered_index_select, true,
+DEFINE_UNKNOWN_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
 TAG_FLAG(enable_uncovered_index_select, advanced);
 

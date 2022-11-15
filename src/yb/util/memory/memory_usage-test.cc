@@ -20,8 +20,9 @@
 #include "yb/util/memory/memory_usage_test_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
+DEFINE_UNKNOWN_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
 
 namespace yb {
 

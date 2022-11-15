@@ -33,17 +33,19 @@
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
+DEFINE_UNKNOWN_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");
 
-DEFINE_uint64(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
-              "Number of transactions to collect for possible cleanup.");
+DEFINE_UNKNOWN_uint64(aborted_intent_cleanup_max_batch_size, 256,
+    // Cleanup 256 transactions at a time
+    "Number of transactions to collect for possible cleanup.");
 
-DEFINE_int32(external_intent_cleanup_secs, 60 * 60 * 24, // 24 hours by default
+DEFINE_UNKNOWN_int32(external_intent_cleanup_secs, 60 * 60 * 24, // 24 hours by default
              "Duration in secs after which to cleanup external intents.");
 
-DEFINE_uint64(intents_compaction_filter_max_errors_to_log, 100,
+DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
               "Maximum number of errors to log for life cycle of the intents compcation filter.");
 
 using std::shared_ptr;

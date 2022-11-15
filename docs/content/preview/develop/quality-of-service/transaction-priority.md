@@ -109,7 +109,7 @@ select * from account;
   </tr>
 
   <tr>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+    <td style="width:50%; border-right:1px solid rgba(158,159,165,0.5);">
     </td>
     <td style="width:50%;">
     Next, initiate the deposit of $200, which should have higher priority.
@@ -144,7 +144,7 @@ ERROR:  Operation failed. Try again: Unknown transaction,
   </tr>
 
   <tr>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+    <td style="width:50%; border-right:1px solid rgba(158,159,165,0.5);">
     </td>
     <td style="width:50%;">
     The deposit transaction can now commit.
