@@ -14,9 +14,11 @@ type: docs
 
 ## Synopsis
 
-<b>`ZCARD key`</b><br>
+**`ZCARD key`**
+
 This command returns the number of `members` in the sorted set at `key`. If `key` does not exist, 0 is returned.
-If `key` is associated with non sorted-set data, an error is returned.
+
+- If `key` is associated with non sorted-set data, an error is returned.
 
 ## Return value
 

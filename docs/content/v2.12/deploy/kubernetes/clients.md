@@ -54,11 +54,11 @@ An application that is deployed outside the Kubernetes cluster should use the ex
 
 ```sh
 $ kubectl get svc -n yb-demo
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
-yb-master-ui         LoadBalancer   10.101.142.48   98.138.219.231     7000:32168/TCP                                 43h
-yb-masters           ClusterIP      None            <none>        7100/TCP,7000/TCP                              43h
-yb-tserver-service   LoadBalancer   10.99.76.181    98.138.219.232     6379:30141/TCP,9042:31059/TCP,5433:30577/TCP   43h
-yb-tservers          ClusterIP      None            <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   43h
+NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                                        AGE
+yb-master-ui         LoadBalancer   10.101.142.48   98.138.219.231   7000:32168/TCP                                 43h
+yb-masters           ClusterIP      None            <none>           7100/TCP,7000/TCP                              43h
+yb-tserver-service   LoadBalancer   10.99.76.181    98.138.219.232   6379:30141/TCP,9042:31059/TCP,5433:30577/TCP   43h
+yb-tservers          ClusterIP      None            <none>           7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   43h
 ```
 
 The following example shows a client that uses the YSQL shell ([`ysqlsh`](../../../admin/ysqlsh)) to connect:
