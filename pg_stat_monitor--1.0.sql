@@ -387,5 +387,12 @@ $$ LANGUAGE plpgsql;
 
 SELECT pgsm_create_view();
 
+REVOKE ALL ON FUNCTION range FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_state FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_cmd_type FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_stat_monitor_settings FROM PUBLIC;
+REVOKE ALL ON FUNCTION decode_error_level FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_stat_monitor_internal FROM PUBLIC;
+
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 
