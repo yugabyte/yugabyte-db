@@ -26,7 +26,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "1.1.1"
-#define PG_STAT_STATEMENTS_COLS         53	/* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         52	/* maximum of above */
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
 #define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
@@ -463,22 +463,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	 */
 	if (query->queryId == UINT64CONST(0))
 		query->queryId = UINT64CONST(1);
-
-	if (jstate.clocations_count > 0)
-		pgss_store(query->queryId,	/* query id */
-				   pstate->p_sourcetext,	/* query */
-				   query->stmt_location,	/* query location */
-				   query->stmt_len, /* query length */
-				   NULL,		/* PlanInfo */
-				   query->commandType,	/* CmdType */
-				   NULL,		/* SysInfo */
-				   NULL,		/* ErrorInfo */
-				   0,			/* totaltime */
-				   0,			/* rows */
-				   NULL,		/* bufusage */
-				   NULL,		/* walusage */
-				   &jstate,		/* JumbleState */
-				   PGSS_PARSE); /* pgssStoreKind */
 }
 #endif
 
@@ -521,20 +505,6 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 #endif
 			MemoryContextSwitchTo(oldcxt);
 		}
-		pgss_store(queryDesc->plannedstmt->queryId, /* query id */
-				   queryDesc->sourceText,	/* query text */
-				   queryDesc->plannedstmt->stmt_location,	/* query location */
-				   queryDesc->plannedstmt->stmt_len,	/* query length */
-				   NULL,		/* PlanInfo */
-				   queryDesc->operation,	/* CmdType */
-				   NULL,		/* SysInfo */
-				   NULL,		/* ErrorInfo */
-				   0,			/* totaltime */
-				   0,			/* rows */
-				   NULL,		/* bufusage */
-				   NULL,		/* walusage */
-				   NULL,		/* JumbleState */
-				   PGSS_EXEC);	/* pgssStoreKind */
 	}
 }
 
@@ -1657,7 +1627,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 51)
+	if (tupdesc->natts != 50)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1802,11 +1772,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum("<insufficient privilege>");
 		}
 
-
-		/* state at column number 8 */
-		values[i++] = Int64GetDatumFast(tmp.state);
-
-		/* parentid at column number 9 */
+		/* parentid at column number 8 */
 		if (tmp.info.parentid != UINT64CONST(0))
 		{
 			snprintf(parentid_txt, 32, "%08lX", tmp.info.parentid);
@@ -1819,7 +1785,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 		}
 
-		/* application_name at column number 9 */
+		/* application_name at column number 10 */
 		if (strlen(tmp.info.application_name) > 0)
 			values[i++] = CStringGetTextDatum(tmp.info.application_name);
 		else

@@ -26,19 +26,6 @@ $$ LANGUAGE SQL;
 
 -- Some generic utility function used internally.
 
-CREATE FUNCTION get_state(state_code int8) RETURNS TEXT AS
-$$
-SELECT
-    CASE
-        WHEN state_code = 0 THEN 'PARSING'
-        WHEN state_code = 1 THEN 'PLANNING'
-        WHEN state_code = 2 THEN 'ACTIVE'
-        WHEN state_code = 3 THEN 'FINISHED'
-        WHEN state_code = 4 THEN 'FINISHED WITH ERROR'
-    END
-$$
-LANGUAGE SQL PARALLEL SAFE;
-
 CREATE FUNCTION get_cmd_type (cmd_type INTEGER) RETURNS TEXT AS
 $$
 SELECT
@@ -129,7 +116,6 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT planid              text,
     OUT query               text,
     OUT query_plan          text,
-    OUT state_code 			int8,
     OUT top_queryid         text,
     OUT top_query           text,
 	OUT application_name	text,
@@ -233,9 +219,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	cpu_sys_time,
     wal_records,
     wal_fpi,
-    wal_bytes,
-	state_code,
-	get_state(state_code) as state
+    wal_bytes
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 RETURN 0;
@@ -292,9 +276,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
-	state_code,
-	get_state(state_code) as state,
-
     -- PostgreSQL-13 Specific Coulumns
     plans_calls
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
@@ -352,8 +333,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
-	state_code,
-	get_state(state_code) as state,
 
     -- PostgreSQL-14 Specific Columns
     plans_calls,

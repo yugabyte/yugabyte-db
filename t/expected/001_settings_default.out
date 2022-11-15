@@ -26,12 +26,11 @@ SELECT * from pg_stat_monitor_settings;
 (15 rows)
 
 select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
- datname  |                                                query                                                | calls 
-----------+-----------------------------------------------------------------------------------------------------+-------
- postgres | SELECT * from pg_stat_monitor_settings                                                              |     1
- postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
- postgres | select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, c |     1
-(3 rows)
+ datname  |                 query                  | calls 
+----------+----------------------------------------+-------
+ postgres | SELECT * from pg_stat_monitor_settings |     1
+ postgres | SELECT pg_stat_monitor_reset()         |     1
+(2 rows)
 
 SELECT * from pg_stat_monitor_settings;
                    name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
