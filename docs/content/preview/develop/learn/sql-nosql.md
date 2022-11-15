@@ -21,7 +21,7 @@ Here are a few different criteria where YugabyteDB brings the best of SQL and No
 
 ### Data characteristics
 
-These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics, and so on. Following is a table that contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the following table is not accurate for all NoSQL databases - it is just meant to give an idea.
+These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics, and so on. The following table contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table is not accurate for all NoSQL databases - it is just meant to give an idea.
 
 | Database characteristics  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
