@@ -28,7 +28,7 @@ These can be loosely defined as the high-level concerns when choosing a database
 | Data model | Well-defined schema (tables, rows, columns)  | Schema-less | Both |
 | API    | SQL | Various | Fully-relational SQL +<br/>Semi-relational SQL |
 | Consistency | Strong | Eventual | Strong |
-| Transactions | ACID transactions | No transactions | ACID transactions |
+| Transactions | ACID | None | ACID |
 | High Write Throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
