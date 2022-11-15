@@ -39,7 +39,7 @@ DECLARE_uint64(rpc_max_message_size);
 DEFINE_UNKNOWN_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
-DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022")
+DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
 
 DEFINE_UNKNOWN_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "

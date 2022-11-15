@@ -104,7 +104,7 @@ using strings::Utf8SafeCEscape;
 using yb::operator"" _MB;
 
 DEFINE_test_flag(bool, fail_write_pb_container, false,
-                 "Simulate a failure during WritePBContainer.")
+                 "Simulate a failure during WritePBContainer.");
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 

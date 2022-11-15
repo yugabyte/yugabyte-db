@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`RENAME key1 key2`</b><br>
+**`RENAME key1 key2`**
+
 Limited support: RENAME command is useful to rename one key as another key.
 This is currently a best-effort mechanism and is intended to only work when there is
 no concurrent updates to either the source or the destination keys. The TTL setting

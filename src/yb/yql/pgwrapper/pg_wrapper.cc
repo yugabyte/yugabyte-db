@@ -100,16 +100,16 @@ TAG_FLAG(ysql_hba_conf, sensitive_info);
 // PgWrapperFlagsTest.VerifyGFlagDefaults test.
 #define DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description) \
   BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg);
+  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
 #define DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description) \
   BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
+  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
 #define DEFINE_RUNTIME_AUTO_PG_FLAG(type, name, flag_class, initial_val, target_val, description) \
   BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
                                            description); \
-  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
+  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
