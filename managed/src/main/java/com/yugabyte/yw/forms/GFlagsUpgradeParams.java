@@ -35,6 +35,13 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
       }
       throw new PlatformServiceException(Status.BAD_REQUEST, "No gflags to change.");
     }
+    boolean gFlagsDeleted =
+        (!GFlagsUtil.getDeletedGFlags(userIntent.masterGFlags, masterGFlags).isEmpty())
+            || (!GFlagsUtil.getDeletedGFlags(userIntent.tserverGFlags, tserverGFlags).isEmpty());
+    if (gFlagsDeleted && upgradeOption.equals(UpgradeOption.NON_RESTART_UPGRADE)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Cannot delete gFlags through non-restart upgrade option.");
+    }
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
   }
 
