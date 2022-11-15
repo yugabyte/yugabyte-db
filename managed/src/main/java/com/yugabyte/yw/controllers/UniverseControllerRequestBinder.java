@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -183,6 +185,23 @@ public class UniverseControllerRequestBinder {
       setter.accept(mapFromKeyValueArray((ArrayNode) serializedValue));
     } else if (serializedValue.isObject()) {
       setter.accept(Json.fromJson(serializedValue, Map.class));
+    }
+  }
+
+  // Parses params into targetClass and returns that object.
+  public static <T> T deepCopy(UniverseDefinitionTaskParams params, Class<T> targetClass) {
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      return mapper.readValue(mapper.writeValueAsString(params), targetClass);
+    } catch (IOException e) {
+      String errMsg = "Serialization/Deserialization of universe details failed.";
+      log.error(
+          String.format(
+              "Error in serializing/deserializing UniverseDefinitonTaskParams into %s "
+                  + "for universe: %s, UniverseDetails: %s",
+              targetClass, params.universeUUID, CommonUtils.maskObject(params)),
+          e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
   }
 
