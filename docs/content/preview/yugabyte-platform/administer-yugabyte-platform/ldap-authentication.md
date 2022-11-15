@@ -27,7 +27,7 @@ type: docs
 
 </ul>
 
-LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
+<br>LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
@@ -43,11 +43,11 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
+- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br>
 
   ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)<br>
 
-  <br>
+  
 
   With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
@@ -99,10 +99,10 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[LDAP DN]'
+  --data-raw '[LDAP_DN]'
   ```
 
-  Replace `[LDAP DN]` with the actual value, as per the following example: <br>
+  Replace `[LDAP_DN]` with the actual value, as per the following example: <br>
 
   `DC=yugabyte,DC=com`
 
@@ -113,10 +113,10 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[LDAP DN PREFIX]'
+  --data-raw '[LDAP_DN_PREFIX]'
   ```
 
-  Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
+  Replace `[LDAP_DN_PREFIX]` with the actual value, as per the following example: <br>
 
   `CN=`
 
@@ -179,10 +179,10 @@ The following is the runtime configuration to specify:
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[SERVICE ACCOUNT USERNAME]'
+  --data-raw '[SERVICE_ACCOUNT_USERNAME]'
   ```
 
-  Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.
+  Replace `[SERVICE_ACCOUNT_USERNAME]` with the actual value.
 
   -->
 
@@ -193,10 +193,10 @@ The following is the runtime configuration to specify:
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[SERVICE ACCOUNT PASSWORD]'
+  --data-raw '[SERVICE_ACCOUNT_PASSWORD]'
   ```
 
-  Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
+  Replace `[SERVICE_ACCOUNT_PASSWORD]` with the actual value.<br>
 
 ## Define the YugabyteDB Anywhere role
 
