@@ -893,9 +893,29 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         HelmUtils.mergeYaml(overrides, annotations);
       }
     }
-    if (taskParams().universeOverrides != null)
-      HelmUtils.mergeYaml(overrides, taskParams().universeOverrides);
-    if (taskParams().azOverrides != null) HelmUtils.mergeYaml(overrides, taskParams().azOverrides);
+    ObjectMapper mapper = new ObjectMapper();
+    String universeOverridesString = "", azOverridesString = "";
+    try {
+      if (taskParams().universeOverrides != null) {
+        universeOverridesString = mapper.writeValueAsString(taskParams().universeOverrides);
+        Map<String, Object> universeOverrides =
+            mapper.readValue(universeOverridesString, Map.class);
+        HelmUtils.mergeYaml(overrides, universeOverrides);
+      }
+      if (taskParams().azOverrides != null) {
+        azOverridesString = mapper.writeValueAsString(taskParams().azOverrides);
+        Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
+        HelmUtils.mergeYaml(overrides, azOverrides);
+      }
+    } catch (IOException e) {
+      log.error(
+          String.format(
+              "Error in writing overrides map to string or string to map: "
+                  + "universe overrides: %s, azOverrides: %s",
+              taskParams().universeOverrides, taskParams().azOverrides),
+          e);
+      throw new RuntimeException("Error in writing overrides map to string.");
+    }
     // TODO gflags which have precedence over helm overrides should be merged here.
 
     validateOverrides(overrides);
@@ -907,7 +927,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (helmLegacy) {
       overrides.put("helm2Legacy", helmLegacy);
       Map<String, String> serviceToIP = getClusterIpForLoadBalancer();
-      ObjectMapper mapper = new ObjectMapper();
       ArrayList<Object> serviceEndpoints = (ArrayList) overrides.get("serviceEndpoints");
       for (Object serviceEndpoint : serviceEndpoints) {
         Map<String, Object> endpoint = mapper.convertValue(serviceEndpoint, Map.class);

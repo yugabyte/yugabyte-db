@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -20,7 +22,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -124,10 +125,10 @@ public abstract class KubernetesManager {
     return null;
   }
 
-  // userMap - flattened user provided yaml. valuesMap - flattened chart's values yaml.
+  // userMap - user provided yaml. valuesMap - chart's values yaml.
   // Return userMap keys which are not in valuesMap.
   // It doesn't check if returnred keys are actually not present in chart templates.
-  private Set<String> getUknownKeys(Map<String, String> userMap, Map<String, String> valuesMap) {
+  private Set<String> getUknownKeys(Map<String, Object> userMap, Map<String, Object> valuesMap) {
     return Sets.difference(userMap.keySet(), valuesMap.keySet());
   }
 
@@ -152,6 +153,25 @@ public abstract class KubernetesManager {
       Map<String, Object> azOverrides,
       String azCode) {
     Set<String> errorsSet = new HashSet<>();
+    Map<String, Object> universeOverridesCopy = new HashMap<>();
+    Map<String, Object> azOverridesCopy = new HashMap<>();
+    ObjectMapper mapper = new ObjectMapper();
+    String universeOverridesString = "", azOverridesString = "";
+    try {
+      universeOverridesString = mapper.writeValueAsString(universeOverrides);
+      universeOverridesCopy = mapper.readValue(universeOverridesString, Map.class);
+      azOverridesString = mapper.writeValueAsString(azOverrides);
+      azOverridesCopy = mapper.readValue(azOverridesString, Map.class);
+    } catch (IOException e) {
+      LOG.error(
+          String.format(
+              "Error in writing overrides map to string or string to map: "
+                  + "universe overrides: %s, azOverrides: %s",
+              universeOverrides, azOverrides),
+          e);
+      errorsSet.add("Error parsing one of the overrides");
+      return errorsSet;
+    }
     // TODO optimise this step. It is called for every AZ.
     String helmPackagePath, helmValuesStr;
     try {
@@ -163,14 +183,13 @@ public abstract class KubernetesManager {
       errorsSet.add(errMsg);
       return errorsSet;
     }
-    Map<String, String> flatHelmValues =
-        HelmUtils.flattenMap(HelmUtils.convertYamlToMap(helmValuesStr));
-    Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverrides);
-    Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverrides);
+    Map<String, Object> helmValues = HelmUtils.convertYamlToMap(helmValuesStr);
+    Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverridesCopy);
+    Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverridesCopy);
 
-    Set<String> universeOverridesUnknownKeys = getUknownKeys(flatUnivOverrides, flatHelmValues);
+    Set<String> universeOverridesUnknownKeys = getUknownKeys(universeOverridesCopy, helmValues);
     Set<String> universeOverridesNullValueKeys = getNullValueKeys(flatUnivOverrides);
-    Set<String> azOverridesUnknownKeys = getUknownKeys(flatAZOverrides, flatHelmValues);
+    Set<String> azOverridesUnknownKeys = getUknownKeys(azOverridesCopy, helmValues);
     Set<String> azOverridesNullValueKeys = getNullValueKeys(flatAZOverrides);
 
     if (universeOverridesUnknownKeys.size() != 0) {
@@ -199,8 +218,8 @@ public abstract class KubernetesManager {
               azCode, azOverridesNullValueKeys));
     }
 
-    HelmUtils.mergeYaml(azOverrides, universeOverrides);
-    String mergedOverrides = createTempFile(azOverrides);
+    HelmUtils.mergeYaml(universeOverridesCopy, azOverridesCopy);
+    String mergedOverrides = createTempFile(universeOverridesCopy);
 
     List<String> commandList =
         ImmutableList.of(
