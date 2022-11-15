@@ -1627,7 +1627,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 50)
+	if (tupdesc->natts != 51)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1772,7 +1772,10 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum("<insufficient privilege>");
 		}
 
-		/* parentid at column number 8 */
+		/* state at column number 8 */
+		values[i++] = Int64GetDatumFast(tmp.state);
+
+		/* parentid at column number 9 */
 		if (tmp.info.parentid != UINT64CONST(0))
 		{
 			snprintf(parentid_txt, 32, "%08lX", tmp.info.parentid);
