@@ -8,7 +8,7 @@ import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 import scala.compat.java8.FunctionConverters.asJavaPredicate
 
-class V212__Alter_Architecture_Type extends JdbcMigration {
+class V216__Alter_Architecture_Type extends JdbcMigration {
 
   /**
      * Utility method to recursively apply a modification function to a json value and all its
@@ -57,7 +57,8 @@ class V212__Alter_Architecture_Type extends JdbcMigration {
       if(regDetails != null) {
         val regionDetails = Json.parse(regDetails)
         var regionArch = regionDetails \ "arch"
-        if(regionArch.isInstanceOf[JsDefined] && regionArch.as[String].equals("arm64")) {
+        if(regionArch != null && regionArch.isInstanceOf[JsDefined]
+            && regionArch.getOrElse(JsString("")).equals(JsString("arm64"))) {
           val newRegionDetails = regionDetails.as[JsObject] + ("arch" -> JsString("aarch64"))
           val updateRegionStmt = connection.prepareStatement(
             "UPDATE region SET details = ?::json_alias WHERE uuid = ?::uuid")
