@@ -83,16 +83,11 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ## Examples
 
-1. To begin, set up a local YugabyteDB cluster. For instance, using `yugabyted`, do the following:
+{{< note title="Setup" >}}
 
-    ```sh
-    ./bin/yugabyted start --base_dir /tmp/gindemo/1 --listen 127.0.0.201
-    ./bin/yugabyted start --base_dir /tmp/gindemo/2 --listen 127.0.0.202 \
-      --join 127.0.0.201
-    ./bin/yugabyted start --base_dir /tmp/gindemo/3 --listen 127.0.0.203 \
-      --join 127.0.0.201
-    ./bin/ysqlsh --host 127.0.0.201
-    ```
+Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+
+{{< /note >}}
 
 1. Set up the tables, indexes, and data.
 
@@ -220,13 +215,13 @@ The assumption in the following examples is that you are using the GIN index in 
     ```
 
     ```output
-                                            j                                          | k
+                                             j                                          | k
     ------------------------------------------------------------------------------------+---
-    {"some": ["where", "how"]}                                                         | 5
-    {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
-    {"some": "thing"}                                                                  | 4
-    {"some": "body"}                                                                   | 2
-    {"some": "one"}                                                                    | 3
+     {"some": ["where", "how"]}                                                         | 5
+     {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
+     {"some": "thing"}                                                                  | 4
+     {"some": "body"}                                                                   | 2
+     {"some": "one"}                                                                    | 3
     (5 rows)
 
     Time: 13.451 ms
@@ -269,31 +264,31 @@ The remainder of the example focuses on just one index, `jsonbs_split_idx1`.
 First, check how the index is partitioned.
 
 ```sh
-bin/yb-admin \
-  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+./bin/yb-admin \
+  --master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 \
   list_tablets ysql.yugabyte jsonbs_split_idx1
 ```
 
 ```output
 Tablet-UUID                       Range                                                                               Leader-IP         Leader-UUID
-43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.201:9100  2702ace451fe46bd81dd2a19ea539163
-c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.203:9100  3a80acb8df5d45e38b388ffdc17a59e0
-ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.202:9100  e24423119e734860bb0c3516df948b5c
+43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.1:9100  2702ace451fe46bd81dd2a19ea539163
+c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.3:9100  3a80acb8df5d45e38b388ffdc17a59e0
+ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.2:9100  e24423119e734860bb0c3516df948b5c
 ```
 
-Then, check the data in each partition. Flush it to SST files so that we can read them with `sst_dump`.
+Then, check the data in each partition. Flush it to SST files so that you can read them with `sst_dump`.
 
 Ignore lines with "filler" because there are too many of them. `!!` refers to the previous `list_tablets` command. Adjust it if it doesn't work in your shell.
 
 ```sh
-bin/yb-admin \
-  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+./bin/yb-admin \
+  --master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 \
   flush_table ysql.yugabyte jsonbs_split_idx1
 while read -r tablet_id; do
   bin/sst_dump \
     --command=scan \
     --output_format=decoded_regulardb \
-    --file=$(find /tmp/gindemo/1/data/yb-data/tserver/data \
+    --file=$(find /tmp/ybd1/data/yb-data/tserver/data \
                -name tablet-"$tablet_id") \
   | grep -v filler
 done <<(!! \
@@ -303,7 +298,7 @@ done <<(!! \
 
 ```output
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 73 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 73 }
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 315 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 142 }
@@ -316,7 +311,7 @@ SubDocKey(DocKey([], ["\x01not", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])])
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 74 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 74 }
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 321 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 148 }
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 }
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 3 }]) -> null; intent doc ht: HT{ physical: 1636678107944604 }
@@ -327,7 +322,7 @@ SubDocKey(DocKey([], ["\x01where", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])
 SubDocKey(DocKey([], ["\x045", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 2 }
 SubDocKey(DocKey([], ["\x05body", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 6 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 1 }
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x05jsonb", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107944677 }
 SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107974363 }
