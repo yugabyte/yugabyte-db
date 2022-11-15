@@ -139,7 +139,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
 	OUT elevel              int,
     OUT sqlcode             TEXT,
     OUT message             text,
-    OUT bucket_start_time   text,
+    OUT bucket_start_time   timestamp,
 
 	OUT calls         		int8,  -- 16
 
@@ -190,7 +190,7 @@ $$
 BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
-	bucket_start_time AS bucket_start_time,
+	bucket_start_time::text AS bucket_start_time,
     userid::regrole,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
@@ -247,7 +247,7 @@ $$
 BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
-	bucket_start_time AS bucket_start_time,
+	bucket_start_time::text AS bucket_start_time,
     userid::regrole,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
@@ -307,7 +307,7 @@ $$
 BEGIN
 CREATE VIEW pg_stat_monitor AS SELECT
     bucket,
-	bucket_start_time AS bucket_start_time,
+	bucket_start_time::text AS bucket_start_time,
     userid::regrole,
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,

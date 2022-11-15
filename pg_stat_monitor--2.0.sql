@@ -126,7 +126,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
 	OUT elevel              int,
     OUT sqlcode             TEXT,
     OUT message             text,
-    OUT bucket_start_time   text,
+    OUT bucket_start_time   timestamp,
 
 	OUT calls         		int8,  -- 16
 
