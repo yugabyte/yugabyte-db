@@ -129,6 +129,8 @@ $(document).ready(() => {
         container.parentElement.classList.add('can-be-copied');
         if (container.children && container.children.length > 0) {
           container.parentElement.setAttribute('data-code', container.children.length);
+        } else {
+          container.parentElement.setAttribute('data-code', 1);
         }
       }
     };

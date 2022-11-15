@@ -14,6 +14,9 @@ ul.nav.yb-pills {
     display: flex;
     align-items: center;
     padding: 0;
+    margin: 0;
+    height: 56px;
+    position: relative;
 
     @media (max-width: 991px) {
       max-width: calc(50% - 10px);
@@ -39,16 +42,37 @@ ul.nav.yb-pills {
       display: flex;
       text-decoration: none !important;
       align-items: center;
-      position: static;
-      padding: 24px;
-      font-size: 14px;
-      line-height: 24px;
-      color: #000;
+      position: static !important;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
+      color: #25323d;
+      padding: 0 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      -webkit-line-clamp: 2;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      white-space: normal;
+      max-height: 32px;
+
+      &::after {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        border-radius: 8px;
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
+        right: 0;
+      }
 
       img,
       i {
+        display: none;
         font-size: 24px;
-        margin: 0 16px 0 0;
+        margin: 0 0 0 0;
         align-items: center;
         height: 24px;
         width: 24px;

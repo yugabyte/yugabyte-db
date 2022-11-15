@@ -21,6 +21,43 @@
   }
 }
 
+// for jquery inline tabs
+.td-content {
+  .nav-tabs:not(.nav-tabs-yb) {
+    margin-bottom: 16px;
+    border: 0;
+
+    > li {
+      .nav-link {
+        font-weight: 400;
+        font-size: 13px;
+        line-height: 16px;
+        border: 0;
+        color: $yb-font-dark;
+        padding: 8px 16px;
+
+        &.active {
+          color: $yb-font-dark;
+          background: #e9eef2;
+        }
+      }
+    }
+
+    & + .tab-content {
+      .tab-pane {
+        background: rgba(240, 244, 247, 0.2);
+        border: 1px solid #e9eef2;
+        border-radius: 8px;
+        padding: 25px 27px;
+
+        .highlight {
+          margin: 20px 0;
+        }
+      }
+    }
+  }
+}
+
 .tab-content .tab-pane {
   max-width: 100%;
   border: 0;

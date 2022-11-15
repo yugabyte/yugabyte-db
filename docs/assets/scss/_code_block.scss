@@ -28,6 +28,7 @@ main {
     li p > a > code,
     li > code,
     li > em code,
+    p > a > code,
     p > code {
       font-size: 12px !important;
       line-height: 16px;
@@ -68,6 +69,15 @@ main {
     pre + p,
     .highlight + p {
       margin-top: 24px;
+    }
+
+    > pre.can-be-copied {
+      + {
+        h2,
+        h4 {
+          margin-top: 0;
+        }
+      }
     }
 
     pre {
