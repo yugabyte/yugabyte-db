@@ -68,7 +68,7 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+To test the linear scalability of YugabyteDB, we ran some large cluster benchmarks (up to 50 nodes) and were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
