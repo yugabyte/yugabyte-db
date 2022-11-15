@@ -1435,6 +1435,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return false;
   }
 
+  virtual Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
     // Default value.
     return false;

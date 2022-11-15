@@ -6476,6 +6476,10 @@ Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToO
   return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
+Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+  return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
+}
+
 Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }

@@ -736,15 +736,50 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
+  Result<bool> TableMatchesSchedule(
+      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id) {
+    for (const auto& table_identifier : table_identifiers.tables()) {
+      if (VERIFY_RESULT(TableMatchesIdentifier(id, pb, table_identifier))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
     auto lock = table_info.LockForRead();
     {
       std::lock_guard<std::mutex> l(mutex_);
       for (const auto& schedule : schedules_) {
-        for (const auto& table_identifier : schedule->options().filter().tables().tables()) {
-          if (VERIFY_RESULT(TableMatchesIdentifier(table_info.id(),
-                                                   lock->pb,
-                                                   table_identifier))) {
+        if (VERIFY_RESULT(TableMatchesSchedule(
+                schedule->options().filter().tables(), lock->pb, table_info.id()))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) {
+    {
+      std::lock_guard<decltype(mutex_)> l(mutex_);
+      for (const auto& restoration : restorations_) {
+        // If restore does not have a snapshot schedule then it
+        // is not a PITR restore.
+        if (!restoration->schedule_id()) {
+          continue;
+        }
+        // If PITR restore is already complete.
+        if (restoration->complete_time()) {
+          continue;
+        }
+        // Ongoing PITR restore.
+        SnapshotScheduleState& schedule = VERIFY_RESULT(
+            FindSnapshotSchedule(restoration->schedule_id()));
+        {
+          auto lock = table_info.LockForRead();
+          if (VERIFY_RESULT(TableMatchesSchedule(
+                  schedule.options().filter().tables(), lock->pb, table_info.id()))) {
             return true;
           }
         }
@@ -1762,6 +1797,11 @@ Result<SnapshotSchedulesToObjectIdsMap>
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(
     const TableInfo& table_info) {
   return impl_->IsTableCoveredBySomeSnapshotSchedule(table_info);
+}
+
+Result<bool> MasterSnapshotCoordinator::IsTableUndergoingPitrRestore(
+    const TableInfo& table_info) {
+  return impl_->IsTableUndergoingPitrRestore(table_info);
 }
 
 void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {

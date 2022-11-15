@@ -2346,16 +2346,36 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
             "--enable_automatic_tablet_splitting=false",
             "--enable_transactional_ddl_gc=false",
             "--allow_consecutive_restore=true",
-            "--vmodule=restore_sys_catalog_state=3"
-    };
+            "--vmodule=restore_sys_catalog_state=3",
+            "--leader_lease_duration_ms=6000",
+            "--leader_failure_max_missed_heartbeat_periods=12" };
   }
 
   std::vector<std::string> ExtraTSFlags() override {
     return { "--vmodule=meta_cache=5,read_query=5,pg_client=5,client=5",
-             "--cleanup_split_tablets_interval_sec=1" };
+             "--cleanup_split_tablets_interval_sec=1",
+             "--leader_lease_duration_ms=6000",
+             "--leader_failure_max_missed_heartbeat_periods=12",
+             "--retryable_request_timeout_secs=5" };
   }
 
  public:
+  Status InsertBatch(CassandraSession* conn, int start, int end) {
+    CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+    std::string query = Format(
+        "INSERT INTO $0 (key, value) VALUES (?, ?);", client::kTableName.table_name());
+    auto prepared = VERIFY_RESULT(conn->Prepare(query));
+    for (int i = start; i <= end; i++) {
+      auto statement = prepared.Bind();
+      statement.Bind(0, i);
+      statement.Bind(1, Format("before$0", i));
+      batch.Add(&statement);
+    }
+    RETURN_NOT_OK(conn->ExecuteBatch(batch));
+    LOG(INFO) << "Inserted " << end-start+1 << " entries";
+    return Status::OK();
+  }
+
   Result<int> CreateTableAndInsertData(CassandraSession* conn, int num_rows) {
     RETURN_NOT_OK(conn->ExecuteQueryFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
@@ -2363,12 +2383,7 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
         client::kTableName.table_name()));
 
     // Insert enough data suitable for splitting.
-    for (int i = 0; i < num_rows; i++) {
-      RETURN_NOT_OK(conn->ExecuteQueryFormat(
-          "INSERT INTO $0 (key, value) VALUES ($1, 'before$2')",
-          client::kTableName.table_name(), i, i));
-    }
-
+    RETURN_NOT_OK(InsertBatch(conn, 0, num_rows - 1));
     return num_rows;
   }
 
@@ -2496,11 +2511,7 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
     }
 
     // Further inserts to the table should succeed.
-    for (int i = kNumRows; i < kNumRows + 5; i++) {
-      RETURN_NOT_OK(conn.ExecuteQueryFormat(
-        "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-        client::kTableName.table_name(), i));
-    }
+    RETURN_NOT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
     rows = VERIFY_RESULT(GetRowCount(&conn));
     if (rows != kNumRows + 5) {
@@ -2560,11 +2571,7 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeParentHidden) {
   LOG(INFO) << "Restore time " << time.ToHumanReadableTime();
 
   // Inserting rows. These should be absent after restoration.
-  for (int i = kNumRows; i < kNumRows + 5; i++) {
-    ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
-  }
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   // Read data so that the partitions in the cache get updated to the
   // post-split values.
@@ -2591,11 +2598,7 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeParentHidden) {
   ASSERT_EQ(tablet_count, 2);
 
   // Further inserts to the table should succeed.
-  for (int i = kNumRows; i < kNumRows + 5; i++) {
-    ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
-  }
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows + 5);
@@ -2645,11 +2648,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreAfterSplit, YbAdminRestoreAfterSpl
   ASSERT_EQ(tablet_count, 1);
 
   // Further inserts to the table should succeed.
-  for (int i = kNumRows; i < kNumRows + 5; i++) {
-    ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
-  }
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows + 5);
@@ -2685,11 +2684,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, VerifyRestoreWithDeletedTablets,
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
 
   // These rows will be undone post restore.
-  for (int i = kNumRows; i < kNumRows + 5; i++) {
-    ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
-  }
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   // Perform a restoration.
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
@@ -2702,11 +2697,67 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, VerifyRestoreWithDeletedTablets,
   ASSERT_EQ(tablets_size, 2);
 
   // Further inserts to the table should succeed.
-  for (int i = kNumRows; i < kNumRows + 5; i++) {
-    ASSERT_OK(conn.ExecuteQueryFormat(
-      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
-      client::kTableName.table_name(), i));
-  }
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
+
+  rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows + 5);
+}
+
+TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {
+  const int kNumRows = 10000;
+
+  // Create exactly one tserver so that we only have to invalidate one cache.
+  SetRf1Flags();
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  // Insert enough data to cause splitting.
+  ASSERT_RESULT(CreateTableAndInsertData(&conn, kNumRows));
+
+  // Restore should unhide the parent and hide both the children.
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Restore time " << time.ToHumanReadableTime();
+
+  ASSERT_OK(TriggerManualSplit());
+
+  std::this_thread::sleep_for(kCleanupSplitTabletsInterval * 5);
+  LOG(INFO) << "Done splitting";
+
+  // Read data so that the partitions in the cache get updated to the
+  // post-split values.
+  int rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows);
+
+  // These should be absent after restoration.
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
+  LOG(INFO) << "Inserted " << kNumRows + 5 << " entries";
+
+  rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows + 5);
+
+  // There should be 2 tablets since we split 1 to 2.
+  int tablet_count = ASSERT_RESULT(GetTabletCount());
+  ASSERT_EQ(tablet_count, 2);
+
+  // Set flag to delay tablet split metadata restore.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_delay_tablet_split_metadata_restore_secs", "2"));
+
+  // Perform a restoration.
+  LOG(INFO) << "Restoring to time " << time.ToHumanReadableTime();
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Verification stage.
+  rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows);
+
+  // There should be 1 tablet.
+  tablet_count = ASSERT_RESULT(GetTabletCount());
+  ASSERT_EQ(tablet_count, 1);
+
+  // Further inserts to the table should succeed.
+  ASSERT_OK(InsertBatch(&conn, kNumRows, kNumRows + 4));
 
   rows = ASSERT_RESULT(GetRowCount(&conn));
   ASSERT_EQ(rows, kNumRows + 5);
@@ -2744,11 +2795,11 @@ class YbAdminSnapshotScheduleAutoSplitting : public YbAdminSnapshotScheduleTestW
       " lexicon as a way to distinguish between those specializing in the construction of"
       " such non-military projects and those involved in the discipline of military"
       " engineering. ";
-    for (int i = 1; i <= num_rows; i++) {
-      RETURN_NOT_OK(conn->ExecuteFormat(
-          "INSERT INTO $0 (key, value) VALUES ($1, '$2')",
-          client::kTableName.table_name(), i, value));
-    }
+    std::string query = "INSERT INTO $0 SELECT generate_series($1, $2), '$3'";
+    // Batch insert using generate_series.
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        query, client::kTableName.table_name(), 1, num_rows, value));
+    LOG(INFO) << "Inserted " << num_rows << " data";
     return Status::OK();
   }
 
