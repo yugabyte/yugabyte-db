@@ -24,7 +24,7 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 - When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
 - When an alert triggers, a notification displays on the **Notifications** page. After the alert condition resolves, the notification dismisses automatically.
 - Alerts are enabled for all clusters in your account.
-- Alerts can have two severity levels: Warning or Severe.
+- Alerts can have two severity levels: Warning or Severe. A third level, Info, does not trigger a notification.
 
 ## Configure alerts
 
@@ -48,9 +48,27 @@ Open notifications are listed on the **Notifications** tab on the **Alerts** pag
 
 When the condition that caused the alert resolves, the notification dismisses automatically.
 
+## Cluster health
+
+YugabyteDB monitors the health of your clusters based on [cluster alert](#cluster-alerts) conditions and displays the health as either Healthy, Needs Attention, or Unhealthy. The following table provides details on the criteria used to determine the cluster health.
+
+| Status | Alert | Level |
+| :----- | :---- | :---- |
+| Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Info |
+| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
+| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts) | Severe |
+
+To see the alert conditions that caused the current health condition, click the cluster health icon.
+
+If multiple alerts are triggered, the most severe alert determines the health that is reported.
+
+Cluster health is updated every three minutes.
+
 ## Fixing alerts
 
 Alerts can trigger for issues with a particular cluster, or for billing issues.
+
+Alerts can have two severity levels: Warning or Severe. The nodes down alert has a third level, Info, which is reported in the cluster health, and does not trigger a notification.
 
 ### Cluster alerts
 
@@ -58,12 +76,14 @@ When you receive a cluster alert, the first step is to review the chart for the 
 
 | Alert | Chart |
 | :--- | :--- |
-| Node CPU Utilization | CPU Usage |
 | Node Free Storage | Disk Usage |
+| Memory Use | Memory Usage |
 | Cluster Queues Overflow | RPC Queue Size |
 | Compaction Overload | Compaction |
-| Memory Use | Memory Usage |
 | YSQL Connections | YSQL Operations/Sec |
+| CPU Utilization | CPU Usage |
+
+For a nodes down alert, go to the cluster **Nodes** tab to see which nodes are down.
 
 You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
@@ -86,20 +106,33 @@ Consider increasing the disk space per node. By default, you are entitled to 50G
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
-#### Fix CPU alerts
+#### Fix nodes reporting as down alerts
 
-YugabyteDB Managed sends a notification when CPU use on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed sends a notification when the number of nodes that are down in a cluster exceeds the threshold, as follows:
 
-- Node CPU use exceeds 70% on average for at least 5 minutes (Warning).
-- Node CPU use exceeds 90% on average for at least 5 minutes (Severe).
+- More than 34% of all nodes in the cluster are reporting as down (Warning).
+- More than 66% of all nodes in the cluster are reporting as down (Severe).
 
-If your cluster experiences frequent spikes in CPU use, consider optimizing your workload.
+If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests, and the status is reported in the [cluster health](#cluster-health).
 
-Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+If more than 66% of nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
 
-High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
+When cluster nodes go down, Yugabyte is notified automatically and will restore the nodes as quickly as possible.
 
-If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+#### Fix memory alerts
+
+YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
+
+- Memory use exceeds 75% (Warning).
+- Memory use exceeds 90% (Severe).
+
+If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
+
+Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the `EXPLAIN` statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+
+If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 #### Fix database overload alerts
 
@@ -124,21 +157,6 @@ If your cluster generates this alert, you may need to rate limit your queries. L
 
 If your cluster generates this alert but isn't under a very large workload, contact {{% support-cloud %}}.
 
-#### Fix memory alerts
-
-YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
-
-- Memory use exceeds 75% (Warning).
-- Memory use exceeds 90% (Severe).
-
-If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
-
-Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
-
-If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
-
-High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
-
 #### Fix YSQL connection alerts
 
 YugabyteDB Managed clusters support [10 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
@@ -155,6 +173,21 @@ You may need to implement some form of connection pooling.
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
 
 To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix CPU alerts
+
+YugabyteDB Managed sends a notification when CPU use on any node in the cluster exceeds the threshold, as follows:
+
+- Node CPU use exceeds 70% on average for at least 5 minutes (Warning).
+- Node CPU use exceeds 90% on average for at least 5 minutes (Severe).
+
+If your cluster experiences frequent spikes in CPU use, consider optimizing your workload.
+
+Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+
+High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
+
+If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 ### Billing alerts
 
