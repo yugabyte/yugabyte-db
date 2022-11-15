@@ -99,7 +99,7 @@ Because of this configuration, this universe can:
 ![Geo-distributed ops/sec](/images/develop/learn/yb-geo-distributed-ops.png)
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
-The graphs above, also taken from the EE, show that the average read latencies for apps running the various cloud regions are just 250 microseconds, while writes are strongly consistent, and incur 218 milliseconds.
+The preceding graphs, also taken from YugabyteDB Anywhere, show that the average read latencies for apps running the various cloud regions are just 250 microseconds, while writes are strongly consistent, and incur 218 milliseconds.
 
 ## Multi-cloud ready
 
