@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +34,13 @@ public class GFlagsUpgradeParams extends UpgradeTaskParams {
         throw new PlatformServiceException(Status.BAD_REQUEST, "gflags param is required.");
       }
       throw new PlatformServiceException(Status.BAD_REQUEST, "No gflags to change.");
+    }
+    boolean gFlagsDeleted =
+        (!Util.getDeletedGFlags(userIntent.masterGFlags, masterGFlags).isEmpty())
+            || (!Util.getDeletedGFlags(userIntent.tserverGFlags, tserverGFlags).isEmpty());
+    if (gFlagsDeleted && upgradeOption.equals(UpgradeOption.NON_RESTART_UPGRADE)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Cannot delete gFlags through non-restart upgrade option.");
     }
   }
 

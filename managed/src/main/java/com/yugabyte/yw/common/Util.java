@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.Getter;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.StringUtils;
@@ -620,5 +621,14 @@ public class Util {
       throw new IllegalArgumentException("Duration string " + goDuration + " is invalid");
     }
     return Duration.ofNanos(nanos);
+  }
+
+  public static Set<String> getDeletedGFlags(
+      Map<String, String> currentGFlags, Map<String, String> updatedGFlags) {
+    return currentGFlags
+        .keySet()
+        .stream()
+        .filter(flag -> !updatedGFlags.containsKey(flag))
+        .collect(Collectors.toSet());
   }
 }
