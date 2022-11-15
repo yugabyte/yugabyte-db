@@ -16,7 +16,7 @@ Use a function call expression to apply the specified function to given argument
 
 ## Syntax
 
-```
+```sql
 function_call ::= function_name '(' [ arguments ... ] ')'
 ```
 
@@ -66,7 +66,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 ## Cast function
 
-```
+```sql
 cast_call ::= CAST '(' column AS type ')'
 ```
 
@@ -85,6 +85,25 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMESTAMP` | `DATE`, `TEXT` |
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
+### Example
+
+```sql
+ycqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
+```
+
+```sql
+ycqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
+```
+
+```sql
+ycqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
+```
+
+```output
+ cast(ts as date)
+------------------
+       2018-10-09
+```
 
 ## partition_hash function
 
@@ -94,7 +113,7 @@ The hash values used for partitioning fall in the `0-65535` (uint16) range.
 Tables are partitioned into tablets, with each tablet being responsible for a range of partition values.
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
-`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown
+`partition_hash` can be beneficial for querying a subset of the data to get approximate row counts or to breakdown
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
@@ -106,11 +125,14 @@ For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 create table t (h1 int, h2 int, r1 int, r2 int, v int,
                          primary key ((h1, h2), r1, r2));
 ```
+
 We can use this function to query a subset of the data (in this case, 1/128 of the data):
+
 ```sql
 select count(*) from t where partition_hash(h1, h2) >= 0 and
                                       partition_hash(h1, h2) < 512;
 ```
+
 The value `512` comes from dividing the full hash partition range by the number of subsets that you want to query (`65536/128=512`).
 
 ### Parallel full table scans
@@ -161,26 +183,6 @@ SELECT TTL(views) FROM page_views;
       86367
 
 (1 rows)
-```
-
-## Examples
-
-```sql
-ycqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
-```
-
-```sql
-ycqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
-```
-
-```sql
-ycqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
-```
-
-```
- cast(ts as date)
-------------------
-       2018-10-09
 ```
 
 ## See also
