@@ -47,7 +47,7 @@ DEFINE_UNKNOWN_int32(process_split_tablet_candidates_interval_msec, 0,
              "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
              "tablet splitting method, which checks for the time since last run, is run once per "
              "loop.");
-DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022")
+DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 

@@ -16,7 +16,7 @@ type: docs
   <li >
     <a href="../ysql-diesel/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Diesel
+      Diesel ORM
     </a>
   </li>
 

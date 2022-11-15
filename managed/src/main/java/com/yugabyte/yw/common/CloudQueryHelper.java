@@ -20,7 +20,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,17 +32,28 @@ import play.libs.Json;
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudQueryHelper.class);
+  private static final List<String> AWS_METADATA_TYPES =
+      ImmutableList.of("instance-id", "vpc-id", "privateIp", "region");
 
   private static final String YB_CLOUD_COMMAND_TYPE = "query";
   private static final String DEFAULT_IMAGE_KEY = "default_image";
   public static final String ARCHITECTURE_KEY = "architecture";
+
+  private Map<Common.CloudType, JsonNode> cachedHostInfos = new ConcurrentHashMap<>();
 
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
   }
 
-  public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
+  public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
+    return cachedHostInfos.computeIfAbsent(
+        cloudType,
+        ct -> currentHostInfo(ct, ct == Common.CloudType.aws ? AWS_METADATA_TYPES : null));
+  }
+
+  private JsonNode currentHostInfo(
+      Common.CloudType cloudType, @Nullable List<String> metadataTypes) {
     List<String> commandArgs = new ArrayList<>();
     if (metadataTypes != null) {
       commandArgs.add("--metadata_types");

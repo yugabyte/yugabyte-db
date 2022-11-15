@@ -76,7 +76,7 @@ The recheck steps are as follows:
     1. On commit of any conflicting transaction, traverse the chain of updates as described above and re-evaluate the latest version of the row for any conflict. If there is no conflict, `insert` the original row. Else, perform the `do update` part on the latest version of the row.
 1. ON CONFLICT DO NOTHING: do nothing if a conflict occurs.
 
-Note that the above methodology in PostgreSQL can lead to two different user visible semantics, one which is the common case and another which is a degenerate situation which can never be seen in practice, but is nevertheless possible and still upholds the semantics of Read Commited isolation. The common case is as follows:
+Note that the preceding methodology in PostgreSQL can lead to two different user visible semantics. One is the common case, and the other is a degenerate situation that can never be seen in practice, but is nevertheless possible and still upholds the semantics of Read Committed isolation. The common case is as follows:
 
 ```sql
 create table test (k int primary key, v int);
