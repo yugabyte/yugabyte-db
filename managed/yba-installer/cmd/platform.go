@@ -223,12 +223,13 @@ func (plat Platform) Start() {
 	} else {
 
 		containerExposedPort := getYamlPathData(".platform.containerExposedPort")
+		restartSeconds := getYamlPathData(".platform.restartSeconds")
 
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 
 		command1 := "bash"
 		arg1 := []string{"-c", scriptPath + " " + INSTALL_VERSION_DIR + " " + containerExposedPort +
-			" > /dev/null 2>&1 &"}
+			" " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		ExecuteBashCommand(command1, arg1)
 
@@ -380,8 +381,9 @@ func configureConfHTTPS() {
 
 func (plat Platform) CreateCronJob() {
 	containerExposedPort := getYamlPathData(".platform.containerExposedPort")
+	restartSeconds := getYamlPathData(".platform.restartSeconds")
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + INSTALL_VERSION_DIR + " " +
-			containerExposedPort + "\") | sort - | uniq - | crontab - "})
+			containerExposedPort + " " + restartSeconds + "\") | sort - | uniq - | crontab - "})
 }

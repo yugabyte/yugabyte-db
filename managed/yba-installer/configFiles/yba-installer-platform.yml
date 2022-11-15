@@ -1,5 +1,4 @@
 services:
-
   - name: platformConfig
     fileName: {{ installRoot }}/yb-platform/conf/yb-platform.conf
     contents: |
@@ -104,7 +103,6 @@ services:
           ]
         }
       }
-
   - name: platformService
     fileName: /etc/systemd/system/yb-platform.service
     contents: |
@@ -139,6 +137,9 @@ services:
 
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware -Dconfig.file={{ installRoot }}/yb-platform/conf/yb-platform.conf \
       -Dhttp.port=disabled -Dhttps.port={{ yamlPath ".platform.containerExposedPort" }}
+
+      Restart=always
+      RestartSec={{ yamlPath ".platform.restartSeconds"}}
 
       [Install]
       WantedBy=multi-user.target
