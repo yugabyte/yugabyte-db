@@ -1845,7 +1845,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum(tmp.error.message);
 
 		/* bucket_start_time at column number 15 */
-		values[i++] = CStringGetTextDatum(pgss->bucket_start_time[entry->key.bucket_id]);
+		values[i++] = CStringGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
 		if (tmp.calls.calls == 0)
 		{
 			/* Query of pg_stat_monitor itslef started from zero count */
