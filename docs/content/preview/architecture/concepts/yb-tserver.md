@@ -21,7 +21,7 @@ The following diagram illustrates a case of a 4-node YugabyteDB universe, with o
 
 ![tserver_overview](/images/architecture/tserver_overview-1.png)
 
-The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown in the preceding diagram comprises of 16 independent Raft groups. The details of this replication are covered in another section on replication.
+The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown in the preceding diagram comprises 16 independent Raft groups. The details of this replication are covered in another section on replication.
 
 Within each YB-TServer, there is a lot of cross-tablet intelligence built in to maximize resource efficiency. There are multiple ways the YB-TServer coordinates operations across tablets it hosts.
 
