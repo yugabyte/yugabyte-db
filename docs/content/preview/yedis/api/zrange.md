@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`ZRANGE key start stop [WITHSCORES]`</b><br>
+**`ZRANGE key start stop [WITHSCORES]`**
+
 This command returns `members` ordered from lowest to highest score in the specified range at sorted set `key`.
 `start` and `stop` represent the low and high index bounds respectively and are zero-indexed. They can also be negative
 numbers indicating offsets from the end of the sorted set, with -1 being the last element of the sorted set, -2 the penultimate element, and so on.
@@ -26,7 +27,7 @@ Returns a list of members found in the range specified by `start`, `stop`, unles
 
 ## ZRANGE Options
 
-<li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
+WITHSCORES: Makes the command return both the `member` and its `score`.
 
 ## Examples
 
