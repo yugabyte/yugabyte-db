@@ -744,4 +744,13 @@ public class GFlagsUtil {
       }
     };
   }
+
+  public static Set<String> getDeletedGFlags(
+      Map<String, String> currentGFlags, Map<String, String> updatedGFlags) {
+    return currentGFlags
+        .keySet()
+        .stream()
+        .filter(flag -> !updatedGFlags.containsKey(flag))
+        .collect(Collectors.toSet());
+  }
 }
