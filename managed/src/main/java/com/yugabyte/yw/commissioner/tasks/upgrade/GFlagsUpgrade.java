@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -122,21 +123,11 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     if (processType.equals(ServerType.MASTER)) {
       params.gflags = taskParams().masterGFlags;
       params.gflagsToRemove =
-          getUserIntent()
-              .masterGFlags
-              .keySet()
-              .stream()
-              .filter(flag -> !taskParams().masterGFlags.containsKey(flag))
-              .collect(Collectors.toSet());
+          Util.getDeletedGFlags(getUserIntent().masterGFlags, taskParams().masterGFlags);
     } else {
       params.gflags = taskParams().tserverGFlags;
       params.gflagsToRemove =
-          getUserIntent()
-              .tserverGFlags
-              .keySet()
-              .stream()
-              .filter(flag -> !taskParams().tserverGFlags.containsKey(flag))
-              .collect(Collectors.toSet());
+          Util.getDeletedGFlags(getUserIntent().tserverGFlags, taskParams().tserverGFlags);
     }
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
