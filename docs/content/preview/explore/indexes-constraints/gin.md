@@ -215,13 +215,13 @@ The assumption in the following examples is that you are using the GIN index in 
     ```
 
     ```output
-                                            j                                          | k
+                                             j                                          | k
     ------------------------------------------------------------------------------------+---
-    {"some": ["where", "how"]}                                                         | 5
-    {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
-    {"some": "thing"}                                                                  | 4
-    {"some": "body"}                                                                   | 2
-    {"some": "one"}                                                                    | 3
+     {"some": ["where", "how"]}                                                         | 5
+     {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
+     {"some": "thing"}                                                                  | 4
+     {"some": "body"}                                                                   | 2
+     {"some": "one"}                                                                    | 3
     (5 rows)
 
     Time: 13.451 ms
