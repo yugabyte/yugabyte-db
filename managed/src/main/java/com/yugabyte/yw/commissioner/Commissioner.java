@@ -85,7 +85,7 @@ public class Commissioner {
    * @return true if abortable.
    */
   public boolean isTaskAbortable(TaskType taskType) {
-    return TaskExecutor.isTaskAbortable(taskExecutor.getTaskClass(taskType));
+    return TaskExecutor.isTaskAbortable(taskType.getTaskClass());
   }
 
   /**
@@ -95,7 +95,7 @@ public class Commissioner {
    * @return true if retryable.
    */
   public boolean isTaskRetryable(TaskType taskType) {
-    return TaskExecutor.isTaskRetryable(taskExecutor.getTaskClass(taskType));
+    return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
   }
 
   /**

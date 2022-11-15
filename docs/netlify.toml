@@ -459,6 +459,12 @@
    from = "/preview/explore/fault-tolerance/*"
    to = "/preview/explore/fault-tolerance/macos/"
 
+# Prometheus integration redirects
+
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/*"
+   to = "/preview/explore/observability/prometheus-integration/macos/"
+
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 

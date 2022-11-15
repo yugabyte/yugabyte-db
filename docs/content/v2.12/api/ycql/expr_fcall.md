@@ -60,9 +60,9 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 ## Semantics
 
-<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
-<li>Function execution will return a value of the specified type by the function definition.</li>
-<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+- The argument data types must be convertible to the expected type for that argument that was specified by the function definition.
+- Function execution will return a value of the specified type by the function definition.
+- YugabyteDB allows function calls to be used any where that expression is allowed.
 
 ## Cast function
 
@@ -87,6 +87,7 @@ CAST function converts the value returned from a table column to the specified d
 
 
 ## partition_hash function
+
 `partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
 The hash values used for partitioning fall in the `0-65535` (uint16) range.
@@ -97,6 +98,7 @@ The `partition_hash` of the row is used to decide which tablet the row will resi
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
+
 One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
 For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 

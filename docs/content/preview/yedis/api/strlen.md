@@ -14,10 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`STRLEN key`</b><br>
+**`STRLEN key`**
+
 This command finds the length of the string value that is associated with the given `key`.
-<li> If `key` is associated with a non-string value, an error is raised.</li>
-<li> If `key` does not exist, 0 is returned.</li>
+
+-  If `key` is associated with a non-string value, an error is raised.
+-  If `key` does not exist, 0 is returned.
 
 ## Return value
 

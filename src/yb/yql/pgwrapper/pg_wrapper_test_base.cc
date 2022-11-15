@@ -89,11 +89,6 @@ string TrimSqlOutput(string output) {
   return TrimStr(TrimTrailingWhitespaceFromEveryLine(LeftShiftTextBlock(output)));
 }
 
-string CertsDir() {
-  const auto sub_dir = JoinPathSegments("ent", "test_certs");
-  return JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
-}
-
 } // namespace
 
 Result<std::string> PgCommandTestBase::RunPsqlCommand(
@@ -124,7 +119,7 @@ Result<std::string> PgCommandTestBase::RunPsqlCommand(
   if (encrypt_connection_) {
     argv.push_back(Format(
         "sslmode=require sslcert=$0/ysql.crt sslrootcert=$0/ca.crt sslkey=$0/ysql.key",
-        CertsDir()));
+        GetCertsDir()));
   }
 
   if (tuples_only) {
@@ -156,8 +151,8 @@ void PgCommandTestBase::RunPsqlCommand(
 void PgCommandTestBase::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
   PgWrapperTestBase::UpdateMiniClusterOptions(options);
   if (encrypt_connection_) {
-    const vector<string> common_flags{"--use_node_to_node_encryption=true",
-                                      "--certs_dir=" + CertsDir()};
+    const vector<string> common_flags{
+        "--use_node_to_node_encryption=true", "--certs_dir=" + GetCertsDir()};
     for (auto flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->insert(flags->begin(), common_flags.begin(), common_flags.end());
     }
