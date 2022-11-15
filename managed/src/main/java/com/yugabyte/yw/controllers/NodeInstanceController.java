@@ -329,7 +329,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
     taskParams =
         UniverseControllerRequestBinder.mergeWithUniverse(
-            taskParams, universe, NodeTaskParams.class);
+            taskParams, universe, taskParams.getClass());
     taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
     // Check deleting/removing a node will not go below the RF
