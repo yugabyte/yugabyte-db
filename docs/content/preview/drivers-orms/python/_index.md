@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: python-drivers
     parent: drivers-orms
-    weight: 570
+    weight: 520
 type: indexpage
 showRightNav: true
 ---
