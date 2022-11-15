@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
@@ -41,6 +43,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -320,17 +323,21 @@ public class NodeInstanceController extends AuthenticatedController {
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
     NodeTaskParams taskParams = new NodeTaskParams();
+
     if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
-      RebootNodeInUniverse.Params params = new RebootNodeInUniverse.Params();
+      RebootNodeInUniverse.Params params =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
       params.isHardReboot = nodeAction == HARD_REBOOT;
       taskParams = params;
+    } else {
+      taskParams =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), NodeTaskParams.class);
     }
+
     taskParams.nodeName = nodeName;
     taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
-    taskParams =
-        UniverseControllerRequestBinder.mergeWithUniverse(
-            taskParams, universe, taskParams.getClass());
-    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -343,7 +350,6 @@ public class NodeInstanceController extends AuthenticatedController {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
-    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
