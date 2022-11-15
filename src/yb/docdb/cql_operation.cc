@@ -1270,6 +1270,13 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         }
       }
 
+      // The index PK cannot be calculated if the table row has already been deleted.
+      if (existing_row.IsEmpty()) {
+        VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
+          " since existing row is not available";
+        continue;
+      }
+
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
