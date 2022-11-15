@@ -442,7 +442,7 @@ $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_y
 ```
 
 ```
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
+NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.31.250.228   35.185.207.11   7000:31185/TCP                                 91m
 yb-masters           ClusterIP      None            <none>          7100/TCP,7000/TCP                              91m
 yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/TCP,9042:30444/TCP,5433:30854/TCP   91m
@@ -507,7 +507,7 @@ $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_y
 ```
 
 ```
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
+NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/TCP,9042:30444/TCP,5433:30854/TCP   91m
 ...

@@ -60,9 +60,9 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 ## Semantics
 
-<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
-<li>Function execution will return a value of the specified type by the function definition.</li>
-<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+- The argument data types must be convertible to the expected type for that argument that was specified by the function definition.
+- Function execution will return a value of the specified type by the function definition.
+- YugabyteDB allows function calls to be used any where that expression is allowed.
 
 ## Cast function
 

@@ -27,8 +27,8 @@ $ helm2 ls
 ```
 
 ```
-NAME   	REVISION	UPDATED                 STATUS  	CHART         	APP VERSION	NAMESPACE
-yw-test	1       	Tue May 12 22:21:16 2020	DEPLOYED	yugaware-2.2.0 2.2.0.0-76 	yw-test
+NAME   	REVISION  UPDATED                   STATUS    CHART          APP VERSION  NAMESPACE
+yw-test	1         Tue May 12 22:21:16 2020  DEPLOYED  yugaware-2.2.0 2.2.0.0-76   yw-test
 ```
 
 2. Migrate the chart to Helm 3 using the `2to3` plugin by running the following command.
