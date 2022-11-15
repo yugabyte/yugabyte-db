@@ -49,10 +49,6 @@
         border: 1px solid #e9eef2;
         border-radius: 8px;
         padding: 25px 27px;
-
-        .highlight {
-          margin: 20px 0;
-        }
       }
     }
   }
@@ -61,6 +57,10 @@
 .tab-content .tab-pane {
   max-width: 100%;
   border: 0;
+
+  .highlight {
+    margin: 20px 0;
+  }
 
   pre {
     border: none;
