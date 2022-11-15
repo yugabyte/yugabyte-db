@@ -33,7 +33,9 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 
 import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.TableProperties;
@@ -674,6 +676,59 @@ public class TestIndex extends BaseCQLTest {
       "DELETE v3 from test_update where h1 = 922fe6d5-7e07-466d-9a7b-ad29cfa5a887");
   }
 
+  protected void checkWriteCountEquals(int count, String stmt) throws Exception {
+    // Get the initial metrics.
+    Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+    session.execute(stmt);
+    // Check the metrics again.
+    IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+    LOG.info("Metrics for '" + stmt + "': " + totalMetrics.toString());
+    assertEquals(count, totalMetrics.writeCount());
+  }
+
+  private void testDeleteInIndexForDeletedRow(boolean strongConsistency) throws Exception {
+    createTable("CREATE TABLE test_tbl (h INT PRIMARY KEY, c INT)", strongConsistency);
+    createIndex("CREATE UNIQUE INDEX idx ON test_tbl (c)", strongConsistency);
+    waitForReadPermsOnAllIndexes("test_tbl");
+
+    // Insert 2 rows.
+    checkWriteCountEquals(2, "INSERT INTO test_tbl (h, c) VALUES (1, 2)");
+    checkWriteCountEquals(2, "INSERT INTO test_tbl (h, c) VALUES (3, null)");
+
+    assertQueryRowsUnordered("SELECT * FROM test_tbl", "Row[1, 2]", "Row[3, NULL]");
+    assertQueryRowsUnordered("SELECT * FROM idx", "Row[1, 2]", "Row[3, NULL]");
+    assertQuery("SELECT * FROM test_tbl WHERE c=null", "Row[3, NULL]");
+
+    // Call DELETE for the first row.
+    checkWriteCountEquals(2, "DELETE FROM test_tbl WHERE h=1");
+
+    assertQuery("SELECT * FROM test_tbl", "Row[3, NULL]");
+    assertQuery("SELECT * FROM idx", "Row[3, NULL]");
+    assertQuery("SELECT * FROM test_tbl WHERE c=null", "Row[3, NULL]");
+
+    // Repeat DELETE for the deleted first row.
+    // The Index is NOT updated. There is only write into the main table.
+    checkWriteCountEquals(1, "DELETE FROM test_tbl WHERE h=1");
+
+    assertQuery("SELECT * FROM test_tbl", "Row[3, NULL]");
+    assertQuery("SELECT * FROM idx", "Row[3, NULL]");
+    assertQuery("SELECT * FROM test_tbl WHERE c=null", "Row[3, NULL]");
+
+    // Call DELETE for the second row.
+    checkWriteCountEquals(2, "DELETE FROM test_tbl WHERE h=3");
+
+    assertNoRow("SELECT * FROM test_tbl");
+    assertNoRow("SELECT * FROM idx");
+    assertNoRow("SELECT * FROM test_tbl WHERE c=null");
+
+    // Repeat DELETE for the deleted second row. The Index is NOT updated again.
+    checkWriteCountEquals(1, "DELETE FROM test_tbl WHERE h=3");
+
+    assertNoRow("SELECT * FROM test_tbl");
+    assertNoRow("SELECT * FROM idx");
+    assertNoRow("SELECT * FROM test_tbl WHERE c=null");
+  }
+
   @Test
   public void testIndexUpdate() throws Exception {
     testIndexUpdate(true);
@@ -702,6 +757,16 @@ public class TestIndex extends BaseCQLTest {
   @Test
   public void testWeakIndexUpdateMisc() throws Exception {
     testIndexUpdateMisc(false);
+  }
+
+  @Test
+  public void testDeleteInIndexForDeletedRow() throws Exception {
+    testDeleteInIndexForDeletedRow(true);
+  }
+
+  @Test
+  public void testDeleteInWeakIndexForDeletedRow() throws Exception {
+    testDeleteInIndexForDeletedRow(false);
   }
 
   @Test
