@@ -103,6 +103,6 @@ The preceding graphs, also taken from YugabyteDB Anywhere, show that the average
 
 ## Multi-cloud ready
 
-It is possible to configure YugabyteDB EE to work with multiple public clouds as well as private data centers in just a few minutes.
+You can configure YugabyteDB Anywhere to work with multiple public clouds as well as private data centers in just a few minutes.
 
 ![Geo-distributed](/images/develop/learn/yb-multi-cloud-ready.png)
