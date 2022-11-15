@@ -38,6 +38,9 @@
 # Prometheus service will be declared inactive. Defaults to 30s,
 # override if you wish for the inactivity threshold to be longer or
 # shorter.
+
+# restartSeconds: time in seconds for systemd to wait before restarting
+# prometheus
 prometheus:
     scrapeInterval: 15
     evaluationInterval: 15
@@ -46,6 +49,7 @@ prometheus:
     maxConcurrency: 20
     maxSamples: 5000000
     timeout: 30
+    restartSeconds: 10
 
 # Configurable parameters:
 
@@ -145,6 +149,9 @@ prometheus:
 
 # logPath: Directory to store YBA logs (will be created if it does not exist).
 
+# restartSeconds: time in seconds for systemd to wait before restarting
+# the platform
+
 platform:
    logPath: "yb-platform/data/logs"
    platformDbUser: "postgres"
@@ -176,6 +183,7 @@ platform:
       ywUrl: "YW_URL"
       ybOidcScope: "YB_OIDC_SCOPE"
       ybOidcEmailAttr: "YB_OIDC_EMAIL_ATTR"
+   restartSeconds: 10
 
 # Configurable parameter: overrideWarning
 
@@ -203,11 +211,15 @@ additional: |
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
 # bringOwn = true (defaults to false).
+
+# restartSeconds: time in seconds for systemd to wait before restarting
+# postgress
 postgres:
    bringOwn: false
    port: "5432"
    username: "postgres"
    password: ""
+   restartSeconds: 10
 
 # Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
