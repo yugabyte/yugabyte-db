@@ -5755,15 +5755,12 @@
           "type" : "string"
         },
         "destVpcId" : {
-          "description" : "Transient property - only present in mutate API request",
           "type" : "string"
         },
         "hostVpcId" : {
-          "description" : "Transient property - only present in mutate API request",
           "type" : "string"
         },
         "hostVpcRegion" : {
-          "description" : "Transient property - only present in mutate API request",
           "type" : "string"
         },
         "hostedZoneId" : {

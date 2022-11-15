@@ -136,17 +136,11 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public Integer sshPort = 22;
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String hostVpcId = null;
+  @ApiModelProperty public String hostVpcId = null;
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String hostVpcRegion = null;
+  @ApiModelProperty public String hostVpcRegion = null;
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String destVpcId = null;
+  @ApiModelProperty public String destVpcId = null;
 
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
