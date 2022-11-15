@@ -24,6 +24,7 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -59,11 +60,13 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -74,6 +77,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class CloudProviderApiControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderApiControllerTest.class);
   private static final ImmutableList<String> REGION_CODES_FROM_CLOUD_API =
@@ -219,13 +223,40 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateGCPProviderSomeRegionInput() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
     Provider provider = buildProviderReq("gcp", "Google");
     Region region = new Region();
     region.name = "region1";
     region.provider = provider;
     region.code = "region1";
     provider.regions = ImmutableList.of(region);
-    createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+    assertNull(provider.destVpcId);
+    assertNull(provider.hostVpcId);
+  }
+
+  @Test
+  public void testCreateGCPProviderHostVPC() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+    Provider provider = buildProviderReq("gcp", "Google");
+    provider.setConfig(Collections.singletonMap("use_host_vpc", "true"));
+    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    assertEquals("234234", provider.hostVpcId);
+    assertEquals("234234", provider.destVpcId);
+    assertEquals("PROJ", provider.getUnmaskedConfig().get("GCE_HOST_PROJECT"));
+  }
+
+  @Test
+  public void testCreateAWSProviderHostVPC() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.aws)))
+        .thenReturn(Json.newObject().put("vpc-id", "234234").put("region", "VPCreg"));
+    Provider provider = buildProviderReq("aws", "AWS");
+    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    assertEquals("234234", provider.hostVpcId);
+    assertNull(provider.destVpcId);
+    assertEquals("VPCreg", provider.hostVpcRegion);
   }
 
   @Test
