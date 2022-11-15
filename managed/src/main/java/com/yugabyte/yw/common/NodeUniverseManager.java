@@ -81,6 +81,15 @@ public class NodeUniverseManager extends DevopsBase {
       Universe universe,
       String sourceFile,
       String targetFile,
+      String permissions) {
+    return uploadFileToNode(node, universe, sourceFile, targetFile, permissions, DEFAULT_CONTEXT);
+  }
+
+  public ShellResponse uploadFileToNode(
+      NodeDetails node,
+      Universe universe,
+      String sourceFile,
+      String targetFile,
       String permissions,
       ShellProcessContext context) {
     List<String> actionArgs = new ArrayList<>();
