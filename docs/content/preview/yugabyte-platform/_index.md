@@ -15,10 +15,12 @@ breadcrumbDisable: true
 body_class: yb-page-style
 resourcesIntro: Quick Links
 resources:
-  - title: What's new in YugabyteDB Anywhere
+  - title: What's new
     url: /preview/releases/release-notes/v2.15/
-  - title: YugabyteDB Anywhere FAQ
+  - title: FAQ
     url: /preview/faq/yugabyte-platform/
+  - title: Free trial
+    url: https://www.yugabyte.com/anywhere/
 ---
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.
@@ -34,10 +36,10 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span>Try it out</span>
+          <span>Install</span>
         </div>
-        <div class="body-content">Request a free 30-day trial of YugabyteDB Anywhere. No credit card required.</div>
-        <a class="text-link" href="https://www.yugabyte.com/anywhere/" title="Try">Try</a>
+        <div class="body-content">Install YugabyteDB Anywhere on any environment, including Kubernetes, public cloud, or private cloud.</div>
+        <a class="text-link" href="install-yugabyte-platform/" title="Install">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
@@ -48,11 +50,10 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <span>Install</span>
+          <span>Configure</span>
         </div>
-        <div class="body-content">Install on any environment, including Kubernetes, public cloud, or private cloud.</div>
-        <a class="text-link" href="install-yugabyte-platform/" title="Install">Install</a>
-        <a class="text-link" href="configure-yugabyte-platform/" title="Configure">Configure</a>
+        <div class="body-content">Confiure YugabyteDB Anywhere for various cloud providers.</div>
+        <a class="text-link" href="configure-yugabyte-platform/" title="Configure">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
@@ -85,10 +86,10 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
       </a>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <a href="back-up-restore-universes/" title="Backup">
+      <a href="back-up-restore-universes/" title="Back up">
         <div class="box border">
           <div class="other-content">
-            <div class="heading">Backup</div>
+            <div class="heading">Back up</div>
             <div class="detail-copy">Configure storage, back up and restore universe data.</div>
           </div>
         </div>
@@ -177,9 +178,9 @@ YugabyteDB Anywhere offers three levels of user accounts: Super Admin, Admin, an
       <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Support</div>
-          <div class="detail-copy">Ask questions, request assistance from our team, and participate in our journey.</div>
+          <div class="detail-copy">Ask questions, request assistance from our team, participate in our journey.</div>
           <ul>
-            <li><a class="text-link" target="_blank" href="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431" title="Contact Support">Contact Support</a></li>
+            <li><a class="text-link" target="_blank" href="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891" title="Contact Support">Contact Support</a></li>
             <li><a class="text-link" target="_blank" href="https://communityinviter.com/apps/yugabyte-db/register" title="Join our community">Join our community</a></li>
           </ul>
         </div>

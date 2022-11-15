@@ -2,9 +2,9 @@
 title: Configure YugabyteDB Overview
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on Azure
+description: Configure YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on Azure
+headcontent: Configure YugabyteDB Anywhere on Azure
 menu:
   preview_yugabyte-platform:
     identifier: configure-3-azure
@@ -54,7 +54,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 </ul>
 
-Click elements of the following chart to access detailed steps:
+<br>Click elements of the following chart to access detailed steps:
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">

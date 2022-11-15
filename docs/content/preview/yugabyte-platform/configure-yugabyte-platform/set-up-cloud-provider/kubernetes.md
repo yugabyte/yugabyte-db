@@ -64,7 +64,7 @@ type: docs
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+<br>This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -236,9 +236,9 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 - Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
+- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br>
 
-  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
+  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br>
 
 - Complete the **Overrides** field using one of the provided options. If you do not specify anything, YugabyteDB Anywhere would use defaults specified inside the Helm chart. The following overrides are available:
 
