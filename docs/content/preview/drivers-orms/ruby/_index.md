@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: ruby-drivers
     parent: drivers-orms
-    weight: 590
+    weight: 570
 type: indexpage
 showRightNav: true
 ---

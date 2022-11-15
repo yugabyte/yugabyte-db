@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: java-drivers
     parent: drivers-orms
-    weight: 540
+    weight: 500
 type: indexpage
 showRightNav: true
 ---

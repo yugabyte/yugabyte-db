@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: rust-drivers
     parent: drivers-orms
-    weight: 600
+    weight: 580
 type: indexpage
 showRightNav: true
 ---
