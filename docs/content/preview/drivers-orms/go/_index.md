@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: go-drivers
     parent: drivers-orms
-    weight: 550
+    weight: 510
 type: indexpage
 showRightNav: true
 ---
