@@ -4,6 +4,7 @@ set -e
 
 currentUser="$(whoami)"
 INSTALL_ROOT="/home/"$currentUser"/yugabyte"
+restartSeconds="$1"
 
 #Process name that need to be monitored
 process_name="postgres"
@@ -33,5 +34,6 @@ $INSTALL_ROOT"/postgres/bin/pg_ctl" \
 "-o \"-k $INSTALL_ROOT/postgres/run/postgresql/\"" \
 -m smart start > $INSTALL_ROOT/$process_name/logfile 2>&1 &
 fi
+sleep ${restartSeconds}
 
 done &

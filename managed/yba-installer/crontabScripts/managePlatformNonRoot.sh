@@ -6,6 +6,7 @@ currentUser="$(whoami)"
 INSTALL_ROOT="/home/"$currentUser"/yugabyte"
 INSTALL_VERSION_DIR="$1"
 containerExposedPort="$2"
+restartSeconds="$3"
 
 #Process name that need to be monitored
 process_name="yb-platform"
@@ -40,4 +41,5 @@ $INSTALL_ROOT"/yb-platform/yugaware/bin/yugaware" \
 "-Dhttps.port=$containerExposedPort" > $INSTALL_ROOT/$process_name/yugaware/bin/platform.log 2>&1 &
 
 fi
+sleep ${restartSeconds}
 done &
