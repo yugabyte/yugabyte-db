@@ -24,7 +24,7 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 - When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
 - When an alert triggers, a notification displays on the **Notifications** page. After the alert condition resolves, the notification dismisses automatically.
 - Alerts are enabled for all clusters in your account.
-- Alerts can have two severity levels: Warning or Severe.
+- Alerts can have two severity levels: Warning or Severe. A third level, Info, does not trigger a notification.
 
 ## Configure alerts
 
@@ -68,7 +68,7 @@ Cluster health is updated every three minutes.
 
 Alerts can trigger for issues with a particular cluster, or for billing issues.
 
-Alerts can have two severity levels: Warning or Severe.
+Alerts can have two severity levels: Warning or Severe. The nodes down alert has a third level, Info, which is reported in the cluster health, and does not trigger a notification.
 
 ### Cluster alerts
 
