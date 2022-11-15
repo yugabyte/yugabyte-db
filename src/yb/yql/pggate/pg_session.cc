@@ -543,10 +543,9 @@ Result<PerformFuture> PgSession::Perform(
   }
   options.set_force_global_transaction(global_transaction);
 
-  // For DDLs we always read latest data.
   options.set_use_xcluster_database_consistency(
-      !pg_txn_manager_->IsDdlMode() &&
-      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
+      !(use_catalog_session || pg_txn_manager_->IsDdlMode()));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
