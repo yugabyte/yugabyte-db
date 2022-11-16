@@ -171,8 +171,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0),
-      tablet_server_service_(nullptr) {
+      master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 
@@ -372,11 +371,17 @@ void TabletServer::AutoInitServiceFlags() {
 }
 
 Status TabletServer::RegisterServices() {
-  tablet_server_service_ = new TabletServiceImpl(this);
-  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service_;
-  std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
+  auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
+  tablet_server_service_ = tablet_server_service;
+  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
+
+  std::unique_ptr<ServiceIf> forward_service =
+      std::make_unique<TabletServerForwardServiceImpl>(tablet_server_service.get(), this);
+  LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(ts_service)));
+                                                     std::move(forward_service)));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
+                                                     std::move(tablet_server_service)));
 
   std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
@@ -398,20 +403,13 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
 
-  std::unique_ptr<ServiceIf> forward_service =
-    std::make_unique<TabletServerForwardServiceImpl>(tablet_server_service_, this);
-  LOG(INFO) << "yb::tserver::ForwardServiceImpl created at " << forward_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(forward_service)));
-
+  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
+      tablet_manager_->client_future(), clock(), std::bind(&TabletServer::TransactionPool, this),
+      metric_entity(), &messenger()->scheduler());
+  pg_client_service_ = pg_client_service;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length,
-      std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(),
-          clock(),
-          std::bind(&TabletServer::TransactionPool, this),
-          metric_entity(),
-          &messenger()->scheduler())));
+      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   return Status::OK();
 }
@@ -449,11 +447,6 @@ void TabletServer::Shutdown() {
 
     if (FLAGS_tserver_enable_metrics_snapshotter) {
       WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
-    }
-
-    {
-      std::lock_guard<simple_spinlock> l(lock_);
-      tablet_server_service_ = nullptr;
     }
     tablet_manager_->StartShutdown();
     RpcAndWebServerBase::Shutdown();
@@ -513,11 +506,6 @@ void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
 std::string TabletServer::cluster_uuid() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return cluster_uuid_;
-}
-
-TabletServiceImpl* TabletServer::tablet_server_service() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return tablet_server_service_;
 }
 
 Status GetDynamicUrlTile(
@@ -587,19 +575,28 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
 
-  if (new_version > ysql_catalog_version_) {
+    if (new_version == ysql_catalog_version_) {
+      return;
+    } else if (new_version < ysql_catalog_version_) {
+      LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
+                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+      return;
+    }
     ysql_catalog_version_ = new_version;
     shared_object().SetYSQLCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
-    if (FLAGS_log_ysql_catalog_versions) {
-      LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
-                          << new_breaking_version;
-    }
-  } else if (new_version < ysql_catalog_version_) {
-    LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
-                 << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+  if (FLAGS_log_ysql_catalog_versions) {
+    LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
+                        << new_breaking_version;
+  }
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    LOG(INFO) << "Invalidating the entire PgTableCache since catalog version incremented";
+    pg_client_service->InvalidateTableCache();
   }
 }
 
@@ -632,6 +629,15 @@ const std::shared_ptr<MemTracker>& TabletServer::mem_tracker() const {
 
 void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
+}
+
+scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
+    TabletServerServiceRpcMethodIndexes metric) {
+  auto tablet_server_service = tablet_server_service_.lock();
+  if (tablet_server_service) {
+    return tablet_server_service->GetMetric(metric).handler_latency;
+  }
+  return nullptr;
 }
 
 }  // namespace tserver

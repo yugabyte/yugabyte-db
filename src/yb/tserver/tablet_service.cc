@@ -2411,17 +2411,6 @@ void TabletServiceAdminImpl::TestRetry(
 void TabletServiceImpl::Shutdown() {
 }
 
-scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceRpcMethodIndexes metric) {
-  // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
-  // unchanged during the operation.
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (tablet_server_service_) {
-    return tablet_server_service_->GetMetric(metric).handler_latency;
-  }
-  return nullptr;
-}
-
 TabletServerForwardServiceImpl::TabletServerForwardServiceImpl(TabletServiceImpl *impl,
                                                                TabletServerIf *server)
   : TabletServerForwardServiceIf(server->MetricEnt()),

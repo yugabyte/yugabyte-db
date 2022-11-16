@@ -351,6 +351,10 @@ class PgClientServiceImpl::Impl {
     }
   }
 
+  void InvalidateTableCache() {
+    table_cache_.InvalidateAll(CoarseMonoClock::Now());
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -475,6 +479,10 @@ PgClientServiceImpl::~PgClientServiceImpl() {}
 void PgClientServiceImpl::Perform(
     const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
   impl_->Perform(*req, resp, &context);
+}
+
+void PgClientServiceImpl::InvalidateTableCache() {
+  impl_->InvalidateTableCache();
 }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
