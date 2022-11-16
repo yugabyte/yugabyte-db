@@ -2869,6 +2869,46 @@
       },
       "type" : "object"
     },
+    "ConfDataType" : {
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    },
+    "ConfDataTypeObject" : {
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    },
+    "ConfKeyInfo" : {
+      "properties" : {
+        "dataType" : {
+          "$ref" : "#/definitions/ConfDataTypeObject"
+        },
+        "displayName" : {
+          "type" : "string"
+        },
+        "helpTxt" : {
+          "type" : "string"
+        },
+        "key" : {
+          "type" : "string"
+        },
+        "scope" : {
+          "enum" : [ "GLOBAL", "CUSTOMER", "UNIVERSE", "PROVIDER" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "dataType", "displayName", "helpTxt", "key", "scope" ],
+      "type" : "object"
+    },
     "ConfigEntry" : {
       "description" : "Configuration entry",
       "properties" : {
@@ -6498,10 +6538,6 @@
           "description" : "Amazon Resource Name (ARN) of the CMK",
           "type" : "string"
         },
-        "commonUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
@@ -6586,6 +6622,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "prefixUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6646,7 +6686,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "commonUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -18710,6 +18750,29 @@
         },
         "summary" : "Register a customer",
         "tags" : [ "Session management" ]
+      }
+    },
+    "/api/v1/runtime_config/mutable_key_info" : {
+      "get" : {
+        "description" : "List all the mutable runtime config keys with metadata",
+        "operationId" : "listKeyInfo",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/ConfKeyInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List mutable keys",
+        "tags" : [ "Runtime configuration" ]
       }
     },
     "/api/v1/runtime_config/mutable_keys" : {
