@@ -136,7 +136,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
         ConfigFactory.parseString(
             confStr, ConfigParseOptions.defaults().setOriginDescription(description));
 
-    LOG.trace("Read from DB for {}: {}", description, toRedactedString(config));
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Read from DB for {}: {}", description, toRedactedString(config));
+    }
     return config;
   }
 

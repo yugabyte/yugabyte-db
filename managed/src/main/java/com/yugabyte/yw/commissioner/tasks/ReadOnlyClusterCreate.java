@@ -48,7 +48,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion,
               u -> {
                 if (isFirstTryForTask(taskParams())) {
-                  preTaskActions();
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
+                  preTaskActions(u);
                   // Set all the in-memory node names.
                   setNodeNames(u);
                   // Set non on-prem node UUIDs.
