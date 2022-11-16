@@ -44,6 +44,10 @@ DECLARE_int64(cdc_intent_retention_ms);
 DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
+DEFINE_test_flag(
+    bool, cdc_snapshot_failure, false,
+    "For testing only, When it is set to true, the CDC snapshot operation will fail.");
+
 namespace yb {
 namespace cdc {
 
@@ -1149,6 +1153,12 @@ Status GetChangesForCDCSDK(
       nextKey = from_op_id.key();
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
+
+      // This is for test purposes only, to create a snapshot failure scenario from the server.
+      if (PREDICT_FALSE(FLAGS_TEST_cdc_snapshot_failure)) {
+        return STATUS_FORMAT(
+            ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
+      }
 
       Schema schema = **cached_schema;
       SchemaVersion schema_version = *cached_schema_version;
