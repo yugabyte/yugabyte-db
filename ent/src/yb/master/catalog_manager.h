@@ -252,9 +252,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<CDCStreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  bool IsCdcEnabled(const TableInfo& table_info) const override;
+  bool IsCdcEnabled(const TableInfo& table_info) const override EXCLUDES(mutex_);
+  bool IsCdcEnabledUnlocked(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
+  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override
+    EXCLUDES(mutex_);
+  bool IsTablePartOfBootstrappingCdcStreamUnlocked(const TableInfo& table_info) const override
+    REQUIRES_SHARED(mutex_);
 
   tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;

@@ -68,16 +68,6 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
-DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup");
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
-
-DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup and are currently being bootstrapped for xCluster.");
-TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
-
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
@@ -224,26 +214,6 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of"
         " some active PITR schedule, table_id: $0", table.id());
-  }
-  // Check if this table is part of a cdc stream.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      filter_->IsCdcEnabled(table)) {
-    VLOG(1) << Format("Tablet splitting is not supported for tables that are a part of"
-                      " a CDC stream, table_id: $0", table.id());
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, tablet_id: $0", table.id());
-  }
-  // Check if the table is in the bootstrapping phase of xCluster.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
-      filter_->IsTablePartOfBootstrappingCdcStream(table)) {
-    VLOG(1) << Format("Tablet splitting is not supported for tables that are a part of"
-                      " a bootstrapping CDC stream, table_id: $0", table.id());
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a bootstrapping CDC stream, tablet_id: $0", table.id());
   }
 
   if (table.GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -581,9 +551,17 @@ void TabletSplitManager::DoSplitting(
   // https://github.com/yugabyte/yugabyte-db/issues/11459
   vector<TableInfoPtr> valid_tables;
   for (const auto& table : table_info_map) {
-    if (ValidateSplitCandidateTable(*table.second).ok()) {
-      valid_tables.push_back(table.second);
+    Status status = ValidateSplitCandidateTable(*table.second);
+    if (!status.ok()) {
+      VLOG(3) << "Skipping table for splitting. " << status;
+      continue;
     }
+    status = filter_->ValidateSplitCandidateTableCdc(*table.second);
+    if (!status.ok()) {
+      VLOG(3) << "Skipping table for splitting. " << status;
+      continue;
+    }
+    valid_tables.push_back(table.second);
   }
 
   TabletReplicaMapCache replica_cache;
