@@ -1458,9 +1458,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Returns TabletInfo for registered tablet.
   Result<TabletInfoPtr> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
-      TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock);
+      TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock)
+      REQUIRES(mutex_);
 
-  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override;
+  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
+      EXCLUDES(mutex_);
+  Result<scoped_refptr<TabletInfo>> GetTabletInfoUnlocked(const TabletId& tablet_id)
+      REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
       const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
@@ -1518,7 +1522,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return false;
   }
 
-  virtual bool IsCdcEnabled(const TableInfo& table_info) const override {
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+    // Default value.
+    return false;
+  }
+
+  virtual bool IsCdcEnabledUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
   }
@@ -1528,7 +1537,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return false;
   }
 
-  virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override {
+  virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {
+    // Default value.
+    return false;
+  }
+
+  virtual bool IsTablePartOfBootstrappingCdcStreamUnlocked(const TableInfo& table_info) const
+      REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
   }
@@ -1838,8 +1853,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key, ManualSplit is_manual_split);
 
+  Status ValidateSplitCandidateTableCdc(const TableInfo& table) const override;
+  Status ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const
+      REQUIRES_SHARED(mutex_);
+
   Status ValidateSplitCandidate(
-      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split);
+      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split) EXCLUDES(mutex_);
+  Status ValidateSplitCandidateUnlocked(
+      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split)
+      REQUIRES_SHARED(mutex_);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
   // in 'placement_info'. Returns error if there are insufficient TServers to match the
