@@ -78,4 +78,3 @@ TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
 
 }  // namespace server
 }  // namespace yb
-

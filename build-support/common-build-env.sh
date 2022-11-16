@@ -178,8 +178,6 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc11
   gcc12
   clang
-  clang12
-  clang13
   clang14
   clang15
 )
@@ -196,7 +194,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -338,7 +335,7 @@ decide_whether_to_use_linuxbrew() {
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
               "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]]; then
+              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -489,16 +486,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
-          YB_COMPILER_TYPE=clang14
-        else
-          YB_COMPILER_TYPE=clang13
-        fi
-      else
-        # https://github.com/yugabyte/yugabyte-db/issues/12603
-        YB_COMPILER_TYPE=clang12
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2391,14 +2379,14 @@ lint_java_code() {
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrAArch64\.class\)' \
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanitizersOrAArch64, " \
+            "YBTestRunnerNonSanOrAArch64Mac, " \
             "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
@@ -2493,6 +2481,9 @@ set_prebuilt_thirdparty_url() {
       if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+      fi
+      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+        thirdparty_tool_cmd_line+=( "--allow-older-os" )
       fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")

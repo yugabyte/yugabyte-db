@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
-#define YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
+#pragma once
 
 #include "yb/docdb/docdb.h"
 
@@ -39,5 +38,3 @@ Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_PRIMITIVE_VALUE_UTIL_H

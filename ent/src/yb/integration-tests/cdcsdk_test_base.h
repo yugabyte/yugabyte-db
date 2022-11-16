@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H
+#pragma once
 
 #include <string>
 
@@ -184,10 +183,12 @@ class CDCSDKTestBase : public YBTest {
   void InitCreateStreamRequest(
       CreateCDCStreamRequestPB* create_req,
       const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
+      const CDCRecordType& record_type = CDCRecordType::CHANGE,
       const std::string& namespace_name = kNamespaceName);
 
   Result<std::string> CreateDBStream(
-      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT);
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.
@@ -198,5 +199,3 @@ class CDCSDKTestBase : public YBTest {
 } // namespace enterprise
 } // namespace cdc
 } // namespace yb
-
-#endif  // ENT_SRC_YB_INTEGRATION_TESTS_CDCSDK_TEST_BASE_H

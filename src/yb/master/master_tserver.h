@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TSERVER_H
-#define YB_MASTER_MASTER_TSERVER_H
+#pragma once
 
 #include <future>
 
@@ -85,4 +84,3 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_MASTER_TSERVER_H

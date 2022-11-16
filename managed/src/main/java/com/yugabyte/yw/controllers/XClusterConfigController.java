@@ -47,12 +47,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
@@ -150,7 +152,7 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             this.ybService,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
             targetUniverse);
 
@@ -271,7 +273,7 @@ public class XClusterConfigController extends AuthenticatedController {
         .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.tableId))
         .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.Error);
 
-    // Wrap XClusterConfig with lag metric data and return
+    // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
     resp.xClusterConfig = xClusterConfig;
     resp.lag = lagMetricData;
@@ -310,39 +312,56 @@ public class XClusterConfigController extends AuthenticatedController {
 
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList = null;
+    Set<String> tableIdsToAdd = null;
     Set<String> tableIdsToRemove = null;
     if (editFormData.tables != null) {
       Set<String> currentTableIds = xClusterConfig.getTables();
       Pair<Set<String>, Set<String>> tableIdsToAddTableIdsToRemovePair =
           XClusterConfigTaskBase.getTableIdsDiff(currentTableIds, editFormData.tables);
-      Set<String> tableIdsToAdd = tableIdsToAddTableIdsToRemovePair.getFirst();
+      tableIdsToAdd = tableIdsToAddTableIdsToRemovePair.getFirst();
       tableIdsToRemove = tableIdsToAddTableIdsToRemovePair.getSecond();
       log.info("tableIdsToAdd are {}; tableIdsToRemove are {}", tableIdsToAdd, tableIdsToRemove);
 
-      if (!tableIdsToAdd.isEmpty()) {
-        verifyTablesNotInReplication(
-            tableIdsToAdd, xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID);
+      // For backward compatibility; if table is in replication, no need fot bootstrapping.
+      xClusterConfig.setNeedBootstrapForTables(
+          xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
 
+      if (!tableIdsToAdd.isEmpty()) {
         // Add index tables.
+        Set<String> allTableIds =
+            editFormData.bootstrapParams == null
+                ? tableIdsToAdd
+                : Stream.concat(
+                        tableIdsToAdd.stream(), editFormData.bootstrapParams.tables.stream())
+                    .collect(Collectors.toSet());
         mainTableToAddIndexTablesMap =
             XClusterConfigTaskBase.getMainTableIndexTablesMap(
-                this.ybService, sourceUniverse, tableIdsToAdd);
+                this.ybService, sourceUniverse, allTableIds);
         Set<String> indexTableIdSet =
             mainTableToAddIndexTablesMap
                 .values()
                 .stream()
                 .flatMap(List::stream)
+                .collect(Collectors.toSet());
+        Set<String> indexTableIdSetToAdd =
+            indexTableIdSet
+                .stream()
                 .filter(tableId -> !xClusterConfig.getTables().contains(tableId))
                 .collect(Collectors.toSet());
-        tableIdsToAdd.addAll(indexTableIdSet);
+        allTableIds.addAll(indexTableIdSet);
+        tableIdsToAdd.addAll(indexTableIdSetToAdd);
+
+        verifyTablesNotInReplication(
+            tableIdsToAdd, xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID);
 
         requestedTableToAddInfoList =
             XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
                 this.ybService,
-                tableIdsToAdd,
-                editFormData.bootstrapParams != null ? editFormData.bootstrapParams.tables : null,
+                allTableIds,
+                editFormData.bootstrapParams,
                 sourceUniverse,
-                targetUniverse);
+                targetUniverse,
+                xClusterConfig.getReplicationGroupName());
 
         CommonTypes.TableType tableType = requestedTableToAddInfoList.get(0).getTableType();
         if (!xClusterConfig.tableType.equals(XClusterConfig.TableType.UNKNOWN)) {
@@ -360,13 +379,8 @@ public class XClusterConfigController extends AuthenticatedController {
 
         if (!editFormData.dryRun) {
           // Save the to-be-added tables in the DB.
-          if (editFormData.bootstrapParams != null) {
-            xClusterConfig.addTables(tableIdsToAdd, editFormData.bootstrapParams.tables);
-            xClusterConfig.setNeedBootstrapForTables(indexTableIdSet, true /* needBootstrap */);
-          } else {
-            xClusterConfig.addTables(tableIdsToAdd);
-          }
-          xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
+          xClusterConfig.addTablesIfNotExist(tableIdsToAdd, editFormData.bootstrapParams);
+          xClusterConfig.setIndexTableForTables(indexTableIdSetToAdd, true /* indexTable */);
         }
       }
 
@@ -388,6 +402,15 @@ public class XClusterConfigController extends AuthenticatedController {
       if (tableIdsToAdd.isEmpty() && tableIdsToRemove.isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST, "No change in the xCluster config table list is detected");
+      }
+
+      if (xClusterConfig.getTableIdsWithReplicationSetup().size() + tableIdsToAdd.size()
+          == tableIdsToRemove.size()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "The operation to remove tables from replication config will remove all the "
+                + "tables in replication which is not allowed; if you want to delete "
+                + "replication for all of them, please delete the replication config");
       }
     }
 
@@ -415,6 +438,7 @@ public class XClusterConfigController extends AuthenticatedController {
             editFormData,
             requestedTableToAddInfoList,
             mainTableToAddIndexTablesMap,
+            tableIdsToAdd,
             tableIdsToRemove);
     UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
     CustomerTask.create(
@@ -462,70 +486,60 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterConfigRestartFormData restartFormData =
-        formFactory.getFormDataOrBadRequest(
-            request().body().asJson(), XClusterConfigRestartFormData.class);
-
-    // Todo: `per table` restart is not allowed if replication is in failed state.
-
-    // Currently, only the whole xCluster config can restart.
-    if (!restartFormData.tables.isEmpty()) {
-      throw new PlatformServiceException(
-          NOT_IMPLEMENTED,
-          "Per DB/table xCluster config restart is not yet implemented; please "
-              + "do not specify the `tables` field so the whole xCluster config restarts");
-    }
-
-    restartFormData.tables =
-        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(restartFormData.tables);
-    validateBackupRequestParamsForBootstrapping(
-        restartFormData.bootstrapParams.backupRequestParams, customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xClusterConfigUUID);
+    XClusterConfigRestartFormData restartFormData =
+        parseRestartFormData(customerUUID, xClusterConfig);
     verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
     Universe sourceUniverse =
         Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer);
     Universe targetUniverse =
         Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
 
-    if (restartFormData.tables.isEmpty()) {
-      restartFormData.tables = xClusterConfig.getTables();
-    }
-
+    Set<String> tableIds = restartFormData.tables;
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(
-            this.ybService, sourceUniverse, restartFormData.tables);
+        XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
     Set<String> indexTableIdSet =
         mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
-    restartFormData.tables.addAll(indexTableIdSet);
+    tableIds.addAll(indexTableIdSet);
     if (!restartFormData.dryRun) {
       xClusterConfig.addTablesIfNotExist(
-          indexTableIdSet,
-          restartFormData.bootstrapParams != null ? indexTableIdSet : null,
-          true /* areIndexTables */);
+          indexTableIdSet, null /* tableIdsNeedBootstrap */, true /* areIndexTables */);
+    }
+
+    XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
+    if (restartFormData.bootstrapParams != null) {
+      bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+      bootstrapParams.backupRequestParams = restartFormData.bootstrapParams.backupRequestParams;
+      bootstrapParams.tables = tableIds;
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             this.ybService,
-            restartFormData.tables,
-            restartFormData.bootstrapParams != null ? restartFormData.tables : null,
+            tableIds,
+            bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            xClusterConfig.getReplicationGroupName());
 
     if (restartFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
     } else {
       // Set table type for old xCluster configs.
       xClusterConfig.setTableType(requestedTableInfoList);
+      if (bootstrapParams != null) {
+        // Set needBootstrap to true for all tables. It will check if it is required.
+        xClusterConfig.setNeedBootstrapForTables(bootstrapParams.tables, true /* needBootstrap */);
+      }
     }
 
     // Submit task to edit xCluster config.
     XClusterConfigTaskParams params =
         new XClusterConfigTaskParams(
             xClusterConfig,
-            restartFormData,
+            bootstrapParams,
             requestedTableInfoList,
             mainTableIndexTablesMap,
             isForceDelete);
@@ -785,6 +799,7 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   private XClusterConfigEditFormData parseEditFormData(UUID customerUUID) {
+    log.debug("Request body to edit an xCluster config is {}", request().body().asJson());
     XClusterConfigEditFormData formData =
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigEditFormData.class);
@@ -830,6 +845,52 @@ public class XClusterConfigController extends AuthenticatedController {
     return formData;
   }
 
+  private XClusterConfigRestartFormData parseRestartFormData(
+      UUID customerUUID, XClusterConfig xClusterConfig) {
+    log.debug("Request body to restart an xCluster config is {}", request().body().asJson());
+    XClusterConfigRestartFormData formData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigRestartFormData.class);
+
+    formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+
+    if (formData.bootstrapParams != null) {
+      validateBackupRequestParamsForBootstrapping(
+          formData.bootstrapParams.backupRequestParams, customerUUID);
+    }
+
+    Set<String> tableIds = xClusterConfig.getTables();
+    if (!formData.tables.isEmpty()) {
+      // Make sure the selected tables are already part of the xCluster config.
+      Set<String> notFoundTableIds = new HashSet<>();
+      for (String tableId : formData.tables) {
+        if (!tableIds.contains(tableId)) {
+          notFoundTableIds.add(tableId);
+        }
+      }
+      if (!notFoundTableIds.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "These selected table ids are not part of the xCluster config %s",
+                notFoundTableIds));
+      }
+
+      if (xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.Failed
+          && formData.tables.size() != tableIds.size()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Per DB/table xCluster config restart cannot be done because the creation of the "
+                + "xCluster config failed; please do not specify the `tables` field so the whole "
+                + "xCluster config restarts");
+      }
+    } else {
+      formData.tables = tableIds;
+    }
+
+    return formData;
+  }
+
   private void checkConfigDoesNotAlreadyExist(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     XClusterConfig xClusterConfig =
@@ -864,19 +925,19 @@ public class XClusterConfigController extends AuthenticatedController {
    * It ensures that none of the tables specified at parameter {@code tables} is in replication
    * between two universes in more than one xCluster config.
    *
-   * @param tables The set of tables that must not be already in replication between the same
+   * @param tableIds The set of tables that must not be already in replication between the same
    *     universe in the same direction
    * @param sourceUniverseUUID The source universe uuid
    * @param targetUniverseUUID The target universe uuid
    */
   private void verifyTablesNotInReplication(
-      Set<String> tables, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
+      Set<String> tableIds, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     List<XClusterConfig> xClusterConfigs =
         XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
     xClusterConfigs.forEach(
         config -> {
           Set<String> tablesInReplication = config.getTables();
-          tablesInReplication.retainAll(tables);
+          tablesInReplication.retainAll(tableIds);
           if (!tablesInReplication.isEmpty()) {
             throw new PlatformServiceException(
                 BAD_REQUEST,

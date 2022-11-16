@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.EITHER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.EITHER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -19,8 +19,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
@@ -939,7 +939,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     if (changeInstance) {
       nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
     }
-    List<UniverseDefinitionTaskBase.ServerType> processTypes =
+    List<UniverseTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
 
     int index = isRf1 ? PLACEHOLDER_INDEX_RF1 : PLACEHOLDER_INDEX;

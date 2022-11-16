@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_UTIL_DYNAMIC_BLOOM_H
-#define ROCKSDB_UTIL_DYNAMIC_BLOOM_H
 
 #pragma once
 
@@ -204,5 +202,3 @@ inline void DynamicBloom::AddHash(uint32_t h, const OrFunc& or_func) {
 }
 
 } // namespace rocksdb
-
-#endif // ROCKSDB_UTIL_DYNAMIC_BLOOM_H

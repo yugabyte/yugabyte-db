@@ -12,8 +12,18 @@
 
 #include <signal.h>
 
+#include <algorithm>
+#include <array>
+#include <atomic>
 #include <fstream>
+#include <functional>
+#include <map>
+#include <memory>
 #include <thread>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/table_info.h"
@@ -22,6 +32,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -34,6 +45,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/cast.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
@@ -48,7 +60,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
-using std::make_pair;
 
 using namespace std::literals;
 
@@ -449,6 +460,66 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
   });
 
   std::this_thread::sleep_for(30s);
+}
+
+// Concurrently insert records followed by deletes to tables with a foreign key relationship with
+// on-delete cascade. https://github.com/yugabyte/yugabyte-db/issues/14471
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertAndDeleteOnTablesWithForeignKey)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  const auto num_iterations = 50;
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE IF NOT EXISTS t1 (a int PRIMARY KEY, b int)"));
+  ASSERT_OK(conn1.Execute(
+      "CREATE TABLE IF NOT EXISTS t2 (i int, j int REFERENCES t1(a) ON DELETE CASCADE)"));
+
+  for (int i = 0; i < num_iterations; ++i) {
+    // Insert 50 rows in t1.
+    for (int count = 0; count < 50; count++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)", count, count + 1));
+    }
+
+    std::atomic<bool> stop = false;
+    std::atomic<int> values_in_t1 = 50;
+
+    // Insert rows in t2 on a separate thread.
+    std::thread insertion_thread([&conn2, &stop, &values_in_t1] {
+      int value_to_insert = 0;
+      while (!stop && value_to_insert < values_in_t1) {
+        ASSERT_OK(conn2.ExecuteFormat(
+            "INSERT INTO t2 VALUES ($0, $1)", value_to_insert, value_to_insert + 1));
+        value_to_insert++;
+      }
+
+      // Verify insert prevention due to FK constraints.
+      Status s = conn2.Execute("INSERT INTO t2 VALUES (999, 999)");
+      ASSERT_FALSE(s.ok());
+      ASSERT_EQ(PgsqlError(s), YBPgErrorCode::YB_PG_FOREIGN_KEY_VIOLATION);
+      ASSERT_STR_CONTAINS(s.ToString(), "violates foreign key constraint");
+    });
+
+    // Insert 50 more values in t1.
+    for (int j = 50; j < 100; ++j) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO t1 values ($0, $1)", j, j + 1));
+      values_in_t1++;
+    }
+
+    // Verify for CASCADE behaviour.
+    ASSERT_OK(conn1.Execute("DELETE FROM t1 where a = 10"));
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2 WHERE j = 10")), 0);
+
+    stop = true;
+    insertion_thread.join();
+
+    // Verify t1 has 99 i.e. (100 - 1) rows.
+    auto curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t1"));
+    ASSERT_EQ(curr_rows, 99);
+
+    // Reset the tables for next iteration.
+    ASSERT_OK(conn1.Execute("TRUNCATE TABLE t1 CASCADE"));
+    curr_rows = ASSERT_RESULT(conn1.FetchValue<int64_t>("SELECT COUNT(*) FROM t2"));
+    ASSERT_EQ(curr_rows, 0);
+  }
 }
 
 Result<int64_t> ReadSumBalance(
@@ -1180,6 +1251,103 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
       30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
+class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Enable colocation by default on the cluster.
+    options->extra_tserver_flags.push_back("--ysql_colocate_database_by_default=true");
+  }
+};
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTableColocationEnabledByDefaultTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseNameColocatedByDefault = "test_db_colocated_by_default";
+  const string kDatabaseNameColocatedExplicitly = "test_db_colocated_explicitly";
+  const string kDatabaseNameNotColocated = "test_db_not_colocated";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> foo_tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> bar_tablets;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Database without specifying colocation value must be created with colocation = true.
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseNameColocatedByDefault));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedByDefault));
+
+  // A parent table with one tablet should be created when the database is created.
+  auto colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedByDefault, 30s));
+  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Create a colocated index table.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_index"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // A table should be able to opt out of colocation.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo_non_colocated (a INT, PRIMARY KEY (a ASC)) WITH (colocated = false)"));
+  table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
+  }
+
+  // Database which explicitly specifies colocated = true should work as expected.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 WITH colocated = true", kDatabaseNameColocatedExplicitly));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
+
+  // A parent table with one tablet should be created when the database is created.
+  colocated_tablet_locations = ASSERT_RESULT(
+      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, 30s));
+  colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+
+  // Create a range partition table, the table should share the tablet with the parent table.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedExplicitly,
+      "foo"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
+
+  // Database which explicitly opts out of colocation must work as expected.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = false",
+      kDatabaseNameNotColocated));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameNotColocated));
+
+  // Create two tables which shouldn't share the same tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (b INT)"));
+  auto table_id_foo =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "foo"));
+  auto table_id_bar =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameNotColocated, "bar"));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_foo, 0, &foo_tablets));
+  ASSERT_OK(client->GetTabletsFromTableId(table_id_bar, 0, &bar_tablets));
+  ASSERT_EQ(foo_tablets.size(), 1);
+  for (auto& tablet : bar_tablets) {
+    ASSERT_NE(tablet.tablet_id(), foo_tablets[0].tablet_id());
+  }
+}
+
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
     const string database_name, bool colocated, const string tablegroup_name) {
   auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
@@ -1579,6 +1747,249 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         return rpc_calls == 0;
       },
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsTruncateTable),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "test_tgroup";
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  // Create a table within the tablegroup and insert some values.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE foo (a INT, value TEXT, PRIMARY KEY (a ASC)) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (2, 'hello2')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello3')"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM foo")).get()), 3);
+
+  // Create index and verify it's content by forcing an index scan.
+  ASSERT_OK(conn.Execute("CREATE INDEX foo_index ON foo (a ASC)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+  std::vector<std::pair<int, std::string>> values = {
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+  };
+  ASSERT_EQ(values[0].first, 1);
+  ASSERT_EQ(values[0].second, "hello");
+  ASSERT_EQ(values[1].first, 2);
+  ASSERT_EQ(values[1].second, "hello2");
+  ASSERT_EQ(values[2].first, 3);
+  ASSERT_EQ(values[2].second, "hello3");
+
+  // Create another table within the tablegroup and insert some values.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE bar (a INT) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO bar (a) VALUES (100)"));
+  ASSERT_OK(conn.Execute("INSERT INTO bar (a) VALUES (200)"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM bar")).get()), 2);
+
+  // Create index on bar and verify it's content by forcing an index scan.
+  ASSERT_OK(conn.Execute("CREATE INDEX bar_index ON bar (a DESC)"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<int> bar_values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  };
+  ASSERT_EQ(bar_values[0], 200);
+  ASSERT_EQ(bar_values[1], 100);
+
+  // Truncating foo works correctly.
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE foo"));
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM foo")).get()), 0);
+
+  // Index scan on foo should also return 0 rows.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM foo ORDER BY a")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 0);
+
+  // Truncation of foo shouldn't affect bar.
+  ASSERT_EQ(PQntuples(ASSERT_RESULT(conn.Fetch("SELECT * FROM bar")).get()), 2);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan("SELECT * FROM bar ORDER BY a DESC")));
+  res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  bar_values = {
+      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  };
+  ASSERT_EQ(bar_values[0], 200);
+  ASSERT_EQ(bar_values[1], 100);
+}
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsDDL), PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kSchemaName = "test_schema";
+  const string kTablegroupName = "test_tgroup";
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  // A parent table with one tablet should be created when the tablegroup is created.
+  const auto tablegroup =
+      ASSERT_RESULT(SelectTablegroup(client.get(), &conn, kDatabaseName, kTablegroupName));
+
+  // Create a table within the tablegroup.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE foo (a INT, value TEXT) TABLEGROUP $0", kTablegroupName));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello')"));
+
+  // Adding a PK works and inserting duplicate PK fails.
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD PRIMARY KEY (a)"));
+  ASSERT_NOK(conn.Execute("INSERT INTO foo (a, value) VALUES (1, 'hello2')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (2, 'hello2')"));
+
+  // Creating a unique index on non-PK column works.
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX foo_unique_index ON foo(value)"));
+  ASSERT_NOK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello')"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (a, value) VALUES (3, 'hello3')"));
+
+  // Creating a view for the table works.
+  ASSERT_OK(conn.ExecuteFormat("CREATE VIEW odd_a_view AS SELECT * FROM foo WHERE MOD(a, 2) = 1"));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM odd_a_view ORDER BY a"));
+  ASSERT_EQ(PQntuples(res.get()), 2);
+  ASSERT_EQ(PQnfields(res.get()), 2);
+  std::vector<std::pair<int, std::string>> values = {
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+      std::make_pair(
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1)))};
+  ASSERT_EQ(values[0].first, 1);
+  ASSERT_EQ(values[0].second, "hello");
+  ASSERT_EQ(values[1].first, 3);
+  ASSERT_EQ(values[1].second, "hello3");
+
+  // Creating a table within the tablegroup with a different schema is successful.
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0.bar (a INT, value TEXT) TABLEGROUP $1", kSchemaName, kTablegroupName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (1, 'hello')", kSchemaName));
+
+  // Index on bar should work.
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE UNIQUE INDEX bar_unique_index ON $0.bar(value)", kSchemaName));
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (2, 'hello')", kSchemaName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.bar (a, value) VALUES (2, 'hello2')", kSchemaName));
+
+  // All tables/indexes should be in the same tablet as the parent.
+  auto relation_names = {"foo", "foo_unique_index", "bar", "bar_unique_index"};
+  for (auto relation : relation_names) {
+    auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, relation));
+    ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+    ASSERT_EQ(tablets.size(), 1);
+    ASSERT_EQ(tablets[0].tablet_id(), tablegroup.tablet_id);
+  }
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroupsAccessMethods),
+    PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "test_tgroup";
+  const string kQuery = "SELECT * FROM $0 ORDER BY value";
+  const string kQueryForIndexScan = "SELECT * FROM $0 ORDER BY a";
+  const string kQueryForIndexOnlyScan = "SELECT a FROM $0 ORDER BY a";
+  const std::vector<string> kTableNames = {"table_without_pk", "table_with_pk"};
+  const std::vector<string> kCreateTableQueries = {
+      Format("CREATE TABLE $0 (a INT, value TEXT) TABLEGROUP $1", kTableNames[0], kTablegroupName),
+      Format(
+          "CREATE TABLE $0 (a INT, value TEXT, PRIMARY KEY (a ASC)) TABLEGROUP $1", kTableNames[1],
+          kTablegroupName)};
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  for (size_t idx = 0; idx < kTableNames.size(); idx++) {
+    // Create a table within the tablegroup and insert some values.
+    ASSERT_OK(conn.Execute(kCreateTableQueries[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (1, 'hello')", kTableNames[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (2, 'hello2')", kTableNames[idx]));
+    ASSERT_OK(
+        conn.ExecuteFormat("INSERT INTO $0 (a, value) VALUES (3, 'hello3')", kTableNames[idx]));
+
+    // Sequential scan.
+    auto query = Format(kQuery, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(query, "Seq")));
+    auto res = ASSERT_RESULT(conn.Fetch(query));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 2);
+    {
+      std::vector<std::pair<int, std::string>> values = {
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      };
+      ASSERT_EQ(values[0].first, 1);
+      ASSERT_EQ(values[0].second, "hello");
+      ASSERT_EQ(values[1].first, 2);
+      ASSERT_EQ(values[1].second, "hello2");
+      ASSERT_EQ(values[2].first, 3);
+      ASSERT_EQ(values[2].second, "hello3");
+    }
+
+    // Index scan.
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE UNIQUE INDEX foo_index_$0 ON $0 (a ASC)", kTableNames[idx]));
+    auto queryForIndexScan = Format(kQueryForIndexScan, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexScan, "Index")));
+    res = ASSERT_RESULT(conn.Fetch(queryForIndexScan));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 2);
+    {
+      std::vector<std::pair<int, std::string>> values = {
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
+          std::make_pair(
+              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      };
+      ASSERT_EQ(values[0].first, 1);
+      ASSERT_EQ(values[0].second, "hello");
+      ASSERT_EQ(values[1].first, 2);
+      ASSERT_EQ(values[1].second, "hello2");
+      ASSERT_EQ(values[2].first, 3);
+      ASSERT_EQ(values[2].second, "hello3");
+    }
+
+    // Index only scan.
+    auto queryForIndexOnlyScan = Format(kQueryForIndexOnlyScan, kTableNames[idx]);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(queryForIndexOnlyScan, "Index Only")));
+    res = ASSERT_RESULT(conn.Fetch(queryForIndexOnlyScan));
+    ASSERT_EQ(PQntuples(res.get()), 3);
+    ASSERT_EQ(PQnfields(res.get()), 1);
+    {
+      std::vector<int> values = {
+          ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+          ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+          ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+      };
+      ASSERT_EQ(values[0], 1);
+      ASSERT_EQ(values[1], 2);
+      ASSERT_EQ(values[2], 3);
+    }
+  }
 }
 
 namespace {
@@ -2631,64 +3042,46 @@ TEST_F_EX(PgLibPqTest,
 }
 
 class PgLibPqCatalogVersionTest : public PgLibPqTest {
- public:
-  struct YsqlCatalogVersion {
-    uint32 db_oid;
-    uint64 current_version;
-    uint64 last_breaking_version;
-    std::string ToString() const {
-      return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
-    }
+ protected:
+  using Version = uint64_t;
+
+  struct CatalogVersion {
+    Version current_version;
+    Version last_breaking_version;
   };
-  typedef std::unordered_map<uint32, YsqlCatalogVersion> MasterCatalogVersionMap;
-  typedef std::unordered_map<uint32, uint64> ShmCatalogVersionMap;
+
+  using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
+  using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
   // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
-  MasterCatalogVersionMap GetMasterCatalogVersionMap(PGConn* conn) {
-    MasterCatalogVersionMap catalog_version_map;
-    auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
-    auto lines = PQntuples(res.get());
-    CHECK_GT(lines, 0);
-    auto columns = PQnfields(res.get());
-    CHECK_EQ(columns, 3);
-    for (int i = 0; i != lines; ++i) {
-      uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), i, 0)));
-      uint64 current_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 1)));
-      uint64 last_breaking_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 2)));
-      catalog_version_map.emplace(
-          db_oid, YsqlCatalogVersion{db_oid, current_version, last_breaking_version});
-    }
-
-    // Log the latest catalog version map we just fetched.
+  static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(PGConn* conn) {
+    auto res = VERIFY_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
+    const auto lines = PQntuples(res.get());
+    SCHECK_GT(lines, 0, IllegalState, "empty version map");
+    SCHECK_EQ(PQnfields(res.get()), 3, IllegalState, "Unexpected column count");
+    MasterCatalogVersionMap result;
     std::string output;
-    for (const auto& it : catalog_version_map) {
+    for (int i = 0; i != lines; ++i) {
+      const auto db_oid = static_cast<Oid>(VERIFY_RESULT(GetInt32(res.get(), i, 0)));
+      const auto current_version = static_cast<Version>(VERIFY_RESULT(GetInt64(res.get(), i, 1)));
+      const auto last_breaking_version =
+          static_cast<Version>(VERIFY_RESULT(GetInt64(res.get(), i, 2)));
+      result.emplace(db_oid, CatalogVersion{current_version, last_breaking_version});
       if (!output.empty()) {
         output += ", ";
       }
-      output += it.second.ToString();
+      output += Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
     }
     LOG(INFO) << "Catalog version map: " << output;
-    return catalog_version_map;
+    return result;
   }
 
-  uint32 GetDatabaseOid(PGConn* conn, const string& db_name) {
-    auto res = CHECK_RESULT(conn->FetchFormat(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
-    auto lines = PQntuples(res.get());
-    CHECK_EQ(lines, 1) << db_name;
-    auto columns = PQnfields(res.get());
-    CHECK_EQ(columns, 1) << db_name;
-    uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), 0, 0)));
-    return db_oid;
+  static Result<Oid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
+    return VERIFY_RESULT(conn->FetchValue<int32>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
   }
 
-  void AssertSameCatalogVersion(const YsqlCatalogVersion& v1, const YsqlCatalogVersion& v2) {
-    ASSERT_EQ(v1.db_oid, v2.db_oid);
-    ASSERT_EQ(v1.current_version, v2.current_version);
-    ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
-  }
-
-  void WaitForCatalogVersionToPropagate() {
+  static void WaitForCatalogVersionToPropagate() {
     // This is an estimate that should exceed the tserver to master hearbeat interval.
     // However because it is an estimate, this function may return before the catalog version is
     // actually propagated.
@@ -2701,88 +3094,128 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
   // making RPCs to the tservers. Unallocated array slots should have value 0. Return a
   // ShmCatalogVersionMap which represents the contents of allocated slots in the shared
   // memory db catalog version array.
-  ShmCatalogVersionMap VerifyAndGetShmCatalogVersionMap() {
-    ShmCatalogVersionMap shm_catalog_version_map0;
+  Result<ShmCatalogVersionMap> GetShmCatalogVersionMap() {
+    constexpr auto kRpcTimeout = 30s;
+    ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      tserver::TServerSharedObject tserver_shared_object(
-          CHECK_RESULT(tserver::TServerSharedObject::Create()));
       auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
           cluster_->tablet_server(tablet_index));
       rpc::RpcController controller;
-      controller.set_timeout(30s);
-      tserver::GetSharedDataRequestPB req;
-      tserver::GetSharedDataResponsePB resp;
-      CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
-      CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object));
-      memcpy(pointer_cast<char*>(&*tserver_shared_object),
-             resp.data().c_str(),
-             resp.data().size());
+      controller.set_timeout(kRpcTimeout);
+      tserver::GetSharedDataRequestPB shared_data_req;
+      tserver::GetSharedDataResponsePB shared_data_resp;
+      RETURN_NOT_OK(proxy.GetSharedData(shared_data_req, &shared_data_resp, &controller));
+      const auto& data = shared_data_resp.data();
+      tserver::TServerSharedData tserver_shared_data;
+      SCHECK_EQ(
+          data.size(), sizeof(tserver_shared_data),
+          IllegalState, "Unexpected response size");
+      memcpy(pointer_cast<void*>(&tserver_shared_data), data.c_str(), data.size());
+      size_t initialized_slots_count = 0;
+      for (size_t i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
+        if (tserver_shared_data.ysql_db_catalog_version(i)) {
+          ++initialized_slots_count;
+        }
+      }
 
       // Get the tserver catalog version info from tserver at 'tablet_index'.
-      tserver::GetTserverCatalogVersionInfoRequestPB req2;
-      tserver::GetTserverCatalogVersionInfoResponsePB resp2;
+      tserver::GetTserverCatalogVersionInfoRequestPB catalog_version_req;
+      tserver::GetTserverCatalogVersionInfoResponsePB catalog_version_resp;
       controller.Reset();
-      controller.set_timeout(30s);
-      CHECK_OK(proxy.GetTserverCatalogVersionInfo(req2, &resp2, &controller));
-      CHECK(!resp2.has_error()) << "Response had an error: " << resp2.error().ShortDebugString();
-      ShmCatalogVersionMap shm_catalog_version_map;
-      std::unordered_set<int> allocated_slots;
-      for (int i = 0; i < resp2.entries_size(); i++) {
-        const auto& entry = resp2.entries(i);
-        CHECK(entry.has_db_oid());
-        CHECK(entry.has_shm_index());
+      controller.set_timeout(kRpcTimeout);
+      RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(
+          catalog_version_req, &catalog_version_resp, &controller));
+      if (catalog_version_resp.has_error()) {
+        return StatusFromPB(catalog_version_resp.error().status());
+      }
+      ShmCatalogVersionMap catalog_versions;
+      std::string output;
+      for (const auto& entry : catalog_version_resp.entries()) {
+        SCHECK(entry.has_db_oid() && entry.has_shm_index(), IllegalState, "missed fields");
         auto db_oid = entry.db_oid();
         auto shm_index = entry.shm_index();
-        allocated_slots.insert(shm_index);
-        uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(shm_index);
-        shm_catalog_version_map.insert(make_pair(db_oid, current_version));
-      }
-      // Log the shared memory catalog version map we just composed.
-      std::string output;
-      for (const auto& it : shm_catalog_version_map) {
+        const auto current_version = tserver_shared_data.ysql_db_catalog_version(shm_index);
+        SCHECK_NE(current_version, 0UL, IllegalState, "uninitialized version is not expected");
+        catalog_versions.emplace(db_oid, current_version);
         if (!output.empty()) {
           output += ", ";
         }
-        output += Format("($0, $1)", it.first, it.second);
+        output += Format("($0, $1)", db_oid, current_version);
       }
+      SCHECK_EQ(
+        initialized_slots_count, catalog_versions.size(),
+        IllegalState, "unexpected version count");
       LOG(INFO) << "Shm catalog version map at tserver " << tablet_index << ": " << output;
       if (tablet_index == 0) {
-        shm_catalog_version_map0.swap(shm_catalog_version_map);
+        result = std::move(catalog_versions);
       } else {
         // In stable state, all tservers should have the same catalog version map.
-        CHECK(shm_catalog_version_map0 == shm_catalog_version_map);
-      }
-      // Verify that all free slots have version 0.
-      for (int i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
-        if (!allocated_slots.count(i)) {
-          uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(i);
-          CHECK_EQ(current_version, 0);
-        }
+        SCHECK(result == catalog_versions, IllegalState, "catalog versions doesn't match");
       }
     }
-    return shm_catalog_version_map0;
+    return result;
   }
 
-  // In stable state, catalog version map read from the master should be in sync
-  // with the catalog version map read from the tserver shared memory.
-  void AssertCatalogVersionMapsInSync(
-    const MasterCatalogVersionMap& map1, const ShmCatalogVersionMap& map2) {
-    ASSERT_EQ(map1.size(), map2.size());
-    for (const auto& it1 : map1) {
-      auto db_oid = it1.first;
-      auto current_version = it1.second.current_version;
-      auto it2 = map2.find(db_oid);
-      ASSERT_NE(it2, map2.end());
-      ASSERT_EQ(it2->second, current_version);
+  struct CatalogVersionMatcher {
+    Status operator()(const CatalogVersion& lhs, const CatalogVersion& rhs) const {
+      SCHECK_EQ(
+          lhs.last_breaking_version, rhs.last_breaking_version, InvalidArgument,
+          "last_breaking_version doesn't match");
+      return (*this)(lhs.current_version, rhs.current_version);
     }
+
+    Status operator()(const CatalogVersion& lhs, const Version& rhs) const {
+      return (*this)(lhs.current_version, rhs);
+    }
+
+    Status operator()(const Version& lhs, const CatalogVersion& rhs) const {
+      return (*this)(lhs, rhs.current_version);
+    }
+
+    Status operator()(const Version& lhs, const Version& rhs) const {
+      SCHECK_EQ(lhs, rhs, InvalidArgument, "current_version doesn't match");
+      return Status::OK();
+    }
+  };
+
+  static Status CheckMatch(const CatalogVersion& lhs, const CatalogVersion& rhs) {
+    return CatalogVersionMatcher()(lhs, rhs);
+  }
+
+  template<class K, class V1, class V2, class Matcher>
+  static Status CheckMatch(
+      const std::unordered_map<K, V1>& lhs,
+      const std::unordered_map<K, V2>& rhs,
+      Matcher matcher) {
+    SCHECK_EQ(
+        lhs.size(), rhs.size(), InvalidArgument, "map size doesn't match");
+    for (const auto& entry : lhs) {
+      auto it = rhs.find(entry.first);
+      SCHECK(
+          it != rhs.end(), InvalidArgument,
+          Format("key '$0' is not found in second map", entry.first));
+      RETURN_NOT_OK_PREPEND(matcher(entry.second, it->second),
+                            Format("value for key '$0' doesn't match", entry.first));
+    }
+    return Status::OK();
+  }
+
+  template<class K, class V1, class V2>
+  static Status CheckMatch(
+      const std::unordered_map<K, V1>& lhs, const std::unordered_map<K, V2>& rhs) {
+    return CheckMatch(lhs, rhs, CatalogVersionMatcher());
+  }
+
+  static Result<PGConn> EnableCacheEventLog(Result<PGConn> connection) {
+    return VLOG_IS_ON(1) ? Execute(std::move(connection), "SET yb_debug_log_catcache_events = ON")
+                         : std::move(connection);
   }
 };
 
-TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
-          PgLibPqCatalogVersionTest) {
-  const string kYugabyteDatabase = "yugabyte";
-  const string kTestDatabase = "test_db";
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalogVersionTest) {
+  const auto kYugabyteDatabase = "yugabyte"s;
+  const auto kTestDatabase = "test_db"s;
 
   // Prepare the table pg_yb_catalog_version to have one row per database.
   // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
@@ -2810,26 +3243,19 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
   pg_ts = cluster_->tablet_server(0);
-  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
-  if (VLOG_IS_ON(1)) {
-    ASSERT_OK(conn_yugabyte.Execute("SET yb_debug_log_catcache_events = ON"));
-  }
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
 
   // Get the initial catalog version map.
-  auto map = GetMasterCatalogVersionMap(&conn_yugabyte);
-
-  // Get the initial shared memory and catalog version info from tserver.
-  auto shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
-  int initial_row_count = static_cast<int>(map.size());
-  ASSERT_GT(initial_row_count, 0);
-
-  // The initial version for every database is (1, 1).
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  constexpr CatalogVersion kInitialCatalogVersion{1, 1};
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  ASSERT_TRUE(expected_versions.find(yugabyte_db_oid) != expected_versions.end());
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
   }
+
+  ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   LOG(INFO) << "Create a new database";
   ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
@@ -2841,46 +3267,28 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // So the purpose of this wait is not for correctness but for us to see the catalog version
   // propagation from the test logs. Same is true for all the following calls to do this wait.
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count + 1);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // There should be a new row in pg_yb_catalog_version for the newly created database.
-  const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
-  auto it = map.find(new_db_oid);
-  ASSERT_NE(it, map.end());
-
-  // The initial version for the new database is (1, 1). All others also remain (1, 1).
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
-  }
+  const auto new_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kTestDatabase));
+  expected_versions[new_db_oid] = kInitialCatalogVersion;
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
-  auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
-  if (VLOG_IS_ON(1)) {
-    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
-  }
+  auto conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kTestDatabase)));
 
   LOG(INFO) << "Create a table";
   ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
   // Should still have the same number of rows in pg_yb_catalog_version.
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count + 1);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // The above create table statement does not cause catalog version to change.
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
-  }
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   LOG(INFO) << "Read the table from 'conn_test'";
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
@@ -2889,45 +3297,26 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
 
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count + 1);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    if (current_db_oid == new_db_oid) {
-      // We should have incremented the row for 'new_db_oid'.
-      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
-    } else {
-      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
-    }
-  }
+  expected_versions[new_db_oid] = {2, 1};
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
   ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
 
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count + 1);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    if (current_db_oid == new_db_oid) {
-      // We should have incremented the row for 'new_db_oid', including both the current version
-      // and the last breaking version because REVOKE is a DDL statement that causes a breaking
-      // catalog change.
-      AssertSameCatalogVersion(it.second, {current_db_oid, 3, 3});
-    } else {
-      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
-    }
-  }
+  // We should have incremented the row for 'new_db_oid', including both the current version
+  // and the last breaking version because REVOKE is a DDL statement that causes a breaking
+  // catalog change.
+  expected_versions[new_db_oid] = {3, 3};
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   // Even though 'conn_test' is still accessing 'test_db' through node at index 1, we
   // can still drop it from 'conn_yugabyte'.
@@ -2935,31 +3324,19 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
 
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
   // The row for 'new_db_oid' should be deleted.
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
   // was performed from 'conn_yugabyte'.
-  const uint32 yugabyte_db_oid = GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase);
-  for (const auto& it : map) {
-    const uint32 current_db_oid = it.first;
-    if (current_db_oid == yugabyte_db_oid) {
-      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
-    } else if (current_db_oid == new_db_oid) {
-      FAIL() << "Failed to delete the row for " << new_db_oid;
-    } else {
-      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
-    }
-  }
+  expected_versions.erase(new_db_oid);
+  expected_versions[yugabyte_db_oid] = {2, 1};
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
-  auto result = conn_test.Fetch("SELECT * FROM t");
-  auto status = ResultToStatus(result);
+  auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_STR_CONTAINS(status.ToString(), "Could not reconnect to database");
@@ -2970,41 +3347,31 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
 
   // Use a new connection to re-create the table.
-  auto new_conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
-  if (VLOG_IS_ON(1)) {
-    ASSERT_OK(new_conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
-  }
+  auto new_conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kTestDatabase)));
   LOG(INFO) << "Re-create the table";
   ASSERT_OK(new_conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
   WaitForCatalogVersionToPropagate();
-  LOG(INFO) << "Refresh the catalog version map";
-  map = GetMasterCatalogVersionMap(&conn_yugabyte);
-  ASSERT_EQ(map.size(), initial_row_count + 1);
-  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
-  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
-
   // Although we recreate the database using the same name, a new db OID is allocated.
-  const uint32 recreated_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
-  it = map.find(recreated_db_oid);
-  ASSERT_NE(it, map.end());
-  CHECK_GT(recreated_db_oid, new_db_oid);
+  const auto recreated_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kTestDatabase));
+  ASSERT_GT(recreated_db_oid, new_db_oid);
+  expected_versions[recreated_db_oid] = kInitialCatalogVersion;
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
+  ASSERT_OK(CheckMatch(expected_versions,
+                       ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   // The old connection will not become valid simply because we have recreated the
   // same database and table.
   LOG(INFO) << "Read the table from 'conn_test'";
-  result = conn_test.Fetch("SELECT * FROM t");
-  status = ResultToStatus(result);
+  status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_STR_CONTAINS(status.ToString(), "pgsql error XX000");
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
-  conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
-  if (VLOG_IS_ON(1)) {
-    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
-  }
+  conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kTestDatabase)));
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
 }
 

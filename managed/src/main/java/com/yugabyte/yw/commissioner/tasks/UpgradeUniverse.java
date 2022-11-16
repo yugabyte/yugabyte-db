@@ -798,7 +798,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           continue;
         }
 
-        List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+        List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
         if (node.isMaster) processTypes.add(ServerType.MASTER);
         if (node.isTserver) processTypes.add(ServerType.TSERVER);
 

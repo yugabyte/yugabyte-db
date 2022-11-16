@@ -1,10 +1,13 @@
 // Copyright (c) YugaByte, Inc.
-// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully (PLAT-5689)
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
+
+import {
+  MetricConsts,
+} from '../../metrics/constants';
 import { MetricsPanelOld } from '../../metrics';
-import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import {
   isNonEmptyObject,
@@ -16,10 +19,57 @@ import {
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { YUGABYTE_TITLE } from '../../../config';
 
+import './GraphPanel.scss';
+
+export const graphPanelTypes = {
+  universe: {
+    data: [
+      'ysql_ops',
+      'ycql_ops',
+      'yedis_ops',
+      'container',
+      'server',
+      'sql',
+      'cql',
+      'redis',
+      'tserver',
+      'master',
+      'master_advanced',
+      'lsmdb'
+    ],
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
+  },
+  customer: {
+    data: [
+      'ysql_ops',
+      'ycql_ops',
+      'yedis_ops',
+      'container',
+      'server',
+      'cql',
+      'redis',
+      'tserver',
+      'master',
+      'master_advanced',
+      'lsmdb'
+    ],
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
+  },
+  table: {
+    data: ['lsmdb_table', 'tserver_table'],
+    isOpen: [true, true]
+  }
+};
+
 export const panelTypes = {
   container: {
     title: 'Container',
-    metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
+    metrics: [
+      'container_cpu_usage',
+      'container_memory_usage',
+      'container_volume_stats',
+      'container_volume_usage_percent'
+    ]
   },
   server: {
     title: 'Node',
@@ -27,6 +77,8 @@ export const panelTypes = {
       'cpu_usage',
       'memory_usage',
       'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -128,7 +180,9 @@ export const panelTypes = {
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
-      'docdb_transaction_pool_cache'
+      'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   ysql_ops: {
@@ -169,23 +223,6 @@ export const panelTypes = {
       'redis_rpcs_per_sec_local',
       'redis_ops_latency_local',
       'redis_yb_rpc_connections'
-    ]
-  },
-
-  top_tables: {
-    title: 'Top tables',
-    metrics: [
-      'table_read_latency',
-      'table_read_rps',
-      'table_log_latency',
-      'table_log_ops_second',
-      'table_log_bytes_written',
-      'table_seek_next_prev',
-      'table_ops_in_flight',
-      'table_write_rejections',
-      'table_memory_rejections',
-      'table_compaction',
-      'table_block_cache_hit_miss'
     ]
   },
 
@@ -265,13 +302,13 @@ class GraphPanel extends Component {
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
-    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
+    const splitTopNodes = isNonEmptyString(nodeName) && nodeName === 'top' ? 1 : 0;
     const metricsWithSettings = panelTypes[type].metrics.map((metric) => {
       return {
         metric: metric,
         splitTopNodes: splitTopNodes
-      }
-    })
+      };
+    });
     const params = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
@@ -324,13 +361,12 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics, prometheusQueryEnabled },
+      graph: { metrics, prometheusQueryEnabled, loading },
       customer: { currentUser }
     } = this.props;
     const { nodeName } = this.props.graph.graphFilter;
-
     let panelData = <YBLoading />;
-
+    if (loading) panelData = <YBLoading />;
     if (
       insecureLoginToken &&
       !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')
@@ -346,7 +382,6 @@ class GraphPanel extends Component {
         and group metrics by panel type and filter out anything that is empty.
         */
         const width = this.props.width;
-
         panelData = panelTypes[type].metrics
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
@@ -363,37 +398,41 @@ class GraphPanel extends Component {
           })
           .filter(Boolean);
       }
-      const invalidPanelType =
-        selectedUniverse && isKubernetesUniverse(selectedUniverse)
-          ? panelTypes[type].title === 'Node'
-          : panelTypes[type].title === 'Container';
-      if (invalidPanelType) {
+      const isInvalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        ? panelTypes[type]?.title === 'Node'
+        : panelTypes[type]?.title === 'Container';
+
+      if (selectedUniverse !== MetricConsts.ALL && isInvalidPanelType) {
         return null;
       }
 
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
         if (nodeName.match('yb-tserver-') != null) {
-          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced') {
+          if (
+            panelTypes[type].title === 'Master Server' ||
+            panelTypes[type].title === 'Master Server Advanced'
+          ) {
             return null;
           }
         }
         //Hide empty panels for master pods.
         if (nodeName.match('yb-master-') != null) {
-          const skipList = ['Tablet Server',
+          const skipList = [
+            'Tablet Server',
             'YSQL Ops and Latency',
             'YCQL Ops and Latency',
             'YEDIS Ops and Latency',
             'YEDIS Advanced',
             'YSQL Advanced',
-            'YCQL Advanced']
+            'YCQL Advanced'
+          ];
           if (skipList.includes(panelTypes[type].title)) {
             return null;
           }
         }
       }
-
-      if (isEmptyArray(panelData)) {
+      if (isEmptyArray(panelData) || metrics[type]?.error) {
         panelData = 'Error receiving response from Graph Server';
       }
     }

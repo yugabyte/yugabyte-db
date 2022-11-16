@@ -10,7 +10,7 @@
     "fmt"
  )
 
- var defaultMinCPUs float64 = 4
+ var defaultMinCPUs int = 4
  var defaultMinMemoryLimit float64 = 15
  var defaultMinSSDStorage float64 = 50
 
@@ -95,5 +95,3 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
     }
 
  }
-
- 

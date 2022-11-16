@@ -22,8 +22,7 @@
 // for it.  However, the rest of the backend is only expected to use the
 // higher-level API provided by parser.h.
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_YQL_CQL_QL_PARSER_SCANNER_H_
-#define YB_YQL_CQL_QL_PARSER_SCANNER_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -268,5 +267,3 @@ class LexProcessor : public yyFlexLexer {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PARSER_SCANNER_H_

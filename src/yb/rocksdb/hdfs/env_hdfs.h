@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_HDFS_ENV_HDFS_H
-#define ROCKSDB_HDFS_ENV_HDFS_H
 
 #pragma once
 #include <stdio.h>
@@ -388,5 +386,3 @@ class HdfsEnv : public Env {
 } // namespace rocksdb
 
 #endif // USE_HDFS
-
-#endif // ROCKSDB_HDFS_ENV_HDFS_H

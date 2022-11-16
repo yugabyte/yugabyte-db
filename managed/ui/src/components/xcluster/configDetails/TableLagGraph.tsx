@@ -4,6 +4,7 @@ import React, { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+
 import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
@@ -13,23 +14,26 @@ import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicke
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
+  MetricTraceName,
   METRIC_TIME_RANGE_OPTIONS,
   REPLICATION_LAG_ALERT_NAME,
   TABLE_LAG_GRAPH_EMPTY_METRIC,
   TIME_RANGE_TYPE
 } from '../constants';
+
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  YBTable,
   StandardMetricTimeRangeOption,
   Metrics
 } from '../XClusterTypes';
+import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './TableLagGraph.module.scss';
 
-const METRIC_TRACE_NAME = 'Committed Lag (Milliseconds)';
-const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60000;
+const COMMITTED_LAG_METRIC_TRACE_NAME =
+  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
+const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60_000;
 const GRAPH_WIDTH = 850;
 const GRAPH_HEIGHT = 600;
 
@@ -50,7 +54,6 @@ interface Props {
 
 export const TableLagGraph: FC<Props> = ({
   tableDetails: { tableName, tableUUID },
-  replicationUUID,
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -123,26 +126,27 @@ export const TableLagGraph: FC<Props> = ({
    * If not found, then we just show no data.
    */
   const setTracesToPlot = (graphMetric: Metrics<'tserver_async_replication_lag_micros'>) => {
-    const committedLagData = graphMetric.tserver_async_replication_lag_micros.data.find(
-      (trace) => trace.name === METRIC_TRACE_NAME
-    );
-    if (typeof maxAcceptableLag === 'number' && committedLagData) {
+    const metric = graphMetric.tserver_async_replication_lag_micros;
+    const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
+    const trace = metric.data.find((trace) => trace.name === traceAlias);
+
+    if (typeof maxAcceptableLag === 'number' && trace) {
       graphMetric.tserver_async_replication_lag_micros.data = [
-        committedLagData,
+        trace,
         {
-          name: 'Max Acceptable Lag (Milliseconds)',
-          instanceName: committedLagData.instanceName,
+          name: 'Max Acceptable Lag',
+          instanceName: trace.instanceName,
           type: 'scatter',
           line: {
             dash: 'dot',
             width: 4
           },
-          x: committedLagData.x,
-          y: Array(committedLagData.y.length).fill(maxAcceptableLag)
+          x: trace.x,
+          y: Array(trace.y.length).fill(maxAcceptableLag)
         }
       ];
-    } else if (committedLagData) {
-      graphMetric.tserver_async_replication_lag_micros.data = [committedLagData];
+    } else if (trace) {
+      graphMetric.tserver_async_replication_lag_micros.data = [trace];
     } else {
       graphMetric.tserver_async_replication_lag_micros.data = [];
     }

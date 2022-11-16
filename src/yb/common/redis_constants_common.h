@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_REDIS_CONSTANTS_COMMON_H
-#define YB_COMMON_REDIS_CONSTANTS_COMMON_H
+#pragma once
 
 namespace yb {
 namespace common {
@@ -22,5 +21,3 @@ static constexpr const char* const kRedisKeyspaceName = "system_redis";
 
 }  // namespace common
 }  // namespace yb
-
-#endif // YB_COMMON_REDIS_CONSTANTS_COMMON_H

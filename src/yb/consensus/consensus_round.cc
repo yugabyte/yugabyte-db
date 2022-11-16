@@ -12,7 +12,7 @@
 //
 #include "yb/consensus/consensus_round.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

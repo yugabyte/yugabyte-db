@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <optional>
 #include <thread>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -1261,13 +1262,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
   }
 
-  static Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
-    if (connection.ok()) {
-      RETURN_NOT_OK((*connection).Execute(query));
-    }
-    return connection;
-  }
-
   static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
@@ -1318,12 +1312,17 @@ class PgMiniTestTxnHelperSerializable
     : public PgMiniTestTxnHelper<IsolationLevel::SERIALIZABLE_ISOLATION> {
  protected:
   // Check two SERIALIZABLE txns has no conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2, 3)"));
+
+    if (!enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO false"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO false"));
+    }
 
     ASSERT_OK(StartTxn(&conn));
     ASSERT_OK(conn.Execute("UPDATE t SET v1 = 20 WHERE k = 1"));
@@ -1353,9 +1352,14 @@ class PgMiniTestTxnHelperSnapshot
     : public PgMiniTestTxnHelper<IsolationLevel::SNAPSHOT_ISOLATION> {
  protected:
   // Check two SNAPSHOT txns has a conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+    if (!enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO false"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO false"));
+    }
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2)"));
@@ -1433,15 +1437,27 @@ TEST_F_EX(PgMiniTest,
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializable),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
           PgMiniTestTxnHelperSerializable) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
           PgMiniTestTxnHelperSnapshot) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          PgMiniTestTxnHelperSerializable) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          PgMiniTestTxnHelperSnapshot) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
@@ -1492,7 +1508,6 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
     for (size_t i = 0; i < thread_count; ++i) {
       thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &latch] {
         auto thread_conn = ASSERT_RESULT(Connect());
-        ASSERT_OK(thread_conn.Execute("SET yb_enable_expression_pushdown TO true"));
         latch.CountDown();
         latch.Wait();
         for (size_t j = 0; j < increment_per_thread; ++j) {
@@ -2066,7 +2081,7 @@ class PgMiniBackwardIndexScanTest : public PgMiniSingleTServerTest {
       )#", day));
     }
 
-    boost::optional<PGConn> uncommitted_intents_conn;
+    std::optional<PGConn> uncommitted_intents_conn;
     if (uncommitted_intents) {
       uncommitted_intents_conn = ASSERT_RESULT(Connect());
       ASSERT_OK(uncommitted_intents_conn->Execute("BEGIN"));
@@ -2835,9 +2850,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompaction)) {
   VerifyFileSizeAfterCompaction(&conn, 3 /* num_tables */);
 }
 
-// TODO: enable this test when issue #12898 is resolved.
 // Ensure that after restart, there is no data loss in compaction.
-TEST_F(PgMiniTest, YB_DISABLE_TEST(TablegroupCompactionWithRestart)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
   const auto num_tables = 3;
@@ -2891,7 +2905,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
 
 // Use special mode when non leader master times out all rpcs.
 // Then step down master leader and perform backup.
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(NonRespondingMaster),
           PgMiniMasterFailoverTest) {
   FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   tools::TmpDirProvider tmp_dir;

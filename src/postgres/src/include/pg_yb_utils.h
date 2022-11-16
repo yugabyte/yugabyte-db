@@ -61,16 +61,6 @@
  */
 extern uint64_t yb_catalog_cache_version;
 
-/* Stores the catalog version info that is fetched from the local tserver. */
-extern YbTserverCatalogInfo yb_tserver_catalog_info;
-
-/*
- * Stores the shared memory array db_catalog_versions_ index of the slot
- * allocated for the MyDatabaseId, or -1 if no slot has been allocated for
- * MyDatabaseId.
- */
-extern int yb_my_database_id_shm_index;
-
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
@@ -507,7 +497,10 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
+/* Get a string representation of a bitmapset (for debug purposes only!) */
+extern const char* YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
@@ -669,6 +662,8 @@ bool YBCIsRegionLocal(Relation rel);
  * for all range-partitioned tables with more than one tablet.
  * Return an empty string when duplicate split points exist
  * after tablet splitting.
+ * Return an emptry string when a NULL value is present in split points
+ * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 
@@ -687,4 +682,9 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
  * true, then prevent any server file writes/reads/execution.
  */
 extern void YBCheckServerAccessIsAllowed();
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+
+uint64_t YbGetSharedCatalogVersion();
+
 #endif /* PG_YB_UTILS_H */

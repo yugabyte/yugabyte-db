@@ -15,8 +15,7 @@
 // Structure definitions for column descriptor of a table.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
-#define YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
+#pragma once
 
 #include "yb/client/schema.h"
 
@@ -117,5 +116,3 @@ class ColumnDesc {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_

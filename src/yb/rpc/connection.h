@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CONNECTION_H_
-#define YB_RPC_CONNECTION_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -54,7 +53,7 @@
 #include <boost/version.hpp>
 
 #include <ev++.h>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -168,7 +167,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   Reactor* reactor() const { return reactor_; }
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req,
-                        RpcConnectionPB* resp);
+                RpcConnectionPB* resp);
 
   // Do appropriate actions after adding outbound call.
   void OutboundQueued();
@@ -284,5 +283,3 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_CONNECTION_H_

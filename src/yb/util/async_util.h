@@ -30,8 +30,7 @@
 // under the License.
 //
 // Utility functions which are handy when doing async/callback-based programming.
-#ifndef YB_UTIL_ASYNC_UTIL_H
-#define YB_UTIL_ASYNC_UTIL_H
+#pragma once
 
 #include <pthread.h>
 
@@ -132,4 +131,3 @@ bool IsReady(const std::future<T>& f) {
 }
 
 } // namespace yb
-#endif /* YB_UTIL_ASYNC_UTIL_H */

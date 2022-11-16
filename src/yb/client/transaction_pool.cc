@@ -15,7 +15,7 @@
 
 #include <deque>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -27,7 +27,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
@@ -35,14 +34,14 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(transaction_pool_cleanup_interval_ms, 5000,
+DEFINE_UNKNOWN_int32(transaction_pool_cleanup_interval_ms, 5000,
              "How frequently we should cleanup transaction pool");
 
-DEFINE_double(transaction_pool_reserve_factor, 2,
+DEFINE_UNKNOWN_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
-DEFINE_bool(force_global_transactions, false,
+DEFINE_UNKNOWN_bool(force_global_transactions, false,
             "Force all transactions to be global transactions");
 
 DEFINE_test_flag(bool, track_last_transaction, false,

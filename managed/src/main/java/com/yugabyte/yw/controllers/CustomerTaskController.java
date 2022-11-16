@@ -4,8 +4,11 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
+import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -14,7 +17,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Audit;
@@ -37,6 +39,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,6 +119,8 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
+      String correlationId = task.getCorrelationId();
+      if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getTaskDetails();
       if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
@@ -245,7 +250,7 @@ public class CustomerTaskController extends AuthenticatedController {
     TaskType taskType = taskInfo.getTaskType();
     LOG.info(
         "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
-    if (!Commissioner.isTaskRetryable(taskType)) {
+    if (!commissioner.isTaskRetryable(taskType)) {
       String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
@@ -264,12 +269,17 @@ public class CustomerTaskController extends AuthenticatedController {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
+      case RebootNodeInUniverse:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
-        int expectedUniverseVersion = oldTaskParams.get("expectedUniverseVersion").asInt();
         // Build node task params for node actions.
         NodeTaskParams nodeTaskParams = new NodeTaskParams();
+        if (taskType == TaskType.RebootNodeInUniverse) {
+          nodeTaskParams = new RebootNodeInUniverse.Params();
+          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
+              oldTaskParams.get("isHardReboot").asBoolean();
+        }
         nodeTaskParams.nodeName = nodeName;
         nodeTaskParams.universeUUID = universeUUID;
         nodeTaskParams.expectedUniverseVersion = -1;

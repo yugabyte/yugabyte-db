@@ -12,8 +12,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_SPLITTER_H
-#define YB_TABLET_TABLET_SPLITTER_H
+#pragma once
 
 #include <type_traits>
 
@@ -52,5 +51,3 @@ class TabletSplitter {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif /* YB_TABLET_TABLET_SPLITTER_H */

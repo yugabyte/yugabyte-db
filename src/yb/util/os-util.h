@@ -34,8 +34,7 @@
 // - Fixes for cpplint.
 // - Fixed parsing when thread names have spaces.
 
-#ifndef YB_UTIL_OS_UTIL_H
-#define YB_UTIL_OS_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -75,5 +74,3 @@ Status GetThreadStats(int64_t tid, ThreadStats* stats);
 bool RunShellProcess(const std::string& cmd, std::string* msg);
 
 } // namespace yb
-
-#endif /* YB_UTIL_OS_UTIL_H */

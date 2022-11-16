@@ -365,6 +365,11 @@ Status PGConn::RollbackTransaction() {
 }
 
 Result<bool> PGConn::HasIndexScan(const std::string& query) {
+  return VERIFY_RESULT(HasScanType(query, "Index")) ||
+         VERIFY_RESULT(HasScanType(query, "Index Only"));
+}
+
+Result<bool> PGConn::HasScanType(const std::string& query, const std::string expected_scan_type) {
   constexpr int kExpectedColumns = 1;
   auto res = VERIFY_RESULT(FetchFormat("EXPLAIN $0", query));
 
@@ -378,15 +383,12 @@ Result<bool> PGConn::HasIndexScan(const std::string& query) {
 
   for (int line = 0; line < PQntuples(res.get()); ++line) {
     std::string value = VERIFY_RESULT(GetString(res.get(), line, 0));
-    if (value.find("Index Scan") != std::string::npos) {
-      return true;
-    } else if (value.find("Index Only Scan") != std::string::npos) {
+    if (value.find(Format("$0 Scan", expected_scan_type)) != std::string::npos) {
       return true;
     }
   }
   return false;
 }
-
 
 Status PGConn::CopyBegin(const std::string& command) {
   auto result = VERIFY_RESULT(CheckResult(
@@ -630,6 +632,13 @@ Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
     return PGConn::Connect(conn_str_, deadline, simple_query_protocol, conn_str_for_log_);
   }
   return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
+}
+
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
+  if (connection.ok()) {
+    RETURN_NOT_OK((*connection).Execute(query));
+  }
+  return connection;
 }
 
 } // namespace pgwrapper

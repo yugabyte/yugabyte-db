@@ -56,6 +56,7 @@ func getBytesFromString(sizeString string) (int64, error) {
     return byteVal, nil
 }
 
+// TODO: replace this with a call to a json endpoint so we don't have to parse html
 func parseTablesFromHtml(body string) ([]Table, error) {
     tables := []Table{}
     // Regex for getting table of User tables and Index tables from html

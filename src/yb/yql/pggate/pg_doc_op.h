@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
-#define YB_YQL_PGGATE_PG_DOC_OP_H_
+#pragma once
 
 #include <list>
 #include <memory>
@@ -639,5 +638,3 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_DOC_OP_H_

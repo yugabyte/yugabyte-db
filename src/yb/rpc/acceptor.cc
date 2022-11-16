@@ -44,7 +44,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest_prod.h>
 
@@ -53,7 +52,7 @@
 
 #include "yb/rpc/reactor.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
@@ -69,7 +68,7 @@ METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       yb::MetricUnit::kConnections,
                       "Number of incoming TCP connections made to the RPC server");
 
-DEFINE_int32(rpc_acceptor_listen_backlog, 128,
+DEFINE_UNKNOWN_int32(rpc_acceptor_listen_backlog, 128,
              "Socket backlog parameter used when listening for RPC connections. "
              "This defines the maximum length to which the queue of pending "
              "TCP connections inbound to the RPC server may grow. If a connection "

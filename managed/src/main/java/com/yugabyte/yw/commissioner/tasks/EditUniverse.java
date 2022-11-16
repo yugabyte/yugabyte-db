@@ -362,28 +362,39 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
-    // Swap the blacklisted tservers.
-    // Idempotent as same set of servers are either blacklisted or removed.
-    createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
+      // Swap the blacklisted tservers.
+      // Idempotent as same set of servers are either blacklisted or removed.
+      createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
 
-    // Update placement info on master leader.
-    createPlacementInfoTask(null /* additional blacklist */)
-        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+    if (!removeMasters.isEmpty() || !newMasters.isEmpty()) {
+      // Update placement info on master leader.
+      createPlacementInfoTask(null /* additional blacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+    }
 
-    // Update the swamper target file.
-    createSwamperTargetUpdateTask(false /* removeFile */);
+    if (!newTservers.isEmpty()
+        || !newMasters.isEmpty()
+        || !tserversToBeRemoved.isEmpty()
+        || !removeMasters.isEmpty()
+        || !nodesToBeRemoved.isEmpty()) {
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+    }
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     } else {
       if (!tserversToBeRemoved.isEmpty()) {
-        String errMsg = "Universe shrink should have been handled using node decommision.";
+        String errMsg = "Universe shrink should have been handled using node decommission.";
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")
+          && !newTservers.isEmpty()) {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
@@ -481,9 +492,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 
-    // Clear blacklisted tservers.
-    createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    if (!tserversToBeRemoved.isEmpty()) {
+      // Clear blacklisted tservers.
+      createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
   }
 
   /**

@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
@@ -37,6 +38,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
@@ -252,7 +254,17 @@ public class Scheduler {
     }
 
     for (Backup backup : backupsToDelete) {
-      this.runDeleteBackupTask(customer, backup);
+      if (BackupUtil.checkIfStorageConfigExists(backup)) {
+        this.runDeleteBackupTask(customer, backup);
+      } else {
+        log.error(
+            "Cannot delete expired backup {} as storage config {} does not exists",
+            backup.backupUUID,
+            backup.storageConfigUUID);
+        if (!backup.state.equals(BackupState.FailedToDelete)) {
+          backup.transitionState(BackupState.FailedToDelete);
+        }
+      }
     }
   }
 
@@ -260,24 +272,32 @@ public class Scheduler {
       UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
     List<Backup> backupsToDelete = new ArrayList<Backup>();
     int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
-        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
+        totalBackupsCount =
+            Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.maybeGet(scheduleUUID).orElse(null);
+    if (schedule != null && schedule.getTaskParams().has("minNumBackupsToRetain")) {
       minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
-
+    backupsToDelete.addAll(
+        expiredBackups
+            .stream()
+            .filter(backup -> !backup.state.equals(BackupState.Completed))
+            .collect(Collectors.toList()));
+    expiredBackups.removeIf(backup -> !backup.state.equals(BackupState.Completed));
     int numBackupsToDelete =
         Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
-    Collections.sort(
-        expiredBackups,
-        new Comparator<Backup>() {
-          @Override
-          public int compare(Backup b1, Backup b2) {
-            return b1.getCreateTime().compareTo(b2.getCreateTime());
-          }
-        });
-    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
-      backupsToDelete.add(expiredBackups.get(i));
+    if (numBackupsToDelete > 0) {
+      Collections.sort(
+          expiredBackups,
+          new Comparator<Backup>() {
+            @Override
+            public int compare(Backup b1, Backup b2) {
+              return b1.getCreateTime().compareTo(b2.getCreateTime());
+            }
+          });
+      for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+        backupsToDelete.add(expiredBackups.get(i));
+      }
     }
     return backupsToDelete;
   }

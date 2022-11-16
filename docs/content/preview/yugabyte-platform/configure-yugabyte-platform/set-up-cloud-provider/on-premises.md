@@ -17,14 +17,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -38,33 +38,33 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link active">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+<br>You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -140,7 +140,7 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
-<br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
+Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
 
 ### Provision nodes manually
 
@@ -258,7 +258,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Copy the SSH public key to each DB node.
 This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
-   
+
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
@@ -299,9 +299,9 @@ This public key should correspond to the private key entered into the YugabyteDB
     sudo yum install openssl
     sudo yum install rsync
     ```
-    
 
-For airgapped environments, make sure your Yum repository mirror contains these packages.    
+
+For airgapped environments, make sure your Yum repository mirror contains these packages.
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
     ```sh
@@ -383,27 +383,27 @@ On each node, perform the following as a user with sudo access:
     ```sh
     sudo vi /etc/systemd/system/node_exporter.service
     ```
-
+    
     
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
-
+        
+    
     ```conf
       [Unit]
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
       After=network.target
-
+    
       [Install]
       WantedBy=multi-user.target
-
+    
       [Service]
       Type=simple
-
+    
       User=prometheus
       Group=prometheus
-      
-      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     
+      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     ```
     
 1. Exit from vi, and continue, as follows:
@@ -591,7 +591,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   
+
 
    `yb-tserver.service`
 
@@ -773,7 +773,7 @@ You can remove YugabyteDB components and configuration from the database server 
   ```
 
   This removes all YugabyteDB code and settings from the node, removing it from the Universe.
-  
+
   If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.

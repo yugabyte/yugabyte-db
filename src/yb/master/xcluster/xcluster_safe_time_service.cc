@@ -23,7 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/client/schema.h"
@@ -33,14 +33,12 @@ using std::min;
 
 using namespace std::chrono_literals;
 
-DEFINE_int32(xcluster_safe_time_table_num_tablets, 1,
+DEFINE_UNKNOWN_int32(xcluster_safe_time_table_num_tablets, 1,
     "Number of tablets to use when creating the xcluster safe time table. "
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
-
-DECLARE_bool(xcluster_consistent_reads);
 
 // TODO(jhe) METRIC_DEFINE for max/cur_safe_time
 
@@ -115,11 +113,6 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   }
 
   if (shutdown_) {
-    return;
-  }
-
-  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_consistent_reads flag";
     return;
   }
 
@@ -434,7 +427,7 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     producer_tablet_namespace_map_.clear();
 
     auto consumer_registry = VERIFY_RESULT(catalog_manager_->GetConsumerRegistry());
-    if (consumer_registry) {
+    if (consumer_registry && consumer_registry->role() != cdc::XClusterRole::ACTIVE) {
       const auto& producer_map = consumer_registry->producer_map();
       for (const auto& cluster_entry : producer_map) {
         if (cluster_entry.second.disable_stream()) {

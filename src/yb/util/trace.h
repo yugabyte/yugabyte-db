@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_TRACE_H
-#define YB_UTIL_TRACE_H
+#pragma once
 
 #include <atomic>
 #include <functional>
@@ -38,7 +37,7 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -308,5 +307,3 @@ class PlainTrace {
 };
 
 } // namespace yb
-
-#endif /* YB_UTIL_TRACE_H */

@@ -60,8 +60,6 @@ static void
 YbPgMemUpdateMax()
 {
 	const Size snapshot_mem = YbSnapshotMemory();
-	PgMemTracker.backend_max_mem_bytes =
-		Max(PgMemTracker.backend_max_mem_bytes, snapshot_mem);
 	PgMemTracker.stmt_max_mem_bytes =
 		Max(PgMemTracker.stmt_max_mem_bytes,
 			snapshot_mem - PgMemTracker.stmt_max_mem_base_bytes);

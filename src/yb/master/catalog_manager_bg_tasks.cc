@@ -41,7 +41,7 @@
 #include "yb/master/tablet_split_manager.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -49,16 +49,14 @@
 using std::shared_ptr;
 using std::vector;
 
-DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
-             "Amount of time the catalog manager background task thread waits "
-             "between runs");
-TAG_FLAG(catalog_manager_bg_task_wait_ms, runtime);
+DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
+    "Amount of time the catalog manager background task thread waits between runs");
 
-DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+DEFINE_UNKNOWN_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
              "Amount of time to wait between becoming master leader and enabling the load "
              "balancer.");
 
-DEFINE_bool(sys_catalog_respect_affinity_task, true,
+DEFINE_UNKNOWN_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 

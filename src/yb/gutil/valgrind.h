@@ -85,8 +85,7 @@
    problem, you can compile with the NVALGRIND symbol defined (gcc
    -DNVALGRIND) so that client requests are not even compiled in.  */
 
-#ifndef __VALGRIND_H
-#define __VALGRIND_H
+#pragma once
 
 #include <stdarg.h>
 
@@ -3935,5 +3934,3 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 #undef PLAT_ppc64_linux
 #undef PLAT_ppc32_aix5
 #undef PLAT_ppc64_aix5
-
-#endif   /* __VALGRIND_H */

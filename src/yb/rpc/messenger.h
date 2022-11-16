@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_MESSENGER_H_
-#define YB_RPC_MESSENGER_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -229,7 +228,7 @@ class Messenger : public ProxyContext {
 
   // Dump the current RPCs into the given protobuf.
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
-                                 DumpRunningRpcsResponsePB* resp);
+                         DumpRunningRpcsResponsePB* resp);
 
   void RemoveScheduledTask(ScheduledTaskId task_id);
 
@@ -396,5 +395,3 @@ class Messenger : public ProxyContext {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_MESSENGER_H_

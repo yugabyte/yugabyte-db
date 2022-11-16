@@ -17,11 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H
-#define YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include <vector>
 #include <string>
 
@@ -114,6 +111,3 @@ class CompactedDBImpl : public DBImpl {
   void operator=(const CompactedDBImpl&);
 };
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H

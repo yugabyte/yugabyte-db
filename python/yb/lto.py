@@ -29,6 +29,7 @@ from yb.common_util import (
     read_file,
     write_file,
     shlex_join,
+    create_symlink,
 )
 from yb.build_paths import BuildPaths
 
@@ -365,6 +366,33 @@ class LinkHelper:
             logging.info("File does ont exist, not running ldd: %s", shared_library_path)
             return
 
+        with open(shared_library_path, 'rb') as shared_library_file:
+            first_bytes = shared_library_file.read(6)
+        if first_bytes == b'INPUT(':
+            # Deal with the following contents of the "shared library" file libc++.so.
+            #
+            # INPUT(libc++.so.1 -lc++abi)
+            #
+            # We will recurse into each of the mentioned files.
+            with open(shared_library_path) as shared_library_text_file:
+                shared_library_str = shared_library_text_file.read().strip()
+            logging.info(f"Parsing text content of {shared_library_path}: {shared_library_str}")
+            assert (shared_library_str.startswith('INPUT(') and
+                    shared_library_str.endswith(')') and
+                    '\n' not in shared_library_str), \
+                f'Unexpected text contents of {shared_library_path}: {shared_library_str}'
+            sub_components = shared_library_str[6:-1].split()
+            shared_library_dir = os.path.dirname(shared_library_path)
+            for sub_component in sub_components:
+                if sub_component.startswith('-l'):
+                    sub_component_file_name = sub_component[2:] + '.so'
+                else:
+                    sub_component_file_name = sub_component
+                sub_path = os.path.join(shared_library_dir, sub_component_file_name)
+                logging.info(f"Recursing into shared library path {sub_path}")
+                self.add_shared_library_dependencies(sub_path)
+            return
+
         ldd_output = subprocess.check_output(['ldd', shared_library_path]).decode('utf-8')
         for line in ldd_output.split('\n'):
             line = line.strip()
@@ -591,7 +619,8 @@ def link_whole_program(
         run_linker: bool,
         lto_output_suffix: Optional[str],
         lto_output_path: Optional[str],
-        lto_type: str) -> None:
+        lto_type: str,
+        symlink_as: List[str]) -> None:
     if os.environ.get('YB_SKIP_FINAL_LTO_LINK') == '1':
         raise ValueError('YB_SKIP_FINAL_LTO_LINK is set, the final LTO linking step should not '
                          'have been invoked. Perhaps yb_build.sh should be invoked with '
@@ -630,3 +659,9 @@ def link_whole_program(
         if not run_linker:
             return
         link_helper.run_linker()
+
+    for symlink_name in symlink_as:
+        create_symlink(
+            os.path.basename(link_helper.final_output_name),
+            os.path.join(os.path.dirname(link_helper.final_output_name),
+                         symlink_name))

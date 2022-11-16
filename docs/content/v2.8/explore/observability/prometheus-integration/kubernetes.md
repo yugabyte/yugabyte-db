@@ -14,29 +14,29 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/macos" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+    <a href="../macos/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/linux" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/observability/prometheus-integration/docker" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 <!--
   <li >
     <a href="/preview/explore/observability-kubernetes" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

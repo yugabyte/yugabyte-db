@@ -17,8 +17,7 @@
 // (BISON) will save the location values in the tree nodes.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PARSER_LOCATION_H_
-#define YB_YQL_CQL_QL_PARSER_LOCATION_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/parser/location.hh"
@@ -71,5 +70,3 @@ class Location : public YBLocation {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PARSER_LOCATION_H_

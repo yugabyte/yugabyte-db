@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_HYBRID_CLOCK_H_
-#define YB_SERVER_HYBRID_CLOCK_H_
+#pragma once
 
 #include <atomic>
 #include <string>
@@ -172,5 +171,3 @@ class HybridClock : public Clock {
 
 }  // namespace server
 }  // namespace yb
-
-#endif /* YB_SERVER_HYBRID_CLOCK_H_ */

@@ -33,8 +33,7 @@
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
-#ifndef YB_UTIL_SLICE_H_
-#define YB_UTIL_SLICE_H_
+#pragma once
 
 #include <compare>
 #include <string>
@@ -409,5 +408,3 @@ typedef yb::Slice Slice;
 typedef yb::SliceParts SliceParts;
 
 }  // namespace rocksdb
-
-#endif // YB_UTIL_SLICE_H_

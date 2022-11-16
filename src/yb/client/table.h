@@ -11,10 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TABLE_H
-#define YB_CLIENT_TABLE_H
+#pragma once
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
 
@@ -170,5 +169,3 @@ PartitionKeyPtr FindPartitionStart(
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TABLE_H

@@ -17,7 +17,7 @@ type: docs
 
   <li >
     <a href="../yugabyte-jdbc-reference/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
@@ -89,7 +89,7 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL JDBC driver
+Learn how to perform common tasks required for Java application development using the YugabyteDB JDBC driver.
 
 {{< note title="Note">}}
 

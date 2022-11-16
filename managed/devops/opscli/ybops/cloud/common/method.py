@@ -280,7 +280,9 @@ class AbstractInstancesMethod(AbstractMethod):
     # Find the open ssh port and update the dictionary.
     def update_open_ssh_port(self, args):
         ssh_port_updated = False
-        ssh_ports = [self.extra_vars["ssh_port"], args.custom_ssh_port]
+        ssh_ports = [self.extra_vars["ssh_port"]]
+        if args.custom_ssh_port and int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
+            ssh_ports.append(int(args.custom_ssh_port))
         ssh_port = self.cloud.wait_for_ssh_ports(
             self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
         if self.extra_vars["ssh_port"] != ssh_port:
@@ -730,7 +732,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         else:
             raise YBOpsRecoverableError("Could not ssh into node {}:{} using username {}"
                                         .format(self.extra_vars["ssh_host"],
-                                        self.extra_vars["ssh_port"], self.extra_vars["ssh_user"]))
+                                                self.extra_vars["ssh_port"],
+                                                self.extra_vars["ssh_user"]))
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
@@ -1038,6 +1041,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--http_remote_download', action="store_true")
         self.parser.add_argument('--http_package_checksum', default='')
         self.parser.add_argument('--update_packages', action="store_true", default=False)
+        self.parser.add_argument('--install_third_party_packages',
+                                 action="store_true",
+                                 default=False)
+        self.parser.add_argument("--local_package_path",
+                                 required=False,
+                                 help="Path to local directory with the third-party tarball.")
         self.parser.add_argument('--ssh_user_update_packages')
         # Development flag for itests.
         self.parser.add_argument('--itest_s3_package_path',
@@ -1242,6 +1251,16 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                                     f"{ybc_package_path} to {args.search_pattern}")
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         ybc_package_path, args.search_pattern, time.time() - start_time))
+
+        if args.install_third_party_packages:
+            if args.local_package_path:
+                self.extra_vars.update({"local_package_path": args.local_package_path})
+            else:
+                logging.warn("Local Directory Tarball Path not specified skipping")
+                return
+            self.cloud.setup_ansible(args).run(
+                "install-third-party.yml", self.extra_vars, host_info)
+            return
 
         # Update packages as "sudo" user as part of software upgrade.
         if args.update_packages:
@@ -1669,31 +1688,6 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         else:
             extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
             self.cloud.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
-
-
-class HardRebootInstancesMethod(AbstractInstancesMethod):
-    def __init__(self, base_command):
-        super(HardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
-
-    def add_extra_args(self):
-        super().add_extra_args()
-
-    def callback(self, args):
-        instance = self.cloud.get_host_info(args)
-        if not instance:
-            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
-                args.search_pattern))
-        host_info = vars(args)
-        host_info.update(instance)
-        if not host_info['is_running']:
-            raise YBOpsRuntimeError(
-                "Host must be running to be hard rebooted, currently in '{}' state"
-                .format(host_info['instance_state']))
-        logging.info("Hard rebooting instance {}".format(args.search_pattern))
-
-        self.cloud.stop_instance(host_info)
-        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
 
 
 class RunHooks(AbstractInstancesMethod):

@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.SwamperHelper.getScrapeIntervalSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -49,7 +51,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.libs.Json;
 
 @Singleton
@@ -77,7 +78,7 @@ public class MetricQueryHelper {
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
-  private final play.Configuration appConfig;
+  private final Config appConfig;
 
   private final ApiHelper apiHelper;
 
@@ -87,7 +88,7 @@ public class MetricQueryHelper {
 
   @Inject
   public MetricQueryHelper(
-      Configuration appConfig,
+      Config appConfig,
       ApiHelper apiHelper,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
@@ -302,6 +303,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
+    long scrapeInterval = getScrapeIntervalSeconds(appConfig);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -313,7 +315,8 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    params.put("range", Long.toString(timeDifference));
+    long range = Math.max(scrapeInterval * 2, timeDifference);
+    params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
@@ -321,7 +324,7 @@ public class MetricQueryHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
       }
-      int resolution = Math.round(timeDifference / STEP_SIZE);
+      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {

@@ -11,13 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_INITIALIZATION_H
-#define YB_MASTER_SYS_CATALOG_INITIALIZATION_H
+#pragma once
 
 #include <vector>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/master/master_fwd.h"
 
@@ -29,7 +28,6 @@
 #include "yb/util/status_fwd.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(use_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 
@@ -71,5 +69,3 @@ Status MakeYsqlSysCatalogTablesTransactional(
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_SYS_CATALOG_INITIALIZATION_H

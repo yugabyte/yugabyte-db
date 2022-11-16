@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_MERGE_OPERATOR_H
-#define ROCKSDB_INCLUDE_ROCKSDB_MERGE_OPERATOR_H
+#pragma once
 
 #include <deque>
 #include <memory>
@@ -199,5 +198,3 @@ class AssociativeMergeOperator : public MergeOperator {
 };
 
 }  // namespace rocksdb
-
-#endif // ROCKSDB_INCLUDE_ROCKSDB_MERGE_OPERATOR_H

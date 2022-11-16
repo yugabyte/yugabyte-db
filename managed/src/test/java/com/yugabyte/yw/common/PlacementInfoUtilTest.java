@@ -36,7 +36,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.PlacementIndexes;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.utils.Pair;
@@ -1711,12 +1711,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
     String nodePrefix = "demo-universe";
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     // New naming style
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
     String masterAddressFormat =
         "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
     String expectedMasterAddresses =
@@ -1730,7 +1729,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old naming style
     masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
     masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
     expectedMasterAddresses =
         String.format(masterAddressFormat, nodePrefix, az1.code)
@@ -1752,11 +1751,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
     assertEquals(
         "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
         masterAddresses);
@@ -3251,7 +3249,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             .filter(n -> n.isTserver)
             .mapToInt(
                 node -> {
-                  assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                  assertEquals(UniverseTaskBase.ServerType.TSERVER, node.dedicatedTo);
                   if (node.isMaster) {
                     assertEquals(NodeDetails.MasterState.ToStop, node.masterState);
                     return 1;
@@ -3270,7 +3268,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                   assertTrue(node.isMaster);
                   assertFalse(node.isTserver);
                   assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
-                  assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                  assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
                 })
             .count();
 
@@ -3323,11 +3321,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               if (node.isMaster) {
                 assertFalse(node.isTserver);
                 assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
-                assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
                 addedMasters.incrementAndGet();
               } else {
                 assertTrue(node.isTserver);
-                assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                assertEquals(UniverseTaskBase.ServerType.TSERVER, node.dedicatedTo);
                 addedTservers.incrementAndGet();
                 assertEquals(placementAZ.uuid, node.azUuid);
               }
@@ -3378,13 +3376,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z1.uuid));
     assertEquals(
         Integer.MAX_VALUE,
-        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseTaskBase.ServerType.MASTER));
     assertEquals(
         Integer.MAX_VALUE,
-        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseDefinitionTaskBase.ServerType.TSERVER));
+        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseTaskBase.ServerType.TSERVER));
     assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z3.uuid));
     awsNodeTracker.acquire(z1.uuid);
-    awsNodeTracker.acquire(z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER);
+    awsNodeTracker.acquire(z1.uuid, UniverseTaskBase.ServerType.MASTER);
     awsNodeTracker.acquire(z3.uuid);
 
     // Checking onprem.
@@ -3393,19 +3391,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         new PlacementInfoUtil.AvailableNodeTracker(userIntent, currentNodes);
     assertEquals(0, onpremNodeTracker.getAvailableForZone(z1.uuid));
     assertEquals(
-        0,
-        onpremNodeTracker.getAvailableForZone(
-            z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+        0, onpremNodeTracker.getAvailableForZone(z1.uuid, UniverseTaskBase.ServerType.MASTER));
     assertEquals(2, onpremNodeTracker.getAvailableForZone(z2.uuid));
     assertEquals(
-        0,
-        onpremNodeTracker.getAvailableForZone(
-            z2.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+        0, onpremNodeTracker.getAvailableForZone(z2.uuid, UniverseTaskBase.ServerType.MASTER));
     assertEquals(0, onpremNodeTracker.getAvailableForZone(z3.uuid));
     assertEquals(
-        4,
-        onpremNodeTracker.getAvailableForZone(
-            z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+        4, onpremNodeTracker.getAvailableForZone(z3.uuid, UniverseTaskBase.ServerType.MASTER));
     assertThrows(
         RuntimeException.class,
         () -> {
@@ -3421,10 +3413,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
           onpremNodeTracker.acquire(z2.uuid);
         });
 
-    onpremNodeTracker.acquire(z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER);
+    onpremNodeTracker.acquire(z3.uuid, UniverseTaskBase.ServerType.MASTER);
     assertEquals(
-        3,
-        onpremNodeTracker.getAvailableForZone(
-            z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+        3, onpremNodeTracker.getAvailableForZone(z3.uuid, UniverseTaskBase.ServerType.MASTER));
   }
 }

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_IN_MEM_DOCDB_H_
-#define YB_DOCDB_IN_MEM_DOCDB_H_
+#pragma once
 
 #include <map>
 
@@ -72,5 +71,3 @@ class InMemDocDbState {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_IN_MEM_DOCDB_H_

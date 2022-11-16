@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_FACTORY_H
-#define YB_TSERVER_FACTORY_H
+#pragma once
 
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -37,5 +36,3 @@ class Factory {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_FACTORY_H

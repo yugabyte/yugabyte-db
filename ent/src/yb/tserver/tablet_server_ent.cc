@@ -33,26 +33,23 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 using std::string;
 
-DEFINE_int32(ts_backup_svc_num_threads, 4,
+DEFINE_UNKNOWN_int32(ts_backup_svc_num_threads, 4,
              "Number of RPC worker threads for the TS backup service");
 TAG_FLAG(ts_backup_svc_num_threads, advanced);
 
-DEFINE_int32(ts_backup_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(ts_backup_svc_queue_length, 50,
              "RPC queue length for the TS backup service");
 TAG_FLAG(ts_backup_svc_queue_length, advanced);
 
-DEFINE_int32(xcluster_svc_queue_length, 5000,
+DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
-
-DECLARE_int32(svc_queue_length_default);
 
 DECLARE_string(cert_node_filename);
 

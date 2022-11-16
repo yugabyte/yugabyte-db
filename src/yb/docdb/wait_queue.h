@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_WAIT_QUEUE_H
-#define YB_DOCDB_WAIT_QUEUE_H
+#pragma once
 
 #include <future>
 
@@ -61,7 +60,8 @@ class WaitQueue {
       WaitingTxnRegistry* waiting_txn_registry,
       const std::shared_future<client::YBClient*>& client_future,
       const server::ClockPtr& clock,
-      const MetricEntityPtr& metrics);
+      const MetricEntityPtr& metrics,
+      std::unique_ptr<ThreadPoolToken> thread_pool_token);
 
   ~WaitQueue();
 
@@ -90,5 +90,3 @@ class WaitQueue {
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_WAIT_QUEUE_H

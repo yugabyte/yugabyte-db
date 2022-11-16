@@ -66,7 +66,7 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -144,6 +144,8 @@ Batcher::~Batcher() {
       state_ == BatcherState::kComplete || state_ == BatcherState::kAborted ||
       state_ == BatcherState::kGatheringOps)
       << "Bad state: " << state_;
+
+  RequestsFinished();
 }
 
 void Batcher::Abort(const Status& status) {
@@ -555,13 +557,14 @@ const ClientId& Batcher::client_id() const {
   return client_->id();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId(
-    const TabletId& tablet_id) {
-  return client_->NextRequestIdAndMinRunningRequestId(tablet_id);
+std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
+  const auto& pair = client_->NextRequestIdAndMinRunningRequestId();
+  RegisterRequest(pair.first);
+  return pair;
 }
 
-void Batcher::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
-  client_->RequestFinished(tablet_id, request_id);
+void Batcher::RequestsFinished() {
+  client_->RequestsFinished(retryable_request_ids_);
 }
 
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(

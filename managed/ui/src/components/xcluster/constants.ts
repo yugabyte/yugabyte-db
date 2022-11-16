@@ -13,25 +13,24 @@ export const XClusterConfigState = {
   RUNNING: ReplicationStatus.RUNNING,
   PAUSED: 'Paused'
 } as const;
-
 export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
 
 export const XClusterTableStatus = {
-  OPERATIONAL: 'operational',
-  FAILED: 'failed',
-  WARNING: 'warning',
-  ERROR: 'error',
-  IN_PROGRESS: 'inProgress',
-  VALIDATING: 'validating',
-  BOOTSTRAPPING: 'bootstrapping'
+  RUNNING: 'Running',
+  FAILED: 'Failed',
+  WARNING: 'Warning',
+  ERROR: 'Error',
+  UPDATING: 'Updating',
+  VALIDATED: 'Validated',
+  BOOTSTRAPPING: 'Bootstrapping'
 } as const;
-
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 
 /**
  * Actions on an xCluster replication config.
  */
-export const ReplicationAction = {
+export const XClusterConfigAction = {
+  CREATE: 'create',
   RESUME: 'resume',
   PAUSE: 'pause',
   RESTART: 'restart',
@@ -39,17 +38,43 @@ export const ReplicationAction = {
   ADD_TABLE: 'addTable',
   EDIT: 'edit'
 } as const;
+export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
 
-export type ReplicationAction = typeof ReplicationAction[keyof typeof ReplicationAction];
+//------------------------------------------------------------------------------------
+// Table Selection Constants
 
-export const YBTableRelationType = {
-  SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
-  USER_TABLE_RELATION: 'USER_TABLE_RELATION',
-  INDEX_TABLE_RELATION: 'INDEX_TABLE_RELATION',
-  MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION'
+/**
+ * This type stores whether a table is eligible to be in a particular xCluster config.
+ */
+export const XClusterTableEligibility = {
+  // Ineligible statuses:
+  // Ineligible - The table in use in another xCluster config
+  INELIGIBLE_IN_USE: 'ineligibleInUse',
+  // Inenligible - No table with a matching indentifier (keyspace, table and schema name)
+  //               exists in the target universe
+  INELIGIBLE_NO_MATCH: 'ineligibleNoMatch',
+
+  // Eligible statuses:
+  // Eligible - The table is not already in the current xCluster config
+  ELIGIBLE_UNUSED: 'eligibleUnused',
+  // Eligible - The table is already in the current xCluster config
+  ELIGIBLE_IN_CURRENT_CONFIG: 'eligibleInCurrentConfig'
 } as const;
+export type XClusterTableEligibility = typeof XClusterTableEligibility[keyof typeof XClusterTableEligibility];
 
-export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
+export const XClusterTableIneligibleStatuses: readonly XClusterTableEligibility[] = [
+  XClusterTableEligibility.INELIGIBLE_IN_USE,
+  XClusterTableEligibility.INELIGIBLE_NO_MATCH
+] as const;
+
+//------------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------------
+// Bootstrap Constants
+
+// Validation
+export const BOOTSTRAP_MIN_FREE_DISK_SPACE_GB = 100;
+//------------------------------------------------------------------------------------
 
 // Time range selector constants
 
@@ -137,7 +162,8 @@ export const TRANSITORY_STATES = [
   ReplicationStatus.UPDATING
 ] as const;
 
-export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 10_000;
+export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
 
 /**
  * Values are mapped to the sort order strings from
@@ -157,3 +183,8 @@ export const XClusterModalName = {
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
   TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
 } as const;
+
+/**
+ * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
+ */
+export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;

@@ -26,17 +26,17 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread_restrictions.h"
 
-DEFINE_uint64(transaction_manager_workers_limit, 50,
+DEFINE_UNKNOWN_uint64(transaction_manager_workers_limit, 50,
               "Max number of workers used by transaction manager");
 
-DEFINE_uint64(transaction_manager_queue_limit, 500,
+DEFINE_UNKNOWN_uint64(transaction_manager_queue_limit, 500,
               "Max number of tasks used by transaction manager");
 
 DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",

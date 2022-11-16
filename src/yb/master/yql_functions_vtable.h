@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_FUNCTIONS_VTABLE_H
-#define YB_MASTER_YQL_FUNCTIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/yql_empty_vtable.h"
 
@@ -31,4 +30,3 @@ class YQLFunctionsVTable : public YQLEmptyVTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_FUNCTIONS_VTABLE_H

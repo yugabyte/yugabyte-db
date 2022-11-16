@@ -200,8 +200,11 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='pendt
 
 -- test for colocated table
 create database colocated_db with colocated = true;
+-- TODO: pg_sleep is a workaround, remove it after fixing of #14519
+select pg_sleep(3);
 \c colocated_db;
-select pg_sleep(1);
+-- TODO: pg_sleep is a workaround, remove it after fixing of #14519
+select pg_sleep(3);
 create table mycolocatedtable (c1 INT PRIMARY KEY, c2 TEXT, c3 INT);
 insert into mycolocatedtable (c1, c2, c3) values (6, '9', 8);
 create index mycolocatedtable_index1 on mycolocatedtable (c2);

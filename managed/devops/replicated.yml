@@ -359,6 +359,8 @@ components:
                       replacement: "$1"
 
                 - job_name: "yugabyte"
+                tls_config:
+                  insecure_skip_verify: true
                   metrics_path: "/prometheus-metrics"
                   file_sd_configs:
                     - files:
@@ -404,6 +406,8 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
             container_path: /opt/yugabyte/ybc/releases
+          - host_path: '{{repl ConfigOption "storage_path"}}/node-agent/releases'
+            container_path: /opt/yugabyte/node-agent/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
@@ -493,6 +497,7 @@ components:
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 metrics.port="{{repl ConfigOption "prometheus_external_port"}}"
+                metrics.scrape_interval = "{{repl ConfigOption "prometheus_scrape_interval" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
@@ -509,9 +514,10 @@ components:
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
                 url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
-                security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
-                security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
                 security.ssh2_enabled = false
+                node_agent {
+                  releases.path = "/opt/yugabyte/node-agent/releases"
+                }
               }
 
               ybc {
@@ -747,16 +753,6 @@ config:
           args:
             - '^((TLSv(1|1\.[1-3]))(?: ){1}){0,3}(TLSv(1|1\.[1-3])){1}$'
             - "The argument provided to TLS Versions isn't valid"
-      - name: enable_custom_hooks
-        title: Enable Custom Hooks
-        help_text: Enable the use of custom hooks on Platform
-        type: bool
-        default: "0"
-      - name: enable_sudo
-        title: Enable Superuser Privilege for Executing Custom Hooks
-        help_text: Enable the use of sudo when executing custom hooks on Platform
-        type: bool
-        default: "0"
       - name: docker_gateway
         title: Docker Gateway IP Address
         type: text

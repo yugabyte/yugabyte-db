@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -40,6 +39,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -109,6 +109,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Provider defaultProvider;
   protected Provider gcpProvider;
   protected Provider onPremProvider;
+  protected SettableRuntimeConfigFactory factory;
 
   protected Commissioner commissioner;
 
@@ -128,8 +129,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
 
     // Enable custom hooks in tests
-    lenient().when(mockConfig.getBoolean(ENABLE_CUSTOM_HOOKS_PATH)).thenReturn(true);
-    lenient().when(mockConfig.getBoolean(ENABLE_SUDO_PATH)).thenReturn(true);
+    factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
+    factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
+
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
     when(mockBaseTaskDependencies.getConfigHelper()).thenReturn(mockConfigHelper);

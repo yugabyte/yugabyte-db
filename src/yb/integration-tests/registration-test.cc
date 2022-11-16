@@ -33,7 +33,7 @@
 #include <memory>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
@@ -130,10 +130,14 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniTabletServer* ts = cluster_->mini_tablet_server(0);
 
     auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-      auto metrics = cluster_->mini_master()
-                         ->tablet_peer()
-                         ->shared_tablet()
-                         ->GetTabletMetricsEntity();
+      auto tablet_peer = cluster_->mini_master()->tablet_peer();
+      auto tablet_result = tablet_peer->shared_tablet_safe();
+      if (!tablet_result.ok()) {
+        LOG(WARNING) << "Failed to get tablet: " << tablet_result.status();
+        return 0;
+      }
+      auto tablet = *tablet_result;
+      auto metrics = tablet->GetTabletMetricsEntity();
       return prototype.Instantiate(metrics)->value();
     };
     auto before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);

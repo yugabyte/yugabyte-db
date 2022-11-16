@@ -51,7 +51,7 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
@@ -1266,7 +1266,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 }
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
-  const TypedNamespaceName& ns, const std::string& checkpoint_type) {
+    const TypedNamespaceName& ns, const std::string& checkpoint_type,
+    const std::string& record_type) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -1274,7 +1275,13 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   cdc::CreateCDCStreamResponsePB resp;
 
   req.set_namespace_name(ns.name);
-  req.set_record_type(cdc::CDCRecordType::CHANGE);
+
+  if (record_type == yb::ToString("ALL")) {
+    req.set_record_type(cdc::CDCRecordType::ALL);
+  } else {
+    req.set_record_type(cdc::CDCRecordType::CHANGE);
+  }
+
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);
   if (checkpoint_type == yb::ToString("EXPLICIT")) {
@@ -1600,8 +1607,26 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
+Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+  req.set_role(role);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ChangeXClusterRole(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error changing role: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Changed role successfully" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
-                                                                 bool is_enabled) {
+                                                         bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
   req.set_producer_id(producer_id);

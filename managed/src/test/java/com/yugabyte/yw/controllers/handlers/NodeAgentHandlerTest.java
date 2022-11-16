@@ -8,7 +8,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,6 +22,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -45,21 +49,24 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private Config mockAppConfig;
   @Mock private ConfigHelper mockConfigHelper;
   @Mock private PlatformScheduler mockPlatformScheduler;
+  @Mock private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
 
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
+    nodeAgentHandler =
+        new NodeAgentHandler(
+            mockAppConfig, mockConfigHelper, mockPlatformScheduler, nodeAgentClient);
     nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
     // sign using the private key
-    PublicKey publicKey = nodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
-    PrivateKey privateKey = nodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
+    PublicKey publicKey = NodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
+    PrivateKey privateKey = NodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
 
     try {
       Signature sig = Signature.getInstance("SHA256withRSA");
@@ -206,6 +213,9 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     when(mockAppConfig.getDuration(eq(NodeAgentHandler.CLEANER_RETENTION_DURATION_PROPERTY)))
         .thenReturn(Duration.ofMinutes(10))
         .thenReturn(Duration.ofMillis(100));
+    doThrow(new RuntimeException("No connection"))
+        .when(nodeAgentClient)
+        .validateConnection(any(), anyBoolean());
     NodeAgentForm payload = new NodeAgentForm();
     payload.version = "2.12.0";
     payload.name = "node1";

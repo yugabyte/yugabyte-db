@@ -58,8 +58,9 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/user.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
+DEFINE_UNKNOWN_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int32(TEST_delay_connect_ms);
@@ -694,8 +695,8 @@ class PingTestHelper {
   bool finished_ = false;
 };
 
-DEFINE_uint64(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
-DEFINE_int32(test_rpc_count, 50000, "Total number of RPC requests");
+DEFINE_UNKNOWN_uint64(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
+DEFINE_UNKNOWN_int32(test_rpc_count, 50000, "Total number of RPC requests");
 
 TEST_F(RpcStubTest, TestRpcPerformance) {
   FLAGS_rpc_slow_query_threshold_ms = std::numeric_limits<int32_t>::max();
@@ -1022,7 +1023,7 @@ TEST_F(RpcStubTest, Lightweight) {
   req.mutable_map()->clear();
   std::string req_str = req.ShortDebugString();
 
-  auto lw_req = CopySharedMessage<rpc_test::LWLightweightRequestPB>(req);
+  auto lw_req = CopySharedMessage(req);
   req.Clear();
   ASSERT_STR_EQ(AsString(*lw_req), req_str);
   ASSERT_STR_EQ(AsString(resp.short_debug_string()), req_str);

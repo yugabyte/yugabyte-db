@@ -7,7 +7,7 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/docdb/consensus_frontier.h"
 
@@ -19,14 +19,15 @@
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
 using std::string;
 
-DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration of snapshots");
+DEFINE_UNKNOWN_bool(consistent_restore, false,
+    "Whether to enable consistent restoration of snapshots");
 
 DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
                  "Whether to modify flushed frontier after "
@@ -35,26 +36,27 @@ DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
 namespace yb {
 namespace tablet {
 
+using tserver::LWTabletSnapshotOpRequestPB;
 using tserver::TabletServerError;
 using tserver::TabletServerErrorPB;
 using tserver::TabletSnapshotOpRequestPB;
 
 template <>
-void RequestTraits<TabletSnapshotOpRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, TabletSnapshotOpRequestPB* request) {
-  replicate->set_allocated_snapshot_request(request);
+void RequestTraits<LWTabletSnapshotOpRequestPB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWTabletSnapshotOpRequestPB* request) {
+  replicate->ref_snapshot_request(request);
 }
 
 template <>
-TabletSnapshotOpRequestPB* RequestTraits<TabletSnapshotOpRequestPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWTabletSnapshotOpRequestPB* RequestTraits<LWTabletSnapshotOpRequestPB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_snapshot_request();
 }
 
 Result<std::string> SnapshotOperation::GetSnapshotDir() const {
   auto& request = *this->request();
   if (!request.snapshot_dir_override().empty()) {
-    return request.snapshot_dir_override();
+    return request.snapshot_dir_override().ToBuffer();
   }
   if (request.snapshot_id().empty()) {
     return std::string();
@@ -64,7 +66,7 @@ Result<std::string> SnapshotOperation::GetSnapshotDir() const {
   if (txn_snapshot_id) {
     snapshot_id_str = txn_snapshot_id.ToString();
   } else {
-    snapshot_id_str = request.snapshot_id();
+    snapshot_id_str = request.snapshot_id().ToBuffer();
   }
 
   return JoinPathSegments(VERIFY_RESULT(tablet()->metadata()->TopSnapshotsDir()), snapshot_id_str);

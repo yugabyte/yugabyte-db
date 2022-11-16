@@ -30,8 +30,7 @@
 // non-const method, all threads accessing the same Iterator must use
 // external synchronization.
 
-#ifndef YB_ROCKSDB_ITERATOR_H
-#define YB_ROCKSDB_ITERATOR_H
+#pragma once
 
 #include <string>
 #include "yb/util/slice.h"
@@ -143,5 +142,3 @@ extern Iterator* NewEmptyIterator();
 extern Iterator* NewErrorIterator(const Status& status);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_ITERATOR_H

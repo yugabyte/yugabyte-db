@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METRICS_H
-#define YB_TABLET_TABLET_METRICS_H
+#pragma once
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -57,7 +56,7 @@ struct TabletMetrics {
   scoped_refptr<Histogram> snapshot_read_inflight_wait_duration;
   scoped_refptr<Histogram> ql_read_latency;
   scoped_refptr<Histogram> write_lock_latency;
-  scoped_refptr<Histogram> write_op_duration_client_propagated_consistency;
+  scoped_refptr<Histogram> ql_write_latency;
   scoped_refptr<Histogram> write_op_duration_commit_wait_consistency;
 
   scoped_refptr<Counter> not_leader_rejections;
@@ -85,4 +84,3 @@ class ScopedTabletMetricsTracker {
 
 } // namespace tablet
 } // namespace yb
-#endif /* YB_TABLET_TABLET_METRICS_H */

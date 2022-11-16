@@ -157,7 +157,7 @@ class ConsensusPeersTest : public YBTest {
 
   void CheckLastRemoteEntry(
       DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int64_t term, int64_t index) {
-    ASSERT_EQ(OpId::FromPB(proxy->proxy()->last_received()), OpId(term, index));
+    ASSERT_EQ(proxy->proxy()->last_received(), OpId(term, index));
   }
 
  protected:
@@ -197,7 +197,8 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 20);
 
   // The above append ends up appending messages in term 2, so we update the peer's term to match.
-  remote_peer->SetTermForTest(2);
+  Arena arena;
+  remote_peer->TEST_SetTerm(2, &arena);
 
   // signal the peer there are requests pending.
   ASSERT_OK(remote_peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
@@ -230,7 +231,7 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   remote_peer2_proxy->DelayResponse();
   auto se2 = ScopeExit([this, &remote_peer2_proxy] {
     log_->TEST_SetSleepDuration(0s);
-    remote_peer2_proxy->Respond(TestPeerProxy::kUpdate);
+    remote_peer2_proxy->Respond(TestPeerProxy::Method::kUpdate);
   });
 
   // Append one message to the queue.
@@ -291,7 +292,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   CheckLastLogEntry(first.term, first.index);
   CheckLastRemoteEntry(remote_peer1_proxy, first.term, first.index);
 
-  remote_peer2_proxy->Respond(TestPeerProxy::kUpdate);
+  remote_peer2_proxy->Respond(TestPeerProxy::Method::kUpdate);
   // Wait until all peers have replicated the message, otherwise
   // when we add the next one remote_peer2 might find the next message
   // in the queue and will replicate it, which is not what we want.

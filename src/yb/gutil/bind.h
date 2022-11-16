@@ -22,8 +22,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_BIND_H_
-#define YB_GUTIL_BIND_H_
+#pragma once
 
 #include "yb/gutil/bind_internal.h"
 #include "yb/gutil/callback_internal.h"
@@ -550,5 +549,3 @@ Bind(Functor functor, const P1& p1, const P2& p2, const P3& p3, const P4& p4,
 }
 
 }  // namespace yb
-
-#endif // YB_GUTIL_BIND_H_

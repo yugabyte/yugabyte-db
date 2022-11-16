@@ -1422,7 +1422,8 @@ def main() -> None:
 
     test_exit_codes = set([result.exit_code for result in results])
 
-    global_exit_code = 0 if test_exit_codes == set([0]) else 1
+    # Success if we got results for all the tests we intended to run.
+    global_exit_code = 0 if len(results) == total_num_tests else 1
 
     logging.info("Tests are done, set of exit codes: %s, tentative global exit code: %s",
                  sorted(test_exit_codes), global_exit_code)

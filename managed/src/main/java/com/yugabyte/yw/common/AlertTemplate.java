@@ -457,7 +457,7 @@ public enum AlertTemplate {
 
   DB_CORE_FILES(
       "DB core files",
-      "Core files detected on DB TServer instances",
+      "Core files detected on DB TServer/Master instances",
       "ybp_health_check_tserver_core_files{universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }}",
       "Core files detected for universe '{{ $labels.source_name }}'"
@@ -725,6 +725,18 @@ public enum AlertTemplate {
           + " {{ query_condition }} 1",
       "Last SSH Key Rotation task for universe '{{ $labels.source_name }}' failed"
           + " - check SSH Key Rotation task result for more details and retry",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  PITR_CONFIG_FAILURE(
+      "PITR Config Failure",
+      "Last Snapshot task failed for universe",
+      "min(ybp_pitr_config_status{universe_uuid = \"__universeUuid__\"})"
+          + " {{ query_condition }} 1",
+      "Last Snapshot task for universe '{{ $labels.source_name }}' failed"
+          + " - check PITR Config task result for more details and retry",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,

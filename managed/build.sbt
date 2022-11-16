@@ -149,10 +149,11 @@ libraryDependencies ++= Seq(
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
-  "com.azure" % "azure-core" % "1.13.0",
-  "com.azure" % "azure-identity" % "1.2.3",
-  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
-  "com.azure" % "azure-storage-blob" % "12.7.0",
+  // Used below azure versions from azure-sdk-bom:1.2.6
+  "com.azure" % "azure-core" % "1.32.0",
+  "com.azure" % "azure-identity" % "1.6.0",
+  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
+  "com.azure" % "azure-storage-blob" % "12.19.1",
   "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
@@ -185,7 +186,6 @@ libraryDependencies ++= Seq(
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
-  "org.apache.commons" % "commons-text" % "1.9",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -203,6 +203,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
+  "io.grpc" % "grpc-testing" % "1.48.0" % Test
 )
 // Clear default resolvers.
 appResolvers := None
@@ -417,7 +418,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.31-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.33-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -429,6 +430,9 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+// SSO functionality only works on the older version of nimbusds.
+// Azure library upgrade tries to upgrade nimbusds to latest version.
+dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

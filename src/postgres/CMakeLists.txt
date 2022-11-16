@@ -15,10 +15,10 @@ set(POSTGRES_EXTRA_C_CXX_FLAGS "")
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
 foreach(include_dir ${yb_cmake_include_dirs})
-  set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
+  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -I${include_dir}")
 endforeach(include_dir)
 if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
-  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS
          " -Wno-format-truncation"
          " -Wno-maybe-uninitialized"
          " -Wno-stringop-truncation")
@@ -26,19 +26,16 @@ endif()
 
 if(IS_CLANG)
   if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT APPLE)
-    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
-           " -Wno-error=unused-but-set-variable")
+    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -Wno-error=unused-but-set-variable")
   endif()
 
   if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
-    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
-           " -Wno-error=deprecated-non-prototype")
+    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -Wno-error=deprecated-non-prototype")
   endif()
 endif()
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
-  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
-         " -DUSE_SSE42_CRC32C=1")
+  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -DUSE_SSE42_CRC32C=1")
 endif()
 
 set(POSTGRES_EXTRA_LD_FLAGS "")
@@ -63,23 +60,58 @@ if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
 endif()
 
-
 set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
 if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
-  string(CONCAT POSTGRES_EXTRA_PREPROCESSOR_FLAGS "${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
-         "-isystem ${MACOS_SDK_INCLUDE_DIR}")
+  string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS
+         " -isystem ${MACOS_SDK_INCLUDE_DIR}")
+endif()
+
+set(POSTGRES_FINAL_C_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}")
+yb_deduplicate_arguments(POSTGRES_FINAL_C_FLAGS)
+
+set(POSTGRES_FINAL_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
+yb_deduplicate_arguments(POSTGRES_FINAL_CXX_FLAGS)
+
+set(POSTGRES_FINAL_LD_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}")
+yb_deduplicate_arguments(POSTGRES_FINAL_LD_FLAGS)
+
+set(POSTGRES_FINAL_EXE_LD_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}")
+yb_deduplicate_arguments(POSTGRES_FINAL_EXE_LD_FLAGS)
+
+set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "")
+if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # We don't add libtcmalloc and libprofiler to POSTGRES_FINAL_EXE_LD_FLAGS because when building
+  # with GCC we use the standard ld linker, which cares about the order of libraries when using
+  # static libraries. Symbols from libtcmalloc and libprofiler are needed by e.g. libyb_util, so
+  # libtcmalloc must appear after other YB libraries on the linker command line.
+  #
+  # The special variable PG_EXE_LD_FLAGS_AFTER_YB_LIBS eventually gets propagated to a
+  # YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS environment variable used in Postgres makefiles that build
+  # an executable. It gets included after all C++ YB libs that the relevant executable depends on.
+  set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+
+  if(IS_CLANG)
+    string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lc++")
+  endif()
+  if(IS_GCC)
+    # To avoid these errors when linking postgres executables:
+    # https://gist.githubusercontent.com/mbautin/c6f0e741de57e671e78b78e9a8508995/raw
+    # https://gist.githubusercontent.com/mbautin/6cbef12e6bbab79d1f87964f571d2d46/raw
+    string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lstdc++ -lunwind")
+  endif()
 endif()
 
 list(APPEND build_postgres_args
      "${BUILD_SUPPORT_DIR}/build_postgres"
      --build_root            "${YB_BUILD_ROOT}"
-     --cflags                "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
      --compiler_type         "${YB_COMPILER_TYPE}"
-     --cxxflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
+     --cflags                "${POSTGRES_FINAL_C_FLAGS}"
+     --cxxflags              "${POSTGRES_FINAL_CXX_FLAGS}"
      # We specify a leading space where we could otherwise get an empty argument.
      --cppflags              " ${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
-     --ldflags               " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
-     --ldflags_ex            " ${CMAKE_EXE_LINKER_FLAGS}"
+     --ldflags               " ${POSTGRES_FINAL_LD_FLAGS}"
+     --ldflags_ex            " ${POSTGRES_FINAL_EXE_LD_FLAGS}"
+     --exe_ld_flags_after_yb_libs " ${PG_EXE_LD_FLAGS_AFTER_YB_LIBS}"
      --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
      --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
      --thirdparty_dir        "${YB_THIRDPARTY_DIR}"

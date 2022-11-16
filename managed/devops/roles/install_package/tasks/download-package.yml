@@ -139,6 +139,12 @@
   when: is_yugabyte_package
   tags: yb-prebuilt-ami
 
+- name: Download package | Update timestamp for "{{ package_dest }}"
+  file:
+    path: "{{ package_dest }}"
+    state: touch
+  tags: yb-prebuilt-ami
+
 - name: Download package | Clean the releases directory
   file:
     path: "{{ yb_home_dir }}/{{ release_folder }}"

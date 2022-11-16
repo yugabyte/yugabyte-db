@@ -31,8 +31,6 @@
 // Version,VersionSet are thread-compatible, but require external
 // synchronization on all accesses.
 
-#ifndef YB_ROCKSDB_DB_VERSION_SET_H
-#define YB_ROCKSDB_DB_VERSION_SET_H
 
 #pragma once
 
@@ -644,7 +642,6 @@ class VersionSet {
                                    BoundaryValuesExtractor* extractor,
                                    Env* env);
 
-#ifndef ROCKSDB_LITE
   // Try to reduce the number of levels. This call is valid when
   // only one level from the new max level to the old
   // max level containing files.
@@ -663,7 +660,6 @@ class VersionSet {
   Status DumpManifest(const Options& options, const std::string& manifestFileName,
                       bool verbose, bool hex = false);
 
-#endif  // ROCKSDB_LITE
 
   // Return the current manifest file number
   uint64_t manifest_file_number() const { return manifest_file_number_; }
@@ -843,5 +839,3 @@ class VersionSet {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_VERSION_SET_H

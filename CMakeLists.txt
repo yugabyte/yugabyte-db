@@ -242,11 +242,19 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
+if(NOT DEFINED YB_LTO_ENABLED)
+  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
+endif()
+
+if(YB_LTO_ENABLED)
+  ADD_CXX_FLAGS("-DYB_LTO_ENABLED")
+endif()
+
 # Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
   message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
-elseif ("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
+elseif (YB_LTO_ENABLED)
   message("This is an LTO-enabled build, will export compile_commands.json.")
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
@@ -388,11 +396,6 @@ endif()
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
-elseif(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-  message("Specifying linker flags to not allow any undefined symbols")
-  ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
-else()
-  message("Not specifying linker flags to not allow any undefined symbols: this is ASAN/TSAN")
 endif()
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
@@ -492,36 +495,8 @@ else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
-set(YB_THIRDPARTY_INSTALLED_DIR_BASE
-    "${YB_THIRDPARTY_DIR}/installed")
-
-# We support a layout of third-party dependencies where there are build-type-specific subdirectories
-# inside "build" and "installed" directories, such as clang15-x86_64, clang15-full-lto-x86_64, or
-# clang15-linuxbrew-full-lto-x86_64. The logic below should match how the subdir_items list is
-# constructed in https://bit.ly/yb_thirdparty_fs_layout_py.
-set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_COMPILER_TYPE}")
-if(USING_LINUXBREW)
-  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-linuxbrew")
-endif()
-if("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
-  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-${YB_LINKING_TYPE}")
-endif()
-set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-$ENV{YB_TARGET_ARCH}")
-
-set(YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC
-    "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/${YB_THIRDPARTY_SPECIFIC_BASENAME}")
-if(EXISTS "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-  message("Using the per-compiler-type/architecture subdirectory of third-party installed dir: "
-          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-else()
-  message("Per-compiler-type/architecture third-party install directory not found: "
-          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}, using default third-party install directory.")
-  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_BASE}")
-endif()
-set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR}" CACHE STRING
-    "Directory where the third-party dependencies are installed" FORCE)
-
+include(YugabyteFindThirdParty)
+yb_find_third_party_installed_dir()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
 
 if(NOT APPLE AND IS_CLANG)
@@ -708,7 +683,47 @@ configure_macos_sdk()
 
 # -------------------------------------------------------------------------------------------------
 
-include(YugabyteFindThirdParty)
+yb_find_third_party_dependencies()
+
+# Flags to link the tcmalloc static library. Used for each CMake target that is an executable,
+# as well as for executables generated as part of Postgres build.
+set(TCMALLOC_STATIC_LIB_LD_FLAGS "")
+
+# Set flags based on whether we are using tcmalloc.
+if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
+    "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  message("Allowing undefined symbols "
+          "(YB_TCMALLOC_ENABLED=${YB_TCMALLOC_ENABLED}, build type is ${YB_BUILD_TYPE})")
+  if(IS_GCC)
+    # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
+    # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
+    # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
+    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
+  endif()
+  if(APPLE)
+    # See https://bit.ly/3DrOibC on this Apple Clang specific flag.
+    ADD_LINKER_FLAGS("-undefined dynamic_lookup")
+    # To get rid of the following warning during linking on macOS:
+    #
+    # -undefined dynamic_lookup may not work with chained fixups
+    #
+    # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
+    ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
+  else()
+    ADD_LINKER_FLAGS("-Wl,--allow-shlib-undefined")
+  endif()
+
+  if(APPLE)
+    set(TCMALLOC_STATIC_LIB_LD_FLAGS "-force_load ${TCMALLOC_STATIC_LIB}")
+  else()
+    set(TCMALLOC_STATIC_LIB_LD_FLAGS
+        "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
+  endif()
+else()
+  message("Not allowing any undefined symbols "
+          "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
+  ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+endif()
 
 ############################################################
 # Linker setup
@@ -747,19 +762,14 @@ string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
-
-message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
+yb_deduplicate_arguments(CMAKE_C_FLAGS)
 
 set(CMAKE_CXX_STANDARD 20)
 
-if (IS_GCC AND
-    "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "8.0.0")
-  # Remove after switching to C++17
-  ADD_CXX_FLAGS("-Wno-aligned-new")
-endif()
-
+yb_deduplicate_arguments(CMAKE_CXX_FLAGS)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+yb_deduplicate_arguments(CMAKE_EXE_LINKER_FLAGS)
 message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
@@ -807,8 +817,15 @@ add_subdirectory(src/yb/cdc)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
-yb_add_lto_target(yb-master)
-yb_add_lto_target(yb-tserver)
+# Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
+# that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are
+# symlinks to it.  It decides to act as yb-master or yb-tserver based on its argv[0].
+#
+# In the command below, yb-master is the CMake target that we use as a base to determine the set of
+# object files to be linked into the LTO executable, yb-server is the name of the LTO executable,
+# and yb-master/yb-tserver are names of symlinks to create in the "bin" directory, pointing to the
+# LTO executable.
+yb_add_lto_target(yb-master yb-server "yb-master;yb-tserver")
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph
@@ -821,6 +838,10 @@ string(REPLACE "\\n" "\n" YB_ALL_DEPS_FINAL "${YB_ALL_DEPS}")
 # target: dep1;dep2;..;depN
 # The same target can appear on the left hand side of multiple such lines.
 file(WRITE "${YB_BUILD_ROOT}/yb_cmake_deps.txt" "${YB_ALL_DEPS_FINAL}")
+
+# ------------------------------------------------------------------------------------------------
+# Final reporting
+# ------------------------------------------------------------------------------------------------
 
 math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "

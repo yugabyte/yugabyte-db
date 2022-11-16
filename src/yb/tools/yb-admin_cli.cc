@@ -44,20 +44,19 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 
-DEFINE_string(master_addresses, "localhost:7100",
+DEFINE_UNKNOWN_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
-DEFINE_string(init_master_addrs, "",
+DEFINE_UNKNOWN_string(init_master_addrs, "",
               "host:port of any yb-master in a cluster");
-DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_UNKNOWN_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
-DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_UNKNOWN_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 using std::cerr;
 using std::endl;
@@ -85,14 +84,14 @@ constexpr auto kBlacklistRemove = "REMOVE";
 constexpr int32 kDefaultRpcPort = 9100;
 
 Status GetUniverseConfig(ClusterAdminClientClass* client,
-                                 const ClusterAdminCli::CLIArguments&) {
+                         const ClusterAdminCli::CLIArguments&) {
   RETURN_NOT_OK_PREPEND(client->GetUniverseConfig(), "Unable to get universe config");
   return Status::OK();
 }
 
 Status ChangeBlacklist(ClusterAdminClientClass* client,
-                               const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
-                               const std::string& errStr) {
+                       const ClusterAdminCli::CLIArguments& args, bool blacklist_leader,
+                       const std::string& errStr) {
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }

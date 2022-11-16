@@ -15,14 +15,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -36,21 +36,21 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>

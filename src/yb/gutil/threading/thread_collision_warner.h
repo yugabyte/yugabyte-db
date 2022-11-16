@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_THREADING_THREAD_COLLISION_WARNER_H
-#define YB_GUTIL_THREADING_THREAD_COLLISION_WARNER_H
+#pragma once
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
@@ -257,5 +256,3 @@ class BASE_EXPORT ThreadCollisionWarner {
 };
 
 }  // namespace base
-
-#endif  // YB_GUTIL_THREADING_THREAD_COLLISION_WARNER_H

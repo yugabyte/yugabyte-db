@@ -108,8 +108,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle,
-              provider.getK8sPodAddrTemplate());
+              newNamingStyle);
 
       // validate clusters
       for (Cluster cluster : taskParams().clusters) {
@@ -193,11 +192,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
-    // Update disk size if there is a change
-    boolean diskSizeChanged = curIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
-    if (diskSizeChanged) {
-      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
-    }
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
@@ -351,6 +345,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Finally, update disk size if there is a change
+    boolean diskSizeChanged =
+        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+    if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
+      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
     }
 
     // Update the universe to the new state.
@@ -525,6 +530,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               isReadOnlyCluster);
     }
     params.providerUUID = providerUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
     KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

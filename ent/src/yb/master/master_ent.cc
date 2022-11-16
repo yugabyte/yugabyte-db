@@ -20,11 +20,11 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/secure.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/result.h"
 
-DEFINE_int32(master_backup_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(master_backup_svc_queue_length, 50,
              "RPC queue length for master backup service");
 TAG_FLAG(master_backup_svc_queue_length, advanced);
 

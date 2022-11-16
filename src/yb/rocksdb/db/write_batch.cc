@@ -107,8 +107,9 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
   explicit DirectWriteHandlerImpl(MemTable* mem_table, SequenceNumber seq)
       : mem_table_(mem_table), seq_(seq) {}
 
-  void Put(const SliceParts& key, const SliceParts& value) override {
+  std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
     Add(ValueType::kTypeValue, key, value);
+    return std::pair(prepared_add_.last_key, prepared_add_.last_value);
   }
 
   void SingleDelete(const Slice& key) override {
@@ -749,7 +750,7 @@ class MemTableInserter : public WriteBatch::Handler {
   }
 
   Status DeleteImpl(uint32_t column_family_id, const Slice& key,
-                            ValueType delete_type) {
+                    ValueType delete_type) {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;

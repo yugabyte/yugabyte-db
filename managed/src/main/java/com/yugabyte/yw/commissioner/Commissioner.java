@@ -84,8 +84,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if abortable.
    */
-  public static boolean isTaskAbortable(TaskType taskType) {
-    return TaskExecutor.isTaskAbortable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskAbortable(TaskType taskType) {
+    return TaskExecutor.isTaskAbortable(taskType.getTaskClass());
   }
 
   /**
@@ -94,8 +94,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if retryable.
    */
-  public static boolean isTaskRetryable(TaskType taskType) {
-    return TaskExecutor.isTaskRetryable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskRetryable(TaskType taskType) {
+    return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
   }
 
   /**
@@ -103,7 +103,6 @@ public class Commissioner {
    *
    * @param taskType the task type.
    * @param taskParams the task parameters.
-   * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
@@ -201,6 +200,8 @@ public class Commissioner {
     responseJson.put("status", taskInfo.getTaskState().toString());
     // Get the percentage of subtasks that ran and completed
     responseJson.put("percent", taskInfo.getPercentCompleted());
+    String correlationId = task.getCorrelationId();
+    if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
 
     // Get subtask groups and add other details to it if applicable.
     UserTaskDetails userTaskDetails;
@@ -264,7 +265,7 @@ public class Commissioner {
 
   private int getSubTaskPositionFromContext(String property) {
     int position = -1;
-    String value = (String) MDC.get(property);
+    String value = MDC.get(property);
     if (!Strings.isNullOrEmpty(value)) {
       try {
         position = Integer.parseInt(value);
@@ -305,14 +306,13 @@ public class Commissioner {
     final int subTaskPausePosition = getSubTaskPositionFromContext(SUBTASK_PAUSE_POSITION_PROPERTY);
     if (subTaskAbortPosition >= 0) {
       // Handle abort of subtask.
-      Consumer<TaskInfo> abortConsumer =
+      consumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskAbortPosition) {
               LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
               throw new CancellationException("Subtask cancelled");
             }
           };
-      consumer = abortConsumer;
     }
     if (subTaskPausePosition >= 0) {
       // Handle pause of subtask.
@@ -367,9 +367,7 @@ public class Commissioner {
             getClass().getSimpleName(),
             Duration.ZERO, // InitialDelay
             checkInterval,
-            () -> {
-              scheduleRunner(runningTasks);
-            });
+            () -> scheduleRunner(runningTasks));
       }
     }
 

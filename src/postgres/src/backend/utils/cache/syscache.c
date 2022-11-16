@@ -1130,7 +1130,7 @@ YBSysTablePrimaryKey(Oid relid)
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
-void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
+void YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 {
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	switch (RelationGetRelid(rel))
@@ -1166,7 +1166,7 @@ void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
  * If no index cache is associated with the given cache (most of the time), its id should be -1.
  */
 void
-YBPreloadCatalogCache(int cache_id, int idx_cache_id)
+YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 {
 
 	CatCache* cache         = SysCache[cache_id];
@@ -1319,7 +1319,7 @@ YBIsEssentialCache(int cache_id)
 }
 
 static void
-YBPreloadCatalogCacheIfEssential(int cache_id)
+YbPreloadCatalogCacheIfEssential(int cache_id)
 {
 	if (!YBIsEssentialCache(cache_id))
 		return;
@@ -1347,7 +1347,7 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 			break;
 	}
 
-	YBPreloadCatalogCache(cache_id, idx_cache_id);
+	YbPreloadCatalogCache(cache_id, idx_cache_id);
 }
 
 /*
@@ -1357,7 +1357,7 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
  * Used during initdb.
  */
 void
-YBPreloadCatalogCaches(void)
+YbPreloadCatalogCaches(void)
 {
 	Assert(CacheInitialized);
 
@@ -1369,7 +1369,7 @@ YBPreloadCatalogCaches(void)
 			YbRegisterSysTableForPrefetching(SysCache[cacheId]->cc_reloid);
 
 	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
-		YBPreloadCatalogCacheIfEssential(cacheId);
+		YbPreloadCatalogCacheIfEssential(cacheId);
 }
 
 static void
@@ -1443,7 +1443,7 @@ YBLoadPinnedObjectsCache()
 }
 
 bool
-YBIsPinnedObjectsCacheAvailable()
+YbIsPinnedObjectsCacheAvailable()
 {
 	/*
 	 * Build the cache in case it is not yet ready.
@@ -1464,13 +1464,13 @@ YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId)
 }
 
 bool
-YBIsObjectPinned(Oid classId, Oid objectId)
+YbIsObjectPinned(Oid classId, Oid objectId)
 {
 	return YBIsPinned(YBPinnedObjectsCache.regular, classId, objectId);
 }
 
 bool
-YBIsSharedObjectPinned(Oid classId, Oid objectId)
+YbIsSharedObjectPinned(Oid classId, Oid objectId)
 {
 	return YBIsPinned(YBPinnedObjectsCache.shared, classId, objectId);
 }

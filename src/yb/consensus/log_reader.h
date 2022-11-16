@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_READER_H
-#define YB_CONSENSUS_LOG_READER_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -40,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.fwd.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_fwd.h"
 
@@ -86,7 +86,7 @@ class LogReader {
   Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
 
   Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
-                                              SegmentSequence* segments) const;
+                                      SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -194,9 +194,8 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
-                                          faststring* tmp_buf,
-                                          LogEntryBatchPB* batch) const;
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
+      const LogIndexEntry& index_entry) const;
 
   LogReader(Env* env, const scoped_refptr<LogIndex>& index,
             std::string log_prefix,
@@ -252,5 +251,3 @@ class LogReader {
 
 }  // namespace log
 }  // namespace yb
-
-#endif // YB_CONSENSUS_LOG_READER_H

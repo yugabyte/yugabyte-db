@@ -12,8 +12,9 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -70,6 +71,8 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
+  // Flag for whether we have https on for master/tserver UI
+  public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -214,6 +217,9 @@ public class Universe extends Model {
 
   // Prefix added to read only node.
   public static final String READONLY = "-readonly";
+
+  // Prefix added to addon node.
+  public static final String ADDON = "-addon";
 
   // Prefix added to node Index of each read replica node.
   public static final String NODEIDX_PREFIX = "-n";
@@ -1062,5 +1068,15 @@ public class Universe extends Model {
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
     return universe;
+  }
+
+  // Allow https when software version given is >= 2.17.1.0-b14.
+  // Invalid software versions will not allow https.
+  // compareYbVersions() returns 0 if incorrect software version is passed, hence the strictly
+  // greater.
+  public static boolean shouldEnableHttpsUI(
+      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion) {
+    return enableNodeToNodeEncrypt
+        && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
 }

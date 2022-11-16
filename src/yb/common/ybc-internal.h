@@ -13,8 +13,7 @@
 // Utilities for implementations of C wrappers around YugaByte C++ code. This file is not intended
 // to be included
 
-#ifndef YB_COMMON_YBC_INTERNAL_H
-#define YB_COMMON_YBC_INTERNAL_H
+#pragma once
 
 #ifndef __cplusplus
 #error "This header can only be included in C++ code"
@@ -39,13 +38,7 @@ void* YBCPAlloc(size_t size);
 void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn);
 void* YBCCStringToTextWithLen(const char* c, int size);
 
-// YBCStatus definition for Some common Status.
-YBCStatus YBCStatusOK();
-YBCStatus YBCStatusNotSupport(const std::string& feature_name);
-
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
 const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
-
-#endif // YB_COMMON_YBC_INTERNAL_H

@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import java.util.Map;
 import java.util.UUID;
 
+import com.google.common.base.Strings;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -40,6 +41,7 @@ public class KubernetesCheckStorageClass extends AbstractTaskBase {
     public Map<String, String> config;
     public String namespace;
     public UUID providerUUID;
+    public String helmReleaseName;
   }
 
   public static String getSubTaskGroupName() {
@@ -59,9 +61,14 @@ public class KubernetesCheckStorageClass extends AbstractTaskBase {
     }
 
     // storage class name used by tserver
-    String scName = k8s.getStorageClassName(taskParams().config, taskParams().namespace, false);
-    boolean allowsExpansion =
-        k8s.storageClassAllowsExpansion(taskParams().config, taskParams().namespace, scName);
+    String scName =
+        k8s.getStorageClassName(
+            taskParams().config, taskParams().namespace, taskParams().helmReleaseName, false);
+    if (Strings.isNullOrEmpty(scName)) {
+      // Could be using ephemeral volume
+      throw new RuntimeException("TServer Volume does not support expansion");
+    }
+    boolean allowsExpansion = k8s.storageClassAllowsExpansion(taskParams().config, scName);
     if (!allowsExpansion) {
       throw new RuntimeException(
           String.format(

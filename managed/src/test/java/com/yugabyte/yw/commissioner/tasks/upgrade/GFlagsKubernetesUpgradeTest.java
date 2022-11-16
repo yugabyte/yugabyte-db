@@ -179,7 +179,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(
@@ -225,7 +225,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(

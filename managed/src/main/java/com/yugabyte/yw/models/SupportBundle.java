@@ -154,8 +154,7 @@ public class SupportBundle extends Model {
     SupportBundle supportBundle = getOrBadRequest(bundleUUID);
     Path bundlePath = supportBundle.getPathObject();
     File file = bundlePath.toFile();
-    InputStream is = FileUtils.getInputStreamOrFail(file);
-    return is;
+    return FileUtils.getInputStreamOrFail(file);
   }
 
   @JsonIgnore

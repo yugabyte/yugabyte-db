@@ -13,45 +13,27 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-vertx-pg-client/" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vert.x PG Client
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC SSL/TLS
-    </a>
-  </li>
-  <li >
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Hibernate
+      Hibernate ORM
     </a>
   </li>
   <li >
     <a href="../ysql-sdyb/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data YugabyteDB
+      Spring Data YugabyteDB
     </a>
   </li>
   <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA
+      Spring Data JPA
     </a>
   </li>
    <li>
     <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebean
+      Ebean ORM
     </a>
   </li>
 </ul>

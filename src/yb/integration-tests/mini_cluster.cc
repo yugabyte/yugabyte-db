@@ -75,7 +75,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -91,8 +91,8 @@
 using namespace std::literals;
 using strings::Substitute;
 
-DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
-DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_UNKNOWN_string(mini_cluster_base_dir, "", "Directory for master/ts data");
+DEFINE_UNKNOWN_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);
@@ -886,8 +886,10 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id) {
   std::vector<tablet::TabletPeerPtr> result;
   for (auto peer : ListTableTabletPeers(cluster, table_id)) {
-    if (peer->tablet()->metadata()->tablet_data_state() ==
-        tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    auto tablet = peer->shared_tablet();
+    if (tablet &&
+        tablet->metadata()->tablet_data_state() ==
+            tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       result.push_back(peer);
     }
   }
@@ -1019,10 +1021,12 @@ void PushBackIfNotNull(const typename Collection::value_type& value, Collection*
 std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_intents) {
   std::vector<rocksdb::DB*> dbs;
   for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    const auto* tablet = peer->tablet();
-    PushBackIfNotNull(tablet->TEST_db(), &dbs);
-    if (include_intents) {
-      PushBackIfNotNull(tablet->TEST_intents_db(), &dbs);
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      PushBackIfNotNull(tablet->TEST_db(), &dbs);
+      if (include_intents) {
+        PushBackIfNotNull(tablet->TEST_intents_db(), &dbs);
+      }
     }
   }
   return dbs;
@@ -1084,7 +1088,8 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
   for (const auto &peer : peers) {
-    auto participant = peer->tablet() ? peer->tablet()->transaction_participant() : nullptr;
+    auto tablet = peer->shared_tablet();
+    auto participant = tablet ? tablet->transaction_participant() : nullptr;
     if (!participant) {
       continue;
     }
@@ -1201,7 +1206,12 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
             << " and updating compact/flush rate in existing tablets";
   FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
   for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet_result = tablet_peer->shared_tablet_safe();
+    if (!tablet_result.ok()) {
+      LOG(WARNING) << "Unable to get tablet: " << tablet_result.status();
+      continue;
+    }
+    auto tablet = *tablet_result;
     for (auto* db : { tablet->TEST_db(), tablet->TEST_intents_db() }) {
       if (db) {
         db->GetDBOptions().rate_limiter->SetBytesPerSecond(bytes_per_sec);
@@ -1237,7 +1247,10 @@ Status WaitAllReplicasSynchronizedWithLeader(
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
   CHECK_NOTNULL(peer.get());
   return LoggedWaitFor([peer] {
-        return peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
+      auto tablet = peer->shared_tablet();
+      if (!tablet)
+        return false;
+      return tablet->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
     },
     timeout,
     Format("Wait for SST files of peer: $0", peer->permanent_uuid()));

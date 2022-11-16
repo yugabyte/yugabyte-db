@@ -41,7 +41,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/source_location.h"
@@ -52,19 +52,19 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
              "Timeout for a batch of multiple RPCs invoked in parallel to shutdown.");
-DEFINE_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
-DEFINE_int32(min_backoff_ms_exponent, 7,
+DEFINE_UNKNOWN_int32(min_backoff_ms_exponent, 7,
              "Min amount of backoff delay if the server responds with TOO BUSY (default: 128ms). "
              "Set this to some amount, during which the server might have recovered.");
-DEFINE_int32(max_backoff_ms_exponent, 16,
+DEFINE_UNKNOWN_int32(max_backoff_ms_exponent, 16,
              "Max amount of backoff delay if the server responds with TOO BUSY (default: 64 sec). "
              "Set this to some duration, past which you are okay having no backoff for a Ddos "
              "style build-up, during times when the server is overloaded, and unable to recover.");
 
-DEFINE_int32(linear_backoff_ms, 1,
+DEFINE_UNKNOWN_int32(linear_backoff_ms, 1,
              "Number of milliseconds added to delay while using linear backoff strategy.");
 
 TAG_FLAG(min_backoff_ms_exponent, hidden);

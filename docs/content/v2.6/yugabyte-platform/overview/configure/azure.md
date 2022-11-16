@@ -18,35 +18,35 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
   <li>
     <a href="/preview/yugabyte-platform/overview/configure/aws" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="/preview/yugabyte-platform/overview/configure/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
     <a href="/preview/yugabyte-platform/overview/configure/azure" class="nav-link active">
-      <i class="fab fa-windows" aria-hidden="true"></i>
+      <i class="fa-brands fa-windows" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
     <a href="/preview/yugabyte-platform/overview/configure/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="/preview/yugabyte-platform/overview/configure/onprem" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>

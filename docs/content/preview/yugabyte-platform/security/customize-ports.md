@@ -15,9 +15,9 @@ YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security p
 
 - Navigate to **Universes** and click **Create Universe**.
 
-- Use the **Create universe > Primary cluster** page to navigate to **Advanced** and enable **Override Deployment Ports**, as per the following illustration:<br><br>
+- Use the **Create universe > Primary cluster** page to navigate to **Advanced** and enable **Override Deployment Ports**, as per the following illustration:<br>
 
-  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)<br><br>
+  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)<br>
 
 - Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
 

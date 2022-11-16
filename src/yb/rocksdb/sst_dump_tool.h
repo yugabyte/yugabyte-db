@@ -17,10 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_SST_DUMP_TOOL_H
-#define YB_ROCKSDB_SST_DUMP_TOOL_H
 
-#ifndef ROCKSDB_LITE
 #pragma once
 
 #include <glog/logging.h>
@@ -53,7 +50,3 @@ class SSTDumpTool {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE
-
-#endif  // YB_ROCKSDB_SST_DUMP_TOOL_H

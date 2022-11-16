@@ -130,8 +130,8 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
-  auto_flags.cc
-  auto_flags_util.cc
+  flags/auto_flags.cc
+  flags/auto_flags_util.cc
   async_task_util.cc
   atomic.cc
   background_task.cc
@@ -172,8 +172,9 @@ set(UTIL_SRCS
   file_system.cc
   file_system_mem.cc
   file_system_posix.cc
-  flag_tags.cc
-  flags.cc
+  flags/flag_tags.cc
+  flags/flags.cc
+  flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
   init.cc
@@ -290,12 +291,9 @@ if(NOT APPLE)
     libbacktrace)
 endif()
 
-if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-  message("Adding tcmalloc as a dependency of yb_util")
-  list(APPEND UTIL_LIBS tcmalloc)
-else()
-  message("Not adding tcmalloc as a dependency of yb_util")
-endif()
+# We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
+# as a static library directy into each executable, to ensure that it is initialized earlier than
+# any shared library.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
@@ -335,7 +333,7 @@ endif()
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest ${YB_TEST_LINK_LIBS_EXTENSIONS}
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
-ADD_YB_TEST(auto_flags-test)
+ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(backoff_waiter-test)
 ADD_YB_TEST(bit-util-test)
@@ -351,8 +349,9 @@ ADD_YB_TEST(debug-util-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
-ADD_YB_TEST(flag_tags-test)
-ADD_YB_TEST(flags-test)
+ADD_YB_TEST(flags/flag_tags-test)
+ADD_YB_TEST(flags/flags-test)
+ADD_YB_TEST(flags/flags_callback-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)

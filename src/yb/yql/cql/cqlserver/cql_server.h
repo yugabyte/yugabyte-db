@@ -14,8 +14,7 @@
 // This file contains the CQLServer class that listens for connections from Cassandra clients
 // using the CQL native protocol.
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
-#define YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
+#pragma once
 
 #include <stdint.h>
 #include <string.h>
@@ -31,7 +30,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
 
@@ -85,4 +84,3 @@ class CQLServer : public server::RpcAndWebServerBase {
 
 } // namespace cqlserver
 } // namespace yb
-#endif // YB_YQL_CQL_CQLSERVER_CQL_SERVER_H

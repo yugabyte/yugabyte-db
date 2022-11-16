@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_MEMORY_ARENA_FWD_H
-#define YB_UTIL_MEMORY_ARENA_FWD_H
+#pragma once
 
 namespace yb {
 
@@ -42,5 +41,3 @@ template<class T>
 using ThreadSafeArenaAllocator = internal::ArenaAllocatorBase<T, internal::ThreadSafeArenaTraits>;
 
 } // namespace yb
-
-#endif // YB_UTIL_MEMORY_ARENA_FWD_H
