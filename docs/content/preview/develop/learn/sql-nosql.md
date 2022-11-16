@@ -29,12 +29,14 @@ These can be loosely defined as the high-level concerns when choosing a database
 | API    | SQL | Various | Fully-relational SQL +<br/>Semi-relational SQL |
 | Consistency | Strong | Eventual | Strong |
 | Transactions | ACID | None | ACID |
-| High Write Throughput | No | Sometimes | Yes
+| High write throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
 ### Operational characteristics
 
-Operational characteristics can be defined as the runtime concerns that arise when a database is deployed, run and managed in production. When running a database in production in a cloud-like architecture, there are a number of operational characteristics that become essential. Operationally here are the capabilities of YugabyteDB compared to SQL and NoSQL databases. As before, there are a number of NoSQL databases which are different in their own ways and the table below is meant to give a broad idea.
+Operational characteristics can be defined as the runtime concerns that arise when a database is deployed, run, and managed in production. When running a database in production in a cloud-like architecture, a number of operational characteristics become essential. The following table compares the capabilities of YugabyteDB to SQL and NoSQL databases. As with the preceding section, there are a number of NoSQL databases which are different in their own ways and the following table is meant to give a broad idea.
+
+The following table lists some of the important features that YugabyteDB supports, and the API to use to leverage the feature. Note that typically, multiple databases are deployed to achieve the same functionality.
 
 | Operational characteristics  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
@@ -68,25 +70,25 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-To test the linear scalability of YugabyteDB, we ran some large cluster benchmarks (up to 50 nodes) and were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+To test the linear scalability of YugabyteDB, we ran some large cluster benchmarks (up to 50 nodes) and were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance/).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
-YugabyteDB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugabyteDB has been written in C++ for this very reason. Here is a chart showing how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
-The first chart below shows the total ops/second when running YBSB benchmark.
+The following chart shows the total ops/second when running YBSB benchmark.
 
 ![YCSB Benchmark - ops/sec](/images/develop/learn/yb-perf-ycsb-ops.png)
 
-The second chart below shows the latency for the YCSB run.
+The next chart shows the latency for the YCSB run as follows:
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
 
 ## Geo-distributed
 
-This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
+ The following screenshot is of YugabyteDB Anywhere, which visualized the universe created. The screenshot shows a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 

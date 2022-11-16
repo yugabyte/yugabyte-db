@@ -23,15 +23,15 @@ Use a function call expression to apply the specified function to given argument
 function_call ::= function_name '(' [ arguments ... ] ')'
 ```
 
-## Builtin Functions
+## Built-in Functions
 
 | Function | Return Type | Argument Type | Description |
 |----------|-------------|---------------|-------------|
 | BlobAs\<Type> | \<Type> | ([`BLOB`](../type_blob)) | Converts a value from `BLOB` |
 | \<Type>AsBlob | [`BLOB`](../type_blob) | (\<Type>) | Converts a value to `BLOB` |
 | [DateOf](../function_datetime/#dateof) | [`TIMESTAMP`](../type_datetime/) | ([`TIMEUUID`](../type_uuid)) | Conversion |
-| [MaxTimeUuid](../function_datetime/#maxtimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time uuid  |
-| [MinTimeUuid](../function_datetime/#mintimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time uuid  |
+| [MaxTimeUuid](../function_datetime/#maxtimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time UUID  |
+| [MinTimeUuid](../function_datetime/#mintimeuuid-timestamp) | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time UUID  |
 | [CurrentDate](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`DATE`](../type_datetime/) | () | Return the system current date |
 | [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime/) | () | Return the system current time of day |
 | [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime/) | () | Return the system current timestamp |
@@ -67,15 +67,19 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 - Function execution will return a value of the specified type by the function definition.
 - YugabyteDB allows function calls to be used any where that expression is allowed.
 
-## Cast function
+## CAST function
+
+CAST function converts the value returned from a table column to the specified data type.
+
+### Syntax
 
 ```sql
 cast_call ::= CAST '(' column AS type ')'
 ```
 
-CAST function converts the value returned from a table column to the specified data type.
+The following table lists the column data types and the target data types.
 
-| Source Column Type | Target Data Type |
+| Source column type | Target data type |
 |--------------------|------------------|
 | `BIGINT` | `SMALLINT`, `INT`, `TEXT` |
 | `BOOLEAN` | `TEXT` |
@@ -116,20 +120,20 @@ The hash values used for partitioning fall in the `0-65535` (uint16) range.
 Tables are partitioned into tablets, with each tablet being responsible for a range of partition values.
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
-`partition_hash` can be beneficial for querying a subset of the data to get approximate row counts or to breakdown
+`partition_hash` can be beneficial for querying a subset of the data to get approximate row counts or to break down
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
 
 One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
-For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
+For example, suppose you have a table `t` with partitioning columns `(h1,h2)` as follows:
 
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int,
                          primary key ((h1, h2), r1, r2));
 ```
 
-We can use this function to query a subset of the data (in this case, 1/128 of the data):
+You can use this function to query a subset of the data (in this case, 1/128 of the data) as follows:
 
 ```sql
 select count(*) from t where partition_hash(h1, h2) >= 0 and
@@ -140,7 +144,7 @@ The value `512` comes from dividing the full hash partition range by the number 
 
 ### Parallel full table scans
 
-To do a distributed scan, you can issue, in this case, 128 queries each using a different hash range:
+To do a distributed scan, you can issue, in this case, 128 queries each using a different hash range as follows:
 
 ```sql
 .. where partition_hash(h1, h2) >= 0 and partition_hash(h1, h2) < 512;
@@ -156,7 +160,7 @@ and so on, till the last segment/range of `512` in the partition space:
 .. where partition_hash(h1, h2) >= 65024;
 ```
 
-Here is a full implementation of a parallel table scan using `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc).
+Refer to `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc) for full implementation of a parallel table scan.
 
 ## WriteTime function
 
