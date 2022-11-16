@@ -1039,6 +1039,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+char *yb_test_block_index_state_change = "";
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -1700,6 +1702,28 @@ void YBTestFailDdlIfRequested() {
 
 	yb_test_fail_next_ddl = false;
 	elog(ERROR, "DDL failed as requested");
+}
+
+void
+YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+							const char *msg)
+{
+	static const int kSpinWaitMs = 100;
+	while (strcmp(*actual, expected) == 0)
+	{
+		ereport(LOG,
+				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		pg_usleep(kSpinWaitMs * 1000);
+
+		/* Reload config in hopes that guc var actual changed. */
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+	}
 }
 
 static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)

@@ -508,6 +508,14 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * Block index state changes:
+ * - "indisready": indislive to indisready
+ * - "getsafetime": indisready to backfill (specifically, the get safe time)
+ * - "indisvalid": backfill to indisvalid
+ */
+extern char *yb_test_block_index_state_change;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -579,6 +587,10 @@ YbTableProperties YbTryGetTableProperties(Relation rel);
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
 void YBTestFailDdlIfRequested();
+
+/* Spin wait while test guc var actual equals expected. */
+extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+										const char *msg);
 
 char *YBDetailSorted(char *input);
 

@@ -1427,6 +1427,10 @@ DefineIndex(Oid relationId,
 
 	/* Delay after committing pg_index update. */
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"indisready",
+									"index state change indisready=true");
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
@@ -1449,6 +1453,10 @@ DefineIndex(Oid relationId,
 
 	/* Delay after committing pg_index update. */
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"getsafetime",
+									"index state change to getsafetime");
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
@@ -1457,6 +1465,11 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"indisvalid",
+									"index state change indisvalid=true");
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
