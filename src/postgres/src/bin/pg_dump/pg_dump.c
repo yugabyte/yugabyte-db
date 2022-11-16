@@ -16235,7 +16235,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/* Get the table properties from YB, if relevant. */
 		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
-			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
+			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
+			 || tbinfo->relkind == RELKIND_MATVIEW))
 		{
 			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
@@ -16252,7 +16253,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		destroyPQExpBuffer(yb_reloptions);
 
 		/* Additional properties for YB table or index. */
-		if (yb_properties != NULL)
+		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
 		{
 			if (yb_properties->num_hash_key_columns > 0)
 				/* For hash-table. */
