@@ -218,10 +218,12 @@ export default class ClusterFields extends Component {
     this.tlsCertChanged = this.tlsCertChanged.bind(this);
     this.toggleDedicatedNodes = this.toggleDedicatedNodes.bind(this);
 
-    this.currentInstanceType = _.get(
-      this.props.universe,
-      'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType'
-    );
+    this.currentInstanceType =
+      this.props.clusterType === 'primary'
+        ? getPrimaryCluster(this.props.universe?.data?.universeDetails?.clusters)?.userIntent
+            .instanceType
+        : getReadOnlyCluster(this.props.universe?.data?.universeDetails?.clusters)?.userIntent
+            .instanceType;
 
     if (this.props.type === 'Async' && isNonEmptyObject(this.props.universe.currentUniverse.data)) {
       if (

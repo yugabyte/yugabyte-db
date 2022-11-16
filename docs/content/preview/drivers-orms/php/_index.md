@@ -8,13 +8,14 @@ menu:
   preview:
     identifier: php-drivers
     parent: drivers-orms
-    weight: 610
+    weight: 590
 type: indexpage
+showRightNav: true
 ---
 
-The following projects are recommended for implementing PHP applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following project is recommended for implementing PHP applications using the YugabyteDB YSQL API.
 
 | Project | Example apps |
 | :------ | :----------- |
@@ -24,7 +25,7 @@ For fully-runnable code snippets and explanations of common operations, see the 
 
 ## Prerequisites
 
-To develop C applications for YugabyteDB, you need:
+To develop PHP applications for YugabyteDB, you need:
 
 - **a YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.

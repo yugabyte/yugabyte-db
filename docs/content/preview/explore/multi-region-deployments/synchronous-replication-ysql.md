@@ -36,19 +36,19 @@ type: docs
 
 YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
 
-This page simulates AWS regions on a local machine. First, you deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`) and start a key-value workload against this universe. Next, you change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
+This page simulates AWS regions on a local machine. First, you deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`) and start a key-value workload against this cluster. Next, you change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
 This page uses the [yb-ctl](../../../admin/yb-ctl/) local cluster management utility.
 
-## Create a multi-zone universe in US West
+## Create a multi-zone cluster in US West
 
-If you have a previously running local universe, destroy it using the following.
+If you have a previously running local cluster, destroy it using the following.
 
 ```sh
 ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following:
+Start a new local cluster with a replication factor (RF) of `3`, and each replica placed in different zones (`us-west-2a`, `us-west-2b`, `us-west-2c`) in the `us-west-2` (Oregon) region of AWS. This can be done by running the following:
 
 ```sh
 ./bin/yb-ctl --rf 3 create --placement_info "aws.us-west-2.us-west-2a,aws.us-west-2.us-west-2b,aws.us-west-2.us-west-2c"
@@ -56,18 +56,18 @@ Start a new local universe with a replication factor (RF) of `3`, and each repli
 
 In this deployment, the YB-Masters are each placed in a separate zone to allow them to survive the loss of a zone. You can view the masters on the [dashboard](http://localhost:7000/), as per the following illustration:
 
-![Multi-zone universe masters](/images/ce/online-reconfig-multi-zone-masters.png)
+![Multi-zone cluster YB-Masters](/images/ce/online-reconfig-multi-zone-masters.png)
 
-You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration
+You can view the tablet servers on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone universe tservers](/images/ce/online-reconfig-multi-zone-tservers.png)
+![Multi-zone cluster YB-TServers](/images/ce/online-reconfig-multi-zone-tservers.png)
 
 ## Start a workload
 
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
 
 ```sh
-wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
 ```
 
 Run a `SqlInserts` workload in a separate shell, as follows:
@@ -81,7 +81,7 @@ java -jar ./yb-sample-apps.jar --workload SqlInserts \
 
 You should now see some read and write load on the [tablet servers page](http://localhost:7000/tablet-servers), as per the following illustration:
 
-![Multi-zone universe load](/images/ce/online-reconfig-multi-zone-load.png)
+![Multi-zone cluster load](/images/ce/online-reconfig-multi-zone-load.png)
 
 ## Add nodes
 
@@ -99,7 +99,7 @@ Add another node in the zone `ap-northeast-1a` of region `ap-northeast-1`, as fo
 ./bin/yb-ctl add_node --placement_info "aws.ap-northeast-1.ap-northeast-1a"
 ```
 
-These two new nodes are added into the cluster but are not taking any read or write IO. This is because  YB-Master's initial placement policy of storing data across the zones in `us-west-2` region still applies, as per the following illustration:
+These two new nodes are added into the cluster but are not taking any read or write IO. This is because the YB-Master's initial placement policy of storing data across the zones in `us-west-2` region still applies, as per the following illustration:
 
 ![Add node in a new region](/images/ce/online-reconfig-add-regions-no-load.png)
 
@@ -112,7 +112,7 @@ Update the placement policy, instructing the YB-Master to place data in the new 
     modify_placement_info aws.us-west-2.us-west-2a,aws.us-east-1.us-east-1a,aws.ap-northeast-1.ap-northeast-1a 3
 ```
 
-You should see that the data as well as the IO gradually moves from the nodes in `us-west-2b` and `us-west-2c` to the newly added nodes. The [tablet servers page](http://localhost:7000/tablet-servers) should soon look similar the the following illustration:
+You should see that the data as well as the IO gradually moves from the nodes in `us-west-2b` and `us-west-2c` to the newly added nodes. The [tablet servers page](http://localhost:7000/tablet-servers) should soon look similar to the following illustration:
 
 ![Multi region workload](/images/ce/online-reconfig-multi-region-load.png)
 
@@ -120,7 +120,7 @@ You should see that the data as well as the IO gradually moves from the nodes in
 
 ### Start new masters
 
-You need to move the YB-Master from the old nodes to the new nodes. In order to do so, first start a new masters on the new nodes, as follows:
+You need to move the YB-Master from the old nodes to the new nodes. To do so, first start new masters on the new nodes, as follows:
 
 ```sh
 ./bin/yb-ctl add_node --master --placement_info "aws.us-east-1.us-east-1a"
@@ -134,7 +134,7 @@ You need to move the YB-Master from the old nodes to the new nodes. In order to 
 
 ### Remove old masters
 
-Remove the old masters from the masters Raft group. Assuming nodes with IPs `127.0.0.2` and `127.0.0.3` were the two old nodes, run the following commands:
+Remove the old masters from the masters Raft group. Assuming nodes with addresses `127.0.0.2` and `127.0.0.3` were the two old nodes, run the following commands:
 
 ```sh
 ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100,127.0.0.4:7100,127.0.0.5:7100 change_master_config REMOVE_SERVER 127.0.0.2 7100
