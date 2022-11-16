@@ -407,20 +407,20 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
-		pgss_store(query->queryId,	/* query id */
-				   pstate->p_sourcetext,	/* query */
-				   query->stmt_location,	/* query location */
-				   query->stmt_len, /* query length */
-				   NULL,		/* PlanInfo */
-				   query->commandType,	/* CmdType */
-				   NULL,		/* SysInfo */
-				   NULL,		/* ErrorInfo */
-				   0,			/* totaltime */
-				   0,			/* rows */
-				   NULL,		/* bufusage */
-				   NULL,		/* walusage */
-				   jstate,		/* JumbleState */
-				   PGSS_PARSE); /* pgssStoreKind */
+		pgss_store(query->queryId,          /* query id */
+					pstate->p_sourcetext,   /* query */
+					query->stmt_location,   /* query location */
+					query->stmt_len,        /* query length */
+					NULL,                   /* PlanInfo */
+					query->commandType,     /* CmdType */
+					NULL,                   /* SysInfo */
+					NULL,                   /* ErrorInfo */
+					0,                      /* totaltime */
+					0,                      /* rows */
+					NULL,                   /* bufusage */
+					NULL,                   /* walusage */
+					jstate,                 /* JumbleState */
+					PGSS_PARSE);            /* pgssStoreKind */
 }
 #else
 
@@ -463,6 +463,22 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 	 */
 	if (query->queryId == UINT64CONST(0))
 		query->queryId = UINT64CONST(1);
+
+       if (jstate.clocations_count > 0)
+               pgss_store(query->queryId,                /* query id */
+							pstate->p_sourcetext,        /* query */
+							query->stmt_location,        /* query location */
+							query->stmt_len,    /* query length */
+							NULL,               /* PlanInfo */
+							query->commandType, /* CmdType */
+							NULL,               /* SysInfo */
+							NULL,               /* ErrorInfo */
+							0,                  /* totaltime */
+							0,                  /* rows */
+							NULL,               /* bufusage */
+							NULL,               /* walusage */
+							&jstate,            /* JumbleState */
+							PGSS_PARSE);        /* pgssStoreKind */
 }
 #endif
 
