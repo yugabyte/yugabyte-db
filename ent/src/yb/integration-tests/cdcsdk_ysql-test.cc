@@ -6884,7 +6884,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKChangeEventCountMetric)
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleStream)) {
   FLAGS_update_metrics_interval_ms = 1;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -6921,6 +6920,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
       tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
 
   int64_t current_traffic_sent_bytes = 0;
+  vector<GetChangesResponsePB> change_resp(num_tables);
+  vector<std::shared_ptr<cdc::CDCSDKTabletMetrics>> metrics(num_tables);
+  uint32_t total_record_size = 0;
+  int64_t total_traffic_sent = 0;
+  uint64_t total_change_event_count = 0;
+
 
   for (uint32_t idx = 0; idx < num_tables; idx++) {
     ASSERT_OK(
@@ -6928,15 +6933,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleS
     ASSERT_OK(test_client()->FlushTables(
         {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
-  }
 
-  vector<GetChangesResponsePB> change_resp(num_tables);
-  vector<std::shared_ptr<cdc::CDCSDKTabletMetrics>> metrics(num_tables);
-  uint32_t total_record_size = 0;
-  int64_t total_traffic_sent = 0;
-  uint64_t total_change_event_count = 0;
-
-  for (uint32_t idx = 0; idx < num_tables; idx++) {
     change_resp[idx] = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[idx]));
     total_record_size += change_resp[idx].cdc_sdk_proto_records_size();
 
