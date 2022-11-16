@@ -44,6 +44,10 @@ DEFINE_bool(
     "Enable packing updates corresponding to a row in single CDC record");
 TAG_FLAG(enable_single_record_update, runtime);
 
+DEFINE_test_flag(
+    bool, cdc_snapshot_failure, false,
+    "For testing only, When it is set to true, the CDC snapshot operation will fail.");
+
 namespace yb {
 namespace cdc {
 
@@ -1136,6 +1140,9 @@ Status GetChangesForCDCSDK(
           data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
+      // Use the last replicated hybrid time as a safe time for snapshot operation. so that
+      // compaction can be restricted during snapshot operation.
+      *leader_safe_time = data.log_ht;
 
       // This should go to cdc_state table.
       // Below condition update the checkpoint in cdc_state table.
@@ -1150,21 +1157,32 @@ Status GetChangesForCDCSDK(
       VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
               << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
 
-      Schema schema;
-      SchemaVersion schema_version;
-      auto result = client->GetTableSchemaFromSysCatalog(
-          tablet_ptr->metadata()->table_id(), from_op_id.snapshot_time());
-      // Failed to get specific schema version from the system catalog, use the latest
-      // schema version for the key-value decoding.
-      if (!result.ok()) {
-        schema = *tablet_ptr->schema().get();
-        schema_version = tablet_ptr->metadata()->schema_version();
-        LOG(WARNING) << "Failed to get the specific schema version from system catalog for table: "
-                     << tablet_ptr->metadata()->table_name()
-                     << " proceedings with the latest schema version.";
-      } else {
-        schema = result->first;
-        schema_version = result->second;
+      // This is for test purposes only, to create a snapshot failure scenario from the server.
+      if (PREDICT_FALSE(FLAGS_TEST_cdc_snapshot_failure)) {
+        return STATUS_FORMAT(
+            ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
+      }
+
+      Schema schema = **cached_schema;
+      SchemaVersion schema_version = *cached_schema_version;
+      if (!(**cached_schema).initialized()) {
+        auto result = client->GetTableSchemaFromSysCatalog(
+            tablet_ptr->metadata()->table_id(), std::numeric_limits<uint64_t>::max());
+        // Failed to get specific schema version from the system catalog, use the latest
+        // schema version for the key-value decoding.
+        if (!result.ok()) {
+          schema = *tablet_ptr->schema().get();
+          schema_version = tablet_ptr->metadata()->schema_version();
+          LOG(WARNING) << "Failed to get the latest schema version from system catalog for table: "
+                       << tablet_ptr->metadata()->table_name()
+                       << ", with tablet: " << tablet_id
+                       << ", and stream: " << stream_id;
+        } else {
+          schema = result->first;
+          schema_version = result->second;
+          *cached_schema = std::make_shared<Schema>(std::move(result->first));
+          *cached_schema_version = result->second;
+        }
       }
       FillDDLInfo(tablet_peer, schema, schema_version, resp);
 
