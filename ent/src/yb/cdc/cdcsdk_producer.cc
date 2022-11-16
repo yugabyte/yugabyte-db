@@ -1133,6 +1133,9 @@ Status GetChangesForCDCSDK(
           data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
+      // Use the last replicated hybrid time as a safe time for snapshot operation. so that
+      // compaction can be restricted during snapshot operation.
+      *leader_safe_time = data.log_ht;
 
       // This should go to cdc_state table.
       // Below condition update the checkpoint in cdc_state table.
