@@ -22,14 +22,8 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
  pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
  pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
-(14 rows)
-
-select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
- datname  |                 query                  | calls 
-----------+----------------------------------------+-------
- postgres | SELECT * from pg_stat_monitor_settings |     1
- postgres | SELECT pg_stat_monitor_reset()         |     1
-(2 rows)
+ pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
+(15 rows)
 
 SELECT * from pg_stat_monitor_settings;
                    name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
@@ -48,7 +42,15 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_enable_query_plan   | no     | no            | Enable/Disable query plan monitoring                                                                     |         |            | yes, no        | no
  pg_stat_monitor.pgsm_track               | top    | top           | Selects which statements are tracked by pg_stat_monitor.                                                 |         |            | none, top, all | no
  pg_stat_monitor.pgsm_extract_comments    | no     | no            | Enable/Disable extracting comments from queries.                                                         |         |            | yes, no        | no
-(14 rows)
+ pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
+(15 rows)
+
+SELECT query, calls, total_exec_time, min_exec_time, max_exec_time, mean_exec_time, stddev_exec_time from pg_stat_monitor;
+                 query                  | calls | total_exec_time | min_exec_time | max_exec_time | mean_exec_time | stddev_exec_time 
+----------------------------------------+-------+-----------------+---------------+---------------+----------------+------------------
+ SELECT pg_stat_monitor_reset()         |     1 |          0.0945 |        0.0945 |        0.0945 |         0.0945 |                0
+ SELECT * from pg_stat_monitor_settings |     2 |          0.1556 |        0.0772 |        0.0784 |         0.0778 |           0.0006
+(2 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
