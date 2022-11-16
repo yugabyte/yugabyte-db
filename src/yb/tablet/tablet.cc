@@ -1862,16 +1862,17 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     const Schema& projection, const ReadHybridTime& time, const string& next_key) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
-  Slice next_slice;
+  docdb::KeyBytes encoded_next_key;
   if (!next_key.empty()) {
     SubDocKey start_sub_doc_key;
     docdb::KeyBytes start_key_bytes(next_key);
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    next_slice = start_sub_doc_key.doc_key().Encode().AsSlice();
-    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << next_key;
+    encoded_next_key = start_sub_doc_key.doc_key().Encode();
+    VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
   }
   return NewRowIterator(
-      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse, next_slice);
+      projection, time, "", CoarseTimePoint::max(), AllowBootstrappingState::kFalse,
+      encoded_next_key);
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
