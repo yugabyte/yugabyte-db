@@ -78,13 +78,13 @@ You need to navigate to **Configs > On-Premises Datacenters**, click **Add Confi
   ssh-keygen -m PEM -t rsa -b 2048 -f test_id_rsa
     ```
 
-* Air Gap install should only be enabled if your nodes do not have the Internet connectivity.<br><br>
+* **Air Gap Install** should only be enabled if your nodes do not have the Internet connectivity.<br>
 
   ![caption](/images/ee/multi-cloud-provider-info.png)
 
 ### Define an instance type
 
-Select **Instance Types** and enter a machine description which matches the nodes you will be using. The machine type can be any logical name, given the machine types will be different between all three regions. The following example use `8core`:
+Select **Instance Types** and enter a machine description which matches the nodes you will be using. The machine type can be any logical name, given the machine types will be different between all three regions. The following example uses `8core`:
 
 ![Multi-cloud instance description](/images/ee/multi-cloud-instances.png)
 
@@ -112,7 +112,7 @@ You can create a multi-region universe as follows:
 
 1. Navigate to **Dashboard** or **Universes** and click **Create Universe**.
 
-1. Complete the **Primary Cluster** fields, as shown in the following illustration:<br><br>
+1. Complete the **Primary Cluster** fields, as shown in the following illustration:<br>
 
     ![New universe details](/images/ee/multi-cloud-create-universe.png)
 

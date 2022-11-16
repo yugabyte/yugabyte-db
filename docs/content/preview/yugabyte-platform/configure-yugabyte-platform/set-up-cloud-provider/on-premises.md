@@ -64,7 +64,7 @@ type: docs
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+<br>You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -140,7 +140,7 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
-<br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
+Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
 
 ### Provision nodes manually
 
@@ -383,29 +383,29 @@ On each node, perform the following as a user with sudo access:
     ```sh
     sudo vi /etc/systemd/system/node_exporter.service
     ```
-
-
+    
+    
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
-
+        
+    
     ```conf
       [Unit]
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
       After=network.target
-
+    
       [Install]
       WantedBy=multi-user.target
-
+    
       [Service]
       Type=simple
-
+    
       User=prometheus
       Group=prometheus
-
+    
       ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-
     ```
-
+    
 1. Exit from vi, and continue, as follows:
 
     ```sh
