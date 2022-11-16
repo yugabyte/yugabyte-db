@@ -147,6 +147,10 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_state_change, "",
+    "Block the given index state change from proceeding. Valid names are indisready, getsafetime,"
+    " and indisvalid. For testing purposes.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(
