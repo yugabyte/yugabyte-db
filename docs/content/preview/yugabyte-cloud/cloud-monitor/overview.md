@@ -36,7 +36,7 @@ The following table describes the metrics available on the **Overview**.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload. |
+| Operations/sec | The number of [YB-TServer](../../../architecture/concepts/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
 | Disk Usage | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
@@ -63,7 +63,7 @@ The **Performance** tab provides the following metrics.
 | YCQL Average Latency | The average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. |
 <!--| YCQL Average Latency (P99) | The average time (in milliseconds) of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern. You should check whether or not there are consistent spikes in latency. |-->
 
-### Node / resources
+### Infrastructure
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
@@ -130,7 +130,7 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| Operations/sec | The number of disk input/output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload. |
+| Operations/sec | The number of [YB-TServer](../../../architecture/concepts/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | Threads Running | The current number of running threads. | You may consider this information while examining other metrics. |
 | Threads Started | The total number of threads started on this server. | You may consider this information while examining other metrics. |
