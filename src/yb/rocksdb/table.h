@@ -29,8 +29,7 @@
 // Example code is also available
 //   https://github.com/facebook/rocksdb/wiki/A-Tutorial-of-RocksDB-SST-formats#wiki-examples
 
-#ifndef YB_ROCKSDB_TABLE_H
-#define YB_ROCKSDB_TABLE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -230,7 +229,6 @@ struct BlockBasedTablePropertyNames {
 extern TableFactory* NewBlockBasedTableFactory(
     const BlockBasedTableOptions& table_options = BlockBasedTableOptions());
 
-#ifndef ROCKSDB_LITE
 
 enum EncodingType : char {
   // Always write full keys without any special encoding.
@@ -320,7 +318,6 @@ struct PlainTableOptions {
 extern TableFactory* NewPlainTableFactory(const PlainTableOptions& options =
                                               PlainTableOptions());
 
-#endif  // ROCKSDB_LITE
 
 class RandomAccessFileReader;
 
@@ -429,7 +426,6 @@ class TableFactory {
       const ReadOptions &read_options, const Slice &user_key) const { return nullptr; }
 };
 
-#ifndef ROCKSDB_LITE
 // Create a special table factory that can open either of the supported
 // table formats, based on setting inside the SST files. It should be used to
 // convert a DB from one table format to another.
@@ -442,8 +438,5 @@ extern TableFactory* NewAdaptiveTableFactory(
     std::shared_ptr<TableFactory> block_based_table_factory = nullptr,
     std::shared_ptr<TableFactory> plain_table_factory = nullptr);
 
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_H

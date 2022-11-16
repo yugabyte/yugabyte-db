@@ -193,8 +193,8 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
-    @EnumValue("RestoreSnapshot")
-    RestoreSnapshot,
+    @EnumValue("RestoreSnapshotSchedule")
+    RestoreSnapshotSchedule,
 
     @Deprecated
     @EnumValue("SetEncryptionKey")
@@ -341,8 +341,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored " : "Restoring ";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
-        case RestoreSnapshot:
-          return completed ? "Restored Snapshot" : "Restoring Snapshot";
+        case RestoreSnapshotSchedule:
+          return completed ? "Restored Snapshot Schedule" : "Restoring Snapshot Schedule";
         case Restart:
           return completed ? "Restarted " : "Restarting ";
         case Backup:
@@ -470,6 +470,12 @@ public class CustomerTask extends Model {
     return taskUUID;
   }
 
+  public CustomerTask setTaskUUID(UUID newTaskUUID) {
+    this.taskUUID = newTaskUUID;
+    save();
+    return this;
+  }
+
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY, required = true)
@@ -530,6 +536,11 @@ public class CustomerTask extends Model {
 
   public Date getCompletionTime() {
     return completionTime;
+  }
+
+  public void resetCompletionTime() {
+    this.completionTime = null;
+    this.save();
   }
 
   @Column

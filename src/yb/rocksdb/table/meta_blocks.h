@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_META_BLOCKS_H
-#define YB_ROCKSDB_TABLE_META_BLOCKS_H
 
 #pragma once
 
@@ -150,5 +148,3 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      BlockContents* contents);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_META_BLOCKS_H

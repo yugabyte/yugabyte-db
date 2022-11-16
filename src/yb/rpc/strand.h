@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_STRAND_H
-#define YB_RPC_STRAND_H
+#pragma once
 
 #include "yb/rpc/thread_pool.h"
 
@@ -76,5 +75,3 @@ class Strand : public ThreadPoolTask {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_STRAND_H

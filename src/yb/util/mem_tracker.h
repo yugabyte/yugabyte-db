@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MEM_TRACKER_H
-#define YB_UTIL_MEM_TRACKER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -641,5 +640,3 @@ bool CheckMemoryPressureWithLogging(
     const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
 } // namespace yb
-
-#endif // YB_UTIL_MEM_TRACKER_H

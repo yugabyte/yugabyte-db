@@ -17,14 +17,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -38,33 +38,33 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link active">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+<br>You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
@@ -299,7 +299,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
     sudo yum install rsync
     ```
 
-For airgapped environments, make sure your Yum repository mirror contains these packages:
+    For airgapped environments, make sure your Yum repository mirror contains these packages.
 
 1. If running on a virtual machine, execute the following to tune kernel settings:
 
@@ -384,7 +384,7 @@ On each node, perform the following as a user with sudo access:
     ```
 
     Add the following to the `/etc/systemd/system/node_exporter.service` file:
-
+    
     ```conf
     [Unit]
     Description=node_exporter - Exporter for machine metrics.

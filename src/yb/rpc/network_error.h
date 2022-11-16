@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_NETWORK_ERROR_H
-#define YB_RPC_NETWORK_ERROR_H
+#pragma once
 
 #include "yb/util/enums.h"
 #include "yb/util/status_fwd.h"
@@ -41,5 +40,3 @@ typedef StatusErrorCodeImpl<NetworkErrorTag> NetworkError;
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_NETWORK_ERROR_H

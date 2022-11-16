@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_H
-#define YB_CLIENT_TRANSACTION_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -188,5 +187,3 @@ class YBSubTransaction {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_H

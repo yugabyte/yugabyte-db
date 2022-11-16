@@ -21,8 +21,7 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef YB_GUTIL_MACROS_H
-#define YB_GUTIL_MACROS_H
+#pragma once
 
 #include <stddef.h>         // For size_t
 #include "yb/gutil/port.h"
@@ -300,5 +299,3 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #else
 #define FASTDEBUG_FAKE_INIT(x)
 #endif
-
-#endif  // YB_GUTIL_MACROS_H

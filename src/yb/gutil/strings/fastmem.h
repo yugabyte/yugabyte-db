@@ -28,8 +28,7 @@
 //     Analysis: memcmp, fastmemcmp_inlined, fastmemcmp
 //     2012-01-30
 
-#ifndef YB_GUTIL_STRINGS_FASTMEM_H
-#define YB_GUTIL_STRINGS_FASTMEM_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -170,5 +169,3 @@ inline size_t MemoryDifferencePos(const void *a_void, const void *b_void, size_t
 }
 
 }  // namespace strings
-
-#endif // YB_GUTIL_STRINGS_FASTMEM_H

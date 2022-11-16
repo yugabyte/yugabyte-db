@@ -11,12 +11,9 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_FLAGS_H
-#define YB_TSERVER_TSERVER_FLAGS_H
+#pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 DECLARE_string(tserver_master_addrs);
 DECLARE_uint64(tserver_master_replication_factor);
-
-#endif  // YB_TSERVER_TSERVER_FLAGS_H

@@ -16,14 +16,14 @@ type: docs
 
   <li>
     <a href="../cloud-add-vpc-aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../cloud-add-vpc-gcp/" class="nav-link active">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>

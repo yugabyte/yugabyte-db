@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PORT_PICKER_H
-#define YB_UTIL_PORT_PICKER_H
+#pragma once
 
 #include <mutex>
 #include <memory>
@@ -34,5 +33,3 @@ class PortPicker {
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_PORT_PICKER_H

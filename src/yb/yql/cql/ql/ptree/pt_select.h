@@ -15,8 +15,7 @@
 // Tree node definitions for SELECT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -122,7 +121,7 @@ using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
 // State variables for INDEX analysis.
-class SelectScanInfo : public MCBase {
+class SelectScanInfo : public MCBase, public AnalyzeStepState {
  public:
   // Public types.
   typedef MCSharedPtr<SelectScanInfo> SharedPtr;
@@ -130,6 +129,7 @@ class SelectScanInfo : public MCBase {
   // Constructor.
   explicit SelectScanInfo(MemoryContext *memctx,
                           size_t num_columns,
+                          MCList<PartitionKeyOp> *partition_key_ops,
                           MCVector<const PTExpr*> *scan_filtering_exprs,
                           MCMap<MCString, ColumnDesc> *scan_column_map);
 
@@ -141,10 +141,10 @@ class SelectScanInfo : public MCBase {
 
   // Collecting references of operators on WHERE clause.
   Status AddWhereExpr(SemContext *sem_context,
-                              const PTRelationExpr *expr,
-                              const ColumnDesc *col_desc,
-                              PTExprPtr value,
-                              PTExprListNode::SharedPtr col_args = nullptr);
+                      const PTRelationExpr *expr,
+                      const ColumnDesc *col_desc,
+                      PTExprPtr value,
+                      PTExprListNode::SharedPtr col_args = nullptr);
 
   // Setup for analyzing where clause.
   void set_analyze_where(bool val) { analyze_where_ = val; }
@@ -450,8 +450,8 @@ class PTSelectStmt : public PTDmlStmt {
   Status AnalyzeReferences(SemContext *sem_context);
   Status AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
   Status AnalyzeOrderByClause(SemContext *sem_context,
-                                      const TableId& index_id,
-                                      bool *is_forward_scan);
+                              const TableId& index_id,
+                              bool *is_forward_scan);
   Status SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
 
   // --- The parser will decorate this node with the following information --
@@ -505,5 +505,3 @@ class PTSelectStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_SELECT_H_

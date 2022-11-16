@@ -621,6 +621,7 @@ sparklines
 spidering
 Splunk
 SpotBugs
+SQLAlchemy
 Stackdriver
 Stackprof
 starrer

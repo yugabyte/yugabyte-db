@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H
-#define YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H
+#pragma once
 
 #include <map>
 #include <shared_mutex>
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/log_fwd.h"
@@ -142,5 +141,3 @@ struct LogAnchor {
 
 } // namespace log
 } // namespace yb
-
-#endif // YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_KEY_ENCODER_H
-#define YB_COMMON_KEY_ENCODER_H
+#pragma once
 
 #include <arpa/inet.h>
 
@@ -432,9 +431,9 @@ class KeyEncoder {
   // of the composite key.
   // Any indirect data (eg strings) are allocated out of 'arena'.
   Status Decode(Slice* encoded_key,
-                        bool is_last,
-                        Arena* arena,
-                        uint8_t* cell_ptr) const {
+                bool is_last,
+                Arena* arena,
+                uint8_t* cell_ptr) const {
     return decode_key_portion_func_(encoded_key, is_last, arena, cell_ptr);
   }
 
@@ -458,5 +457,3 @@ extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
-
-#endif // YB_COMMON_KEY_ENCODER_H

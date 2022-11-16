@@ -33,7 +33,6 @@
 
 #include <memory>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/partition.h"
@@ -114,21 +113,21 @@ const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
 
-DEFINE_string(server_address, "localhost",
+DEFINE_UNKNOWN_string(server_address, "localhost",
               "Address of server to run against");
-DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+DEFINE_UNKNOWN_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
-DEFINE_bool(force, false, "set_flag: If true, allows command to set a flag "
+DEFINE_UNKNOWN_bool(force, false, "set_flag: If true, allows command to set a flag "
             "which is not explicitly marked as runtime-settable. Such flag changes may be "
             "simply ignored on the server, or may cause the server to crash.\n"
             "delete_tablet: If true, command will delete the tablet and remove the tablet "
             "from the memory, otherwise tablet metadata will be kept in memory with state "
             "TOMBSTONED.");
 
-DEFINE_string(certs_dir_name, "",
+DEFINE_UNKNOWN_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_string(client_node_name, "", "Client node name.");
+DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 

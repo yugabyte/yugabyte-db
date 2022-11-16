@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_CONNECTION_CONTEXT_H
-#define YB_RPC_CONNECTION_CONTEXT_H
+#pragma once
 
 #include <ev++.h>
 
@@ -136,5 +135,3 @@ std::shared_ptr<ConnectionContextFactory> CreateConnectionContextFactory(Args&&.
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_CONNECTION_CONTEXT_H

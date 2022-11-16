@@ -16,13 +16,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/preview/deploy/kubernetes/single-zone/aks/helm-chart" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
     <a href="/preview/deploy/kubernetes/single-zone/aks/statefulset-yaml" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
   </li>

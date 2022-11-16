@@ -15,8 +15,7 @@
 // Tree node definitions for INSERT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_INSERT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_INSERT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
@@ -90,22 +89,22 @@ class PTInsertStmt : public PTDmlStmt {
   //
 
   Status AnalyzeInsertingValue(PTCollection* inserting_value,
-                                       SemContext* sem_context);
+                               SemContext* sem_context);
 
   Status AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
-                                      SemContext* sem_context);
+                              SemContext* sem_context);
 
   Status AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
-                                    SemContext* sem_context);
+                            SemContext* sem_context);
 
   Status ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
-                               const ColumnDesc* col_desc,
-                               const PTExprPtr& value_expr,
-                               SemContext* sem_context);
+                       const ColumnDesc* col_desc,
+                       const PTExprPtr& value_expr,
+                       SemContext* sem_context);
 
   // Initialize all non-initialized columns according to their configured defaults
   Status InitRemainingColumns(bool is_json_clause,
-                                      SemContext* sem_context);
+                              SemContext* sem_context);
 
   // --- The parser will decorate this node with the following information --
 
@@ -119,5 +118,3 @@ class PTInsertStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_INSERT_H_

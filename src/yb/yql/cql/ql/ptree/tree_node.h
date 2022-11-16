@@ -18,8 +18,7 @@
 // defined in parser_gram.y will create these nodes and link them together to form parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_TREE_NODE_H_
-#define YB_YQL_CQL_QL_PTREE_TREE_NODE_H_
+#pragma once
 
 #include "yb/util/enums.h"
 
@@ -140,5 +139,3 @@ class TreeNode : public MCBase {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_TREE_NODE_H_

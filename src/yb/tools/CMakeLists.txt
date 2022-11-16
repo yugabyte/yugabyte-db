@@ -171,6 +171,9 @@ target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_ut
 add_library(tools_test_utils tools_test_utils.cc)
 target_link_libraries(tools_test_utils yb_util yb_test_util)
 
+add_library(test_admin_client test_admin_client.cc)
+target_link_libraries(test_admin_client master_proto integration-tests)
+
 set(YB_TEST_LINK_LIBS
   admin-test-base
   ysck
@@ -182,6 +185,7 @@ set(YB_TEST_LINK_LIBS
   yb_docdb_test_common
   ql_util
   ql-dml-test-base
+  test_admin_client
   tools_test_utils
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
@@ -226,3 +230,12 @@ endif()
 set(YB_PCH_PREFIX util)
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
+
+set(YB_BACKUP_TEST_BASE_SRCS
+    ${TOOLS_LIB_SRCS_EXTENSIONS})
+set(YB_BACKUP_TEST_BASE_DEPS
+    pg_wrapper_test_base
+    admin-test-base)
+ADD_YB_TEST_LIBRARY(yb-backup-test_base_ent
+                    SRCS ${YB_BACKUP_TEST_BASE_SRCS}
+                    DEPS ${YB_BACKUP_TEST_BASE_DEPS})

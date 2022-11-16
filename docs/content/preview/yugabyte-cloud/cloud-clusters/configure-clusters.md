@@ -14,13 +14,15 @@ type: docs
 
 YugabyteDB Managed supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
-{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
-
 You can scale the following cluster properties:
 
 - Number of nodes (horizontal).
 - Number of vCPUs per node (vertical).
 - Disk size per node.
+
+Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
+
+{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 For clusters with Node level and Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
@@ -30,6 +32,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 - Most production applications require 4 to 8 vCPUs per node. Scale up smaller instance sizes; when the total number of vCPUs for your cluster exceeds 16, consider scaling out. For example, if you have a 3-node cluster with 2 vCPUs per node, scale up to 8 vCPUs per node before adding nodes.
 - Adding or removing nodes incurs a load on the cluster. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade application performance and increase the length of time of the scaling operation.
+- Scaling operations block other cluster operations, such as backups and maintenance. Avoid scaling operations before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - Before removing nodes from a cluster, make sure the reduced disk space will be sufficient for the existing and anticipated data.
 
 ## Limitations
@@ -45,7 +48,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 ### Single-region clusters
 
-You can scale multi-node single-region clusters horizontally and vertically.
+You can scale multi-node single-region clusters horizontally and vertically, as well as increase the disk size.
 
 To scale a single-region cluster:
 
@@ -64,7 +67,9 @@ Depending on the number of nodes, the scaling operation can take several minutes
 
 ### Replicate across regions clusters
 
-You can scale multi-region replicated clusters horizontally and vertically. <!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
+You can scale multi-region replicated clusters horizontally and vertically, as well as increase the disk size.
+
+<!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
 
 To scale nodes in a multi-region replicated cluster:
 

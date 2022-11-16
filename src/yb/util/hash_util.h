@@ -32,8 +32,7 @@
 
 #include <stdint.h>
 
-#ifndef YB_UTIL_HASH_UTIL_H
-#define YB_UTIL_HASH_UTIL_H
+#pragma once
 
 namespace yb {
 
@@ -80,5 +79,3 @@ class HashUtil {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_HASH_UTIL_H

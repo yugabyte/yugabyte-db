@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_BACKFILL_INDEX_H
-#define YB_MASTER_BACKFILL_INDEX_H
+#pragma once
 
 #include <float.h>
 
@@ -25,7 +24,7 @@
 #include <vector>
 
 #include <boost/mpl/and.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -405,5 +404,3 @@ class BackfillChunk : public RetryingTSRpcTask {
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_BACKFILL_INDEX_H

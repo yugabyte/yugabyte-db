@@ -31,8 +31,7 @@
 //
 // Simple header which is inserted into all of our generated protobuf code.
 // We use this to hook protobuf code up to TSAN annotations.
-#ifndef YB_UTIL_PROTOBUF_ANNOTATIONS_H
-#define YB_UTIL_PROTOBUF_ANNOTATIONS_H
+#pragma once
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -43,5 +42,3 @@
 
 #define GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN ANNOTATE_IGNORE_WRITES_BEGIN
 #define GOOGLE_SAFE_CONCURRENT_WRITES_END ANNOTATE_IGNORE_WRITES_END
-
-#endif /* YB_UTIL_PROTOBUF_ANNOTATIONS_H */

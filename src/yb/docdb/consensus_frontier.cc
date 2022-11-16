@@ -226,5 +226,14 @@ void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
   }
 }
 
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, ConsensusFrontierPB* pb) {
+  auto* out = pb->add_table_schema_version();
+  if (!table_id.IsNil()) {
+    out->set_table_id(table_id.cdata(), table_id.size());
+  }
+  out->set_schema_version(schema_version);
+}
+
 } // namespace docdb
 } // namespace yb

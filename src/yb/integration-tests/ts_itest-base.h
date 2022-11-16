@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
-#define YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
+#pragma once
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
@@ -90,11 +89,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   itest::TServerDetails* GetLeaderReplicaOrNull(const std::string& tablet_id);
 
   Status GetLeaderReplicaWithRetries(const std::string& tablet_id,
-                                             itest::TServerDetails** leader,
-                                             int max_attempts = 100);
+                                     itest::TServerDetails** leader,
+                                     int max_attempts = 100);
 
   Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
-                                               std::string* leader_uuid);
+                                       std::string* leader_uuid);
 
   itest::TServerDetails* GetReplicaWithUuidOrNull(const std::string& tablet_id,
                                                   const std::string& uuid);
@@ -158,5 +157,3 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif /* YB_INTEGRATION_TESTS_TS_ITEST_BASE_H */

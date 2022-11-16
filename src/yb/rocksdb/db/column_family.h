@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COLUMN_FAMILY_H
-#define YB_ROCKSDB_DB_COLUMN_FAMILY_H
 
 #pragma once
 
@@ -233,11 +231,9 @@ class ColumnFamilyData {
   const MutableCFOptions* GetLatestMutableCFOptions() const {
     return &mutable_cf_options_;
   }
-#ifndef ROCKSDB_LITE
   // REQUIRES: DB mutex held
   Status SetOptions(
       const std::unordered_map<std::string, std::string>& options_map);
-#endif  // ROCKSDB_LITE
 
   InternalStats* internal_stats() { return internal_stats_.get(); }
 
@@ -565,5 +561,3 @@ extern const Comparator* GetColumnFamilyUserComparator(
     ColumnFamilyHandle* column_family);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COLUMN_FAMILY_H

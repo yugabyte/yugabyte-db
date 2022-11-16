@@ -25,8 +25,7 @@
 
 
 
-#ifndef YB_GUTIL_STRINGS_SUBSTITUTE_H
-#define YB_GUTIL_STRINGS_SUBSTITUTE_H
+#pragma once
 
 namespace strings {
 
@@ -220,5 +219,3 @@ inline std::string Substitute(
 }
 
 }  // namespace strings
-
-#endif // YB_GUTIL_STRINGS_SUBSTITUTE_H

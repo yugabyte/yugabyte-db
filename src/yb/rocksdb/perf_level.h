@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_PERF_LEVEL_H
-#define YB_ROCKSDB_PERF_LEVEL_H
+#pragma once
 
 #include "yb/util/stats/perf_level.h"
 
@@ -31,5 +30,3 @@ using yb::SetPerfLevel;
 using yb::GetPerfLevel;
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_PERF_LEVEL_H

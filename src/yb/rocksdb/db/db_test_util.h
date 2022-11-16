@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef YB_ROCKSDB_DB_DB_TEST_UTIL_H
-#define YB_ROCKSDB_DB_DB_TEST_UTIL_H
 
 #pragma once
 #ifndef __STDC_FORMAT_MACROS
@@ -732,7 +730,6 @@ class DBHolder {
 
   std::string AllEntriesFor(const Slice& user_key, int cf = 0);
 
-#ifndef ROCKSDB_LITE
   int NumSortedRuns(int cf = 0);
 
   uint64_t TotalSize(int cf = 0);
@@ -742,7 +739,6 @@ class DBHolder {
   size_t TotalLiveFiles(int cf = 0);
 
   size_t CountLiveFiles();
-#endif  // ROCKSDB_LITE
 
   int NumTableFilesAtLevel(int level, int cf = 0);
 
@@ -840,5 +836,3 @@ class DBTestBase : public RocksDBTest, public DBHolder {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_DB_TEST_UTIL_H

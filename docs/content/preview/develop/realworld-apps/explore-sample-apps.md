@@ -22,7 +22,7 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
 
 ## Install Yugastore
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="**Environment**" disabled=true /%}}
 
@@ -158,7 +158,7 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
 
 ## Start the app
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="**Environment**" disabled=true /%}}
 

@@ -389,9 +389,16 @@ ExecReScanIndexOnlyScan(IndexOnlyScanState *node)
 
 	/* reset index scan */
 	if (node->ioss_ScanDesc)
+	{
+		IndexScanDesc scandesc = node->ioss_ScanDesc;
+		IndexOnlyScan *plan = (IndexOnlyScan *) scandesc->yb_scan_plan;
+		EState *estate = node->ss.ps.state;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
+	}
 
 	ExecScanReScan(&node->ss);
 }

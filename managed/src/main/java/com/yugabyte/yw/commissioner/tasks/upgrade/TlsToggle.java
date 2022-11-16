@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
@@ -56,6 +58,7 @@ public class TlsToggle extends UpgradeTaskBase {
           verifyParams();
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
+          updateUniverseHttpsEnabledUI();
           // Round 1 gflags upgrade
           createRound1GFlagUpdateTasks(nodes);
           // Update TLS related params in universe details
@@ -150,6 +153,23 @@ public class TlsToggle extends UpgradeTaskBase {
       createYbcFlagsUpdateTasks(nodes.getRight());
       createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "start");
       createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes.getRight()));
+    }
+  }
+
+  protected void updateUniverseHttpsEnabledUI() {
+    int nodeToNodeChange = getNodeToNodeChange();
+
+    // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
+    if (nodeToNodeChange != 0) {
+      String httpsEnabledUI =
+          (nodeToNodeChange > 0
+                  && Universe.shouldEnableHttpsUI(true, getUserIntent().ybSoftwareVersion))
+              ? "true"
+              : "false";
+      saveUniverseDetails(
+          u -> {
+            u.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, httpsEnabledUI));
+          });
     }
   }
 

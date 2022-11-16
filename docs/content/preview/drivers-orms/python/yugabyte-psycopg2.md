@@ -11,37 +11,32 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../yugabyte-psycopg2/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yugabyte-psycopg2/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
-
   <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Psycopg2 Driver
     </a>
   </li>
-
 </ul>
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.

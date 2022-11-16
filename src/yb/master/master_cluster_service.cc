@@ -22,11 +22,12 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/service_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 using std::vector;
 
-DEFINE_double(master_slow_get_registration_probability, 0,
+DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 
 using namespace std::literals;

@@ -37,7 +37,7 @@
 #include <string>
 
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -66,7 +66,7 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -75,12 +75,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
-DEFINE_bool(enable_tablet_orphaned_block_deletion, true,
-            "Whether to enable deletion of orphaned blocks from disk. "
-            "Note: This is only exposed for debugging purposes!");
-TAG_FLAG(enable_tablet_orphaned_block_deletion, advanced);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
+DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
 using std::shared_ptr;
 using std::string;
@@ -206,8 +201,28 @@ Status TableInfo::LoadFromPB(const TableId& primary_table_id, const TableInfoPB&
   return Status::OK();
 }
 
-Status TableInfo::MergeWithRestored(const TableInfoPB& pb) {
-  return doc_read_context->MergeWithRestored(pb);
+Status TableInfo::MergeWithRestored(
+    const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite) {
+  // If we are merging in the case of an out of cluster restore,
+  // the schema version should already have been incremented to
+  // match the snapshot.
+  if (overwrite) {
+    LOG_IF(DFATAL, schema_version < pb.schema_version())
+        << "In order to merge schema packings during restore, "
+        << "it is expected that schema version be at least "
+        << pb.schema_version() << " for table " << table_id
+        << " but version is " << schema_version;
+  }
+  RETURN_NOT_OK(doc_read_context->MergeWithRestored(pb, overwrite));
+  // After the merge, the latest packing should be in sync with
+  // the latest schema.
+  const docdb::SchemaPacking& latest_packing = VERIFY_RESULT(
+      doc_read_context->schema_packing_storage.GetPacking(schema_version));
+  LOG_IF(DFATAL, !latest_packing.SchemaContainsPacking(doc_read_context->schema))
+      << "After merging schema packings during restore, latest schema does not"
+      << " have the same packing as the corresponding latest packing for table "
+      << table_id;
+  return Status::OK();
 }
 
 void TableInfo::ToPB(TableInfoPB* pb) const {
@@ -318,6 +333,7 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
     snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
@@ -326,20 +342,40 @@ Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
-Status KvStoreInfo::MergeWithRestored(const KvStoreInfoPB& pb) {
+Status KvStoreInfo::MergeWithRestored(
+    const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite) {
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
+  last_full_compaction_time = pb.last_full_compaction_time();
   for (const auto& table_pb : pb.tables()) {
     const auto& table_id = table_pb.table_id();
     auto table_it = tables.find(table_id);
     if (table_it == tables.end()) {
-      // Skip tables that are not present in the restored state.
-      continue;
+      // TODO(Sanket): In the case of an out of cluster backup/restore,
+      // the table id in the snapshot will be different from the id
+      // created in the restored cluster for the same table. We need
+      // a way to know this old_id -> new_id mapping in order to merge properly.
+      // In the short-term though, for a non-colocated tablet there should only be one
+      // table and thus we merge the two trivially without any regard for the
+      // id but for a colocated tablet, we would need to augment this logic in a future
+      // diff. Also, we should validate the old and new ids even for non-colocated tablet.
+      if (!colocated) {
+        LOG_IF(DFATAL, tables.size() != 1)
+            << tables.size() << " tables present in KvstoreInfo of non-colocated tablet"
+            << ", expected 1";
+        table_it = tables.begin();
+      } else {
+        // Skip tables that are not present in the restored state.
+        LOG(INFO) << "Table with id " << table_id << " found in the snapshot "
+                  << "but not found in restore. Skipping schema packing merge "
+                  << "of the snapshot with the restored table";
+        continue;
+      }
     }
     auto new_table_info = std::make_shared<TableInfo>(
         *table_it->second, std::numeric_limits<SchemaVersion>::max());
-    RETURN_NOT_OK(new_table_info->MergeWithRestored(table_pb));
+    RETURN_NOT_OK(new_table_info->MergeWithRestored(table_pb, overwrite));
     table_it->second = new_table_info;
   }
   return Status::OK();
@@ -359,6 +395,7 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
     pb->set_upper_bound_key(upper_bound_key);
   }
   pb->set_has_been_fully_compacted(has_been_fully_compacted);
+  pb->set_last_full_compaction_time(last_full_compaction_time);
 
   // Putting primary table first, then all other tables.
   pb->mutable_tables()->Reserve(narrow_cast<int>(tables.size() + 1));
@@ -472,7 +509,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 
 template <class TablesMap>
 Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
-                                 const TablesMap& tables) {
+                         const TablesMap& tables) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
     const auto iter = tables.find(table_id);
@@ -800,11 +837,12 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
   return Status::OK();
 }
 
-Status RaftGroupMetadata::MergeWithRestored(const std::string& path) {
+Status RaftGroupMetadata::MergeWithRestored(
+    const std::string& path, docdb::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB pb;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&pb, path));
   std::lock_guard<MutexType> lock(data_mutex_);
-  return kv_store_.MergeWithRestored(pb.kv_store());
+  return kv_store_.MergeWithRestored(pb.kv_store(), colocated_, overwrite);
 }
 
 Status RaftGroupMetadata::ReadSuperBlockFromDisk(
@@ -1099,10 +1137,23 @@ OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
   return cdc_sdk_min_checkpoint_op_id_;
 }
 
+HybridTime RaftGroupMetadata::cdc_sdk_safe_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_sdk_safe_time_;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
 }
@@ -1322,6 +1373,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   metadata->kv_store_.has_been_fully_compacted = false;
+  metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
@@ -1444,6 +1496,31 @@ SchemaVersion RaftGroupMetadata::schema_version(
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
   return table_info->schema_version;
+}
+
+Result<SchemaVersion> RaftGroupMetadata::schema_version(ColocationId colocation_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  auto colocation_it = kv_store_.colocation_to_table.find(colocation_id);
+  if (colocation_it == kv_store_.colocation_to_table.end()) {
+    return STATUS_FORMAT(NotFound, "Cannot find table info for colocation: $0", colocation_id);
+  }
+  return colocation_it->second->schema_version;
+}
+
+Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (cotable_id.IsNil()) {
+    // Return the parent table schema version
+    return schema_version();
+  }
+
+  auto res = GetTableInfo(cotable_id.ToHexString());
+  if (!res.ok()) {
+    return STATUS_FORMAT(
+        NotFound, "Cannot find table info for: $0, raft group id: $1", cotable_id, raft_group_id_);
+  }
+
+  return res->get()->schema_version;
 }
 
 const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) const {

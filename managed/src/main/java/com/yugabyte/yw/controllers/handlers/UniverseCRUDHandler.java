@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -245,6 +246,7 @@ public class UniverseCRUDHandler {
         } catch (Exception e) {
           LOG.error("Failed to calculate update options", e);
         }
+        UniverseResp.fillClusterRegions(taskParams.clusters);
       } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
@@ -561,9 +563,9 @@ public class UniverseCRUDHandler {
             && Util.compareYbVersions(
                     primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
                 < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot install universe with DB version lower than "
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
                   + Util.YBC_COMPATIBLE_DB_VERSION);
         }
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -612,6 +614,10 @@ public class UniverseCRUDHandler {
             // TODO: (Daniel) - Update this to be inside of encryptionAtRestConfig
             taskParams.cmkArn = new String(cmkArnBytes);
           }
+        }
+        if (Universe.shouldEnableHttpsUI(
+            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+          universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
       }
 
@@ -895,6 +901,13 @@ public class UniverseCRUDHandler {
               + taskParams.clusters
               + " for "
               + universe.universeUUID);
+    }
+
+    if (universe.isYbcEnabled()) {
+      taskParams.installYbc = true;
+      taskParams.enableYbc = true;
+      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      taskParams.ybcInstalled = true;
     }
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
@@ -1585,9 +1598,16 @@ public class UniverseCRUDHandler {
               taskParams.enableClientToNodeEncrypt,
               taskParams.rootAndClientRootCASame);
 
-      TlsToggleParams tlsToggleParams = new TlsToggleParams();
-      tlsToggleParams.enableNodeToNodeEncrypt = taskParams.enableNodeToNodeEncrypt;
-      tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
+      // taskParams has the same subset of overridable fields as TlsToggleParams.
+      // taskParams is already merged with universe details.
+      TlsToggleParams tlsToggleParams;
+      try {
+        tlsToggleParams =
+            Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), TlsToggleParams.class);
+      } catch (JsonProcessingException e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
+
       tlsToggleParams.allowInsecure =
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
       tlsToggleParams.rootCA =
@@ -1596,10 +1616,6 @@ public class UniverseCRUDHandler {
           isClientRootCA
               ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
               : null;
-      tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
-      tlsToggleParams.upgradeOption = taskParams.upgradeOption;
-      tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
-      tlsToggleParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
@@ -1629,9 +1645,15 @@ public class UniverseCRUDHandler {
               universeDetails.nodePrefix,
               customer.uuid);
     }
-
-    CertsRotateParams certsRotateParams =
-        CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
+    // taskParams has the same subset of overridable fields as CertsRotateParams.
+    // taskParams is already merged with universe details.
+    CertsRotateParams certsRotateParams;
+    try {
+      certsRotateParams =
+          Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), CertsRotateParams.class);
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }

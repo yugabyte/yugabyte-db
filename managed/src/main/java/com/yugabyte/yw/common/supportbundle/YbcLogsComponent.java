@@ -9,6 +9,8 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,102 +48,99 @@ class YbcLogsComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    String destDir = bundlePath.toString() + "/" + "ybc_logs";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-
-    // Downloads the /mnt/d0/ybc-data/controller/logs from each node
-    // in the universe into the bundle path
-    for (NodeDetails node : nodes) {
-      // Get source file path prefix
-      String mountPath =
-          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
-      String nodeHomeDir = mountPath + "/ybc-data";
-
-      // Get target file path
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
-
-      log.debug(
-          "Gathering YB-Controller logs for node: {}, source path: {}, target path: {}",
-          nodeName,
-          nodeHomeDir,
-          nodeTargetFile.toString());
-
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer, universe, node, nodeHomeDir, "controller/logs", nodeTargetFile);
-    }
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+    String errMsg =
+        String.format(
+            "downloadComponent() method not applicable "
+                + "for 'YbcLogsComponent' without start and end date, on universe = '%s'",
+            universe.name);
+    throw new RuntimeException(errMsg);
   }
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
-      throws IOException, ParseException {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    String destDir = bundlePath.toString() + "/" + "ybc_logs";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
     // Downloads the /mnt/d0/ybc-data/controller/logs from each node
     // in the universe into the bundle path
-    for (NodeDetails node : nodes) {
-      // Get source file path prefix
-      String mountPath =
-          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
-      String nodeHomeDir = mountPath + "/ybc-data";
+    // Get source file path prefix
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/ybc-data";
 
-      // Get target file path
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
+    // Get target file path
+    String nodeName = node.getNodeName();
+    Path nodeTargetFile =
+        Paths.get(bundlePath.toString(), this.getClass().getSimpleName() + ".tar.gz");
 
+    log.debug(
+        "Gathering YB-Controller logs for node: {}, source path: {}, target path: {}, "
+            + "between start date: {}, end date: {}",
+        nodeName,
+        nodeHomeDir,
+        nodeTargetFile.toString(),
+        startDate,
+        endDate);
+
+    String ybcLogsRegexPattern = config.getString("yb.support_bundle.ybc_logs_regex_pattern");
+
+    // Get and filter YB-Controller log files that fall within given dates
+    String ybcLogsPath = nodeHomeDir + "/controller/logs";
+    List<String> ybcLogFilePaths = new ArrayList<>();
+    if (universeLogsComponent.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
+      ybcLogFilePaths =
+          universeLogsComponent.getNodeFilePaths(
+              node, universe, ybcLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
+      ybcLogFilePaths =
+          supportBundleUtil.filterFilePathsBetweenDates(
+              ybcLogFilePaths, ybcLogsRegexPattern, startDate, endDate, true);
+    }
+
+    if (ybcLogFilePaths.size() > 0) {
+      Path targetFile =
+          universeInfoHandler.downloadNodeFile(
+              customer,
+              universe,
+              node,
+              nodeHomeDir,
+              String.join(";", ybcLogFilePaths),
+              nodeTargetFile);
+      try {
+        if (Files.exists(targetFile)) {
+          File unZippedFile =
+              supportBundleUtil.unGzip(
+                  new File(targetFile.toAbsolutePath().toString()),
+                  new File(bundlePath.toAbsolutePath().toString()));
+          Files.delete(targetFile);
+          supportBundleUtil.unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+          unZippedFile.delete();
+        } else {
+          log.debug(
+              String.format(
+                  "No ybc files downloaded from the source path '%s' for universe '%s'.",
+                  nodeHomeDir, universe.name));
+        }
+      } catch (Exception e) {
+        log.error(
+            "Something went wrong while trying to untar the files from "
+                + "component 'YbcLogsComponent' in the DB node: ",
+            e);
+      }
+    } else {
       log.debug(
-          "Gathering YB-Controller logs for node: {}, source path: {}, target path: {}, "
+          "Found no matching YB-Controller logs for node: {}, source path: {}, target path: {}, "
               + "between start date: {}, end date: {}",
           nodeName,
           nodeHomeDir,
           nodeTargetFile.toString(),
           startDate,
           endDate);
-
-      String ybcLogsRegexPattern = config.getString("yb.support_bundle.ybc_logs_regex_pattern");
-
-      // Get and filter YB-Controller log files that fall within given dates
-      String ybcLogsPath = nodeHomeDir + "/controller/logs";
-      List<String> ybcLogFilePaths = new ArrayList<>();
-      if (universeLogsComponent.checkNodeIfFileExists(node, universe, ybcLogsPath)) {
-        ybcLogFilePaths =
-            universeLogsComponent.getNodeFilePaths(
-                node, universe, ybcLogsPath, /*maxDepth*/ 1, /*fileType*/ "f");
-        ybcLogFilePaths =
-            supportBundleUtil.filterFilePathsBetweenDates(
-                ybcLogFilePaths, ybcLogsRegexPattern, startDate, endDate, true);
-      }
-
-      if (ybcLogFilePaths.size() > 0) {
-        Path targetFile =
-            universeInfoHandler.downloadNodeFile(
-                customer,
-                universe,
-                node,
-                nodeHomeDir,
-                String.join(";", ybcLogFilePaths),
-                nodeTargetFile);
-      } else {
-        log.debug(
-            "Found no matching YB-Controller logs for node: {}, source path: {}, target path: {}, "
-                + "between start date: {}, end date: {}",
-            nodeName,
-            nodeHomeDir,
-            nodeTargetFile.toString(),
-            startDate,
-            endDate);
-      }
     }
   }
 }

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PG_EXPR_H_
-#define YB_DOCDB_DOC_PG_EXPR_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -83,8 +82,8 @@ class DocPgExprExecutor {
   // caller's responsibility to track target expressions added to the executor, provide sufficiently
   // long results vector and match the results.
   Status Exec(const QLTableRow& table_row,
-                      std::vector<QLExprResult>* results,
-                      bool* match);
+              std::vector<QLExprResult>* results,
+              bool* match);
 
  private:
   // The relation schema
@@ -101,6 +100,3 @@ class DocPgExprExecutor {
 
 } // namespace docdb
 } // namespace yb
-
-
-#endif // YB_DOCDB_DOC_PG_EXPR_H_

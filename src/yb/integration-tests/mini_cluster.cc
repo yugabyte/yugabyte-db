@@ -75,7 +75,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -91,8 +91,8 @@
 using namespace std::literals;
 using strings::Substitute;
 
-DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
-DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_UNKNOWN_string(mini_cluster_base_dir, "", "Directory for master/ts data");
+DEFINE_UNKNOWN_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);

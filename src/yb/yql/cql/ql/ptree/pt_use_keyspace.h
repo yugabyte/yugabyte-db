@@ -15,8 +15,7 @@
 // Tree node definitions for USE KEYSPACE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_USE_KEYSPACE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_USE_KEYSPACE_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
@@ -62,5 +61,3 @@ class PTUseKeyspace : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_USE_KEYSPACE_H_

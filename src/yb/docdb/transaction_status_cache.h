@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_TRANSACTION_STATUS_CACHE_H
-#define YB_DOCDB_TRANSACTION_STATUS_CACHE_H
+#pragma once
 
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -47,5 +46,3 @@ class TransactionStatusCache {
 
 } // namespace docdb
 } // namespace yb
-
-#endif  // YB_DOCDB_TRANSACTION_STATUS_CACHE_H

@@ -32,7 +32,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -806,8 +806,17 @@ public class UniverseTest extends FakeDBApplication {
         } else if (nodeState == NodeDetails.NodeState.Terminating) {
           assertEquals(
               ImmutableSet.of(NodeActionType.RELEASE, NodeActionType.DELETE), allowedActions);
-        } else if (nodeState == NodeDetails.NodeState.Terminated) {
+        } else if (nodeState == NodeState.Terminated) {
           assertEquals(ImmutableSet.of(NodeActionType.DELETE), allowedActions);
+        } else if (nodeState == NodeState.Rebooting) {
+          if (nd.isMaster) {
+            // Cannot REMOVE master node: As it will under replicate the masters.
+            assertEquals(ImmutableSet.of(), allowedActions);
+          } else {
+            assertEquals(ImmutableSet.of(NodeActionType.REBOOT), allowedActions);
+          }
+        } else if (nodeState == NodeState.HardRebooting) {
+          assertEquals(ImmutableSet.of(NodeActionType.HARD_REBOOT), allowedActions);
         } else {
           assertTrue(allowedActions.isEmpty());
         }
@@ -876,10 +885,10 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetNodeActions_NoStartMasterForDedicated() {
     Universe u = createUniverseWithNodes(1 /* rf */, 1 /* numNodes */, true /* setMasters */, true);
     assertEquals(2, u.getNodes().size());
-    Map<UniverseDefinitionTaskBase.ServerType, NodeDetails> nodes =
+    Map<UniverseTaskBase.ServerType, NodeDetails> nodes =
         u.getNodes().stream().collect(Collectors.toMap(n -> n.dedicatedTo, n -> n));
-    NodeDetails masterNode = nodes.get(UniverseDefinitionTaskBase.ServerType.MASTER);
-    NodeDetails tserverNode = nodes.get(UniverseDefinitionTaskBase.ServerType.TSERVER);
+    NodeDetails masterNode = nodes.get(UniverseTaskBase.ServerType.MASTER);
+    NodeDetails tserverNode = nodes.get(UniverseTaskBase.ServerType.TSERVER);
     // temporary disable master and tserver nodes.
     masterNode.isMaster = false;
     tserverNode.isTserver = false;

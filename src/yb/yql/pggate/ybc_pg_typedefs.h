@@ -13,8 +13,7 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
-#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -343,6 +342,7 @@ typedef struct PgGFlagsAccessor {
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
+  const bool*     ysql_colocate_database_by_default;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -391,24 +391,8 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
-typedef struct YbTserverCatalogVersion {
-  uint32_t db_oid;
-  uint64_t current_version;
-  int shm_index;
-} YbTserverCatalogVersion;
-
-// Used to map a database OID to its catalog version info fetched from the local tserver.
-typedef struct YbTserverCatalogInfoData {
-  uint32_t num_databases;
-  YbTserverCatalogVersion* versions;
-} YbTserverCatalogInfoData;
-
-typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
-
-#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

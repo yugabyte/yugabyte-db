@@ -11,15 +11,16 @@ import { formatLagMetric } from '../../utils/Formatters';
 import {
   MetricName,
   MetricTraceName,
-  ReplicationAction,
+  XClusterConfigAction,
   ReplicationStatus,
   REPLICATION_LAG_ALERT_NAME,
   SortOrder
 } from './constants';
 import { api } from '../../redesign/helpers/api';
+import { assertUnreachableCase } from '../../utils/ErrorUtils';
 
-import { XClusterConfig } from './XClusterTypes';
-import { Universe } from '../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTable, XClusterTableDetails } from './XClusterTypes';
+import { Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -179,7 +180,6 @@ export const CurrentTableReplicationLag = ({
       (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
     )
   );
-
   const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
   const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
   const trace = metric.data.find((trace) => trace.name === traceAlias);
@@ -247,24 +247,26 @@ export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
   return universeList.find((universes) => universes.universeUUID === uuid);
 };
 
-export const getEnabledConfigActions = (replication: XClusterConfig): ReplicationAction[] => {
+export const getEnabledConfigActions = (replication: XClusterConfig): XClusterConfigAction[] => {
   switch (replication.status) {
     case ReplicationStatus.INITIALIZED:
     case ReplicationStatus.UPDATING:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
     case ReplicationStatus.RUNNING:
       return [
-        replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
-        ReplicationAction.DELETE,
-        ReplicationAction.EDIT,
-        ReplicationAction.ADD_TABLE,
-        ReplicationAction.RESTART
+        replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+        XClusterConfigAction.DELETE,
+        XClusterConfigAction.EDIT,
+        XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.RESTART
       ];
     case ReplicationStatus.FAILED:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
     case ReplicationStatus.DELETED_UNIVERSE:
     case ReplicationStatus.DELETION_FAILED:
-      return [ReplicationAction.DELETE];
+      return [XClusterConfigAction.DELETE];
+    default:
+      return assertUnreachableCase(replication.status);
   }
 };
 
@@ -305,4 +307,48 @@ export const tableSort = <RowType,>(
   }
 
   return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
+};
+
+// TODO:
+// Investigate whether we can store table type as a property of xCluster config.
+// This will help reduce complexity and avoid filtering through all source universe tables.
+// JIRA: https://yugabyte.atlassian.net/browse/PLAT-6095
+/**
+ * - Return the `tableType` of any table in an xCluster config.
+ *   - The underlying assumption is that tables within an xCluster config should all have the same `tableType`.
+ * - Returns undefined if no source universe tables exist in the xCluster config (Error/Unexpected case)
+ */
+export const getXClusterConfigTableType = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[]
+) =>
+  sourceUniverseTables.find((table) =>
+    xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
+  )?.tableType;
+
+/**
+ * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
+ */
+export const augmentTablesWithXClusterDetails = (
+  ybTable: YBTable[],
+  xClusterConfigTables: XClusterTableDetails[]
+): XClusterTable[] => {
+  const ybTableMap = new Map<string, YBTable>();
+  ybTable.forEach((table) => {
+    const { tableUUID, ...tableDetails } = table;
+    const adaptedTableUUID = adaptTableUUID(table.tableUUID);
+    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
+  });
+  return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
+    const ybTableDetails = ybTableMap.get(table.tableId);
+    if (ybTableDetails) {
+      const { tableId, ...xClusterTableDetails } = table;
+      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
+    } else {
+      console.error(
+        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
+      );
+    }
+    return tables;
+  }, []);
 };

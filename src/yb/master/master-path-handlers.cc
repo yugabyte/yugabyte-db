@@ -70,7 +70,7 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/util/curl_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
@@ -79,15 +79,14 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
 
-DEFINE_bool(master_webserver_require_https, false,
-            "Require HTTPS when redirecting master UI requests to the leader.");
-TAG_FLAG(master_webserver_require_https, runtime);
+DEFINE_RUNTIME_bool(master_webserver_require_https, false,
+    "Require HTTPS when redirecting master UI requests to the leader.");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 

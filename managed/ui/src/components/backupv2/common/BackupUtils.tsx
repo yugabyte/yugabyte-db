@@ -25,6 +25,9 @@ import './BackupUtils.scss';
 export const calculateDuration = (startTime: number, endtime: number): string => {
   const start = moment(startTime);
   const end = moment(endtime);
+
+  if (start.isSame(end)) return '0 s';
+
   const totalDays = end.diff(start, 'days');
   const totalHours = end.diff(start, 'hours');
   const totalMinutes = end.diff(start, 'minutes');
@@ -159,9 +162,9 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
     if (backup.backupType === TableType.YQL_TABLE_TYPE) {
       formValues['backup_tables'] =
         backup.commonBackupInfo.responseList.length > 0 &&
-        backup.commonBackupInfo.responseList[0].tablesList.length > 0
-          ? Backup_Options_Type.CUSTOM
-          : Backup_Options_Type.ALL;
+        backup.commonBackupInfo.responseList[0].allTables
+          ? Backup_Options_Type.ALL
+          : Backup_Options_Type.CUSTOM;
 
       if (formValues['backup_tables'] === Backup_Options_Type.CUSTOM) {
         backup.commonBackupInfo.responseList.forEach((k: any) => {

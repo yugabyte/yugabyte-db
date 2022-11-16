@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_BOOST_MUTEX_UTILS_H
-#define YB_BOOST_MUTEX_UTILS_H
+#pragma once
 
 
 // Similar to std::lock_guard except that it takes
@@ -56,5 +55,3 @@ class lock_guard_maybe {
  private:
   LockType *lock_;
 };
-
-#endif

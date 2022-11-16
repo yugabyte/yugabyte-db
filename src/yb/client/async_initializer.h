@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_CLIENT_ASYNC_INITIALIZER_H_
-#define YB_CLIENT_ASYNC_INITIALIZER_H_
+#pragma once
 
 #include <future>
 
@@ -70,5 +69,3 @@ class AsyncClientInitialiser {
 
 }  // namespace client
 }  // namespace yb
-
-#endif // YB_CLIENT_ASYNC_INITIALIZER_H_

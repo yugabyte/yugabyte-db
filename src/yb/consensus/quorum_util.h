@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_QUORUM_UTIL_H_
-#define YB_CONSENSUS_QUORUM_UTIL_H_
+#pragma once
 
 #include <string>
 
@@ -60,18 +59,18 @@ bool IsRaftConfigVoter(const std::string& uuid, const RaftConfigPB& config);
 // Returns Status::NotFound if a member with the specified uuid could not be
 // found in the config.
 Status GetRaftConfigMember(const RaftConfigPB& config,
-                                   const std::string& uuid,
-                                   RaftPeerPB* peer_pb);
+                           const std::string& uuid,
+                           RaftPeerPB* peer_pb);
 
 // Return an host/port for the uuid in the given config. Error out if not found.
 Status GetHostPortFromConfig(const RaftConfigPB& config,
-                                     const std::string& uuid,
-                                     const CloudInfoPB& from,
-                                     HostPort* hp);
+                             const std::string& uuid,
+                             const CloudInfoPB& from,
+                             HostPort* hp);
 
 Status GetMutableRaftConfigMember(RaftConfigPB* config,
-                                          const std::string& uuid,
-                                          RaftPeerPB** peer_pb);
+                                  const std::string& uuid,
+                                  RaftPeerPB** peer_pb);
 
 // Get the leader of the consensus configuration.
 // Returns STATUS(NotFound, "") if the leader RaftPeerPB could not be found in
@@ -123,5 +122,3 @@ Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type
 
 }  // namespace consensus
 }  // namespace yb
-
-#endif /* YB_CONSENSUS_QUORUM_UTIL_H_ */

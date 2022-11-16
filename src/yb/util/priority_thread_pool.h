@@ -11,12 +11,11 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PRIORITY_THREAD_POOL_H
-#define YB_UTIL_PRIORITY_THREAD_POOL_H
+#pragma once
 
 #include <memory>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/casts.h"
 
@@ -145,5 +144,3 @@ class PriorityThreadPool {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_PRIORITY_THREAD_POOL_H

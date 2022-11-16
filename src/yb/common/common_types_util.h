@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COMMON_TYPES_UTIL_H
-#define YB_COMMON_COMMON_TYPES_UTIL_H
+#pragma once
 
 #include "yb/common/common_types.pb.h"
 
@@ -30,5 +29,3 @@ const char* DatabaseTypeName(YQLDatabase db);
 YQLDatabase DatabaseTypeByName(const std::string& db_type_name);
 
 } // namespace yb
-
-#endif  // YB_COMMON_COMMON_TYPES_UTIL_H

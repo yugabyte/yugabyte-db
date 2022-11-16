@@ -10,7 +10,6 @@ interface NodeSelectorData {
   nodeItemChangedOld: any;
   selectedNode: string;
   otherSelectedNode?: string | null;
-  topNodesSelection?: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
   enableTopKMetrics: boolean;
@@ -23,7 +22,6 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   nodeItemChangedOld,
   selectedNode,
   otherSelectedNode,
-  topNodesSelection,
   selectedRegionClusterUUID,
   selectedZoneName,
   enableTopKMetrics,
@@ -42,12 +40,12 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     selectedUniverse.universeDetails.nodeDetailsSet
   ) {
     nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.nodeName === null) {
+      if (a.cloudInfo.az === null) {
         return -1;
-      } else if (b.nodeName === null) {
+      } else if (b.cloudInfo.az === null) {
         return 1;
       } else {
-        return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
       }
     });
   }
@@ -125,18 +123,6 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         >
           {'All AZs & nodes'}
         </MenuItem>
-        {topNodesSelection &&
-          <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.TOP, null)}
-            key={MetricConsts.TOP}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => { document.body.click() }}
-            eventKey={MetricConsts.TOP}
-          >
-            {'Top'}
-          </MenuItem>
-        }
       </Fragment>
     );
     nodeItemsElement.splice(0, 0, defaultMenuItem);
@@ -152,7 +138,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     nodeData = (
       <div className="node-picker">
         <Dropdown
-          id="node-filter-dropdown"
+          id="nodeFilterDropdown"
+          className="node-filter-dropdown"
           disabled={isDisabled}
           title={isDisabled ? "Select a specific universe to view the zones and nodes" : ""}
         >
@@ -176,11 +163,6 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           <option key={-2} value="all">
             All
           </option>
-          {topNodesSelection && (
-            <option key={-1} value="top">
-              Top
-            </option>
-          )}
           {nodeItems.map((nodeItem, nodeIdx) => (
             <option
               key={nodeIdx}

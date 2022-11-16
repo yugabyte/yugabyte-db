@@ -12,6 +12,10 @@
 //
 #include "yb/tablet/restore_util.h"
 
+#include "yb/docdb/docdb.messages.h"
+
+#include "yb/rpc/lightweight_message.h"
+
 namespace yb {
 
 Status FetchState::SetPrefix(const Slice& prefix) {
@@ -182,15 +186,15 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 void WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv) {
-  docdb::KeyValueWriteBatchPB kv_write_batch;
-  write_batch->MoveToWriteBatchPB(&kv_write_batch);
+  auto kv_write_batch = rpc::MakeSharedMessage<docdb::LWKeyValueWriteBatchPB>();
+  write_batch->MoveToWriteBatchPB(kv_write_batch.get());
 
   // Append restore entry to the write batch.
   if (restore_kv) {
-    *kv_write_batch.mutable_write_pairs()->Add() = *restore_kv;
+    kv_write_batch->add_write_pairs()->CopyFrom(*restore_kv);
   }
 
-  docdb::NonTransactionalWriter writer(kv_write_batch, write_time);
+  docdb::NonTransactionalWriter writer(*kv_write_batch, write_time);
   rocksdb::WriteBatch rocksdb_write_batch;
   rocksdb_write_batch.SetDirectWriter(&writer);
   docdb::ConsensusFrontiers frontiers;

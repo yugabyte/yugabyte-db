@@ -41,8 +41,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_UTIL_LOGGING_H
-#define YB_UTIL_LOGGING_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -354,5 +353,3 @@ class LogFatalHandlerSink : public google::LogSink {
 #define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (yb::ToString(expr))
 
 } // namespace yb
-
-#endif // YB_UTIL_LOGGING_H

@@ -377,7 +377,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(ctx(), request(), type);
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            ctx(), request(), type, universe);
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",

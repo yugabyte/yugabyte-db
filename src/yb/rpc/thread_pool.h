@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_THREAD_POOL_H
-#define YB_RPC_THREAD_POOL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -126,5 +125,3 @@ class ThreadPool {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_THREAD_POOL_H

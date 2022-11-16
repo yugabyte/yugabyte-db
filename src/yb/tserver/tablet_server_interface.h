@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SERVER_INTERFACE_H
-#define YB_TSERVER_TABLET_SERVER_INTERFACE_H
+#pragma once
 
 #include <future>
 
@@ -80,5 +79,3 @@ class TabletServerIf : public LocalTabletServer {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_TABLET_SERVER_INTERFACE_H

@@ -34,6 +34,8 @@ Once defined, the index is used when the expression that defines the index is in
 
 ## Example
 
+{{% explore-setup-single %}}
+
 A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 
 For example, suppose you have a `users` table with an `email` column to store login email addresses, and you want to maintain case-insensitive authentication. Using the WHERE clause as WHERE LOWER(email) = '<lower_case_email>' allows you to store the email address as originally entered by the user.

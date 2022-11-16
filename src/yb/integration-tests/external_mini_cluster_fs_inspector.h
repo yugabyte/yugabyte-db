@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
+#pragma once
 
 #include <functional>
 #include <string>
@@ -118,9 +117,9 @@ class ExternalMiniClusterFsInspector {
   Status WaitForReplicaCount(
       int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
   Status WaitForTabletDataStateOnTS(size_t index,
-                                            const std::string& tablet_id,
-                                            tablet::TabletDataState data_state,
-                                            const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+                                    const std::string& tablet_id,
+                                    tablet::TabletDataState data_state,
+                                    const MonoDelta& timeout = MonoDelta::FromSeconds(30));
 
   // Loop and check for certain filenames in the WAL directory of the specified
   // tablet. This function returns OK if we reach a state where:
@@ -148,5 +147,3 @@ class ExternalMiniClusterFsInspector {
 
 } // namespace itest
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H

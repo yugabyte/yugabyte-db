@@ -20,9 +20,9 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/ts_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(tablet_report_limit, 1000,
+DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);

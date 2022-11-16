@@ -23,7 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/client/schema.h"
@@ -33,7 +33,7 @@ using std::min;
 
 using namespace std::chrono_literals;
 
-DEFINE_int32(xcluster_safe_time_table_num_tablets, 1,
+DEFINE_UNKNOWN_int32(xcluster_safe_time_table_num_tablets, 1,
     "Number of tablets to use when creating the xcluster safe time table. "
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);

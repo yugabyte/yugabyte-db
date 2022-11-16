@@ -4,6 +4,7 @@ import React, { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+
 import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
@@ -19,13 +20,14 @@ import {
   TABLE_LAG_GRAPH_EMPTY_METRIC,
   TIME_RANGE_TYPE
 } from '../constants';
+
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  YBTable,
   StandardMetricTimeRangeOption,
   Metrics
 } from '../XClusterTypes';
+import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './TableLagGraph.module.scss';
 
@@ -52,7 +54,6 @@ interface Props {
 
 export const TableLagGraph: FC<Props> = ({
   tableDetails: { tableName, tableUUID },
-  replicationUUID,
   universeUUID,
   queryEnabled,
   nodePrefix

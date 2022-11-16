@@ -60,6 +60,11 @@ import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
+import java.io.File;
+import java.io.FileInputStream;
+import io.fabric8.kubernetes.client.utils.Serialization;
+import java.io.InputStream;
+
 @RunWith(MockitoJUnitRunner.class)
 public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
@@ -104,9 +109,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
-    String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
-    PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
-    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
+    try {
+      File jsonFile = new File("src/test/resources/testPod.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
+
+      Pod testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
 
     YBClient mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -482,7 +492,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(
@@ -526,7 +536,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(
@@ -569,7 +579,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
@@ -613,7 +623,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(

@@ -22,12 +22,9 @@
 //
 // A WriteBatchWithIndex with a binary searchable index built for all the keys
 // inserted.
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
-#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 
@@ -217,7 +214,3 @@ class WriteBatchWithIndex : public WriteBatchBase {
 };
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE
-
-#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
