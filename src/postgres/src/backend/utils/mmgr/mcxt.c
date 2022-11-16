@@ -98,7 +98,9 @@ YbPgMemSubConsumption(Size sz)
 		return;
 
 	// Avoid overflow when subtracting sz.
-	PgMemTracker.pg_cur_mem_bytes = Max(PgMemTracker.pg_cur_mem_bytes - sz, 0);
+	PgMemTracker.pg_cur_mem_bytes = PgMemTracker.pg_cur_mem_bytes >= sz ?
+										PgMemTracker.pg_cur_mem_bytes - sz :
+										0;
 	// Only call release if pggate is alive, and update its liveness from the
 	// return value.
 	if (PgMemTracker.pggate_alive)

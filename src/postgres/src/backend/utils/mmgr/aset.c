@@ -1136,7 +1136,6 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		AllocBlock	block = (AllocBlock) (((char *) chunk) - ALLOC_BLOCKHDRSZ);
 		Size		chksize;
 		Size		blksize;
-		Size		oldsize = block->endptr - ((char *) block);
 		Size		oldblksize;
 
 		/*
@@ -1176,7 +1175,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		context->mem_allocated += blksize;
 
 		block->freeptr = block->endptr = ((char *) block) + blksize;
-		YbPgMemAddConsumption(blksize - oldsize);
+		YbPgMemSubConsumption(oldblksize);
+		YbPgMemAddConsumption(blksize);
 
 		/* Update pointers since block has likely been moved */
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);
