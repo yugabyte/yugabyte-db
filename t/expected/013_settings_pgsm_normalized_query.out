@@ -66,14 +66,14 @@ SELECT key, txt_0, value_0 FROM TBL_0;
 
 UPDATE TBL_0 SET value_0 = 1681692777;
 select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
- datname  |                                           query                                           | calls 
-----------+-------------------------------------------------------------------------------------------+-------
- postgres | CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int)                         |     1
- postgres | INSERT INTO TBL_0(key, txt_0, value_0) VALUES('000000', '846930886', 1804289383)          |     1
- postgres | SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_normalized_query' |     1
- postgres | SELECT key, txt_0, value_0 FROM TBL_0                                                     |     2
- postgres | SELECT pg_stat_monitor_reset()                                                            |     1
- postgres | UPDATE TBL_0 SET value_0 = 1681692777                                                     |     1
+ datname  |                               query                               | calls 
+----------+-------------------------------------------------------------------+-------
+ postgres | CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int) |     1
+ postgres | INSERT INTO TBL_0(key, txt_0, value_0) VALUES($1, $2, $3)         |     1
+ postgres | SELECT * from pg_stat_monitor_settings where name=$1              |     1
+ postgres | SELECT key, txt_0, value_0 FROM TBL_0                             |     2
+ postgres | SELECT pg_stat_monitor_reset()                                    |     1
+ postgres | UPDATE TBL_0 SET value_0 = $1                                     |     1
 (6 rows)
 
 Drop extension pg_stat_monitor;
