@@ -110,6 +110,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
+DECLARE_int32(cdc_snapshot_batch_size);
 
 namespace yb {
 
@@ -935,10 +936,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int tablet_idx,
       const OpId& op_id,
       bool initial_checkpoint,
-      const uint64_t cdc_sdk_safe_time) {
+      const uint64_t cdc_sdk_safe_time,
+      bool bootstrap) {
     set_checkpoint_req->set_stream_id(stream_id);
     set_checkpoint_req->set_initial_checkpoint(initial_checkpoint);
     set_checkpoint_req->set_cdc_sdk_safe_time(cdc_sdk_safe_time);
+    set_checkpoint_req->set_bootstrap(bootstrap);
     set_checkpoint_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(op_id.term);
     set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(op_id.index);
@@ -948,7 +951,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id = OpId::Min(), const uint64_t cdc_sdk_safe_time = kuint64max,
-      bool initial_checkpoint = true, const int tablet_idx = 0) {
+      bool initial_checkpoint = true, const int tablet_idx = 0, bool bootstrap = false) {
     int max_retries = 3;
     Status st;
     for (int retry = 0; retry < max_retries; ++retry) {
@@ -959,7 +962,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       set_checkpoint_rpc.set_deadline(deadline);
       PrepareSetCheckpointRequest(
           &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
-          cdc_sdk_safe_time);
+          cdc_sdk_safe_time, bootstrap);
       st = cdc_proxy_->SetCDCCheckpoint(
           set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
@@ -8844,6 +8847,71 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
       {"" /* UUID */, stream_id, tablets[0].tablet_id()},
       /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
   ASSERT_GE(metrics->cdcsdk_sent_lag_micros->value(), current_lag);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
+  FLAGS_enable_load_balancing = false;
+  FLAGS_cdc_snapshot_batch_size = 100;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  // Table having key:value_1 column
+  ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, false, 0, true));
+  ASSERT_FALSE(set_resp.has_error());
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  bool do_update = true;
+  while (true) {
+    if (do_update) {
+      ASSERT_OK(UpdateRows(200, 2001, &test_cluster_));
+      ASSERT_OK(DeleteRows(1, &test_cluster_));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+      ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+      do_update = false;
+    }
+    GetChangesResponsePB change_resp_updated =
+        ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    uint32_t read_count = 0;
+    vector<int> excepted_result(2);
+    vector<int> actual_result(2);
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      std::stringstream s;
+
+      if (record.row_message().op() == RowMessage::READ) {
+        for (int jdx = 0; jdx < record.row_message().new_tuple_size(); jdx++) {
+          s << " " << record.row_message().new_tuple(jdx).datum_int32();
+          actual_result[jdx] = record.row_message().new_tuple(jdx).datum_int32();
+        }
+        LOG(INFO) << "row: " << i << " : " << s.str();
+        // we should only get row values w.r.t snapshot, not changed values during snapshot.
+        if (actual_result[0] == 200) {
+          excepted_result[0] = 200;
+          excepted_result[1] = 201;
+          ASSERT_EQ(actual_result, excepted_result);
+        } else if (actual_result[0] == 1) {
+          excepted_result[0] = 1;
+          excepted_result[1] = 2;
+          ASSERT_EQ(actual_result, excepted_result);
+        }
+        read_count++;
+      }
+    }
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+    if (reads_snapshot == 200) {
+      break;
+    }
+  }
+  ASSERT_EQ(reads_snapshot, 200);
 }
 
 }  // namespace enterprise
