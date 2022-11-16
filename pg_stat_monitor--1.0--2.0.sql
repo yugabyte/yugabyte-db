@@ -181,8 +181,12 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
-    -- PostgreSQL-13 Specific Coulumns
-    plans_calls
+    plans_calls,
+	total_plan_time,
+	min_plan_time,
+	max_plan_time,
+	mean_plan_time,
+    stddev_plan_time
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 RETURN 0;
@@ -239,7 +243,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_fpi,
     wal_bytes,
 
-    -- PostgreSQL-14 Specific Columns
     plans_calls,
 	total_plan_time,
 	min_plan_time,

@@ -75,7 +75,6 @@ select substr(query, 0,50) as query, calls, query_plan from pg_stat_monitor orde
  SELECT key, txt_0, value_0 FROM TBL_0             |     2 | 
  SELECT pg_stat_monitor_reset()                    |     1 | 
  UPDATE TBL_0 SET value_0 = 1681692777             |     1 | 
- select substr(query, 0,50) as query, calls, query |     1 | 
-(7 rows)
+(6 rows)
 
 Drop extension pg_stat_monitor;
