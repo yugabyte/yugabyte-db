@@ -60,21 +60,11 @@ begin
 	end loop;
 end $$;
 SELECT query,calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                                               query                                               | calls 
----------------------------------------------------------------------------------------------------+-------
- SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a                   |  1000
- SELECT pg_stat_monitor_reset()                                                                    |     1
- do $$                                                                                            +|     1
- declare                                                                                          +| 
-    n integer:= 1;                                                                                +| 
- begin                                                                                            +| 
-         loop                                                                                     +| 
-                 PERFORM a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a;+| 
-                 exit when n = 1000;                                                              +| 
-                 n := n + 1;                                                                      +| 
-         end loop;                                                                                +| 
- end $$                                                                                            | 
-(3 rows)
+                                      query                                      | calls 
+---------------------------------------------------------------------------------+-------
+ SELECT a,b,c,d FROM t1, t2, t3, t4 WHERE t1.a = t2.b AND t3.c = t4.d ORDER BY a |  1000
+ SELECT pg_stat_monitor_reset()                                                  |     1
+(2 rows)
 
 DROP TABLE t1;
 DROP TABLE t2;

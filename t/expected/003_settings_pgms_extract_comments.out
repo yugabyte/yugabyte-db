@@ -23,8 +23,7 @@ SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
  SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_extract_comments' | 
  SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/                     | /* First comment */, /* Second comment*/
  SELECT pg_stat_monitor_reset()                                                              | 
- SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C"                      | 
-(4 rows)
+(3 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
@@ -50,7 +49,6 @@ SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
  SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_extract_comments' | 
  SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/                     | 
  SELECT pg_stat_monitor_reset()                                                              | 
- SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C"                      | 
-(4 rows)
+(3 rows)
 
 Drop extension pg_stat_monitor;

@@ -196,11 +196,11 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	sqlcode,
 	message,
     calls,
-	total_exec_time,
-	min_time,
-	max_time,
-	mean_time,
-	stddev_time,
+	total_exec_time AS total_time,
+	min_exec_time AS min_time,
+	max_exec_time AS max_time,
+	mean_exec_time AS mean_time,
+	stddev_exec_time AS stddev_time,
 	rows_retrieved,
 	shared_blks_hit,
     shared_blks_read,
@@ -277,7 +277,12 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_fpi,
     wal_bytes,
     -- PostgreSQL-13 Specific Coulumns
-    plans_calls
+	plans_calls,
+	total_plan_time,
+	min_plan_time,
+	max_plan_time,
+	mean_plan_time,
+    stddev_plan_time
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 RETURN 0;
@@ -334,7 +339,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_fpi,
     wal_bytes,
 
-    -- PostgreSQL-14 Specific Columns
     plans_calls,
 	total_plan_time,
 	min_plan_time,
