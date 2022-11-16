@@ -19,16 +19,16 @@ Very often, today's cloud services and applications will start out with just a f
 
 Here are a few different criteria where YugabyteDB brings the best of SQL and NoSQL together into a single database platform.
 
-### Data characteristics
+### Database characteristics
 
-These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics, and so on. Following is a table that contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the following table is not accurate for all NoSQL databases - it is just meant to give an idea.
+These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics, and so on. The following table contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table is not accurate for all NoSQL databases - it is just meant to give an idea.
 
-| Database characteristics  | SQL | NoSQL | YugabyteDB |
+| Characteristic  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Data model | Well-defined schema (tables, rows, columns)  | Schema-less | Both |
-| API    | SQL | Various | Fully-relational SQL + Semi-relational SQL |
-| Consistency | Strong consistency | Eventual consistency | Strong consistency |
-| Transactions | ACID transactions | No transactions | ACID transactions |
+| API    | SQL | Various | Fully-relational SQL +<br/>Semi-relational SQL |
+| Consistency | Strong | Eventual | Strong |
+| Transactions | ACID | None | ACID |
 | High Write Throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
@@ -68,7 +68,7 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+To test the linear scalability of YugabyteDB, we ran some large cluster benchmarks (up to 50 nodes) and were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
@@ -99,10 +99,10 @@ Because of this configuration, this universe can:
 ![Geo-distributed ops/sec](/images/develop/learn/yb-geo-distributed-ops.png)
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
-The graphs above, also taken from the EE, show that the average read latencies for apps running the various cloud regions are just 250 microseconds, while writes are strongly consistent, and incur 218 milliseconds.
+The preceding graphs, also taken from YugabyteDB Anywhere, show that the average read latencies for apps running the various cloud regions are just 250 microseconds, while writes are strongly consistent, and incur 218 milliseconds.
 
 ## Multi-cloud ready
 
-It is possible to configure YugabyteDB EE to work with multiple public clouds as well as private data centers in just a few minutes.
+You can configure YugabyteDB Anywhere to work with multiple public clouds as well as private data centers in just a few minutes.
 
 ![Geo-distributed](/images/develop/learn/yb-multi-cloud-ready.png)
