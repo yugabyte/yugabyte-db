@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. Admin users can generate API keys for your account.
+YugabyteDB Managed provides a [REST API](https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api) so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. Admin users can generate API keys for your account.
 
 API keys are not stored in YugabyteDB Managed. Safeguard them by doing the following:
 
@@ -57,3 +57,12 @@ The key is only displayed one time; it is not available in YugabyteDB Managed af
 ## Revoke an API key
 
 To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking **Revoke API Key** in the **API Key Details** sheet.
+
+## Using the API
+
+To use the API, in addition to an API key, you need the following:
+
+- Your YugabyteDB Managed account ID. To view your account ID, click the **Profile** icon in the top right corner of the YugabyteDB Managed window. The account ID is also displayed in the API Key Details.
+- The project ID. The project ID is the unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. To obtain the project ID, call the _GET projects_ API.
+
+For more information, refer to [Getting Started](https://api-docs.yugabyte.com/docs/managed-apis/tvsjh28t5ivmw-getting-started) in the API documentation.
