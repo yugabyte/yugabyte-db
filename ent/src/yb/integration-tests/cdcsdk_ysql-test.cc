@@ -2654,11 +2654,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {2, 1, 0, 0, 1, 0};
+  const uint32_t expected_count[] = {1, 1, 0, 0, 1, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records_before_snapshot[] = {{0, 0}, {1, 2}};
-  ExpectedRecord expected_records_after_snapshot[] = {{0, 0}, {2, 3}};
+  ExpectedRecord expected_records_after_snapshot[] = {{2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
   GetChangesResponsePB change_resp_updated =
@@ -8879,6 +8879,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
     GetChangesResponsePB change_resp_updated =
         ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
     uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    if (record_size == 0) {
+      break;
+    }
     uint32_t read_count = 0;
     vector<int> excepted_result(2);
     vector<int> actual_result(2);
@@ -8907,11 +8910,71 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
     }
     reads_snapshot += read_count;
     change_resp = change_resp_updated;
-    if (reads_snapshot == 200) {
-      break;
-    }
   }
   ASSERT_EQ(reads_snapshot, 200);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithSnapshot)) {
+  FLAGS_enable_load_balancing = false;
+  FLAGS_cdc_snapshot_batch_size = 100;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  // Table having key:value_1 column
+  ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
+  // Add column value_2 column, Table Alter happen.
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+  ASSERT_OK(WriteRows(
+      101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
+
+  // Drop value_2 column, Tablet Alter happen.
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
+
+  // Add the 2 columns, value_2 and value_4
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(WriteRows(
+      301 /* start */, 401 /* end */, &test_cluster_,
+      {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
+
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  std::vector<std::string> expected_columns{kKeyColumnName, kValueColumnName, kValue4ColumnName};
+  while (true) {
+    GetChangesResponsePB change_resp_updated =
+        ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    if (record_size == 0) {
+      break;
+    }
+    uint32_t read_count = 0;
+    for (uint32_t i = 0; i < record_size; ++i) {
+      std::vector<std::string> actual_columns;
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      std::stringstream s;
+      if (record.row_message().op() == RowMessage::READ) {
+        for (int jdx = 0; jdx < record.row_message().new_tuple_size(); jdx++) {
+          s << " " << record.row_message().new_tuple(jdx).datum_int32();
+          actual_columns.push_back(record.row_message().new_tuple(jdx).column_name());
+        }
+        ASSERT_EQ(expected_columns, actual_columns);
+        LOG(INFO) << "row: " << i << " : " << s.str();
+        read_count++;
+      }
+    }
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+  }
+  ASSERT_EQ(reads_snapshot, 400);
 }
 
 }  // namespace enterprise
