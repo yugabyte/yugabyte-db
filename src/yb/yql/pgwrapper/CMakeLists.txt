@@ -140,6 +140,7 @@ endif()
 
 add_dependencies(
   initial_sys_catalog_snapshot
+  run-with-timeout
   "${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME}"
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
