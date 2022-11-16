@@ -72,6 +72,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
+  void InvalidateTableCache();
+
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \

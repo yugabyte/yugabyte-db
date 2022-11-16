@@ -2822,6 +2822,68 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
   ASSERT_TRUE(all_good);
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNewConnection),
+          YbAdminSnapshotScheduleAutoSplitting) {
+  // Setup an RF1 so that we are only dealing with one tserver and its cache.
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+      "SPLIT INTO 1 tablets",
+      client::kTableName.table_name()));
+
+  // Only this row should be present after restoration.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')",
+      client::kTableName.table_name(), 0));
+
+  auto tablets_obj = ASSERT_RESULT(ListTablets(
+      client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
+  auto prev_tablets_count = tablets_obj.GetArray().Size();
+  LOG(INFO) << prev_tablets_count << " tablets present before restore";
+
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+
+  // Insert enough data conducive to splitting.
+  ASSERT_OK(InsertDataForSplitting(&conn));
+  LOG(INFO) << "Inserted 5000 rows";
+
+  // Wait for at least one round of splitting.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto tablets_obj = VERIFY_RESULT(ListTablets(
+        client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
+    auto tablets_count = tablets_obj.GetArray().Size();
+    LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
+    return tablets_count >= 2;
+  }, 120s, "Wait for tablets to be split"));
+
+  // Read data so that cache gets updated to latest partitions.
+  auto select_query = Format(
+       "SELECT count(*) FROM $0", client::kTableName.table_name());
+  auto rows = ASSERT_RESULT(conn.FetchRowAsString(select_query));
+  LOG(INFO) << "Found #rows " << rows;
+  ASSERT_EQ(rows, "5001");
+
+  // Perform a restoration.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Give some time for catalog version to be propagated.
+  // Two times the HB frequency should be enough.
+  SleepFor(MonoDelta::FromSeconds(2));
+
+  // Read data using a new connection.
+  auto new_conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  LOG(INFO) << "Reading rows after restoration";
+  auto all_good = ASSERT_RESULT(VerifyData(&new_conn, prev_tablets_count));
+  ASSERT_TRUE(all_good);
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   const auto retention = kInterval * 5 * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));

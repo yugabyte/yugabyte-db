@@ -68,6 +68,8 @@ class MaintenanceManager;
 
 namespace tserver {
 
+class PgClientServiceImpl;
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
@@ -158,8 +160,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void set_cluster_uuid(const std::string& cluster_uuid);
 
   std::string cluster_uuid() const;
-
-  TabletServiceImpl* tablet_server_service();
 
   scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceRpcMethodIndexes metric);
 
@@ -281,7 +281,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
-  TabletServiceImpl* tablet_server_service_;
+  std::weak_ptr<TabletServiceImpl> tablet_server_service_;
+
+  // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
+  // is shut down.
+  std::weak_ptr<PgClientServiceImpl> pg_client_service_;
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
