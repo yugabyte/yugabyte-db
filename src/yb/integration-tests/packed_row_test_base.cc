@@ -22,6 +22,7 @@
 
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -33,6 +34,7 @@ namespace yb {
 
 void SetUpPackedRowTestFlags() {
   FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   FLAGS_ycql_enable_packed_row = true;
   FLAGS_ycql_packed_row_size_limit = 1_KB;
