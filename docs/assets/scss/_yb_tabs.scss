@@ -9,6 +9,7 @@
         background: #fff;
         display: flex;
         align-items: center;
+        position: static;
 
         i {
           font-size: 24px;
@@ -20,12 +21,15 @@
   }
 }
 
+// for jquery inline tabs
 .td-content {
-  .nav-tabs {
+  .nav-tabs:not(.nav-tabs-yb) {
     margin-bottom: 16px;
     border: 0;
 
     > li {
+      margin-bottom: 0;
+
       .nav-link {
         font-weight: 400;
         font-size: 13px;
@@ -37,6 +41,7 @@
         &.active {
           color: $yb-font-dark;
           background: #e9eef2;
+          border-radius: 8px;
         }
       }
     }
@@ -56,20 +61,25 @@
   max-width: 100%;
   border: 0;
 
+  .highlight {
+    margin: 20px 0;
+  }
+
   pre {
     border: none;
   }
 }
 
-ul.nav.nav-tabs-alt.nav-tabs-yb {
-  margin: 20px 0 6px;
+ul.nav.nav-tabs-yb:not(.yb-pills) {
+  border: none;
+  margin: 20px 0 29px;
   position: relative;
   padding: 0 8px 6px;
   gap: 0;
   display: block;
   white-space: nowrap;
   width: calc(100%);
-  overflow: auto;
+  overflow: scroll;
   overflow-y: hidden;
   scrollbar-width: thin;
 
@@ -154,6 +164,7 @@ ul.nav.nav-tabs-alt.nav-tabs-yb {
         border-radius: 0;
         width: 24px;
         height: 24px;
+        line-height: 24px;
         display: inline-block;
         text-align: center;
       }
@@ -172,7 +183,7 @@ ul.nav.nav-tabs-alt.nav-tabs-yb {
   }
 }
 
-ul.nav.nav-tabs-alt.nav-tabs-yb ~ .nav-tabs-yb {
+ul.nav.nav-tabs-yb:not(.yb-pills) ~ .nav-tabs-yb:not(.yb-pills) {
   li {
     font-size: 13px;
     line-height: 16px;
@@ -189,10 +200,15 @@ ul.nav.nav-tabs-alt.nav-tabs-yb ~ .nav-tabs-yb {
         width: 16px;
         height: 16px;
         font-size: 16px;
+        line-height: 16px;
       }
 
       i {
-        margin: 0 13px 1px 0;
+        margin: 0 13px 0 0;
+
+        &.icon-postgres {
+          margin: 0 13px -4px 0;
+        }
       }
     }
   }
