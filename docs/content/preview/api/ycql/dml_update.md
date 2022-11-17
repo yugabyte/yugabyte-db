@@ -66,7 +66,7 @@ Where
 - Update statement uses _upsert semantics_, meaning it inserts the row being updated if it does not already exists.
 - The `USING TIMESTAMP` clause indicates you would like to perform the UPDATE as if it was done at the
   timestamp provided by the user. The timestamp is the number of microseconds since epoch.
-- **NOTE**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
+- **Note**: You should either use the `USING TIMESTAMP` clause in all of your statements or none of
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
 - Updating rows `USING TTL` is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
@@ -110,7 +110,7 @@ Update the value of a non primary-key column.
 ycqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
 ```
 
-Using upsert semantics to update a non-existent row (i.e. insert the row).
+Using upsert semantics to update a non-existent row (that is, insert the row).
 
 ```sql
 ycqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
@@ -120,7 +120,7 @@ ycqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+-----
              1 |           1 | Jack |  30
@@ -135,7 +135,7 @@ The supported expressions are allowed in the 'SET' assignment targets.
 ycqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
 ```
 
-```
+```output
  [applied]
 -----------
       True
@@ -147,7 +147,7 @@ Using upsert semantics to add a row, age is not set so will be 'null'.
 ycqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
 ```
 
-```
+```output
  [applied]
 -----------
       True
@@ -157,7 +157,7 @@ ycqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND em
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              2 |           1 |  Joe | null
@@ -165,7 +165,7 @@ ycqlsh:example> SELECT * FROM employees;
              1 |           2 | Jane |   40
 ```
 
-### Update with expiration time using the `USING TTL` clause.
+### Update with expiration time using the `USING TTL` clause
 
 The updated values will persist for the TTL duration.
 
@@ -177,7 +177,7 @@ ycqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id =
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack |   32
@@ -189,7 +189,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -207,7 +207,7 @@ ycqlsh:foo> INSERT INTO employees(department_id, employee_id, name, age) VALUES 
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -230,7 +230,7 @@ Not applied since timestamp is lower than 1000.
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
@@ -251,7 +251,7 @@ Applied since timestamp is higher than 1000.
 ycqlsh:foo> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null
