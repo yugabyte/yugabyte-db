@@ -34,7 +34,7 @@ transaction_block ::= BEGIN TRANSACTION
 
 Where `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
-- When using `BEGIN TRANSACTION`, you don't use a semicolon.
+- When using `BEGIN TRANSACTION`, you don't use a semicolon. End the transaction block with `END TRANSACTION ;`.
 - There is no `COMMIT` for transactions started using `BEGIN`.
 
 ### SQL syntax
@@ -48,7 +48,7 @@ transaction_block ::= START TRANSACTION ';'
                       COMMIT ';'
 ```
 
-- When using `START TRANSACTION`, you must use a semicolon.
+- When using `START TRANSACTION`, you must use a semicolon. End the transaction block with `COMMIT ;`.
 - You can't use `END TRANSACTION` for transactions started using `START`.
 
 ## Semantics
@@ -57,7 +57,7 @@ transaction_block ::= START TRANSACTION ';'
 - Currently, an error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause.
 - If transactions are enabled for a table, its indexes must have them enabled as well, and vice versa.
 - There is no explicit rollback.
-- DDLs are always committed immediately, even if they are inside a transaction block.
+- DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 
 ## Examples
 
