@@ -95,47 +95,56 @@ public class PitrConfigPoller {
     List<Metric> metrics = new ArrayList<>();
     for (Map.Entry<UUID, Map<UUID, PitrConfig>> entry : scheduleMap.entrySet()) {
       UUID universeUUID = entry.getKey();
-      Universe universe = Universe.getOrBadRequest(universeUUID);
-      String masterHostPorts = universe.getMasterAddresses();
-      String certificate = universe.getCertificateNodetoNode();
-      ListSnapshotSchedulesResponse scheduleResp;
-      List<SnapshotScheduleInfo> scheduleInfoList;
-      Map<UUID, PitrConfig> snapshotScheduleMap = entry.getValue();
-      Set<UUID> snapshotScheduleUUIDs = snapshotScheduleMap.keySet();
-      log.info("Universe uuid: {}, schedule uuid: {}", universeUUID, snapshotScheduleUUIDs);
       try {
-        client = ybClientService.getClient(masterHostPorts, certificate);
-        scheduleResp = client.listSnapshotSchedules(null);
-        scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-      } catch (Exception ex) {
-        log.error("Failed to get snapshots for universe {}", universeUUID, ex);
-        continue;
-      } finally {
-        ybClientService.closeClient(client, masterHostPorts);
-      }
-
-      for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
-        if (!snapshotScheduleUUIDs.contains(snapshotScheduleInfo.getSnapshotScheduleUUID())) {
+        Universe universe = Universe.getOrBadRequest(universeUUID);
+        if (universe.getUniverseDetails().universePaused) {
           continue;
         }
-        PitrConfig pitrConfig =
-            snapshotScheduleMap.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
-        boolean pitrStatus =
-            BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
-
-        if (pitrStatus) {
-          metrics.add(
-              BackupUtil.buildMetricTemplate(
-                  PlatformMetrics.PITR_CONFIG_STATUS, universe, pitrConfig, STATUS_OK));
-        } else {
-          log.error(
-              "Failed state for PITR config: {} for universe: {}",
-              pitrConfig.getUuid(),
-              universeUUID);
-          metrics.add(
-              BackupUtil.buildMetricTemplate(
-                  PlatformMetrics.PITR_CONFIG_STATUS, universe, pitrConfig, STATUS_NOT_OK));
+        String masterHostPorts = universe.getMasterAddresses();
+        String certificate = universe.getCertificateNodetoNode();
+        ListSnapshotSchedulesResponse scheduleResp;
+        List<SnapshotScheduleInfo> scheduleInfoList;
+        Map<UUID, PitrConfig> snapshotScheduleMap = entry.getValue();
+        Set<UUID> snapshotScheduleUUIDs = snapshotScheduleMap.keySet();
+        log.info("Universe uuid: {}, schedule uuid: {}", universeUUID, snapshotScheduleUUIDs);
+        try {
+          client = ybClientService.getClient(masterHostPorts, certificate);
+          scheduleResp = client.listSnapshotSchedules(null);
+          scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+        } catch (Exception ex) {
+          log.error("Failed to get snapshots for universe {}", universeUUID, ex);
+          continue;
+        } finally {
+          ybClientService.closeClient(client, masterHostPorts);
         }
+
+        for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
+          if (!snapshotScheduleUUIDs.contains(snapshotScheduleInfo.getSnapshotScheduleUUID())) {
+            continue;
+          }
+          PitrConfig pitrConfig =
+              snapshotScheduleMap.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
+          boolean pitrStatus =
+              BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
+
+          if (pitrStatus) {
+            metrics.add(
+                BackupUtil.buildMetricTemplate(
+                    PlatformMetrics.PITR_CONFIG_STATUS, universe, pitrConfig, STATUS_OK));
+          } else {
+            log.error(
+                "Failed state for PITR config: {} for universe: {}",
+                pitrConfig.getUuid(),
+                universeUUID);
+            metrics.add(
+                BackupUtil.buildMetricTemplate(
+                    PlatformMetrics.PITR_CONFIG_STATUS, universe, pitrConfig, STATUS_NOT_OK));
+          }
+        }
+      } catch (Exception ex) {
+        log.error(
+            "Not able to update the latest snapshot schedule status for the universe: "
+                + universeUUID.toString());
       }
     }
     MetricFilter toClean =

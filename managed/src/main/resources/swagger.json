@@ -5568,6 +5568,7 @@
       "type" : "object"
     },
     "PitrConfig" : {
+      "description" : "PITR config created on the universe",
       "properties" : {
         "createTime" : {
           "description" : "Create time of the PITR config",
