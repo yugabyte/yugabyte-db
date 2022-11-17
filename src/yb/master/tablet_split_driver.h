@@ -36,4 +36,3 @@ class TabletSplitDriverIf {
 
 }  // namespace master
 }  // namespace yb
-

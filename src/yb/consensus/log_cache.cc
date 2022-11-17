@@ -63,19 +63,19 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_int32(log_cache_size_limit_mb, 128,
+DEFINE_UNKNOWN_int32(log_cache_size_limit_mb, 128,
              "The total per-tablet size of consensus entries which may be kept in memory. "
              "The log cache attempts to keep all entries which have not yet been replicated "
              "to all followers in memory, but if the total size of those entries exceeds "
              "this limit within an individual tablet, the oldest will be evicted.");
 TAG_FLAG(log_cache_size_limit_mb, advanced);
 
-DEFINE_int32(global_log_cache_size_limit_mb, 1024,
+DEFINE_UNKNOWN_int32(global_log_cache_size_limit_mb, 1024,
              "Server-wide version of 'log_cache_size_limit_mb'. The total memory used for "
              "caching log entries across all tablets is kept under this threshold.");
 TAG_FLAG(global_log_cache_size_limit_mb, advanced);
 
-DEFINE_int32(global_log_cache_size_limit_percentage, 5,
+DEFINE_UNKNOWN_int32(global_log_cache_size_limit_percentage, 5,
              "The maximum percentage of root process memory that can be used for caching log "
              "entries across all tablets. Default is 5.");
 TAG_FLAG(global_log_cache_size_limit_percentage, advanced);
@@ -358,10 +358,12 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_
 // reacquire lock and continue using the previous iterator. This is error prone, since before
 // reacquiring the lock, its possible that cache_ has been updated which invalidate the iterator.
 // Created GH-13934 (https://github.com/yugabyte/yugabyte-db/issues/13934) to track this.
-Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
-                                        int64_t to_op_index,
-                                        size_t max_size_bytes,
-                                        CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
+Result<ReadOpsResult> LogCache::ReadOps(
+    int64_t after_op_index,
+    int64_t to_op_index,
+    size_t max_size_bytes,
+    CoarseTimePoint deadline,
+    bool fetch_single_entry) NO_THREAD_SAFETY_ANALYSIS {
   DCHECK_GE(after_op_index, 0);
 
   VLOG_WITH_PREFIX(4) << "ReadOps, after_op_index: " << after_op_index
@@ -369,13 +371,18 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
   int64_t starting_op_segment_seq_num;
+  int64_t next_index;
+  int64_t to_index;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);
-  int64_t next_index = after_op_index + 1;
-  int64_t to_index = to_op_index > 0
-      ? std::min(to_op_index + 1, next_sequential_op_index_)
-      : next_sequential_op_index_;
+  next_index = after_op_index + 1;
+  to_index = to_op_index > 0 ? std::min(to_op_index + 1, next_sequential_op_index_)
+                             : next_sequential_op_index_;
+
+  if (fetch_single_entry) {
+    next_index = to_index = to_op_index = after_op_index;
+  }
 
   // Remove the deadline if the GetChanges deadline feature is disabled.
   if (!ANNOTATE_UNPROTECTED_READ(FLAGS_get_changes_honor_deadline)) {
@@ -384,7 +391,8 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
-  while (remaining_space >= 0 && next_index < to_index) {
+  while (remaining_space >= 0 &&
+         (fetch_single_entry ? next_index == to_index : next_index < to_index)) {
     // Stop reading if a deadline was specified and the deadline has been exceeded.
     if (deadline != CoarseTimePoint::max() && CoarseMonoClock::Now() >= deadline) {
       break;
@@ -394,12 +402,16 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
       int64_t up_to;
-      if (iter == cache_.end()) {
-        // Read all the way to the current op.
-        up_to = to_index - 1;
+      if (fetch_single_entry) {
+        up_to = to_index;
       } else {
-        // Read up to the next entry that's in the cache or to_index whichever is lesser.
-        up_to = std::min(iter->first - 1, to_index - 1);
+        if (iter == cache_.end()) {
+          // Read all the way to the current op.
+          up_to = to_index - 1;
+        } else {
+          // Read up to the next entry that's in the cache or to_index whichever is lesser.
+          up_to = std::min(iter->first - 1, to_index - 1);
+        }
       }
 
       l.unlock();

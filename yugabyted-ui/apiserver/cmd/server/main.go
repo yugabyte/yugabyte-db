@@ -115,7 +115,6 @@ func createPgClient(log logger.Logger) *pgx.Conn {
                 }
                 url = fmt.Sprintf("%s?%s", url, secureOptions)
         }
-        println("ysql connection url - " + url)
 
         log.Debugf("Initializing pgx client.")
         conn, err := pgx.Connect(context.Background(), url)
@@ -233,6 +232,9 @@ func main() {
 
         // GetClusterTablets - Get list of tablets
         e.GET("/api/tablets", c.GetClusterTablets)
+
+        // GetVersion - Get YugabyteDB version
+        e.GET("/api/version", c.GetVersion)
 
         render_htmls := templates.NewTemplate()
 

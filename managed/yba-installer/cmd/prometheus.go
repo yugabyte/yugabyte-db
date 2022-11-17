@@ -74,12 +74,13 @@ func (prom Prometheus) Start() {
 		maxSamples := getYamlPathData(".prometheus.maxSamples")
 		timeout := getYamlPathData(".prometheus.timeout")
 		externalPort := getYamlPathData(".prometheus.externalPort")
+		restartSeconds := getYamlPathData(".prometheus.restartSeconds")
 
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
 
 		command1 := "bash"
 		arg1 := []string{"-c", scriptPath + " " + externalPort + " " + maxConcurrency + " " + maxSamples +
-			" " + timeout + " " + " > /dev/null 2>&1 &"}
+			" " + timeout + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		ExecuteBashCommand(command1, arg1)
 
@@ -165,7 +166,10 @@ func (prom Prometheus) moveAndExtractPrometheusPackage(ver string) {
 	if _, err := os.Stat(path_package_extracted); err == nil {
 		LogDebug(path_package_extracted + " already exists, skipping re-extract.")
 	} else {
-		tar.Untar(rExtract, INSTALL_VERSION_DIR+"/packages")
+		if err := tar.Untar(rExtract, INSTALL_VERSION_DIR+"/packages",
+			tar.WithMaxUntarSize(-1)); err != nil {
+			LogError(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
+		}
 		LogDebug(dstPath + " successfully extracted.")
 	}
 
@@ -354,8 +358,11 @@ func (prom Prometheus) CreateCronJob() {
 	maxSamples := getYamlPathData(".prometheus.maxSamples")
 	timeout := getYamlPathData(".prometheus.timeout")
 	externalPort := getYamlPathData(".prometheus.externalPort")
+	restartSeconds := getYamlPathData(".prometheus.restartSeconds")
+
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + externalPort + " " +
-			maxConcurrency + " " + maxSamples + " " + timeout + "\") | sort - | uniq - | crontab - "})
+			maxConcurrency + " " + maxSamples + " " + timeout + " " + restartSeconds +
+			"\") | sort - | uniq - | crontab - "})
 }

@@ -182,4 +182,3 @@ class WriteBatchInternal {
 };
 
 }  // namespace rocksdb
-

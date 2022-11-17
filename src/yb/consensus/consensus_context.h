@@ -78,4 +78,3 @@ class ConsensusContext {
 
 } // namespace consensus
 } // namespace yb
-

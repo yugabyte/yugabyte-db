@@ -52,4 +52,3 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
 
 } // namespace master
 } // namespace yb
-

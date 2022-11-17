@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -273,4 +272,3 @@ bool DbUndumpTool::Run(const UndumpOptions& undump_options,
   return true;
 }
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

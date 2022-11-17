@@ -374,4 +374,3 @@ struct is_convertible
 #define PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT(TemplateName)             \
     typedef int Dummy_Type_For_PROPAGATE_POD_FROM_TEMPLATE_ARGUMENT ATTRIBUTE_UNUSED
 #define ENFORCE_POD(TypeName) typedef int Dummy_Type_For_ENFORCE_POD ATTRIBUTE_UNUSED
-

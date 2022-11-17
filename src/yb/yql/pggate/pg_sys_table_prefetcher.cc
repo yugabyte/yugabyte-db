@@ -176,8 +176,8 @@ class ResultFunctorAdapter {
 };
 
 Status CheckRequestTargets(const PgObjectId& table_id,
-                                   const ColumnIdsContainer& targets,
-                                   const LWPgsqlReadRequestPB& req) {
+                           const ColumnIdsContainer& targets,
+                           const LWPgsqlReadRequestPB& req) {
   SCHECK_EQ(table_id,
             PgObjectId(req.table_id()),
             IllegalState,

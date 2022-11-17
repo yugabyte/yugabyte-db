@@ -10,8 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_OPTIONS_H
-#define YB_TABLET_TABLET_OPTIONS_H
 
 #pragma once
 
@@ -92,5 +90,3 @@ struct TabletInitData {
 
 } // namespace tablet
 } // namespace yb
-
-#endif /* YB_TABLET_TABLET_OPTIONS_H */

@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METADATA_H
-#define YB_TABLET_TABLET_METADATA_H
 
 #pragma once
 
@@ -332,9 +330,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
 
+  Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
   int64_t cdc_min_replicated_index() const;
 
   OpId cdc_sdk_min_checkpoint_op_id() const;
+
+  HybridTime cdc_sdk_safe_time() const;
 
   Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
@@ -560,7 +562,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Update state of metadata to that of the given superblock PB.
   Status LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
-                                    bool local_superblock);
+                            bool local_superblock);
 
   Status ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
 
@@ -626,6 +628,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // The minimum CDCSDK checkpoint Opid that has been consumed by client.
   OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
 
+  // The minimum hybrid time based on which data is retained for before image
+  HybridTime cdc_sdk_safe_time_ GUARDED_BY(data_mutex_);
+
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 
   bool hidden_ GUARDED_BY(data_mutex_) = false;
@@ -655,5 +660,3 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
 } // namespace tablet
 } // namespace yb
-
-#endif /* YB_TABLET_TABLET_METADATA_H */

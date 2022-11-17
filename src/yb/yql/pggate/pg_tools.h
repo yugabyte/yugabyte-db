@@ -33,4 +33,3 @@ struct Bound {
 
 } // namespace pggate
 } // namespace yb
-

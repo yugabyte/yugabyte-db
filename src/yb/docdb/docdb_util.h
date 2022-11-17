@@ -102,7 +102,7 @@ class DocDBRocksDBUtil {
 
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   Status WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,
-                                        bool decode_dockey = true, bool increment_write_id = true);
+                                bool decode_dockey = true, bool increment_write_id = true);
 
   // Writes value fully determined by its index using DefaultWriteBatch.
   Status WriteSimple(int index);
@@ -253,4 +253,3 @@ class DocDBRocksDBUtil {
 
 }  // namespace docdb
 }  // namespace yb
-

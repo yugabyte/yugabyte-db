@@ -14,11 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HKEYS key`</b><br>
+**`HKEYS key`**
+
 This command fetches all fields of the hash that is associated with the given `key`.
 
-<li>If the `key` does not exist, an empty list is returned.</li>
-<li>If the `key` is associated with non-hash data, an error is raised.</li>
+- If the `key` does not exist, an empty list is returned.
+- If the `key` is associated with non-hash data, an error is raised.
 
 ## Return value
 

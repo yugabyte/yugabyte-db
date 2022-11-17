@@ -45,4 +45,3 @@ void GenerateMethodAssignments(
 
 } // namespace gen_yrpc
 } // namespace yb
-

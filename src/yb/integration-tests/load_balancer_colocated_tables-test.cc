@@ -60,6 +60,7 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
     return true;
   }
 
+  // Only used for non-colocated tables, colocated tables should still share the parent tablet.
   int num_tablets() override {
     return 5;
   }
@@ -149,8 +150,7 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
 TEST_F(LoadBalancerColocatedTablesTest,
        YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingWithColocatedTables)) {
   const int rf = 3;
-  std::vector<uint32_t> z0_tserver_loads;
-  // Start with 3 tables with 5 tablets.
+  // Start with 3 colocated databases with one table each, so 3 tablets in total.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", rf, ""));
 
   // Add two tservers to z0 and wait for everything to be balanced (globally and per table).
@@ -166,10 +166,11 @@ TEST_F(LoadBalancerColocatedTablesTest,
   // Wait for load balancing to complete.
   WaitForLoadBalanceCompletion();
 
-  // Assert that each table is balanced, and that we are globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
-  // Each colocated table should have its tablet on a different TS in z0.
-  z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3, 4 }));
+  // Assert that each table is balanced, and that we are globally balanced (Before global load
+  // balancing, colocated parent tablets would not move) - Each colocated database should have its
+  // tablet on a different TS in z0.
+  const std::vector<uint32_t> z0_tserver_loads =
+      ASSERT_RESULT(GetTserverLoads(/* ts_idxs */ {0, 3, 4}));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
   ASSERT_EQ(z0_tserver_loads[0], 1);
   ASSERT_EQ(z0_tserver_loads[1], 1);
@@ -257,7 +258,7 @@ TEST_F(LoadBalancerTablegroupsTest, YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingW
 
   // Get the load on each of the TS in z0. We expect that each tablegroup should have its tablet on
   // a different TS in z0.
-  z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({0, 3, 4}));
+  z0_tserver_loads = ASSERT_RESULT(GetTserverLoads(/* ts_idxs */ {0, 3, 4}));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
   ASSERT_EQ(z0_tserver_loads[0], 1);
   ASSERT_EQ(z0_tserver_loads[1], 1);

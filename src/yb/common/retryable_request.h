@@ -48,4 +48,3 @@ struct MinRunningRequestIdTag : IntegralErrorTag<int64_t> {
 using MinRunningRequestIdStatusData = StatusErrorCodeImpl<MinRunningRequestIdTag>;
 
 }  // namespace yb
-

@@ -509,7 +509,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 
 template <class TablesMap>
 Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
-                                 const TablesMap& tables) {
+                         const TablesMap& tables) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
     const auto iter = tables.find(table_id);
@@ -1137,10 +1137,23 @@ OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
   return cdc_sdk_min_checkpoint_op_id_;
 }
 
+HybridTime RaftGroupMetadata::cdc_sdk_safe_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_sdk_safe_time_;
+}
+
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
     std::lock_guard<MutexType> lock(data_mutex_);
     cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  }
+  return Flush();
+}
+
+Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
 }

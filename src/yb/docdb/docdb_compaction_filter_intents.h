@@ -46,4 +46,3 @@ class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFact
 
 }  // namespace docdb
 }  // namespace yb
-

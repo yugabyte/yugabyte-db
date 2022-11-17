@@ -34,7 +34,6 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -94,21 +93,6 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 void
 YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
-	if (YBIsDBCatalogVersionMode())
-	{
-		/*
-		 * In per database catalog version mode, disallow create database
-		 * if we come too close to the limit.
-		 */
-		int64_t num_databases = YbGetNumberOfDatabases();
-		int64_t num_reserved =
-			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
-		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("too many databases")));
-	}
-
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
@@ -712,15 +696,31 @@ YBCDropTable(Relation relation)
 													   false, /* if_exists */
 													   &handle),
 													   &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+		{
+			return;
+		}
+		/*
+		 * YSQL DDL Rollback is not yet supported for colocated tables.
+		 */
+		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
+			!yb_props->is_colocated)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * table once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropTable(handle),
+											&not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled/unsupported. This means DocDB will not
+		 * rollback the drop if the transaction ends up failing. We cannot
+		 * abort drop in DocDB so postpone the execution until the rest of the
+		 * statement/txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
 }
 

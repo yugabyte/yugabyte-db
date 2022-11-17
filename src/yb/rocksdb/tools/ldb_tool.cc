@@ -17,7 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/tools/ldb_cmd.h"
 
@@ -140,5 +139,3 @@ void LDBTool::Run(int argc, char** argv, Options options,
                                column_families);
 }
 } // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

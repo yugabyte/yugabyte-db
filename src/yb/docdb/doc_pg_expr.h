@@ -82,8 +82,8 @@ class DocPgExprExecutor {
   // caller's responsibility to track target expressions added to the executor, provide sufficiently
   // long results vector and match the results.
   Status Exec(const QLTableRow& table_row,
-                      std::vector<QLExprResult>* results,
-                      bool* match);
+              std::vector<QLExprResult>* results,
+              bool* match);
 
  private:
   // The relation schema
@@ -100,5 +100,3 @@ class DocPgExprExecutor {
 
 } // namespace docdb
 } // namespace yb
-
-

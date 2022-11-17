@@ -65,4 +65,3 @@ template<typename c_type> struct ArgTypeMapper {
 
 } // namespace pggate
 } // namespace yb
-

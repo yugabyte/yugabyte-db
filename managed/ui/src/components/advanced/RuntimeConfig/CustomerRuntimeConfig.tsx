@@ -62,7 +62,8 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
         <span className="customer-runtime-config-container__label"> {"Select Customer:"}</span>
         &nbsp;&nbsp;
         <Dropdown
-          id="customer-runtime-config-dropdown"
+          id="customerRuntimeConfigDropdown"
+          className="customer-runtime-config-dropdown"
         >
           <Dropdown.Toggle>
             <span className="customer-config-dropdown-value">{customerDropdownValue}</span>

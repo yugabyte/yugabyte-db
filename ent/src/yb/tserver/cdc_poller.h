@@ -133,4 +133,3 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-

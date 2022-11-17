@@ -200,4 +200,3 @@ class PgsqlScanSpec : public YQLScanSpec {
 };
 
 } // namespace yb
-

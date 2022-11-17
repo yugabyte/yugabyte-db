@@ -23,6 +23,7 @@
 #include <atomic>
 #include <bitset>
 #include <chrono>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
@@ -66,6 +67,8 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/version.hpp>
+#include <gflags/gflags.h>
+#include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <google/protobuf/arena.h>
 #include <google/protobuf/arenastring.h>
@@ -110,7 +113,10 @@
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/locks.h"

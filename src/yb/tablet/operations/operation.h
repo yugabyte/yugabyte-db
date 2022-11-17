@@ -375,4 +375,3 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
 
 }  // namespace tablet
 }  // namespace yb
-

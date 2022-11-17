@@ -99,4 +99,3 @@ constexpr uint16_t kMasterDefaultWebPort = 7000;
 
 } // namespace master
 } // namespace yb
-

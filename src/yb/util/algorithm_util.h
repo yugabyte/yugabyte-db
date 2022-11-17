@@ -97,4 +97,3 @@ auto StableSorted(const Col& collection, const Extractor& extractor) {
 }
 
 };  // namespace yb
-

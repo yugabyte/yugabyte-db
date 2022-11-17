@@ -97,6 +97,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;  // NOLINT
 using namespace yb::size_literals;  // NOLINT
@@ -156,18 +157,18 @@ DECLARE_string(minicluster_daemon_id);
 DECLARE_bool(use_libbacktrace);
 DECLARE_bool(never_fsync);
 
-DEFINE_string(external_daemon_heap_profile_prefix, "",
+DEFINE_UNKNOWN_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
               "suffix for external mini-cluster daemons.");
 
-DEFINE_bool(external_daemon_safe_shutdown, false,
+DEFINE_UNKNOWN_bool(external_daemon_safe_shutdown, false,
             "Shutdown external daemons using SIGTERM first. Disabled by default to avoid "
             "interfering with kill-testing.");
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
-DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
+DEFINE_UNKNOWN_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 

@@ -32,7 +32,7 @@ ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
 
 -- For binary upgrade, create an empty extension and insert objects into it
 DROP EXTENSION IF EXISTS pg_hint_plan;
-SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.3.7', '{16549,16547}', '{"",""}', ARRAY[]::pg_catalog.text[]);
+SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.3.7', '{16554,16552}', '{"",""}', ARRAY[]::pg_catalog.text[]);
 
 
 SET default_tablespace = '';
@@ -41,6 +41,9 @@ SET default_tablespace = '';
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16485'::pg_catalog.oid);
 CREATE TABLEGROUP grp1;
 
 
@@ -50,6 +53,9 @@ ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
 -- Name: grp2; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16486'::pg_catalog.oid);
 CREATE TABLEGROUP grp2;
 
 
@@ -61,6 +67,9 @@ SET default_tablespace = tsp1;
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
 --
 
+
+-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16487'::pg_catalog.oid);
 CREATE TABLEGROUP grp_with_spc;
 
 
@@ -76,11 +85,11 @@ SET default_with_oids = false;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16551'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16556'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16550'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16555'::pg_catalog.oid);
 
 CREATE TABLE hint_plan.hints (
     id integer NOT NULL,
@@ -103,7 +112,7 @@ ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16548'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16553'::pg_catalog.oid);
 
 CREATE SEQUENCE hint_plan.hints_id_seq
     AS integer
@@ -153,11 +162,11 @@ ALTER TABLE public.chat_user OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16558'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16563'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16557'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16562'::pg_catalog.oid);
 
 CREATE TABLE public.p1 (
     k integer NOT NULL,
@@ -175,11 +184,11 @@ ALTER TABLE public.p1 OWNER TO yugabyte_test;
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16565'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16570'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16564'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16569'::pg_catalog.oid);
 
 CREATE TABLE public.p2 (
     k integer NOT NULL,
@@ -190,6 +199,41 @@ SPLIT INTO 3 TABLETS;
 
 
 ALTER TABLE public.p2 OWNER TO yugabyte_test;
+
+--
+-- Name: pre_split_range; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16543'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16542'::pg_catalog.oid);
+
+CREATE TABLE public.pre_split_range (
+    id integer NOT NULL,
+    customer_id integer NOT NULL,
+    company_name character varying(40) NOT NULL,
+    contact_name character varying(30),
+    contact_title character varying(30),
+    address character varying(60),
+    city character varying(15),
+    region character varying(15),
+    postal_code character varying(10),
+    country character varying(15),
+    phone character varying(24),
+    fax character varying(24),
+    more_col1 text,
+    more_col2 text,
+    more_col3 text,
+    CONSTRAINT pre_split_range_pkey PRIMARY KEY(customer_id ASC)
+)
+SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
+
+
+ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
 
 --
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -975,6 +1019,14 @@ COPY public.p1 (k, v) FROM stdin;
 --
 
 COPY public.p2 (k, v) FROM stdin;
+\.
+
+
+--
+-- Data for Name: pre_split_range; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.pre_split_range (id, customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, fax, more_col1, more_col2, more_col3) FROM stdin;
 \.
 
 

@@ -77,4 +77,3 @@ class RetryableRequests {
 
 } // namespace consensus
 } // namespace yb
-

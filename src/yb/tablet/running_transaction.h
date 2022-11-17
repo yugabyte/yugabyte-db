@@ -190,4 +190,3 @@ Status MakeAbortedStatus(const TransactionId& id);
 
 } // namespace tablet
 } // namespace yb
-

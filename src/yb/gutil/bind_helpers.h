@@ -562,4 +562,3 @@ void DeletePointer(T* obj) {
 }
 
 }  // namespace yb
-

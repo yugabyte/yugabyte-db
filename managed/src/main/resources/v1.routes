@@ -92,6 +92,7 @@ DELETE  /customers/:cUUID/configs/:configUUID/delete                           c
 #---------------------------------------------------------------------------------------------------
 # List keys that we allow configuring - no auth needed
 GET /runtime_config/mutable_keys                                   com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
+GET /runtime_config/mutable_key_info                               com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
 
 # List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
 # sub-scopes (i.e. universes and providers owned by this customer)
@@ -132,6 +133,7 @@ GET     /customers_uuids                                                       c
 GET     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID                                                      com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
++ forceNoAudit
 POST    /customers/:cUUID/metrics                                              com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 
 # Customer features API
@@ -279,6 +281,10 @@ GET     /customers/:cUUID/universes/:uniUUID/range_hash                        c
 # Import a universe
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)
 
+# Link/Unlink universe
+POST   /customers/:cUUID/universes/:uniUUID/export                              com.yugabyte.yw.controllers.LinkUnlinkController.exportUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/import                             com.yugabyte.yw.controllers.LinkUnlinkController.importUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
 # Universe - info about Yugabyte DB master node
 GET     /customers/:cUUID/universes/:uniUUID/masters                           com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/yqlservers                        com.yugabyte.yw.controllers.MetaMasterController.getYQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -308,7 +314,7 @@ PUT     /customers/:cUUID/xcluster_configs/:xccUUID                            c
 POST    /customers/:cUUID/xcluster_configs/sync                                com.yugabyte.yw.controllers.XClusterConfigController.sync(cUUID: java.util.UUID, targetUniverseUUID: java.util.UUID ?= null)
 POST    /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.restart(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false)
 DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false)
-POST     /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap            com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID)
+POST    /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap             com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    com.yugabyte.yw.controllers.XClusterConfigController.needBootstrapTable(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe upgrade API
@@ -468,7 +474,7 @@ GET     /customers/:cUUID/hooks                                                c
 POST    /customers/:cUUID/hooks                                                com.yugabyte.yw.controllers.HookController.create(cUUID: java.util.UUID)
 DELETE  /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.delete(cUUID: java.util.UUID, hUUID: java.util.UUID)
 PUT     /customers/:cUUID/hooks/:hUUID                                         com.yugabyte.yw.controllers.HookController.update(cUUID: java.util.UUID, hUUID: java.util.UUID)
-POST    /customers/:cUUID/universes/:uniUUID/run_hooks                         com.yugabyte.yw.controllers.HookController.run(cUUID: java.util.UUID, uniUUID: java.util.UUID, isRolling: Boolean ?= true)
+POST    /customers/:cUUID/universes/:uniUUID/run_hooks                         com.yugabyte.yw.controllers.HookController.run(cUUID: java.util.UUID, uniUUID: java.util.UUID, isRolling: Boolean ?= true, clusterUUID: java.util.UUID ?= null)
 
 # Custom Hook Scope API
 GET     /customers/:cUUID/hook_scopes                                          com.yugabyte.yw.controllers.HookScopeController.list(cUUID: java.util.UUID )

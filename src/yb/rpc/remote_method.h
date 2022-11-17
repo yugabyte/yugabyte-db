@@ -70,4 +70,3 @@ class RemoteMethod {
 
 } // namespace rpc
 } // namespace yb
-

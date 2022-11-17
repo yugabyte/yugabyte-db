@@ -280,4 +280,3 @@ void AppendHash(uint16_t hash, KeyBytes* key);
 
 }  // namespace docdb
 }  // namespace yb
-

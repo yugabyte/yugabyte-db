@@ -19,21 +19,21 @@ type: docs
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link active">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
   </li>

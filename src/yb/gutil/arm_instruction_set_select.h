@@ -61,4 +61,3 @@
     defined(__ARM_ARCH_2__)
 # define ARMV2 1
 #endif
-

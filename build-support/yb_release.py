@@ -20,13 +20,11 @@ import os
 import platform
 import shutil
 import subprocess
-import tempfile
 import traceback
 import uuid
 import ruamel.yaml
 
 from yb.library_packager import LibraryPackager, add_common_arguments
-from yb import library_packager as library_packager_module
 from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
 from yb.common_util import init_env, get_build_type_from_build_root, set_thirdparty_dir
@@ -55,7 +53,7 @@ def main():
                         help='Skip building the yugabyted-ui code',
                         action='store_true')
     parser.add_argument('--build_target',
-                        help='Target directory to put the YugaByte distribution into. This can '
+                        help='Target directory to put the YugabyteDB distribution into. This can '
                              'be used for debugging this script without having to build the '
                              'tarball. If specified, this directory must either not exist or be '
                              'empty.')
@@ -223,14 +221,12 @@ def main():
     thirdparty_dir_from_env = os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir)
     if (thirdparty_dir != thirdparty_dir_from_env and
             thirdparty_dir_from_env != os.path.join(YB_SRC_ROOT, 'thirdparty')):
-        raise RuntimeError(
+        raise ValueError(
             "Mismatch between non-default valueo of env YB_THIRDPARTY_DIR: '{}' and build desc "
             "thirdparty_dir: '{}'".format(thirdparty_dir_from_env, thirdparty_dir))
     # Set the var for in-memory access to it across the other python files.
     set_thirdparty_dir(thirdparty_dir)
 
-    # This points to the release manifest within the release_manager, and we are modifying that
-    # directly.
     release_util = ReleaseUtil(
         repository=YB_SRC_ROOT,
         build_type=build_type,
@@ -241,19 +237,19 @@ def main():
         package_name=args.package_name)
 
     system = platform.system().lower()
-    library_packager_args = dict(
+    packager_args = dict(
         build_dir=build_root,
         seed_executable_patterns=release_util.get_seed_executable_patterns(),
         dest_dir=yb_distribution_dir,
         verbose_mode=args.verbose
     )
     if system == "linux":
-        library_packager = LibraryPackager(**library_packager_args)
+        packager = LibraryPackager(**packager_args)
     elif system == "darwin":
-        library_packager = MacLibraryPackager(**library_packager_args)
+        packager = MacLibraryPackager(**packager_args)
     else:
         raise RuntimeError("System {} not supported".format(system))
-    library_packager.package_binaries()
+    packager.package_binaries()
 
     release_util.update_manifest(yb_distribution_dir)
 
@@ -263,7 +259,7 @@ def main():
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
     release_util.create_distribution(build_target)
 
-    library_packager.post_process_distribution(build_target)
+    packager.post_process_distribution(build_target)
 
     # ---------------------------------------------------------------------------------------------
     # Invoke YugaWare packaging

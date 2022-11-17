@@ -549,3 +549,10 @@ ClusterTablet:
     - table_uuid
     - table_id
     - has_leader
+VersionInfo:
+  title: YugabyteDB Version Info
+  description: YugabyteDB version info
+  type: object
+  properties:
+    version:
+      type: string

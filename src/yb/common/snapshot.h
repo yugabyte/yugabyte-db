@@ -35,4 +35,3 @@ using RestorationCompleteTimeMap = std::unordered_map<
     TxnSnapshotRestorationId, HybridTime, TxnSnapshotRestorationIdHash>;
 
 } // namespace yb
-

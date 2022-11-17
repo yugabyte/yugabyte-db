@@ -139,4 +139,3 @@ class TreeNode : public MCBase {
 
 }  // namespace ql
 }  // namespace yb
-

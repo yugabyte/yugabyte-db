@@ -54,9 +54,10 @@
 
 using std::string;
 
-DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
-DEFINE_int32(pggate_num_connections_to_server, 1,
+DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
+    "Timeout for YSQL's yb-client read/write "
+    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
+DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
 DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
@@ -70,12 +71,14 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DEFINE_bool(ysql_enable_reindex, false,
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
+DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
-DEFINE_bool(ysql_disable_server_file_access, false,
+DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 
@@ -377,48 +380,42 @@ YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle) {
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called) {
   return ToYBCStatus(pgapi->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
 }
 
 YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
                                               bool expected_is_called,
                                               bool *skipped) {
   return ToYBCStatus(
-      pgapi->UpdateSequenceTupleConditionally(
-          db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
+      pgapi->UpdateSequenceTupleConditionally(db_oid, seq_oid, ysql_catalog_version,
           last_val, is_called, expected_last_val, expected_is_called, skipped));
 }
 
 YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped) {
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
-      last_val, is_called, skipped));
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, skipped));
 }
 
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called) {
   return ToYBCStatus(pgapi->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
 }
 
 YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -739,6 +736,10 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
+}
+
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
 YBCStatus YBCPgBackfillIndex(
@@ -1268,10 +1269,6 @@ YBCStatus YBCGetSharedDBCatalogVersion(YBCPgOid db_oid, uint64_t* catalog_versio
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
 }
 
-YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
-  return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
-}
-
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1284,12 +1281,12 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
-      .ysql_num_databases_reserved_in_db_catalog_version_mode =
-          &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict
+      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled
   };
   return &accessor;
 }

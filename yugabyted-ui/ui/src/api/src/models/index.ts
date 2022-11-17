@@ -35,4 +35,5 @@ export type { SlowQueryResponseData } from  './SlowQueryResponseData';
 export type { SlowQueryResponseSchema } from  './SlowQueryResponseSchema';
 export type { SlowQueryResponseYSQLData } from  './SlowQueryResponseYSQLData';
 export type { SlowQueryResponseYSQLQueryItem } from  './SlowQueryResponseYSQLQueryItem';
+export type { VersionInfo } from  './VersionInfo';
 export { YbApiEnum } from './YbApiEnum';

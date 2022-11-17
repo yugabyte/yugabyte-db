@@ -52,4 +52,3 @@ class YBError {
 
 } // namespace client
 } // namespace yb
-

@@ -18,7 +18,7 @@
 
 #include "yb/util/flags.h"
 
-DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
+DEFINE_UNKNOWN_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);

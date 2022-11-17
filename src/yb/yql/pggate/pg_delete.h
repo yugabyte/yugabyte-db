@@ -48,4 +48,3 @@ class PgDelete : public PgDmlWrite {
 
 }  // namespace pggate
 }  // namespace yb
-

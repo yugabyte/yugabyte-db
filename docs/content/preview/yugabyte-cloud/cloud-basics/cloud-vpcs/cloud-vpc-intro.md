@@ -63,6 +63,16 @@ For GCP, you have the choice of selecting all regions automatically, or defining
 
 For AWS, you can only define a single region per VPC.
 
+#### Multi-region clusters
+
+Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations.
+
+| Provider | VPC setup
+| :--- | :--- |
+| AWS | You need to create a VPC in each region where the cluster is to be deployed. If you intend to connect each region to the same application, ensure that the CIDRs of the VPCs do not overlap. |
+| GCP Global | Create a single global VPC; each region is deployed in the same VPC. |
+| GCP Custom | When creating the VPC, include each region where the cluster is to be deployed; each region is deployed in the same VPC |
+
 ### Set the CIDR and size your VPC
 
 A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.

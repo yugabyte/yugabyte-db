@@ -64,7 +64,8 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
         <span className="universe-runtime-config-container__label"> {"Select Universe:"}</span>
         &nbsp;&nbsp;
         <Dropdown
-          id="universe-runtime-config-dropdown"
+          id="universeRuntimeConfigDropdown"
+          className="universe-runtime-config-dropdown"
         >
           <Dropdown.Toggle>
             <span className="universe-config-dropdown-value">{universeDropdownValue}</span>

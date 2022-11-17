@@ -135,8 +135,8 @@ class TransactionCoordinator {
   Status PrepareForDeletion(const CoarseTimePoint& deadline);
 
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response);
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response);
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
 
@@ -162,4 +162,3 @@ class TransactionCoordinator {
 
 } // namespace tablet
 } // namespace yb
-

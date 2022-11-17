@@ -256,7 +256,7 @@ public class BackupTest extends FakeDBApplication {
     service.awaitTermination(3, TimeUnit.SECONDS);
     b.refresh();
     if (success1.get() && !success2.get()) {
-      assertEquals(taskUUID1, b.taskUUID);
+      assertEquals(taskUUID2, b.taskUUID);
     } else {
       assertFalse(success1.get());
       assertTrue(success2.get());
@@ -274,7 +274,7 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b.taskUUID);
     b.setTaskUUID(taskUUID);
     b.refresh();
-    assertNotEquals(taskUUID, b.taskUUID);
+    assertEquals(taskUUID, b.taskUUID);
   }
 
   public void testGetAllCompletedBackupsWithExpiryForDelete() {

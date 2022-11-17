@@ -242,11 +242,19 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
+if(NOT DEFINED YB_LTO_ENABLED)
+  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
+endif()
+
+if(YB_LTO_ENABLED)
+  ADD_CXX_FLAGS("-DYB_LTO_ENABLED")
+endif()
+
 # Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
   message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
-elseif ("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
+elseif (YB_LTO_ENABLED)
   message("This is an LTO-enabled build, will export compile_commands.json.")
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
@@ -487,36 +495,8 @@ else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
-set(YB_THIRDPARTY_INSTALLED_DIR_BASE
-    "${YB_THIRDPARTY_DIR}/installed")
-
-# We support a layout of third-party dependencies where there are build-type-specific subdirectories
-# inside "build" and "installed" directories, such as clang15-x86_64, clang15-full-lto-x86_64, or
-# clang15-linuxbrew-full-lto-x86_64. The logic below should match how the subdir_items list is
-# constructed in https://bit.ly/yb_thirdparty_fs_layout_py.
-set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_COMPILER_TYPE}")
-if(USING_LINUXBREW)
-  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-linuxbrew")
-endif()
-if("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
-  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-${YB_LINKING_TYPE}")
-endif()
-set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-$ENV{YB_TARGET_ARCH}")
-
-set(YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC
-    "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/${YB_THIRDPARTY_SPECIFIC_BASENAME}")
-if(EXISTS "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-  message("Using the per-compiler-type/architecture subdirectory of third-party installed dir: "
-          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
-else()
-  message("Per-compiler-type/architecture third-party install directory not found: "
-          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}, using default third-party install directory.")
-  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_BASE}")
-endif()
-set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR}" CACHE STRING
-    "Directory where the third-party dependencies are installed" FORCE)
-
+include(YugabyteFindThirdParty)
+yb_find_third_party_installed_dir()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
 
 if(NOT APPLE AND IS_CLANG)
@@ -703,7 +683,7 @@ configure_macos_sdk()
 
 # -------------------------------------------------------------------------------------------------
 
-include(YugabyteFindThirdParty)
+yb_find_third_party_dependencies()
 
 # Flags to link the tcmalloc static library. Used for each CMake target that is an executable,
 # as well as for executables generated as part of Postgres build.
@@ -837,8 +817,15 @@ add_subdirectory(src/yb/cdc)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
-yb_add_lto_target(yb-master)
-yb_add_lto_target(yb-tserver)
+# Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
+# that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are
+# symlinks to it.  It decides to act as yb-master or yb-tserver based on its argv[0].
+#
+# In the command below, yb-master is the CMake target that we use as a base to determine the set of
+# object files to be linked into the LTO executable, yb-server is the name of the LTO executable,
+# and yb-master/yb-tserver are names of symlinks to create in the "bin" directory, pointing to the
+# LTO executable.
+yb_add_lto_target(yb-master yb-server "yb-master;yb-tserver")
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

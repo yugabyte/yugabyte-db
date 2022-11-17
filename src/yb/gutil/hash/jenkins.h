@@ -49,4 +49,3 @@ uint64 Hash64StringWithSeed(const char *s, size_t len, uint64 c);
 // This is a reference implementation of the same fundamental algorithm as
 // Hash32StringWithSeed. It is used primarily as a performance metric.
 uint32 Hash32StringWithSeedReferenceImplementation(const char *s, size_t len, uint32 c);
-

@@ -3934,4 +3934,3 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 #undef PLAT_ppc64_linux
 #undef PLAT_ppc32_aix5
 #undef PLAT_ppc64_aix5
-

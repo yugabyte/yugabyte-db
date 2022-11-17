@@ -234,7 +234,7 @@ do { \
 	if (shared) \
 	{ \
 		snprintf(filename, sizeof(filename), "global/%s", \
-				 RELCACHE_INIT_FILENAME); \
+		         RELCACHE_INIT_FILENAME); \
 	} \
 	else \
 	{ \
@@ -1956,18 +1956,18 @@ YBPreloadRelCache()
 	 * The more effective approach is to build entire cache first. In this case
 	 * only N tuples will be built.
 	 */
-	YBPreloadCatalogCache(DATABASEOID, -1);             // pg_database
-	YBPreloadCatalogCache(RELOID, RELNAMENSP);          // pg_class
-	YBPreloadCatalogCache(ATTNAME, ATTNUM);             // pg_attribute
-	YBPreloadCatalogCache(CLAOID, CLAAMNAMENSP);        // pg_opclass
-	YBPreloadCatalogCache(AMOID, AMNAME);               // pg_am
-	YBPreloadCatalogCache(INDEXRELID, -1);              // pg_index
-	YBPreloadCatalogCache(RULERELNAME, -1);             // pg_rewrite
-	YBPreloadCatalogCache(CONSTROID, -1);               // pg_constraint
-	YBPreloadCatalogCache(PARTRELID, -1);               // pg_partitioned_table
-	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
-	YBPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
-	YBPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
+	YbPreloadCatalogCache(DATABASEOID, -1);             // pg_database
+	YbPreloadCatalogCache(RELOID, RELNAMENSP);          // pg_class
+	YbPreloadCatalogCache(ATTNAME, ATTNUM);             // pg_attribute
+	YbPreloadCatalogCache(CLAOID, CLAAMNAMENSP);        // pg_opclass
+	YbPreloadCatalogCache(AMOID, AMNAME);               // pg_am
+	YbPreloadCatalogCache(INDEXRELID, -1);              // pg_index
+	YbPreloadCatalogCache(RULERELNAME, -1);             // pg_rewrite
+	YbPreloadCatalogCache(CONSTROID, -1);               // pg_constraint
+	YbPreloadCatalogCache(PARTRELID, -1);               // pg_partitioned_table
+	YbPreloadCatalogCache(TYPEOID, TYPENAMENSP);        // pg_type
+	YbPreloadCatalogCache(NAMESPACEOID, NAMESPACENAME); // pg_namespace
+	YbPreloadCatalogCache(AUTHOID, AUTHNAME);           // pg_authid
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -1998,8 +1998,8 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
-		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
+		YbPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
+		YbPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}
 
 	YBUpdateRelationsIndicies(relations_result.sys_relations_update_required);
@@ -2912,10 +2912,15 @@ RelationIdGetRelation(Oid relationId)
 	}
 
 	/*
-	 * This would lead to an infinite recursion and should never be possible.
+	 * YB note:
+	 * These would lead to an infinite recursion and should never be possible.
+	 * See how RelationCacheInvalidate works.
 	 */
 	if (relationId == RelationRelationId)
 		elog(FATAL, "pg_class cache is queried before it's initalized!");
+
+	if (relationId == ClassOidIndexId)
+		elog(FATAL, "pg_class_oid_index is queried before it's initalized!");
 
 	/*
 	 * no reldesc in the cache, so have RelationBuildDesc() build one and add
@@ -4825,7 +4830,7 @@ RelationCacheInitializePhase3(void)
 	 * they will be used heavily.
 	 */
 	if (IsYugaByteEnabled() && YBCIsInitDbModeEnvVarSet())
-		YBPreloadCatalogCaches();
+		YbPreloadCatalogCaches();
 }
 
 /*
@@ -6432,15 +6437,6 @@ load_relcache_init_file(bool shared)
 	int			i;
 	uint64      ybc_stored_cache_version = 0;
 
-	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * MyDatabaseId isn't known yet and different databases have different
-	 * catalog versions of their own. At this time we cannot compose the
-	 * correct init file name for the to-be-resolved MyDatabaseId.
-	 */
-	if (shared && YBIsDBCatalogVersionMode())
-		return false;
-
 	RelCacheInitFileName(initfilename, shared);
 
 	fp = AllocateFile(initfilename, PG_BINARY_R);
@@ -6861,13 +6857,6 @@ write_relcache_init_file(bool shared)
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
 	int			i;
-
-	/*
-	 * Disable shared init file in per database catalog version mode because
-	 * it will never be read in load_relcache_init_file.
-	 */
-	if (shared && YBIsDBCatalogVersionMode())
-		return;
 
 	/*
 	 * If we have already received any relcache inval events, there's no

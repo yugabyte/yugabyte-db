@@ -63,4 +63,3 @@ class AllocationTracker : public AllocationTrackerBase {
 };
 
 } // namespace yb
-

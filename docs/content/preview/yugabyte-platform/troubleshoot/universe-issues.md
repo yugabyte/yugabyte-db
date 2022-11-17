@@ -375,15 +375,11 @@ You can create a support bundle as follows:
 
   ![Create support bundle](/images/yp/support-bundle-1.png)
 
-  <br>
-
 - Select the date range and the types of files to be included in the bundle, as per the following illustration:
 
   
 
   ![Create support bundle](/images/yp/support-bundle-2.png)
-
-  <br>
 
 - Click **Create Bundle**.<br>
 
@@ -392,8 +388,6 @@ You can create a support bundle as follows:
   
 
   ![Create support bundle](/images/yp/support-bundle-3.png)
-
-  <br>
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 

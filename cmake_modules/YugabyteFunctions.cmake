@@ -10,7 +10,120 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-# Various CMake functions. This should eventually be organized and refactored.
+# Various CMake macros and functions. This should eventually be organized and refactored.
+
+# -------------------------------------------------------------------------------------------------
+# Auxiliary macros for implementing other macros and functions.
+# -------------------------------------------------------------------------------------------------
+
+macro(set_in_current_and_parent_scope var_name var_value)
+  set(${var_name} "${var_value}")
+  if (NOT "${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    set(${var_name} "${var_value}" PARENT_SCOPE)
+  endif()
+endmacro()
+
+macro(set_in_global_scope var_name var_value)
+  if("${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    set(${var_name} "${var_value}")
+  else()
+    set(${var_name} "${var_value}" PARENT_SCOPE)
+  endif()
+endmacro()
+
+macro(assert_vars_defined var_names)
+  foreach(var_name IN LISTS var_names)
+    if(NOT DEFINED ${var_name})
+      message(FATAL_ERROR "Variable ${var_name} is not defined")
+    endif()
+  endforeach()
+endmacro()
+
+# -------------------------------------------------------------------------------------------------
+# Macros and functions for adding and manipulating compiler and linker flags.
+# -------------------------------------------------------------------------------------------------
+
+# This macro can be executed either from the top-level scope or from a function one level deep from
+# the top level scope.
+macro(ADD_CXX_FLAGS FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding C++ flags: ${FLAGS}")
+  endif()
+  set_in_global_scope(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
+endmacro()
+
+# Linker flags applied to both executables and shared libraries. We append this both to
+# CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
+# These flags apply to both YB and RocksDB parts of the codebase.
+#
+# This is an internal macro that modifies variables at the parent scope, which is really the parent
+# scope of the functions calling it, i.e. function caller's scope.
+macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding to linker flags: ${FLAGS}")
+  endif()
+
+  # We must set these variables in both current and parent scope, because this macro can be called
+  # multiple times from the same function.
+  set_in_current_and_parent_scope(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
+  set_in_current_and_parent_scope(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
+endmacro()
+
+macro(ADD_EXE_LINKER_FLAGS FLAGS)
+  if ($ENV{YB_VERBOSE})
+    message("Adding executable linking flags: ${FLAGS}")
+  endif()
+  set_in_current_and_parent_scope(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
+endmacro()
+
+function(ADD_LINKER_FLAGS FLAGS)
+  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
+endfunction()
+
+function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
+  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
+  message("Adding a global rpath entry: ${RPATH_ENTRY}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+endfunction()
+
+# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
+function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
+  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
+  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
+endfunction()
+
+# Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
+# arguments and stores the result back in the same variable. If the
+# YB_DEBUG_DUPLICATE_COMPILER_ARGS environment variable is set to 1, prints detailed debug output.
+function(yb_deduplicate_arguments args_var_name)
+  set(debug OFF)
+  if("$ENV{YB_DEBUG_DUPLICATE_COMPILER_ARGS}" STREQUAL "1")
+    set(debug ON)
+  endif()
+  separate_arguments(args_list UNIX_COMMAND "${${args_var_name}}")
+  if(debug)
+    message("Deduplicating ${args_var_name}:")
+  endif()
+  set(deduplicated_args "")
+  foreach(arg IN LISTS args_list)
+    if(arg IN_LIST deduplicated_args)
+      if(debug)
+        message("    DUPLICATE argument     : ${arg}")
+      endif()
+    else()
+      if(debug)
+        message("    Non-duplicate argument : ${arg}")
+      endif()
+      list(APPEND deduplicated_args "${arg}")
+    endif()
+  endforeach()
+  list(JOIN "${deduplicated_args}" " " joined_deduplicated_args)
+  set("${args_var_name}" PARENT_SCOPE "${joined_deduplicated_args}")
+endfunction()
+
+# -------------------------------------------------------------------------------------------------
 
 macro(yb_initialize_constants)
   set(BUILD_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build-support")
@@ -165,26 +278,6 @@ function(VALIDATE_COMPILER_TYPE)
   endif()
 endfunction()
 
-# Linker flags applied to both executables and shared libraries. We append this both to
-# CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
-# These flags apply to both YB and RocksDB parts of the codebase.
-#
-# This is an internal macro that modifies variables at the parent scope, which is really the parent
-# scope of the functions calling it, i.e. function caller's scope.
-macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding to linker flags: ${FLAGS}")
-  endif()
-
-  # We must set these variables in both current and parent scope, because this macro can be called
-  # multiple times from the same function.
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endmacro()
-
 # Check if the given directory is not an empty string and also warn if it does not exist.
 function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
   if (DIR_PATH STREQUAL "")
@@ -196,24 +289,6 @@ function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
       "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
       "This might be OK in case the directory is created during the build.")
   endif()
-endfunction()
-
-function(ADD_LINKER_FLAGS FLAGS)
-  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
-endfunction()
-
-function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
-  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
-  message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
-endfunction()
-
-# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
-function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
-  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
-  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
-  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
 endfunction()
 
 # CXX_YB_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do
@@ -231,20 +306,6 @@ endfunction()
 #     aliasing rules are indeed followed due to fundamental limitations in escape analysis, which
 #     can result in subtle bad code generation.  This has a small perf hit but worth it to avoid
 #     hard to debug crashes.
-
-function(ADD_CXX_FLAGS FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding C++ flags: ${FLAGS}")
-  endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endfunction()
-
-function(ADD_EXE_LINKER_FLAGS FLAGS)
-  if ($ENV{YB_VERBOSE})
-    message("Adding executable linking flags: ${FLAGS}")
-  endif()
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-endfunction()
 
 function(YB_INCLUDE_EXTENSIONS)
   file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
@@ -623,6 +684,25 @@ function(ADD_POSTGRES_SHARED_LIBRARY LIB_NAME SHARED_LIB_PATH)
           "${SHARED_LIB_PATH} (invoked from ${CMAKE_CURRENT_LIST_FILE})")
 endfunction()
 
+# To be invoked from functions that are themselves invoked from the global scope.
+macro(detect_lto_type_from_linking_type)
+  if("${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
+    message(FATAL_ERROR "The detect_lto_type_from_linking_type must be invoked from a function")
+  endif()
+  if ("${YB_LINKING_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
+  endif()
+  # Set the YB_LTO_ENABLED variable in the parent scope of the calling function (this is a macro).
+  if("${YB_LINKING_TYPE}" MATCHES "^(.*)-lto$")
+    set(YB_LTO_ENABLED ON PARENT_SCOPE)
+    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
+    set(YB_LTO_TYPE "${CMAKE_MATCH_1}" PARENT_SCOPE)
+  else()
+    set(YB_LTO_ENABLED OFF PARENT_SCOPE)
+    set(YB_LTO_TYPE "" PARENT_SCOPE)
+  endif()
+endmacro()
+
 function(parse_build_root_basename)
   if ("${BUILD_SUPPORT_DIR}" STREQUAL "")
     message(FATAL_ERROR "BUILD_SUPPORT_DIR is not set in parse_build_root_basename")
@@ -699,6 +779,7 @@ function(parse_build_root_basename)
         "'${YB_LINKING_TYPE}'. Expected 'dynamic', 'thin-lto', or 'full-lto'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
+  detect_lto_type_from_linking_type()
 
   set(OPTIONAL_DASH_NINJA "${CMAKE_MATCH_8}")
   if(NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "" AND
@@ -785,7 +866,7 @@ endfunction()
 # LTO support
 # -------------------------------------------------------------------------------------------------
 
-macro(enable_lto_if_needed)
+function(enable_lto_if_needed)
   if(NOT DEFINED COMPILER_FAMILY)
     message(FATAL_ERROR "COMPILER_FAMILY not defined")
   endif()
@@ -796,13 +877,12 @@ macro(enable_lto_if_needed)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
 
-  set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
-  if("${YB_LINKING_TYPE}" MATCHES "^([a-z]+)-lto$")
-    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
-    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
+  detect_lto_type_from_linking_type()
+  if(YB_LTO_ENABLED)
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
-    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
+    set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
@@ -812,76 +892,55 @@ macro(enable_lto_if_needed)
             "APPLE=${APPLE}")
     # In non-LTO builds, yb-master / yb-tserver executables themselves are dynamically linked to
     # other YB libraries.
-    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
+    set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
   endif()
-  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-endmacro()
 
-function(yb_add_lto_target exe_name)
-  if("${YB_LINKING_TYPE}" STREQUAL "")
-    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
-  endif()
-  if("${YB_LINKING_TYPE}" STREQUAL "dynamic")
+  # Only set these in parent scope.
+  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" PARENT_SCOPE)
+  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" PARENT_SCOPE)
+endfunction()
+
+function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
+  assert_vars_defined(YB_LTO_ENABLED YB_DYNAMICALLY_LINKED_EXE_SUFFIX)
+  if(NOT YB_LTO_ENABLED)
     return()
   endif()
 
   if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
-    message("Skipping adding LTO target ${exe_name} because YB_SKIP_FINAL_LTO_LINK is set to 1")
+    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK"
+            "environment variable is set to 1")
     return()
   endif()
-  set(dynamic_exe_name "${exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
-  message("Adding LTO target: ${exe_name} "
-          "(the dynamically linked equivalent is ${dynamic_exe_name})")
-  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${exe_name}")
+
+  set(dynamic_exe_name "${original_exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  message("Adding LTO target: ${output_exe_name} "
+          "(LTO equivalent of ${dynamic_exe_name})")
+  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${output_exe_name}")
+
+  set(cmd_args
+      "${BUILD_SUPPORT_DIR}/dependency_graph"
+      "--build-root=${YB_BUILD_ROOT}"
+      # Use $$ to escape $.
+      "--file-regex=^.*/${dynamic_exe_name}$$"
+      # Allow LTO linking in parallel with the rest of the build.
+      --incomplete-build
+      "--lto-output-path=${output_executable_path}"
+      "--never-run-build")
+
+  foreach(symlink_name IN LISTS symlink_as_names)
+    list(APPEND cmd_args "--symlink-as=${symlink_name}")
+  endforeach()
+  list(APPEND cmd_args "link-whole-program")
+
+  message("Command for generating LTO target ${output_exe_name}: ${cmd_args}")
   add_custom_command(
     OUTPUT "${output_executable_path}"
-    COMMAND "${BUILD_SUPPORT_DIR}/dependency_graph"
-            "--build-root=${YB_BUILD_ROOT}"
-            # Use $$ to escape $.
-            "--file-regex=^.*/${dynamic_exe_name}$$"
-            # Allow LTO linking in parallel with the rest of the build.
-            --incomplete-build
-            "--lto-output-path=${output_executable_path}"
-            "--never-run-build"
-            link-whole-program
-    DEPENDS "${exe_name}"
+    COMMAND ${cmd_args}
+    DEPENDS "${dynamic_exe_name}"
   )
 
-  add_custom_target("${exe_name}" ALL DEPENDS "${output_executable_path}")
+  add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
 
-  if("${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
-    message(FATAL_ERROR "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} is not set")
-  endif()
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
-  add_dependencies("${exe_name}" "${dynamic_exe_name}")
-endfunction()
-
-# Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
-# arguments and stores the result back in the same variable. If the
-# YB_DEBUG_DUPLICATE_COMPILER_ARGS environment variable is set to 1, prints detailed debug output.
-function(yb_deduplicate_arguments args_var_name)
-  set(debug OFF)
-  if("$ENV{YB_DEBUG_DUPLICATE_COMPILER_ARGS}" STREQUAL "1")
-    set(debug ON)
-  endif()
-  separate_arguments(args_list UNIX_COMMAND "${${args_var_name}}")
-  if(debug)
-    message("Deduplicating ${args_var_name}:")
-  endif()
-  set(deduplicated_args "")
-  foreach(arg IN LISTS args_list)
-    if(arg IN_LIST deduplicated_args)
-      if(debug)
-        message("    DUPLICATE argument     : ${arg}")
-      endif()
-    else()
-      if(debug)
-        message("    Non-duplicate argument : ${arg}")
-      endif()
-      list(APPEND deduplicated_args "${arg}")
-    endif()
-  endforeach()
-  list(JOIN "${deduplicated_args}" " " joined_deduplicated_args)
-  set("${args_var_name}" PARENT_SCOPE "${joined_deduplicated_args}")
+  add_dependencies("${output_exe_name}" "${dynamic_exe_name}")
 endfunction()

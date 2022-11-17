@@ -167,4 +167,3 @@ class IndexMap : public std::unordered_map<TableId, IndexInfo> {
 };
 
 }  // namespace yb
-

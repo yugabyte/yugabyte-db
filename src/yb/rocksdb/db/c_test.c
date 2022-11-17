@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE  // Lite does not support C API
-
 #include "rocksdb/c.h"
 
 #include <stddef.h>
@@ -915,13 +913,3 @@ int main(int argc, char** argv) {
   fprintf(stderr, "PASS\n");
   return 0;
 }
-
-#else
-#include <stdio.h>
-
-int main() {
-  fprintf(stderr, "SKIPPED\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

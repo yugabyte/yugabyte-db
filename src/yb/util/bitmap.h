@@ -270,4 +270,3 @@ class OneWayBitmap {
 };
 
 } // namespace yb
-

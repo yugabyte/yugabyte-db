@@ -37,6 +37,7 @@ export const YBUniverseItem = (props) => {
               currentUniverse={universe}
               showLabelText={true}
               refreshUniverseData={props.fetchUniverseMetadata}
+              shouldDisplayTaskButton={false}
               showAlertsBadge={true}
             />
           </div>

@@ -1262,13 +1262,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
   }
 
-  static Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
-    if (connection.ok()) {
-      RETURN_NOT_OK((*connection).Execute(query));
-    }
-    return connection;
-  }
-
   static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }

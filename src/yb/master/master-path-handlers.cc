@@ -79,7 +79,7 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
@@ -1267,7 +1267,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
             "Unable to determine Tablespace information.");
         *output << "  Unable to determine Tablespace information.";
       }
-      *output << "  </td></tr>\n </table>\n";
+      *output << "  </td></tr>\n";
     } else {
       // The table was associated with a tablespace, but that tablespace was not found.
       *output << "  <tr><td>Replication Info:</td><td>";
@@ -1279,7 +1279,41 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                 << "  used to refresh it is disabled.";
 
       }
-      *output << "  </td></tr>\n </table>\n";
+      *output << "  </td></tr>\n";
+    }
+
+    if (l->has_ysql_ddl_txn_verifier_state()) {
+      auto result = FullyDecodeTransactionId(l->pb.transaction().transaction_id());
+      *output << "  <tr><td>Verifying Ysql DDL Transaction: </td><td>";
+      if (result)
+        *output << result.get();
+      else
+        *output << "Failed to decode transaction with error:" << result;
+      *output << "  </td></tr>\n";
+
+      const bool contains_alter = l->pb.ysql_ddl_txn_verifier_state(0).contains_alter_table_op();
+      *output << "  <tr><td>Ysql DDL transaction Operations: </td><td>"
+              << (l->is_being_created_by_ysql_ddl_txn() ? "Create " : "")
+              << (contains_alter ? " Alter " : "")
+              << (l->is_being_deleted_by_ysql_ddl_txn() ? "Delete" : "")
+              << "  </td></tr>\n";
+      if (contains_alter && !l->is_being_created_by_ysql_ddl_txn()) {
+        *output << "  <tr><td>Previous table name: </td><td>"
+                << l->pb.ysql_ddl_txn_verifier_state(0).previous_table_name()
+                << "  </td></tr>\n </table>\n";
+        Schema previous_schema;
+        Status s =
+            SchemaFromPB(l->pb.ysql_ddl_txn_verifier_state(0).previous_schema(), &previous_schema);
+        if (s.ok()) {
+          *output << "  Previous Schema\n";
+          server::HtmlOutputSchemaTable(previous_schema, output);
+          *output << "  Current Schema\n";
+        }
+      } else {
+        *output << "</table>\n";
+      }
+    } else {
+      *output << "</table>\n";
     }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);

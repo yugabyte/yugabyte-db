@@ -69,4 +69,3 @@ class ScopedLeakCheckDisabler {
 
 } // namespace debug
 } // namespace yb
-

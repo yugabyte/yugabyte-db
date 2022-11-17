@@ -16,13 +16,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../oidc-authentication/" class="nav-link active">
-      <i class="fas fa-cubes"></i>
+      <i class="fa-solid fa-cubes"></i>
       OIDC
     </a>
   </li>
   <li>
     <a href="../ldap-authentication/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       LDAP
     </a>
   </li>
@@ -35,9 +35,9 @@ You can create an OIDC configuration as follows:
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Select **OIDC Configuration** and complete the fields shown in the following illustration:<br><br>
+- Select **OIDC Configuration** and complete the fields shown in the following illustration:<br>
 
-  ![OIDC authentication](/images/yp/oidc-auth.png)<br><br>
+  ![OIDC authentication](/images/yp/oidc-auth.png)<br>
 
   - In the **Client ID** field, enter the unique identifier that you provided when you manually created the client application in the identity provider.
   - In the **Client Secret** field, enter the password or secret for authenticating your Yugabyte client application with your identity provider.

@@ -446,4 +446,3 @@ class QLType {
 
 
 }; // namespace yb
-

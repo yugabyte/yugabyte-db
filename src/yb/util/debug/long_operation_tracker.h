@@ -41,4 +41,3 @@ class LongOperationTracker {
 };
 
 } // namespace yb
-

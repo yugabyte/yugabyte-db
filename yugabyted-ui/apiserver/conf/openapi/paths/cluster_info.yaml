@@ -161,3 +161,17 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/version:
+  get:
+    summary: Get YugabyteDB version
+    description: Get YugabyteDB version
+    tags:
+      - cluster-info
+    operationId: getVersion
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VersionInfo'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

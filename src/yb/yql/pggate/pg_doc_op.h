@@ -638,4 +638,3 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
 
 }  // namespace pggate
 }  // namespace yb
-

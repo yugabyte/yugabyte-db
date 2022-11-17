@@ -106,8 +106,6 @@ Even though you could use yb-admin to replicate a subset of tables from a YSQL k
 
 Since replication is a table-level task, selecting a keyspace adds all its current tables to the xCluster configuration. Any tables created later must be manually added to the xCluster configuration if replication is required.
 
-
-
 <!--
 
 Bootstrapping is automatically enabled for any new and existing replication. When the source universe has data, its write-ahead logs are garbage-collected. If bootstrapping is not required for tables that are to be added, these tables are added to the replication group. However, if there is a table that requires bootstrapping, all other tables in the same database are removed from the replication group and the replication is set up using the bootstrap flow for all the tables, including the new ones requested to be added. Note that a replication may contain tables from different databases which are not affected by the remove operation.
