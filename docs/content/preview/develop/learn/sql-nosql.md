@@ -88,7 +88,7 @@ The following chart shows the latency for the YCSB run:
 
 ## Geo-distributed
 
- The following screenshot is of YugabyteDB Anywhere, which visualized the universe created. The screenshot shows a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
+The following illustration shows a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east`, and 1 copy of the data in the Asia-Pacific region.
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 
