@@ -78,11 +78,11 @@ To test the linear scalability of YugabyteDB, we ran some large cluster benchmar
 
 YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
-The following chart shows the total ops/second when running YBSB benchmark.
+The following chart shows the total ops/second when running YBSB benchmark:
 
 ![YCSB Benchmark - ops/sec](/images/develop/learn/yb-perf-ycsb-ops.png)
 
-The next chart shows the latency for the YCSB run as follows:
+The following chart shows the latency for the YCSB run:
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
 

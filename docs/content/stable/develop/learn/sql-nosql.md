@@ -78,17 +78,17 @@ In order to test the linear scalability of YugabyteDB, we have run some large cl
 
 YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark.  Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
-The following chart shows the total ops/second when running YBSB benchmark.
+The following chart shows the total ops/second when running YBSB benchmark:
 
 ![YCSB Benchmark - ops/sec](/images/develop/learn/yb-perf-ycsb-ops.png)
 
-The next chart shows the latency for the YCSB run as follows:
+The following chart shows the latency for the YCSB run:
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
 
 ## Geo-distributed
 
-The following screenshot is of YugabyteDB Anywhere, which visualized the universe created. The screenshot shows a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
+The following illustration shows a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east`, and 1 copy of the data in the Asia-Pacific region.
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 
