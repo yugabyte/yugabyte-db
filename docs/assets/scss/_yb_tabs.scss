@@ -28,6 +28,8 @@
     border: 0;
 
     > li {
+      margin-bottom: 0;
+
       .nav-link {
         font-weight: 400;
         font-size: 13px;
@@ -39,6 +41,7 @@
         &.active {
           color: $yb-font-dark;
           background: #e9eef2;
+          border-radius: 8px;
         }
       }
     }
@@ -69,7 +72,7 @@
 
 ul.nav.nav-tabs-yb:not(.yb-pills) {
   border: none;
-  margin: 20px 0 6px;
+  margin: 20px 0 13px;
   position: relative;
   padding: 0 8px 6px;
   gap: 0;
