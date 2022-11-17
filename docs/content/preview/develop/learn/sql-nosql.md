@@ -82,7 +82,7 @@ The following chart shows the total ops/second when running YBSB benchmark.
 
 ![YCSB Benchmark - ops/sec](/images/develop/learn/yb-perf-ycsb-ops.png)
 
-The next chart shows the latency for the YCSB run as follows:
+The following chart shows the latency for the YCSB run:
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
 
