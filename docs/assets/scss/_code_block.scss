@@ -1,5 +1,9 @@
 main {
   .td-content {
+    :not(pre) > code {
+      overflow: hidden;
+    }
+
     code {
       display: inline-block;
       vertical-align: middle;
@@ -7,7 +11,6 @@ main {
       font-size: inherit !important;
       line-height: 110%;
       max-width: 100%;
-      overflow: auto;
       background: #f2f6ff;
       border: 1px solid #cbdbff;
       border-radius: 4px;
@@ -42,8 +45,6 @@ main {
     h6 > code {
       color: inherit !important;
       margin: 0 0 2px;
-      overflow-x: auto;
-      overflow-y: hidden;
     }
 
     *:not(.tabs-name) > li:not(.nav-item) > a,
@@ -54,7 +55,6 @@ main {
 
       > code {
         position: relative;
-        overflow: hidden;
       }
     }
 

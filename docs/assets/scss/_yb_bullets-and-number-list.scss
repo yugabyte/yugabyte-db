@@ -68,6 +68,12 @@
             }
           }
         }
+
+        @for $i from 1 through 100 {
+          &[start="#{$i}"] {
+            counter-reset: lis $i;
+          }
+        }
       }
     }
   }

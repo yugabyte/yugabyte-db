@@ -133,7 +133,12 @@ $(document).ready(() => {
         if (container.children && container.children.length > 0) {
           container.parentElement.setAttribute('data-code', container.children.length);
         } else {
-          container.parentElement.setAttribute('data-code', 1);
+          const codeLines = (container.innerText.match(/\r|\n/g) || '').length;
+          if (codeLines > 0) {
+            container.parentElement.setAttribute('data-code', codeLines);
+          } else {
+            container.parentElement.setAttribute('data-code', 1);
+          }
         }
       }
     };
