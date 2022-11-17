@@ -18,8 +18,6 @@ Within the concept of replication, universes are divided into the following cate
 
 - A source universe contains the original data that is subject to replication.
 
-  Note that in the current release, replicating a source universe that has already been populated with data can be done only by contacting Yugabyte Support.
-
 - A target universe is the recipient of the replicated data. One source universe can replicate to one or more target universes.
 
 For additional information on xCluster replication in YugabyteDB, see the following:
@@ -27,7 +25,7 @@ For additional information on xCluster replication in YugabyteDB, see the follow
 - [xCluster replication: overview and architecture](/preview/architecture/docdb-replication/async-replication/)
 - [xCluster replication between universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
 
-You can use the YugabyteDB Anywhere UI to set up and configure xCluster replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
+You can use the YugabyteDB Anywhere UI to set up and configure xCluster replication for universes. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
 ## Set up replication
 
