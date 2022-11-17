@@ -64,7 +64,7 @@ ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
@@ -82,7 +82,7 @@ ycqlsh:example> TRUNCATE employees;
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | name
 ---------------+-------------+------
 ```
