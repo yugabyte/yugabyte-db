@@ -1,13 +1,18 @@
 import React, { FC, useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
+import { useQuery } from 'react-query';
 import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
+
+import { fetchGlobalRunTimeConfigs } from '../api/admin';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
 import { AlertConfigurationContainer } from '../components/alerts';
 import { UserManagementContainer } from '../components/users';
+import { RuntimeConfigContainer } from '../components/advanced';
+
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -52,6 +57,12 @@ const USER_MANAGAEMENT_TAB = {
   defaultTab: 'users'
 };
 
+const ADVANCED_TAB = {
+  title: 'Advanced',
+  id: 'advanced',
+  defaultTab: 'global-config'
+}
+
 interface RouteParams {
   tab: AdministrationTabs;
   section: HighAvailabilityTabs | AlertConfigurationTabs;
@@ -63,6 +74,13 @@ const featureFlags: Selector<FeatureStore, FetureFlags> = (state) => state.featu
 export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ params }) => {
   const currentCustomer = useSelector(customerSelector);
   const { test, released } = useSelector(featureFlags);
+  const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs().then((res: any) => res.data)
+  );
+  const isCongifUIEnabled = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all')?.value === 'true'
+    || test['enableRunTimeConfig']
+    || released['enableRunTimeConfig'];
   const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
@@ -139,6 +157,19 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     );
   };
 
+  const getAdvancedTab = () => {
+    const { id, title, defaultTab } = ADVANCED_TAB;
+    return (
+      <Tab eventKey={id} title={title} key={id}>
+        <RuntimeConfigContainer
+          defaultTab={defaultTab}
+          activeTab={params.section}
+          routePrefix={`/admin/${id}/`}
+        />
+      </Tab>
+    );
+  };
+
   return (
     <div>
       <h2 className="content-title">Platform Configuration</h2>
@@ -152,6 +183,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getHighAvailabilityTab()}
         {getAlertTab()}
         {getUserManagementTab()}
+        {isCongifUIEnabled && getAdvancedTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

@@ -17,11 +17,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/tools/ldb_cmd.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
+
+using std::string;
 
 DEFINE_test_flag(bool, exit_on_finish, true, "Exit the process on finishing.");
 
@@ -138,5 +139,3 @@ void LDBTool::Run(int argc, char** argv, Options options,
                                column_families);
 }
 } // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

@@ -27,12 +27,12 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBParameterizedTestRunnerNonSanitizersOrMac;
+import org.yb.util.YBParameterizedTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(YBParameterizedTestRunnerNonSanitizersOrMac.class)
+@RunWith(YBParameterizedTestRunnerNonTsanAsan.class)
 public class ParameterizedTestYbBackup extends BaseYbBackupTest {
   private static final Logger LOG = LoggerFactory.getLogger(ParameterizedTestYbBackup.class);
 

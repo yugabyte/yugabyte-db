@@ -21,7 +21,9 @@ public class XClusterConfigEditFormData {
               + "[SPACE '_' '*' '<' '>' '?' '|' '\"' NULL] characters")
   public String name;
 
-  @Pattern("^(Running|Paused)$")
+  @Pattern(
+      value = "^(Running|Paused)$",
+      message = "status can be set either to `Running` or `Paused`")
   @ApiModelProperty(value = "Status", allowableValues = "Running, Paused")
   public String status;
 
@@ -33,4 +35,7 @@ public class XClusterConfigEditFormData {
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
+
+  @ApiModelProperty("Run the pre-checks without actually running the subtasks")
+  public boolean dryRun = false;
 }

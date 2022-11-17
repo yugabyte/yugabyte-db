@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_DB_ITER_H
-#define YB_ROCKSDB_DB_DB_ITER_H
 
 #pragma once
 
@@ -101,5 +99,3 @@ extern ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     bool prefix_same_as_start = false, bool pin_data = false);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_DB_ITER_H

@@ -34,7 +34,6 @@
 #include <memory>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/tools/fs_tool.h"
@@ -43,18 +42,18 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
-DEFINE_int32(nrows, 0, "Number of rows to dump");
-DEFINE_bool(metadata_only, false, "Whether just to dump the block metadata, "
+DEFINE_UNKNOWN_int32(nrows, 0, "Number of rows to dump");
+DEFINE_UNKNOWN_bool(metadata_only, false, "Whether just to dump the block metadata, "
                                   "when printing blocks.");
 
 /*
   TODO: support specifying start and end keys
 
-  DEFINE_string(start_key, "", "Start key for rows to dump");
-  DEFINE_string(end_key, "", "Start key for rows to dump");
+  DEFINE_UNKNOWN_string(start_key, "", "Start key for rows to dump");
+  DEFINE_UNKNOWN_string(end_key, "", "Start key for rows to dump");
 */
 
-DEFINE_bool(headers_only, false, "Don't dump contents, dump headers only");
+DEFINE_UNKNOWN_bool(headers_only, false, "Don't dump contents, dump headers only");
 
 namespace yb {
 namespace tools {

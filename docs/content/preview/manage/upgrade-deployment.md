@@ -3,6 +3,7 @@ title: Upgrade a deployment
 headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
+headcontent: Upgrade YugabyteDB on your deployment
 menu:
   preview:
     identifier: manage-upgrade-deployment
@@ -34,7 +35,7 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 Use the following procedure to upgrade a YB-Master:
 
-1. Stop the older version of the yb-master process, as follows:
+1. Stop the older version of the YB-Master process, as follows:
 
     ```sh
     pkill yb-master
@@ -46,7 +47,7 @@ Use the following procedure to upgrade a YB-Master:
     cd /home/yugabyte/softwareyb-$VER/
     ```
 
-1. Start the newer version of the YB-Master process.
+1. Start the newer version of the YB-Master process. For more information, see [Start YB-Masters](../../deploy/manual-deployment/start-masters/).
 
 1. Verify in `http://<any-yb-master>:7000/` that all YB-Masters are alive.
 
@@ -68,7 +69,7 @@ Use the following procedure to upgrade a YB-TServer:
     cd /home/yugabyte/softwareyb-$VER/
     ```
 
-1. Start the newer version of the YB-TServer process.
+1. Start the newer version of the YB-TServer process. For more information, see [Start YB-TServers](../../deploy/manual-deployment/start-tservers/).
 
 1. Verify in `http://<any-yb-master>:7000/tablet-servers` to see if the new YB-TServer is alive and heart beating.
 

@@ -81,7 +81,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -96,24 +96,21 @@
 
 using namespace std::literals;
 
-DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
-             "Timeout used for the TS->Master heartbeat RPCs.");
+DEFINE_RUNTIME_int32(heartbeat_rpc_timeout_ms, 15000,
+    "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
-TAG_FLAG(heartbeat_rpc_timeout_ms, runtime);
 
-DEFINE_int32(heartbeat_interval_ms, 1000,
-             "Interval at which the TS heartbeats to the master.");
+DEFINE_RUNTIME_int32(heartbeat_interval_ms, 1000,
+    "Interval at which the TS heartbeats to the master.");
 TAG_FLAG(heartbeat_interval_ms, advanced);
-TAG_FLAG(heartbeat_interval_ms, runtime);
 
-DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
+DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
              "Maximum number of consecutive heartbeat failures until the "
              "Tablet Server backs off to the normal heartbeat interval, "
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
-TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
@@ -440,6 +437,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
     req.set_ts_physical_time(0);
   }
 
+  req.set_auto_flags_config_version(server_->GetAutoFlagConfigVersion());
+
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     heartbeat_rtt_ = MonoDelta::kZero;
@@ -576,6 +575,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
+
+  if (last_hb_response_.has_auto_flags_config()) {
+    RETURN_NOT_OK(server_->SetAutoFlagConfig(last_hb_response_.auto_flags_config()));
+  }
 
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);

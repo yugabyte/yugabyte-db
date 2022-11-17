@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_TRANSACTION_LOG_ITERATOR_H_
-#define STORAGE_ROCKSDB_INCLUDE_TRANSACTION_LOG_ITERATOR_H_
+#pragma once
 
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
@@ -136,5 +135,3 @@ class TransactionLogIterator {
   };
 };
 } //  namespace rocksdb
-
-#endif  // STORAGE_ROCKSDB_INCLUDE_TRANSACTION_LOG_ITERATOR_H_

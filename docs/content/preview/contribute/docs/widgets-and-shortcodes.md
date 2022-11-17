@@ -17,10 +17,11 @@ There are a number of display widgets and shortcodes available. All the shortcod
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
+
 ### tip
 
 {{< tip title="Tip" >}}
-A tip box gives a hint or other useful but optional piece of information.
+A tip box gives a hint or other helpful but optional piece of information.
 {{< /tip >}}
 
 #### tip source
@@ -63,35 +64,35 @@ An inline section switcher lets you switch between content sections **without a 
 
 ![Inline section switcher](https://raw.githubusercontent.com/yugabyte/docs/master/contributing/inline-section-switcher.png)
 
-The corresponding code for this widget is shown below. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory whose name is easy to associate with the switcher title.
+The corresponding code for this widget is as follows. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory; name the subdirectory such that it can be associated with the switcher title.
 
 ```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab"
        role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
     <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab"
        role="tab" aria-controls="linux" aria-selected="false">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
     <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab"
        role="tab" aria-controls="docker" aria-selected="false">
-      <i class="fab fa-docker" aria-hidden="true"></i>
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

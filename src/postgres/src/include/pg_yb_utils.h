@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/guc.h"
@@ -483,6 +484,14 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * Block index state changes:
+ * - "indisready": indislive to indisready
+ * - "getsafetime": indisready to backfill (specifically, the get safe time)
+ * - "indisvalid": backfill to indisvalid
+ */
+extern char *yb_test_block_index_state_change;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -496,7 +505,10 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
+/* Get a string representation of a bitmapset (for debug purposes only!) */
+extern const char* YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
@@ -514,6 +526,8 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
+												uint64_t *wait_time);
 
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
@@ -552,6 +566,10 @@ YbTableProperties YbTryGetTableProperties(Relation rel);
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
 void YBTestFailDdlIfRequested();
+
+/* Spin wait while test guc var actual equals expected. */
+extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+										const char *msg);
 
 char *YBDetailSorted(char *input);
 
@@ -656,6 +674,8 @@ bool YBCIsRegionLocal(Relation rel);
  * for all range-partitioned tables with more than one tablet.
  * Return an empty string when duplicate split points exist
  * after tablet splitting.
+ * Return an emptry string when a NULL value is present in split points
+ * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 
@@ -663,5 +683,20 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
+/*
+ * Update read RPC statistics for EXPLAIN ANALYZE.
+ */
+void YbUpdateReadRpcStats(YBCPgStatement handle,
+						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads);
+
+/*
+ * If the tserver gflag --ysql_disable_server_file_access is set to
+ * true, then prevent any server file writes/reads/execution.
+ */
+extern void YBCheckServerAccessIsAllowed();
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+
+uint64_t YbGetSharedCatalogVersion();
 
 #endif /* PG_YB_UTILS_H */

@@ -17,8 +17,7 @@
 //   - native_protocol_v4.spec
 //   - native_protocol_v5.spec
 
-#ifndef YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
-#define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -276,8 +275,8 @@ class CQLMessage {
 
    private:
     Status GetBindVariableValue(const std::string& name,
-                                        size_t pos,
-                                        const Value** value) const;
+                                size_t pos,
+                                const Value** value) const;
   };
 
   // Accessors for header fields
@@ -319,6 +318,9 @@ class CQLRequest : public CQLMessage {
 
   virtual ~CQLRequest();
 
+  bool trace_requested() const {
+    return (flags() & CQLMessage::kTracingFlag) != 0;
+  }
  protected:
   CQLRequest(const Header& header, const Slice& body);
 
@@ -396,9 +398,9 @@ class AuthResponseRequest : public CQLRequest {
     AuthQueryParameters() : ql::StatementParameters() {}
 
     Status GetBindVariable(const std::string& name,
-                                   int64_t pos,
-                                   const std::shared_ptr<QLType>& type,
-                                   QLValue* value) const override;
+                           int64_t pos,
+                           const std::shared_ptr<QLType>& type,
+                           QLValue* value) const override;
     std::string username;
     std::string password;
   };
@@ -1024,5 +1026,3 @@ class CQLServerEventList : public rpc::ServerEventList {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif // YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_

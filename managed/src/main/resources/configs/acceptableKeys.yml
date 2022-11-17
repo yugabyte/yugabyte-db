@@ -41,6 +41,7 @@ provider:
   onprem:
     - USE_HOSTNAME
     - airGapInstall
+    - YB_HOME_DIR
 
   kubernetes:
     - KUBECONFIG_NAME
@@ -52,6 +53,5 @@ provider:
     - KUBECONFIG_SERVICE_ACCOUNT
     - KUBECONFIG_STORAGE_CLASSES
     - KUBECONFIG_CONTENT
-    - KUBE_POD_ADDRESS_TEMPLATE
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY

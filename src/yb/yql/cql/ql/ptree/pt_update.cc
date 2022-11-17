@@ -29,6 +29,9 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
+using std::string;
+using std::max;
+
 namespace yb {
 namespace ql {
 
@@ -197,8 +200,8 @@ Status PTUpdateStmt::Analyze(SemContext *sem_context) {
 namespace {
 
 Status MultipleColumnSetError(const ColumnDesc* const col_desc,
-                                      const PTAssign* const assign_expr,
-                                      SemContext* sem_context) {
+                              const PTAssign* const assign_expr,
+                              SemContext* sem_context) {
   return sem_context->Error(
       assign_expr,
       strings::Substitute("Multiple incompatible setting of column $0.",

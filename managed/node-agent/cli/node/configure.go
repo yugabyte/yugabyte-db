@@ -133,10 +133,6 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	config.Update(util.NodeZoneKey, zones[zoneNum].Code)
 	util.ConsoleLogger().Infof("Completed Node Agent Configuration")
 
-	// Update with default values.
-	config.Update(util.RequestTimeoutKey, "20")
-	config.Update(util.NodePingIntervalKey, "20")
-
 	err = server.RegisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Unable to register node agent - %s", err.Error())

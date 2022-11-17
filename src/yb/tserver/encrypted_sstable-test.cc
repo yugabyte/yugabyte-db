@@ -36,6 +36,8 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 using namespace std::literals;
 
 using yb::tserver::GenerateTestUniverseKeyManager;

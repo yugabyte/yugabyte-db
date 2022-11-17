@@ -17,6 +17,8 @@
 
 #include "yb/util/random_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // DB tests related to bloom filter.
@@ -929,7 +931,6 @@ TEST_F(DBBloomFilterTest, PrefixExtractorBlockFilter) {
   delete iter;
 }
 
-#ifndef ROCKSDB_LITE
 class BloomStatsTestWithParam
     : public DBBloomFilterTest,
         public testing::WithParamInterface<std::tuple<bool, bool>> {
@@ -1373,7 +1374,6 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
             TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 }
 
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
 

@@ -53,11 +53,12 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/flags.h"
 
 using google::protobuf::RepeatedPtrField;
 using std::vector;
 
-DEFINE_string(use_private_ip, "never",
+DEFINE_UNKNOWN_string(use_private_ip, "never",
               "When to use private IP for connection. "
               "cloud - would use private IP if destination node is located in the same cloud. "
               "region - would use private IP if destination node is located in the same cloud and "
@@ -234,7 +235,7 @@ Status StatusFromOldPB(const PB& pb) {
   auto status_factory = [code, &pb](const Slice& errors) {
     return Status(
         code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), errors,
-        DupFileName::kTrue);
+        pb.source_file().size());
   };
 
   #define ENCODE_ERROR_AND_RETURN_STATUS(Tag, value) \
@@ -264,7 +265,7 @@ Status StatusFromOldPB(const PB& pb) {
   }
 
   return Status(code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), "",
-                nullptr /* error */, DupFileName::kTrue);
+                nullptr /* error */, pb.source_file().size());
   #undef ENCODE_ERROR_AND_RETURN_STATUS
 }
 
@@ -283,7 +284,7 @@ Status DoStatusFromPB(const PB& pb) {
 
   if (pb.has_errors()) {
     return Status(kErrorCodeToStatus[pb.code()], Slice(pb.source_file()).cdata(), pb.source_line(),
-                  pb.message(), pb.errors(), DupFileName::kTrue);
+                  pb.message(), pb.errors(), pb.source_file().size());
   }
 
   return StatusFromOldPB(pb);

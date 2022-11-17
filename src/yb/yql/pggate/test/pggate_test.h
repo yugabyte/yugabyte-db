@@ -13,8 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
-#define YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
+#pragma once
 
 #include <dirent.h>
 #include <stdint.h>
@@ -72,9 +71,9 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void ConnectDB(const string& db_name = kDefaultDatabase);
+  void SetupDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void ConnectDB(const std::string& db_name = kDefaultDatabase);
 
  protected:
   void BeginDDLTransaction();
@@ -131,5 +130,3 @@ YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_TEST_PGGATE_TEST_H_

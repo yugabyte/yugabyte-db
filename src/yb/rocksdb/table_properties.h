@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_TABLE_PROPERTIES_H
-#define YB_ROCKSDB_TABLE_PROPERTIES_H
 
 #pragma once
 
@@ -192,5 +190,3 @@ class TablePropertiesCollectorFactory {
 extern uint64_t GetDeletedKeys(const UserCollectedProperties& props);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_PROPERTIES_H

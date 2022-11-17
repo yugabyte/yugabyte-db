@@ -33,11 +33,12 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
+#include "yb/util/flags.h"
 
 using yb::operator"" _MB;
 
 // Maximumum value size is 64MB
-DEFINE_int32(yql_max_value_size, 64_MB,
+DEFINE_UNKNOWN_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
 
 namespace yb {
@@ -45,6 +46,7 @@ namespace yb {
 using std::string;
 using std::shared_ptr;
 using std::to_string;
+using std::vector;
 using util::Decimal;
 using common::Jsonb;
 

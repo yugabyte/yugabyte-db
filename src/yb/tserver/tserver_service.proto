@@ -35,7 +35,6 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
-import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/tablet/tablet_types.proto";
@@ -85,9 +84,6 @@ service TabletServerService {
   rpc Publish(PublishRequestPB) returns (PublishResponsePB);
 
   rpc IsTabletServerReady(IsTabletServerReadyRequestPB) returns (IsTabletServerReadyResponsePB);
-
-  // Takes precreated transaction from this tserver.
-  rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
 
   rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
 
@@ -293,14 +289,6 @@ message UpdateTransactionStatusLocationResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
-message TakeTransactionRequestPB {
-  optional bool is_global = 1;
-}
-
-message TakeTransactionResponsePB {
-  optional TransactionMetadataPB metadata = 1;
-}
-
 message GetSplitKeyRequestPB {
   required bytes tablet_id = 1;
   optional fixed64 propagated_hybrid_time = 2;
@@ -332,6 +320,8 @@ message GetTserverCatalogVersionInfoResponsePB {
     optional uint32 db_oid = 1;
     // The index of the tserver shared memory catalog version array for this database.
     optional int32 shm_index = 2;
+    // The current catalog version for this database.
+    optional uint64 current_version = 3;
   }
 
   // Error message, if any.

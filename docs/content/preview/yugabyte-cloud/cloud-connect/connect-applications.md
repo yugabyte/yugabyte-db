@@ -67,7 +67,7 @@ To get the connection parameters for your cluster:
 
 ### Connection parameters
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="YSQL" lang="YSQL" %}}
 

@@ -20,8 +20,7 @@
 // the parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
-#define YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
+#pragma once
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
@@ -55,13 +54,13 @@ class ProcessContextBase {
 
   // Handling parsing error.
   Status Error(const YBLocation& loc,
-                       const char *msg,
-                       ErrorCode error_code,
-                       const char* token = nullptr);
+               const char *msg,
+               ErrorCode error_code,
+               const char* token = nullptr);
   Status Error(const YBLocation& loc,
-                       const std::string& msg,
-                       ErrorCode error_code,
-                       const char* token = nullptr);
+               const std::string& msg,
+               ErrorCode error_code,
+               const char* token = nullptr);
   Status Error(const YBLocation& loc, const std::string& msg, const char* token = nullptr);
   Status Error(const YBLocation& loc, const char *msg, const char* token = nullptr);
   Status Error(const YBLocation& loc, ErrorCode error_code, const char* token = nullptr);
@@ -145,5 +144,3 @@ class ProcessContext : public ProcessContextBase {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_

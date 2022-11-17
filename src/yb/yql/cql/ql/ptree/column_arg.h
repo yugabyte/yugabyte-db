@@ -15,8 +15,7 @@
 // Structure definitions for column descriptor of a table.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_
-#define YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_
+#pragma once
 
 #include "yb/common/types.h"
 #include "yb/util/memory/mc_types.h"
@@ -251,7 +250,7 @@ class JsonColumnOp : public JsonColumnArg {
   }
 
   // Name of a Catalog::IndexTable::ExprColumn is created by mangling original name from users.
-  string IndexExprToColumnName() const;
+  std::string IndexExprToColumnName() const;
 
  private:
   yb::QLOperator yb_op_;
@@ -289,7 +288,7 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
     return yb_op_;
   }
 
-  string IndexExprToColumnName() const {
+  std::string IndexExprToColumnName() const {
     LOG(FATAL) << "Mangling name for subscript operator is not yet supported";
     return "expr";
   }
@@ -320,5 +319,3 @@ const char* QLOperatorAsString(QLOperator ql_op);
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_

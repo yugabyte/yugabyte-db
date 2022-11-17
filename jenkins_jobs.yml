@@ -2,33 +2,33 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang13
+    compiler: clang15
     build_type: asan
     release_artifact: false
 
   - os: centos7
-    compiler: clang14
+    compiler: clang15
     build_type: tsan
     release_artifact: false
 
   - os: centos7
-    compiler: clang14
+    compiler: clang15
     build_type: debug
     release_artifact: false
 
   - os: alma8
-    compiler: clang14
+    compiler: clang15
     build_type: release
     release_artifact: true
 
   - os: alma8
-    compiler: clang12
+    compiler: clang15
     build_type: release
     architecture: aarch64
     release_artifact: true
 
   - os: alma8
-    compiler: clang12
+    compiler: clang15
     build_type: debug
     architecture: aarch64
     release_artifact: false
@@ -38,9 +38,10 @@ jobs:
     build_type: fastdebug
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac12
     compiler: clang
     build_type: debug
+    architecture: arm64
     release_artifact: false
 
   - os: mac11.6
@@ -49,6 +50,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu20.04
-    compiler: clang14
+    compiler: clang15
     build_type: debug
     release_artifact: false

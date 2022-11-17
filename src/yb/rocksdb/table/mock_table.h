@@ -19,8 +19,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_TABLE_MOCK_TABLE_H
-#define YB_ROCKSDB_TABLE_MOCK_TABLE_H
+#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -55,7 +54,7 @@ class MockTableReader : public TableReader {
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
 
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
                                 bool skip_filters = false) override;
@@ -171,9 +170,9 @@ class MockTableFactory : public TableFactory {
   MockTableFactory();
   const char* Name() const override { return "MockTable"; }
   Status NewTableReader(const TableReaderOptions& table_reader_options,
-                        unique_ptr<RandomAccessFileReader>&& file,
+                        std::unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader) const override;
+                        std::unique_ptr<TableReader>* table_reader) const override;
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
@@ -212,5 +211,3 @@ class MockTableFactory : public TableFactory {
 
 }  // namespace mock
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_MOCK_TABLE_H

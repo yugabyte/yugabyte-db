@@ -81,6 +81,15 @@ public class NodeUniverseManager extends DevopsBase {
       Universe universe,
       String sourceFile,
       String targetFile,
+      String permissions) {
+    return uploadFileToNode(node, universe, sourceFile, targetFile, permissions, DEFAULT_CONTEXT);
+  }
+
+  public ShellResponse uploadFileToNode(
+      NodeDetails node,
+      Universe universe,
+      String sourceFile,
+      String targetFile,
       String permissions,
       ShellProcessContext context) {
     List<String> actionArgs = new ArrayList<>();
@@ -152,7 +161,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public ShellResponse runYbAdminCommand(
-      NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
+      NodeDetails node,
+      Universe universe,
+      String ybAdminCommand,
+      List<String> args,
+      long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
     command.add("--master_addresses");
@@ -165,6 +178,7 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-timeout_ms");
     command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
     command.add(ybAdminCommand);
+    command.addAll(args);
     ShellProcessContext context =
         ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
     return runCommand(node, universe, command, context);
@@ -203,6 +217,7 @@ public class NodeUniverseManager extends DevopsBase {
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
     // Escaping single quotes after for non k8s deployments.
     if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
       escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     }
     bashCommand.add("\"" + escapedYsqlCommand + "\"");

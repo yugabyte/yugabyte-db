@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
-#define YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_
+#pragma once
 
 #include <future>
 
@@ -38,6 +37,7 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<rpc::CallResponsePtr> Get();
+  Result<rpc::CallResponsePtr> Get(MonoDelta* wait_time);
 
  private:
   std::future<PerformResult> future_;
@@ -47,5 +47,3 @@ class PerformFuture {
 
 } // namespace pggate
 } // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_PERFORM_FUTURE_H_

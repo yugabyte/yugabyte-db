@@ -10,6 +10,39 @@ type: docs
 
 ## Releases
 
+### November 15, 2022
+
+**New Features**
+
+- Ability to view cluster health. YugabyteDB Managed monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
+- Ability to set alerts for failed nodes. Get notified when the number of failed nodes exceeds the threshold.
+
+### November 4, 2022
+
+**New Features**
+
+- Ability to reset slow queries for faster debugging of slow-running queries.
+- Ability to set a preferred region to tune the read and write latency for specific regions. Designating one region as preferred can reduce the number of network hops needed to process requests. The preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Ability to view details of task progress for cluster edit operations for better monitoring.
+
+### October 24, 2022
+
+**New Features**
+
+- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or number of YSQL connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
+### September 28, 2022
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.2. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
 ### September 19, 2022
 
 **Database**
@@ -26,7 +59,7 @@ type: docs
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Preview release updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 27, 2022
 
@@ -188,6 +221,8 @@ This release includes the following features:
 
 ## Cloud provider regions
 
+### GCP
+
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
@@ -219,6 +254,8 @@ The following **GCP regions** are available:
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
 
+### AWS
+
 The following **AWS regions** are available:
 
 - Cape Town (af-south-1)
@@ -246,13 +283,16 @@ The following **AWS regions** are available:
 ## Known issues
 
 - **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
+- **Slow Queries Reset** - When resetting Slow Queries, the query used for the reset remains in the table.
 - **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
 
-### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
+### Known issues in Cloud Shell
 
-- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

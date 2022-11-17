@@ -38,7 +38,6 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
@@ -51,7 +50,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -63,6 +62,8 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+
+using std::string;
 
 METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
@@ -78,13 +79,11 @@ METRIC_DEFINE_coarse_histogram(
 // 100M cycles should be about 50ms on a 2Ghz box. This should be high
 // enough that involuntary context switches don't trigger it, but low enough
 // that any serious blocking behavior on the reactor would.
-DEFINE_int64(
-    rpc_callback_max_cycles, 100 * 1000 * 1000 * yb::kTimeMultiplier,
+DEFINE_RUNTIME_int64(rpc_callback_max_cycles, 100 * 1000 * 1000 * yb::kTimeMultiplier,
     "The maximum number of cycles for which an RPC callback "
     "should be allowed to run without emitting a warning."
     " (Advanced debugging option)");
 TAG_FLAG(rpc_callback_max_cycles, advanced);
-TAG_FLAG(rpc_callback_max_cycles, runtime);
 DECLARE_bool(rpc_dump_all_traces);
 
 namespace yb {

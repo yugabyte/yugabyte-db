@@ -21,19 +21,19 @@
 
 #include "yb/rpc/periodic.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_bool(enable_multi_raft_heartbeat_batcher, false,
+DEFINE_UNKNOWN_bool(enable_multi_raft_heartbeat_batcher, false,
             "If true, enables multi-Raft batching of raft heartbeats.");
 
-DEFINE_uint64(multi_raft_heartbeat_interval_ms, 50,
+DEFINE_UNKNOWN_uint64(multi_raft_heartbeat_interval_ms, 50,
               "The heartbeat interval for batch Raft replication.");
 TAG_FLAG(multi_raft_heartbeat_interval_ms, advanced);
 
-DEFINE_uint64(multi_raft_batch_size, 0,
+DEFINE_UNKNOWN_uint64(multi_raft_batch_size, 0,
               "Maximum batch size for a multi-Raft consensus payload. Ignored if set to zero.");
 TAG_FLAG(multi_raft_batch_size, advanced);
 

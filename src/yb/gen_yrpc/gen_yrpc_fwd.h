@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_GEN_YRPC_FWD_H
-#define YB_GEN_YRPC_GEN_YRPC_FWD_H
+#pragma once
 
 #include <vector>
 
@@ -42,5 +41,3 @@ using Substitutions = std::vector<std::pair<std::string, std::string>>;
 
 } // namespace gen_yrpc
 } // namespace yb
-
-#endif // YB_GEN_YRPC_GEN_YRPC_FWD_H

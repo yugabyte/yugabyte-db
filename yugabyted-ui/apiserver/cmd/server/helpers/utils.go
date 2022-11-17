@@ -56,3 +56,19 @@ func CompareVersions(versionA string, versionB string) int64 {
     }
     return 0
 }
+
+// Gets the smallest version
+func GetSmallestVersion(versionInfoFutures []chan VersionInfoFuture) string {
+    smallestVersion := ""
+    for _, versionInfoFuture := range versionInfoFutures {
+            versionInfo := <-versionInfoFuture
+            if versionInfo.Error == nil {
+                    versionNumber := versionInfo.VersionInfo.VersionNumber
+                    if smallestVersion == "" ||
+                            CompareVersions(smallestVersion, versionNumber) > 0 {
+                            smallestVersion = versionNumber
+                    }
+            }
+    }
+    return smallestVersion
+}

@@ -28,12 +28,12 @@
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 
-DEFINE_bool(use_per_file_metadata_for_flushed_frontier, false,
+DEFINE_UNKNOWN_bool(use_per_file_metadata_for_flushed_frontier, false,
             "Allows taking per-file metadata in version edits into account when computing the "
             "flushed frontier.");
 TAG_FLAG(use_per_file_metadata_for_flushed_frontier, hidden);

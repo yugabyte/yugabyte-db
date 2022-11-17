@@ -15,10 +15,7 @@
 // Yugabyte extensions to pqcomm that should be accessible to the other parts of the code.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_PQCOMM_EXTENSIONS_H
-#define YB_PQCOMM_EXTENSIONS_H
+#pragma once
 
 extern void YBSaveOutputBufferPosition(bool sending_non_restartable_data);
 extern void YBRestoreOutputBufferPosition(void);
-
-#endif // YB_PQCOMM_EXTENSIONS_H

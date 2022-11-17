@@ -22,8 +22,12 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/util/service_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_double(master_slow_get_registration_probability, 0,
+using std::string;
+using std::vector;
+
+DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 
 using namespace std::literals;
@@ -293,7 +297,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       return;
     }
 
-    *resp->mutable_config() = server_->GetAutoFlagConfig();
+    *resp->mutable_config() = server_->GetAutoFlagsConfig();
 
     rpc.RespondSuccess();
   }
@@ -304,6 +308,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalanced)
     (IsLoadBalancerIdle)
     (SetPreferredZones)
+    (PromoteAutoFlags)
   )
 };
 

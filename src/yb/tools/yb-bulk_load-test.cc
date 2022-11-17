@@ -57,6 +57,9 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+using std::vector;
+
 DECLARE_uint64(initial_seqno);
 DECLARE_uint64(bulk_load_num_files_per_tablet);
 DECLARE_bool(enable_load_balancing);
@@ -159,7 +162,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   Status StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
-                                           FILE** in, std::unique_ptr<Subprocess>* process) {
+                                   FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
     (*process)->PipeParentStdout();
     RETURN_NOT_OK((*process)->Start());

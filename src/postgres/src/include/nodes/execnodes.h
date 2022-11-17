@@ -585,11 +585,11 @@ typedef struct EState
 	 */
 
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
-																				* and the only stmt in this txn. */
+										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
-																		 * we cache the conflict tuple here when processing and
-																		 * then free the slot after the conflict is resolved. */
+									   * we cache the conflict tuple here when processing and
+									   * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
@@ -722,6 +722,12 @@ typedef struct TupleHashTableData
 	int			numCols;		/* number of columns in lookup key */
 	AttrNumber *keyColIdx;		/* attr numbers of key columns */
 	FmgrInfo   *tab_hash_funcs; /* hash functions for table datatype(s) */
+	ExprState  **yb_keyColExprs; /*
+								  * expressions that are input to hash
+								  * functions. If these are null, we
+								  * revert to using keyColIdx to know
+								  * what tuple attributes to hash.
+								  */
 	ExprState  *tab_eq_func;	/* comparator for table datatype(s) */
 	MemoryContext tablecxt;		/* memory context containing table */
 	MemoryContext tempcxt;		/* context for function evaluations */
@@ -731,6 +737,10 @@ typedef struct TupleHashTableData
 	TupleTableSlot *inputslot;	/* current input tuple's slot */
 	FmgrInfo   *in_hash_funcs;	/* hash functions for input datatype(s) */
 	AttrNumber *in_keyColIdx;	/* attr numbers of input key columns */
+	ExprState  **yb_in_keycolExprs; /*
+									 * equivalent of yb_keyColExprs for input
+									 * tuples
+									 */
 	ExprState  *cur_eq_func;	/* comparator for input vs. table */
 	uint32		hash_iv;		/* hash-function IV */
 	ExprContext *exprcontext;	/* expression context */
@@ -1122,7 +1132,8 @@ typedef struct ModifyTableState
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
 
 	/* YB specific attributes. */
-	bool yb_mt_is_single_row_update_or_delete;
+	bool yb_fetch_target_tuple;	/* Perform initial scan to populate
+								 * the ybctid. */
 } ModifyTableState;
 
 /* ----------------
@@ -1773,7 +1784,7 @@ typedef struct JoinState
 } JoinState;
 
 
-/* 
+/*
  * Batch state of batched NL Join. These are explained in the comment for
  * ExecYbBatchedNestLoop in nodeYbBatchedNestLoop.c.
  */
@@ -1843,7 +1854,7 @@ typedef struct YbBatchedNestLoopState
 	NLBatchStatus bnl_currentstatus;
 	List *bnl_batchMatchedInfo;
 	int bnl_batchTupNo;
-	
+
 	/* State for hashing batch strategy */
 
 	/*

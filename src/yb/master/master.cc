@@ -74,7 +74,7 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -82,11 +82,11 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(master_rpc_timeout_ms, 1500,
+DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
-DEFINE_int32(master_yb_client_default_timeout_ms, 60000,
+DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
 
 METRIC_DEFINE_entity(cluster);
@@ -94,41 +94,42 @@ METRIC_DEFINE_entity(cluster);
 using namespace std::literals;
 using std::min;
 using std::vector;
+using std::string;
 
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 using strings::Substitute;
 
-DEFINE_int32(master_tserver_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");
 TAG_FLAG(master_tserver_svc_num_threads, advanced);
 
-DEFINE_int32(master_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master service");
 TAG_FLAG(master_svc_num_threads, advanced);
 
-DEFINE_int32(master_consensus_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_consensus_svc_num_threads, 10,
              "Number of RPC threads for the master consensus service");
 TAG_FLAG(master_consensus_svc_num_threads, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC threads for the master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(master_tserver_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_int32(master_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_int32(master_consensus_svc_queue_length, 1000,
+DEFINE_UNKNOWN_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
-DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
@@ -292,6 +293,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
+          *master_tablet_server_,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
           &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 
@@ -587,7 +589,7 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
-AutoFlagsConfigPB Master::GetAutoFlagConfig() const { return auto_flags_manager_->GetConfig(); }
+AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
 
 } // namespace master
 } // namespace yb

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_CRC_H_
-#define YB_UTIL_CRC_H_
+#pragma once
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -50,5 +49,3 @@ uint32_t Crc32c(const void* data, size_t length);
 
 } // namespace crc
 } // namespace yb
-
-#endif // YB_UTIL_CRC_H_

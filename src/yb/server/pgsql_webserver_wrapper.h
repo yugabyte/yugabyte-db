@@ -10,12 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
-#define YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
+#pragma once
 
 #ifdef __cplusplus
 #include <atomic>
-using std::atomic_ullong;
 using int64 = int64_t;
 using uint8 = uint8_t;
 using uint64 = uint64_t;
@@ -28,15 +26,18 @@ using uint64 = uint64_t;
 #ifdef __cplusplus
 namespace yb {
 extern "C" {
+#define YB_ATOMIC_ULLONG std::atomic_ullong
+#else
+#define YB_ATOMIC_ULLONG atomic_ullong
 #endif
 
 struct WebserverWrapper;
 
 typedef struct ybpgmEntry {
   char name[100];
-  atomic_ullong calls;
-  atomic_ullong total_time;
-  atomic_ullong rows;
+  YB_ATOMIC_ULLONG calls;
+  YB_ATOMIC_ULLONG total_time;
+  YB_ATOMIC_ULLONG rows;
 } ybpgmEntry;
 
 typedef struct rpczEntry {
@@ -83,7 +84,7 @@ struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
-    int* too_many_conn_ptr);
+    int* too_many_conn_ptr, int* max_conn_ptr);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
@@ -93,5 +94,3 @@ void WriteStatArrayElemToJson(void *p1, void *p2);
 }  // extern "C"
 }  // namespace yb
 #endif
-
-#endif  // YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H

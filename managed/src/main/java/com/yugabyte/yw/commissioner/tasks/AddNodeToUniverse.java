@@ -29,7 +29,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -217,8 +216,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(
-            nodeSet, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcTasks(Arrays.asList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for yb-controller to be responsive on each node.
+        createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update the swamper target file.
@@ -233,8 +235,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for load to balance.
-      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+        // Wait for load to balance.
+        createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
 
       if (addMaster) {
         // Update all tserver conf files with new master information.

@@ -30,6 +30,7 @@
       "bin/log_cleanup.sh",
       "bin/yb-check-consistency.py",
       "bin/yugabyted",
+      "bin/gen_certs.sh",
       "build-support/post_install.sh",
       "scripts/installation/bin/yb-ctl",
       "thirdparty/installed/common/bin/redis-cli",

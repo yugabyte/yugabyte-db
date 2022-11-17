@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/managed_iterator.h"
 
@@ -32,6 +31,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/xfunc.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -266,5 +267,3 @@ void ManagedIterator::UnLock() {
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

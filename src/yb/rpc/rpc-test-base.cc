@@ -22,12 +22,14 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+
+using std::string;
 
 using namespace std::chrono_literals;
 
@@ -349,7 +351,7 @@ class CalculatorService: public CalculatorServiceIf {
       resp->mutable_repeated_messages()->push_back_ref(&*it);
     }
     for (const auto& msg : req->repeated_messages()) {
-      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      auto temp = CopySharedMessage(msg.ToGoogleProtobuf());
       resp->mutable_repeated_messages_copy()->emplace_back(*temp);
     }
 

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_TASKS_POOL_H
-#define YB_RPC_TASKS_POOL_H
+#pragma once
 
 #include <boost/lockfree/queue.hpp>
 
@@ -91,5 +90,3 @@ class TasksPool {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_TASKS_POOL_H

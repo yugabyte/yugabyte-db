@@ -1,5 +1,6 @@
 # src/backend/exports.txt
 # Functions to be exported by postgres DLLs
+YbgInit
 
 # Memory Context API
 YbgCreateMemoryContext
@@ -35,3 +36,8 @@ DecodeTZDatum
 DecodeArrayDatum
 DecodeRangeDatum
 DecodeRangeArrayDatum
+DecodeRecordDatum
+GetOutFuncName
+GetRecordTypeId
+HeapFormTuple
+HeapDeformTuple

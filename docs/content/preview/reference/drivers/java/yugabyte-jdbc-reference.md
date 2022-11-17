@@ -17,7 +17,7 @@ type: docs
 
   <li >
     <a href="../yugabyte-jdbc-reference/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
@@ -54,10 +54,6 @@ The YugabyteDB JDBC driver can be configured with popular pooling solutions such
 
  <!-- place holder for adding link to YugabyteDB University course for Java Developers -->
 
-## Quick start
-
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/java/ysql-yb-jdbc).
-
 ## Download the driver dependency
 
 YugabyteDB JDBC Driver is available as maven dependency. Download the driver by adding the following dependency entries in the java project.
@@ -93,7 +89,7 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL JDBC driver
+Learn how to perform common tasks required for Java application development using the YugabyteDB JDBC driver.
 
 {{< note title="Note">}}
 

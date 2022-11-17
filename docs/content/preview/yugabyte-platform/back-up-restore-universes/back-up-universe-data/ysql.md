@@ -34,7 +34,7 @@ type: docs
 
 </ul>
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data.
+<br>You can use YugabyteDB Anywhere to back up your YugabyteDB universe YSQL data.
 
 To view, [restore](../../restore-universe-data/ysql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
@@ -46,9 +46,9 @@ To view detailed information about an existing backup, click on it to open **Bac
 
 The **Backups** page allows you to create new backups that start immediately, as follows:
 
-- Click **Backup now** to open the dialog shown in the following illustration:<br><br>
+- Click **Backup now** to open the dialog shown in the following illustration:<br>
 
-  ![Backup](/images/yp/create-backup-new-2.png)<br><br>
+  ![Backup](/images/yp/create-backup-new-2.png)<br>
 
 - In the **Backup Now** dialog, select YSQL as the API type and then complete all the other fields.
 

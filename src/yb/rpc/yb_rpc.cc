@@ -28,12 +28,14 @@
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+
+using std::string;
 
 using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;
@@ -42,9 +44,9 @@ using namespace std::literals;
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_uint64(rpc_max_message_size);
 
-DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
+DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
-DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
+DEFINE_UNKNOWN_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
@@ -431,7 +433,7 @@ void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));

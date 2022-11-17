@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_MVCC_H_
-#define YB_TABLET_MVCC_H_
+#pragma once
 
 #include <condition_variable>
 #include <deque>
@@ -217,5 +216,3 @@ class MvccManager {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_MVCC_H_

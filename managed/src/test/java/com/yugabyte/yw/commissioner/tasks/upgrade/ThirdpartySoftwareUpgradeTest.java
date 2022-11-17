@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -147,8 +147,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   }
 
   @Override
-  protected List<Integer> getRollingUpgradeNodeOrder(
-      UniverseDefinitionTaskBase.ServerType serverType) {
+  protected List<Integer> getRollingUpgradeNodeOrder(UniverseTaskBase.ServerType serverType) {
     return super.getRollingUpgradeNodeOrder(serverType)
         .stream()
         .filter(idx -> !nodesToFilter.contains(idx))

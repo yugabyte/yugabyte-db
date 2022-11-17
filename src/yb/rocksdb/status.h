@@ -28,8 +28,7 @@
 // non-const method, all threads accessing the same Status must use
 // external synchronization.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_STATUS_H
-#define ROCKSDB_INCLUDE_ROCKSDB_STATUS_H
+#pragma once
 
 #include <string>
 
@@ -40,5 +39,3 @@ namespace rocksdb {
 typedef yb::Status Status;
 
 }  // namespace rocksdb
-
-#endif // ROCKSDB_INCLUDE_ROCKSDB_STATUS_H

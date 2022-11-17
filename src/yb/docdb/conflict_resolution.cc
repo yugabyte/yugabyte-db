@@ -23,7 +23,7 @@
 #include "yb/common/transaction_priority.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
@@ -110,7 +110,7 @@ struct TransactionData {
 };
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                                  const char* reason, Counter* conflicts_metric) {
+                          const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
   return (STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
@@ -179,7 +179,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     return doc_db_;
   }
 
-  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+  Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) {
     return status_manager_.PrepareMetadata(pb);
   }
 
@@ -228,7 +228,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   // Reads conflicts for specified intent from DB.
   Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix,
-                                     WaitPolicy wait_policy) {
+                             WaitPolicy wait_policy) {
     EnsureIntentIteratorCreated();
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
@@ -281,7 +281,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = decoded_value.transaction_id;
-        bool lock_only = decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock);
+        bool lock_only = decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock);
 
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           auto p = conflicts_.emplace(transaction_id,
@@ -930,7 +930,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 class TransactionConflictResolverContext : public ConflictResolverContextBase {
  public:
   TransactionConflictResolverContext(const DocOperations& doc_ops,
-                                     const KeyValueWriteBatchPB& write_batch,
+                                     const LWKeyValueWriteBatchPB& write_batch,
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
                                      Counter* conflicts_metric)
@@ -948,7 +948,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // transaction participant. However, the write_batch_ transaction metadata only includes the
     // status tablet on the first write to this tablet.
     if (write_batch_.transaction().has_status_tablet()) {
-      return write_batch_.transaction().status_tablet();
+      return write_batch_.transaction().status_tablet().ToBuffer();
     }
     auto tablet_id_opt = resolver->status_manager().FindStatusTablet(transaction_id());
     if (!tablet_id_opt) {
@@ -1055,7 +1055,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   }
 
   Status CheckPriority(ConflictResolver* resolver,
-                               boost::iterator_range<TransactionData*> transactions) override {
+                       boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
                                  metadata_.priority);
   }
@@ -1120,7 +1120,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return yb::ToString(transaction_id_);
   }
 
-  const KeyValueWriteBatchPB& write_batch_;
+  const LWKeyValueWriteBatchPB& write_batch_;
 
   // Read time of the transaction identified by transaction_id_, could be HybridTime::kMax in case
   // of serializable isolation or when read time not yet picked for snapshot isolation.
@@ -1188,7 +1188,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   }
 
   Status CheckPriority(ConflictResolver* resolver,
-                               boost::iterator_range<TransactionData*> transactions) override {
+                       boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver,
                                  transactions,
                                  TransactionId::Nil(),
@@ -1224,7 +1224,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 } // namespace
 
 Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const KeyValueWriteBatchPB& write_batch,
+                                   const LWKeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
                                    HybridTime read_time,
                                    const DocDB& doc_db,
@@ -1295,10 +1295,9 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
 // transaction_id_slice used in INTENT_KEY_SCHECK
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
   ParsedIntent result;
-  size_t doc_ht_size = 0;
   result.doc_path = intent_key;
   // Intent is encoded as "DocPath + IntentType + DocHybridTime".
-  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));
+  size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(result.doc_path));
   // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);

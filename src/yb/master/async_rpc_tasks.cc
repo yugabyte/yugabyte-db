@@ -34,7 +34,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
@@ -44,19 +44,19 @@
 
 using namespace std::literals;
 
-DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 15 * 60 * 1000,  // 15 minutes
+DEFINE_UNKNOWN_int32(unresponsive_ts_rpc_timeout_ms, 15 * 60 * 1000,  // 15 minutes
              "After this amount of time (or after we have retried unresponsive_ts_rpc_retry_limit "
              "times, whichever happens first), the master will stop attempting to contact a tablet "
              "server in order to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_timeout_ms, advanced);
 
-DEFINE_int32(unresponsive_ts_rpc_retry_limit, 20,
+DEFINE_UNKNOWN_int32(unresponsive_ts_rpc_retry_limit, 20,
              "After this number of retries (or unresponsive_ts_rpc_timeout_ms expires, whichever "
              "happens first), the master will stop attempting to contact a tablet server in order "
              "to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_retry_limit, advanced);
 
-DEFINE_int32(retrying_ts_rpc_max_delay_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(retrying_ts_rpc_max_delay_ms, 60 * 1000,
              "Maximum delay between successive attempts to contact an unresponsive tablet server");
 TAG_FLAG(retrying_ts_rpc_max_delay_ms, advanced);
 

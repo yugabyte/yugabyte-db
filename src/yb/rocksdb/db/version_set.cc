@@ -77,6 +77,8 @@
 
 #include "yb/util/test_kill.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {
@@ -1402,13 +1404,9 @@ void VersionStorageInfo::SetFinalized() {
     assert(MaxBytesForLevel(level) >= max_bytes_prev_level);
     max_bytes_prev_level = MaxBytesForLevel(level);
   }
-  int num_empty_non_l0_level = 0;
   for (int level = 0; level < num_levels(); level++) {
     assert(LevelFiles(level).size() == 0 ||
            LevelFiles(level).size() == LevelFilesBrief(level).num_files);
-    if (level > 0 && NumLevelBytes(level) > 0) {
-      num_empty_non_l0_level++;
-    }
     if (LevelFiles(level).size() > 0) {
       assert(level < num_non_empty_levels());
     }
@@ -3039,7 +3037,6 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
   return s;
 }
 
-#ifndef ROCKSDB_LITE
 Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
                                         const Options* options,
                                         const EnvOptions& env_options,
@@ -3143,8 +3140,8 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
-  UserFrontier* flushed_frontier = nullptr;
-  int count = 0;
+  UserFrontierPtr flushed_frontier;
+  int count __attribute__((unused)) = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
 
@@ -3248,7 +3245,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
       }
 
       if (edit.flushed_frontier_) {
-        flushed_frontier = edit.flushed_frontier_.get();
+        flushed_frontier = edit.flushed_frontier_;
       }
 
       if (edit.max_column_family_) {
@@ -3305,7 +3302,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
     next_file_number_.store(next_file + 1);
     SetLastSequenceNoSanityChecking(last_sequence);
-    if (flushed_frontier) {
+    if (flushed_frontier && FlushedFrontier()) {
       DCHECK_EQ(*flushed_frontier, *FlushedFrontier());
     }
     prev_log_number_ = previous_log_number;
@@ -3315,12 +3312,11 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
         "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u flushed_values %s\n",
         next_file_number_.load(), last_sequence, previous_log_number,
         column_family_set_->GetMaxColumnFamily(),
-        yb::ToString(flushed_frontier).c_str());
+        yb::ToString(flushed_frontier.get()).c_str());
   }
 
   return s;
 }
-#endif  // ROCKSDB_LITE
 
 // Set the last sequence number to s.
 void VersionSet::SetLastSequence(SequenceNumber s) {

@@ -2,10 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
@@ -16,6 +19,10 @@ import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
+import io.fabric8.kubernetes.client.dsl.base.PatchContext;
+import io.fabric8.kubernetes.client.dsl.base.PatchType;
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -26,7 +33,10 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 
+import com.google.common.collect.ImmutableMap;
+
 @Singleton
+@Slf4j
 public class NativeKubernetesManager extends KubernetesManager {
   private KubernetesClient getClient(Map<String, String> config) {
     if (config.containsKey("KUBECONFIG") && !config.get("KUBECONFIG").isEmpty()) {
@@ -97,6 +107,13 @@ public class NativeKubernetesManager extends KubernetesManager {
   public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
     try (KubernetesClient client = getClient(config)) {
       return client.pods().inNamespace(namespace).withName(podName).get().getStatus();
+    }
+  }
+
+  @Override
+  public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
+    try (KubernetesClient client = getClient(config)) {
+      return client.pods().inNamespace(namespace).withName(podName).get();
     }
   }
 
@@ -206,5 +223,127 @@ public class NativeKubernetesManager extends KubernetesManager {
     try (KubernetesClient client = getClient(config)) {
       return client.events().v1().events().inNamespace(namespace).list().getItems();
     }
+  }
+
+  @Override
+  public boolean deleteStatefulSet(Map<String, String> config, String namespace, String stsName) {
+    try (KubernetesClient client = getClient(config)) {
+      return client
+          .apps()
+          .statefulSets()
+          .inNamespace(namespace)
+          .withName(stsName)
+          .withPropagationPolicy(DeletionPropagation.ORPHAN)
+          .delete();
+    }
+  }
+
+  @Override
+  public boolean expandPVC(
+      Map<String, String> config,
+      String namespace,
+      String universePrefix,
+      String appLabel,
+      String newDiskSize) {
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    Map<String, String> labels = ImmutableMap.of("app", appLabel, "release", helmReleaseName);
+    try (KubernetesClient client = getClient(config)) {
+      List<PersistentVolumeClaim> pvcs =
+          client
+              .persistentVolumeClaims()
+              .inNamespace(namespace)
+              .withLabels(labels)
+              .list()
+              .getItems();
+      for (PersistentVolumeClaim pvc : pvcs) {
+        log.info("Updating PVC size for {} to {}", pvc.getMetadata().getName(), newDiskSize);
+        pvc.getSpec().getResources().getRequests().put("storage", new Quantity(newDiskSize));
+        client.persistentVolumeClaims().patch(PatchContext.of(PatchType.STRATEGIC_MERGE), pvc);
+      }
+      return true;
+    }
+  }
+
+  @Override
+  public String getStorageClassName(
+      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
+    // TODO: Implement when switching to native client implementation
+    return null;
+  }
+
+  @Override
+  public boolean storageClassAllowsExpansion(Map<String, String> config, String storageClassName) {
+    // TODO: Implement when switching to native client implementation
+    return true;
+  }
+
+  @Override
+  public void diff(Map<String, String> config, String inputYamlFilePath) {
+    // TODO(anijhawan): Implement this when we get a chance.
+  }
+
+  @Override
+  public String getCurrentContext(Map<String, String> azConfig) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String execCommandProcessErrors(Map<String, String> config, List<String> commandList) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getEvents(Map<String, String> config, String namespace, String string) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sVersion(Map<String, String> config, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getPlatformNamespace() {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
   }
 }

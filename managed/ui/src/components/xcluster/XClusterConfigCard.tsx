@@ -8,8 +8,8 @@ import { fetchUniversesList } from '../../actions/xClusterReplication';
 import {
   convertToLocalTime,
   findUniverseName,
-  GetConfiguredThreshold,
-  GetCurrentLag
+  MaxAcceptableLag,
+  CurrentReplicationLag
 } from './ReplicationUtils';
 import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
 import { XClusterConfig } from './XClusterTypes';
@@ -85,20 +85,20 @@ export const XClusterConfigCard = ({
         ) ? (
           <div className={styles.viewTasksPrompt}>
             <span>View progress on </span>
-            <a href={`/universes/${xClusterConfig.targetUniverseUUID}/tasks`}>Tasks</a>.
+            <a href={`/universes/${xClusterConfig.sourceUniverseUUID}/tasks`}>Tasks</a>.
           </div>
         ) : (
           <div className={styles.configMetricsContainer}>
             <div className={clsx(styles.configMetric, styles.maxAcceptableLag)}>
               <div className={styles.label}>Max acceptable lag</div>
               <div className={styles.value}>
-                <GetConfiguredThreshold currentUniverseUUID={currentUniverseUUID} />
+                <MaxAcceptableLag currentUniverseUUID={currentUniverseUUID} />
               </div>
             </div>
             <div className={clsx(styles.configMetric, styles.currentLag)}>
               <div className={styles.label}>Current Lag</div>
               <div className={styles.value}>
-                <GetCurrentLag
+                <CurrentReplicationLag
                   replicationUUID={xClusterConfig.uuid}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                 />

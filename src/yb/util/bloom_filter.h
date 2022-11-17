@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_BLOOM_FILTER_H
-#define YB_UTIL_BLOOM_FILTER_H
+#pragma once
 
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/macros.h"
@@ -257,5 +256,3 @@ inline bool BloomFilter::MayContainKey(const BloomKeyProbe &probe) const {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_BLOOM_FILTER_H

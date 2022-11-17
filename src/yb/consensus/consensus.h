@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_CONSENSUS_H_
-#define YB_CONSENSUS_CONSENSUS_H_
+#pragma once
 
 #include <iosfwd>
 #include <memory>
@@ -48,6 +47,8 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -237,9 +238,8 @@ class Consensus {
   // returning an UNKNOWN_ERROR RPC error code to the caller and including the
   // stringified Status message.
   virtual Status Update(
-      ConsensusRequestPB* request,
-      ConsensusResponsePB* response,
-      CoarseTimePoint deadline) = 0;
+      const std::shared_ptr<LWConsensusRequestPB>& request,
+      LWConsensusResponsePB* response, CoarseTimePoint deadline) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
@@ -269,10 +269,10 @@ class Consensus {
   int64_t LeaderTerm() const;
 
   // Returns the uuid of this peer.
-  virtual std::string peer_uuid() const = 0;
+  virtual const std::string& peer_uuid() const = 0;
 
   // Returns the id of the tablet whose updates this consensus instance helps coordinate.
-  virtual std::string tablet_id() const = 0;
+  virtual const TabletId& tablet_id() const = 0;
 
   virtual const TabletId& split_parent_tablet_id() const = 0;
 
@@ -329,9 +329,9 @@ class Consensus {
       MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
   // Read majority replicated messages for CDC producer.
-  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
-                                                             int64_t* repl_index,
-                                                             const CoarseTimePoint deadline) = 0;
+  virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
+      const yb::OpId& from, int64_t* repl_index, const CoarseTimePoint deadline,
+      const bool fetch_single_entry = false) = 0;
 
   virtual void UpdateCDCConsumerOpId(const yb::OpId& op_id) = 0;
 
@@ -420,5 +420,3 @@ Status MoveStatus(LeaderState&& state);
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_CONSENSUS_H_

@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YB_SCAN_H
-#define YB_SCAN_H
+#pragma once
 
 #include "postgres.h"
 
@@ -118,6 +117,8 @@ typedef struct YbScanDescData
 } YbScanDescData;
 
 typedef struct YbScanDescData *YbScanDesc;
+
+extern void ybc_free_ybscan(YbScanDesc ybscan);
 
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
@@ -228,5 +229,3 @@ bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 TupleTableSlot *ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid);
-
-#endif							/* YB_SCAN_H */

@@ -671,7 +671,7 @@ TEST_F(BlockTest, EncodeThreeSharedParts) {
   };
   auto append_random_string = [](std::string* buf, size_t size) {
     while (size > 0) {
-      *buf += yb::RandomUniformInt<char>();
+      *buf += yb::RandomUniformInt<uint8_t>();
       size--;
     }
   };

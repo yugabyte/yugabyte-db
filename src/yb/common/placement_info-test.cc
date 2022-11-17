@@ -36,6 +36,9 @@
 #include "yb/common/placement_info.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 
 // Test the tablespace info parsing.

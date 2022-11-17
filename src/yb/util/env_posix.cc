@@ -57,7 +57,7 @@
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -92,7 +92,7 @@
 #endif
 
 // See KUDU-588 for details.
-DEFINE_bool(writable_file_use_fsync, false,
+DEFINE_UNKNOWN_bool(writable_file_use_fsync, false,
             "Use fsync(2) instead of fdatasync(2) for synchronizing dirty "
             "data to disk.");
 TAG_FLAG(writable_file_use_fsync, advanced);
@@ -105,18 +105,18 @@ TAG_FLAG(writable_file_use_fsync, advanced);
 #define FLAGS_never_fsync_default false
 #endif
 
-DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
+DEFINE_UNKNOWN_bool(never_fsync, FLAGS_never_fsync_default,
             "Never fsync() anything to disk. This is used by tests to speed up runtime and improve "
             "stability. This is very unsafe to use in production.");
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
 
-DEFINE_int32(o_direct_block_size_bytes, 4096,
+DEFINE_UNKNOWN_int32(o_direct_block_size_bytes, 4096,
              "Size of the block to use when flag durable_wal_write is set.");
 TAG_FLAG(o_direct_block_size_bytes, advanced);
 
-DEFINE_int32(o_direct_block_alignment_bytes, 4096,
+DEFINE_UNKNOWN_int32(o_direct_block_alignment_bytes, 4096,
              "Alignment (in bytes) for blocks used for O_DIRECT operations.");
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 
@@ -126,12 +126,11 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
-DECLARE_bool(never_fsync);
-
 using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
+using std::string;
 using strings::Substitute;
 
 static __thread uint64_t thread_local_id;
@@ -226,6 +225,9 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
   switch (mode) {
     case Env::CREATE_IF_NON_EXISTING_TRUNCATE:
       flags |= O_CREAT | O_TRUNC;
+      break;
+    case Env::CREATE_NONBLOCK_IF_NON_EXISTING:
+      flags |= O_CREAT | O_NONBLOCK;
       break;
     case Env::CREATE_NON_EXISTING:
       flags |= O_CREAT | O_EXCL;
@@ -440,6 +442,22 @@ class PosixWritableFile : public WritableFile {
   const string& filename() const override { return filename_; }
 
  protected:
+    void UnwrittenRemaining(struct iovec** remaining_iov, ssize_t written, int* remaining_count) {
+      size_t bytes_to_consume = written;
+      do {
+        if (bytes_to_consume >= (*remaining_iov)->iov_len) {
+          bytes_to_consume -= (*remaining_iov)->iov_len;
+          (*remaining_iov)++;
+          (*remaining_count)--;
+        } else {
+          (*remaining_iov)->iov_len -= bytes_to_consume;
+          (*remaining_iov)->iov_base =
+              static_cast<uint8_t*>((*remaining_iov)->iov_base) + bytes_to_consume;
+          bytes_to_consume = 0;
+        }
+      } while (bytes_to_consume > 0);
+    }
+
     const std::string filename_;
     int fd_;
     bool sync_on_close_;
@@ -462,19 +480,29 @@ class PosixWritableFile : public WritableFile {
       nbytes += data.size();
     }
 
-    ssize_t written = writev(fd_, iov, narrow_cast<int>(n));
+    struct iovec* remaining_iov = iov;
+    int remaining_count = narrow_cast<int>(n);
+    ssize_t total_written = 0;
 
-    if (PREDICT_FALSE(written == -1)) {
-      int err = errno;
-      return STATUS_IO_ERROR(filename_, err);
+    while (remaining_count > 0) {
+      ssize_t written = writev(fd_, remaining_iov, remaining_count);
+      if (PREDICT_FALSE(written == -1)) {
+        if (errno == EINTR || errno == EAGAIN) {
+          continue;
+        }
+        return STATUS_IO_ERROR(filename_, errno);
+      }
+
+      UnwrittenRemaining(&remaining_iov, written, &remaining_count);
+      total_written += written;
     }
 
-    filesize_ += written;
+    filesize_ += total_written;
 
-    if (PREDICT_FALSE(written != nbytes)) {
+    if (PREDICT_FALSE(total_written != nbytes)) {
       return STATUS_FORMAT(
           IOError, "writev error: expected to write $0 bytes, wrote $1 bytes instead",
-          nbytes, written);
+          nbytes, total_written);
     }
 
     return Status::OK();
@@ -645,23 +673,34 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
       iov[j].iov_len = block_size_;
     }
     ssize_t bytes_to_write = blocks_to_write * block_size_;
-    ssize_t written = pwritev(fd_, iov, narrow_cast<int>(blocks_to_write), next_write_offset_);
 
-    if (PREDICT_FALSE(written == -1)) {
-      int err = errno;
-      return STATUS_IO_ERROR(filename_, err);
+    struct iovec* remaining_iov = iov;
+    int remaining_blocks = narrow_cast<int>(blocks_to_write);
+    ssize_t total_written = 0;
+
+    while (remaining_blocks > 0) {
+      ssize_t written = pwritev(
+          fd_, remaining_iov, remaining_blocks, next_write_offset_);
+      if (PREDICT_FALSE(written == -1)) {
+        if (errno == EINTR || errno == EAGAIN) {
+          continue;
+        }
+        return STATUS_IO_ERROR(filename_, errno);
+      }
+      next_write_offset_ += written;
+
+      UnwrittenRemaining(&remaining_iov, written, &remaining_blocks);
+      total_written += written;
     }
 
-    if (PREDICT_FALSE(written != bytes_to_write)) {
+    if (PREDICT_FALSE(total_written != bytes_to_write)) {
       return STATUS(IOError,
                     Substitute("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
-                               bytes_to_write, written));
+                               bytes_to_write, total_written));
     }
 
-    filesize_ = next_write_offset_ + written;
+    filesize_ = next_write_offset_;
     CHECK_EQ(filesize_, align_up(filesize_, block_size_));
-
-    next_write_offset_ = filesize_;
 
     if (last_block_used_bytes_ != block_size_) {
       // Next write will happen at filesize_ - block_size_ offset in the file if the last block is
@@ -995,8 +1034,8 @@ class PosixEnv : public Env {
   }
 
   Status GetChildren(const std::string& dir,
-                             ExcludeDots exclude_dots,
-                             std::vector<std::string>* result) override {
+                     ExcludeDots exclude_dots,
+                     std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
     ThreadRestrictions::AssertIOAllowed();
     result->clear();
@@ -1092,7 +1131,7 @@ class PosixEnv : public Env {
   }
 
   Status LinkFile(const std::string& src,
-                          const std::string& target) override {
+                  const std::string& target) override {
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
         return STATUS(NotSupported, "No cross FS links allowed");

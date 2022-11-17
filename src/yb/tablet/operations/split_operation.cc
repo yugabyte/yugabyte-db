@@ -17,7 +17,7 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 
@@ -33,14 +33,14 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<tablet::SplitTabletRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, SplitTabletRequestPB* request) {
-  replicate->set_allocated_split_request(request);
+void RequestTraits<LWSplitTabletRequestPB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWSplitTabletRequestPB* request) {
+  replicate->ref_split_request(request);
 }
 
 template <>
-SplitTabletRequestPB* RequestTraits<SplitTabletRequestPB>::MutableRequest(
-    consensus::ReplicateMsg* replicate) {
+LWSplitTabletRequestPB* RequestTraits<LWSplitTabletRequestPB>::MutableRequest(
+    consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_split_request();
 }
 
@@ -86,7 +86,8 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
     case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
-    case consensus::SPLIT_OP:
+    case consensus::SPLIT_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
@@ -103,7 +104,8 @@ Status SplitOperation::CheckOperationAllowed(
   // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
   // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
   return RejectionStatus(
-      op_id(), id, op_type, request()->new_tablet1_id(), request()->new_tablet2_id());
+      op_id(), id, op_type, request()->new_tablet1_id().ToBuffer(),
+      request()->new_tablet2_id().ToBuffer());
 }
 
 Status SplitOperation::Prepare() {

@@ -19,8 +19,7 @@
 // different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
+#pragma once
 
 #include "yb/rpc/service_if.h"
 
@@ -104,7 +103,7 @@ class CQLProcessor : public ql::QLProcessor {
 
   // Process statement execution result and error.
   std::unique_ptr<ql::CQLResponse> ProcessResult(const ql::ExecutedResult::SharedPtr& result);
-  std::unique_ptr<ql::CQLResponse> ProcessAuthResult(const string& saved_hash, bool can_login);
+  std::unique_ptr<ql::CQLResponse> ProcessAuthResult(const std::string& saved_hash, bool can_login);
   std::unique_ptr<ql::CQLResponse> ProcessError(
       const Status& s,
       boost::optional<ql::CQLMessage::QueryId> query_id = boost::none);
@@ -182,5 +181,3 @@ class CQLProcessor : public ql::QLProcessor {
 
 }  // namespace cqlserver
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_

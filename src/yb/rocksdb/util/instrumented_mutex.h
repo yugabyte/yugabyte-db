@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_INSTRUMENTED_MUTEX_H
-#define YB_ROCKSDB_UTIL_INSTRUMENTED_MUTEX_H
 
 #pragma once
 
@@ -115,5 +113,3 @@ class InstrumentedCondVar {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_INSTRUMENTED_MUTEX_H

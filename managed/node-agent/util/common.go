@@ -42,14 +42,16 @@ const (
 	NodePort = "9070"
 
 	// Platform config keys.
-	PlatformUrlKey           = "platform.url"
-	CustomerIdKey            = "platform.cuuid"
-	UserIdKey                = "platform.userId"
-	ProviderIdKey            = "platform.puuid"
-	PlatformCertsKey         = "platform.certs"
-	PlatformCertsUpgradeKey  = "platform.upgrade_certs"
-	PlatformVersionKey       = "platform.version"
-	PlatformVersionUpdateKey = "platform.update_version"
+	PlatformUrlKey            = "platform.url"
+	CustomerIdKey             = "platform.cuuid"
+	UserIdKey                 = "platform.userId"
+	ProviderIdKey             = "platform.puuid"
+	PlatformCertsKey          = "platform.certs"
+	PlatformCertsUpgradeKey   = "platform.upgrade_certs"
+	PlatformVersionKey        = "platform.version"
+	PlatformVersionUpdateKey  = "platform.update_version"
+	PlatformSkipVerifyCertKey = "platform.skip_verify_cert"
+	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
 	NodeIpKey           = "node.ip"
@@ -167,7 +169,7 @@ func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instance_type s
 }
 
 // Returns the platform endpoint for posting the node instances.
-// and adding node instane to the platform.
+// and adding node instance to the platform.
 func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes", cuuid, azid)
 }

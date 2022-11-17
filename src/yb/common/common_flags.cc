@@ -17,49 +17,45 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
-DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_UNKNOWN_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_UNKNOWN_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per YSQL table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_bool(ysql_disable_index_backfill, false,
+DEFINE_UNKNOWN_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEPRECATE_FLAG(bool, enable_pg_savepoints, "10_2022");
 
-DEFINE_bool(enable_automatic_tablet_splitting, true,
+DEFINE_UNKNOWN_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
 
-DEFINE_bool(log_ysql_catalog_versions, false,
+DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_bool(disable_hybrid_scan, false,
-            "If true, hybrid scan will be disabled");
-TAG_FLAG(disable_hybrid_scan, runtime);
-
-DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
+DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
+DEFINE_UNKNOWN_bool(enable_deadlock_detection, false,
+    "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
-DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
-            "Automatically promote transactions touching data outside of region to global.");
+DEFINE_UNKNOWN_bool(enable_wait_queues, false,
+            "If true, use pessimistic locking behavior in conflict resolution.");
+TAG_FLAG(enable_wait_queues, evolving);
 
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
@@ -102,12 +98,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(yb_num_shards_per_tserver, value));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ysql_num_shards_per_tserver, value));
   }
 }
 

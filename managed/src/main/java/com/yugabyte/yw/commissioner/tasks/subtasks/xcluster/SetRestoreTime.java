@@ -35,7 +35,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig.uuid,
+        taskParams().getXClusterConfig().uuid,
         taskParams().tableIds);
   }
 
@@ -44,7 +44,7 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     // The restore must belong to a parent xCluster config.
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = taskParams().getXClusterConfig();
     if (xClusterConfig == null) {
       throw new RuntimeException(
           "taskParams().xClusterConfig is null. Each SetRestoreTime subtask must belong to an "

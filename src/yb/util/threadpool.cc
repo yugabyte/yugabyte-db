@@ -35,7 +35,7 @@
 #include <limits>
 #include <memory>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
@@ -56,6 +56,7 @@ namespace yb {
 
 using strings::Substitute;
 using std::unique_ptr;
+using std::deque;
 
 
 ThreadPoolMetrics::~ThreadPoolMetrics() = default;

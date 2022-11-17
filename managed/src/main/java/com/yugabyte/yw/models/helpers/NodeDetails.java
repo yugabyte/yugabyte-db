@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.ADD;
 import static com.yugabyte.yw.common.NodeActionType.DELETE;
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
@@ -14,7 +15,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -93,7 +94,7 @@ public class NodeDetails {
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
-    Live(STOP, REMOVE, QUERY, REBOOT),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -136,8 +137,10 @@ public class NodeDetails {
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
     Terminated(DELETE),
-    // Set when the node is being rebooted
-    Rebooting();
+    // Set when the node is being rebooted.
+    Rebooting(REBOOT),
+    // Set when the node is being stopped + started.
+    HardRebooting(HARD_REBOOT);
 
     private final NodeActionType[] allowedActions;
 
@@ -180,7 +183,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "Master HTTP port")
   public int masterHttpPort = 7000;
 
-  @ApiModelProperty(value = "Master RCP port")
+  @ApiModelProperty(value = "Master RPC port")
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
@@ -238,7 +241,7 @@ public class NodeDetails {
   public boolean cronsActive = true;
 
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
-  public UniverseDefinitionTaskBase.ServerType dedicatedTo = null;
+  public UniverseTaskBase.ServerType dedicatedTo = null;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
@@ -299,7 +302,7 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isActionAllowedOnState(NodeActionType actionType) {
-    return state == null ? false : state.allowedActions().contains(actionType);
+    return state != null && state.allowedActions().contains(actionType);
   }
 
   /** Validates if the action is allowed on the state for the node. */
@@ -332,7 +335,8 @@ public class NodeDetails {
         || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
         || state == NodeState.Terminated
-        || state == NodeState.Rebooting);
+        || state == NodeState.Rebooting
+        || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore

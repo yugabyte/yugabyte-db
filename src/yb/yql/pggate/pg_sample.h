@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_SAMPLE_H_
-#define YB_YQL_PGGATE_PG_SAMPLE_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_select_index.h"
 
@@ -76,7 +75,7 @@ class PgSamplePicker : public PgSelectIndex {
 
   // Overrides inherited function returning ybctids of records to fetch.
   // PgSamplePicker::FetchYbctidBatch returns entire reservoir in one batch.
-  virtual Result<bool> FetchYbctidBatch(const vector<Slice> **ybctids) override;
+  virtual Result<bool> FetchYbctidBatch(const std::vector<Slice> **ybctids) override;
 
   // Retrieve estimated number of live and dead rows. Available after execution.
   Status GetEstimatedRowCount(double *liverows, double *deadrows);
@@ -87,10 +86,8 @@ class PgSamplePicker : public PgSelectIndex {
   // If true sampling is completed and ybctids can be collected from the reservoir
   bool reservoir_ready_ = false;
   // Vector of Slices pointing to the values in the reservoir
-  vector<Slice> ybctids_;
+  std::vector<Slice> ybctids_;
 };
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SAMPLE_H_

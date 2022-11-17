@@ -59,23 +59,24 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;
 
-DEFINE_bool(redis_allow_reads_from_followers, false,
-            "If true, the read will be served from the closest replica in the same AZ, which can "
-            "be a follower.");
+DEFINE_RUNTIME_bool(redis_allow_reads_from_followers, false,
+    "If true, the read will be served from the closest replica in the same AZ, which can "
+    "be a follower.");
 TAG_FLAG(redis_allow_reads_from_followers, evolving);
-TAG_FLAG(redis_allow_reads_from_followers, runtime);
 
 namespace yb {
 namespace client {
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 namespace {
 
@@ -221,9 +222,9 @@ Status InitHashPartitionKey(
 
 template <class Req>
 Status SetRangePartitionBounds(const Schema& schema,
-                                       const std::string& last_partition,
-                                       Req* request,
-                                       std::string* key_upper_bound) {
+                               const std::string& last_partition,
+                               Req* request,
+                               std::string* key_upper_bound) {
   vector<docdb::KeyEntryValue> range_components, range_components_end;
   RETURN_NOT_OK(GetRangePartitionBounds(
       schema, *request, &range_components, &range_components_end));

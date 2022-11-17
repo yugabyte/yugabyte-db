@@ -12,56 +12,40 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../ysql-yb-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YB - JDBC
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-vertx-pg-client/" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vert.x PG Client
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC SSL/TLS
-    </a>
-  </li>
   <li >
     <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Hibernate
+      Hibernate ORM
     </a>
   </li>
   <li >
     <a href="../ysql-sdyb/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data YugabyteDB
+      Spring Data YugabyteDB
     </a>
   </li>
   <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA
+      Spring Data JPA
     </a>
   </li>
    <li>
     <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebean
+      Ebean ORM
     </a>
   </li>
 </ul>
+
+The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM. It consists of the following:
+
+- The users of the e-commerce site, stored in the `users` table.
+- The `products` table, with a list of products the e-commerce site sells.
+- The orders placed by the users, populated in the `orders` table.
+- An order can consist of multiple line items, each of these are inserted in the `orderline` table.
+
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
 
 ## Prerequisites
 
@@ -76,14 +60,6 @@ This tutorial assumes that:
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
-
-The [Using ORMs with YugabyteDB `orm-examples` repository](https://github.com/yugabyte/orm-examples) has a [Hibernate ORM](https://hibernate.org/orm/) example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM. It consists of the following:
-
-- The users of the e-commerce site are stored in the `users` table.
-- The `products` table contains a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
-
-The source for this example application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate).
 
 There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
 

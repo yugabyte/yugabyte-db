@@ -42,6 +42,8 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
+using std::string;
+
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
 
@@ -516,6 +518,15 @@ bool PTDmlStmt::StaticColumnArgsOnly() const {
 
 //--------------------------------------------------------------------------------------------------
 
+Status AnalyzeStepState::AnalyzePartitionKeyOp(SemContext *sem_context,
+                                               const PTRelationExpr *expr,
+                                               PTExprPtr value) {
+  partition_key_ops_->emplace_back(expr->ql_op(), value);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status WhereExprState::AnalyzeMultiColumnOp(
     SemContext* sem_context,
     const PTRelationExpr* expr,
@@ -902,8 +913,7 @@ Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  partition_key_ops_->emplace_back(expr->ql_op(), value);
-  return Status::OK();
+  return AnalyzeStepState::AnalyzePartitionKeyOp(sem_context, expr, value);
 }
 
 std::vector<int64_t> PTDmlStmt::hash_col_indices() const {

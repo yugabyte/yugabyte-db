@@ -28,6 +28,8 @@
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 

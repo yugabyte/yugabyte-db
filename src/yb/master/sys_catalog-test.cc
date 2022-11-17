@@ -53,6 +53,7 @@ using std::make_shared;
 using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;

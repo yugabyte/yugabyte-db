@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_FACTORY_H
-#define ENT_SRC_YB_TSERVER_FACTORY_H
+#pragma once
 
 #include <memory>
 
@@ -101,5 +100,3 @@ class Factory {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-
-#endif // ENT_SRC_YB_TSERVER_FACTORY_H

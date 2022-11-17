@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H
-#define YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H
+#pragma once
 
 #include "yb/rocksdb/table/internal_iterator.h"
 
@@ -116,5 +115,3 @@ class FilteringIterator : public InternalIterator {
 };
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H

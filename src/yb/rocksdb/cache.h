@@ -33,8 +33,7 @@
 // they want something more sophisticated (like scan-resistance, a
 // custom eviction policy, variable cache sizing, etc.)
 
-#ifndef YB_ROCKSDB_CACHE_H
-#define YB_ROCKSDB_CACHE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -47,7 +46,6 @@
 
 namespace rocksdb {
 
-using std::shared_ptr;
 
 // Classifies the type of the subcache.
 enum SubCacheType {
@@ -63,9 +61,9 @@ class Cache;
 //
 // The parameter num_shard_bits defaults to 4, and strict_capacity_limit
 // defaults to false.
-extern shared_ptr<Cache> NewLRUCache(size_t capacity);
-extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
-extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity);
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
+extern std::shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                                      bool strict_capacity_limit);
 
 using QueryId = int64_t;
@@ -205,5 +203,3 @@ class Cache {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_CACHE_H

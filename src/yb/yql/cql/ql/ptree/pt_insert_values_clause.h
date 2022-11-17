@@ -15,8 +15,7 @@
 // Tree node definitions for INSERT INTO ... VALUES clause.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_INSERT_VALUES_CLAUSE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_INSERT_VALUES_CLAUSE_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
@@ -75,5 +74,3 @@ class PTInsertValuesClause : public PTCollection {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_INSERT_VALUES_CLAUSE_H_

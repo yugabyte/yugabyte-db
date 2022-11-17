@@ -29,8 +29,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(cql_always_return_metadata_in_execute_response, false,
+DEFINE_UNKNOWN_bool(cql_always_return_metadata_in_execute_response, false,
             "Force returning the table metadata in the EXECUTE request response");
 
 namespace yb {
@@ -68,8 +69,8 @@ constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
 Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
-                                                                 const size_t pos,
-                                                                 const Value** value) const {
+                                                         const size_t pos,
+                                                         const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {

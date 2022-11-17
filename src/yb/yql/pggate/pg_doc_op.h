@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
-#define YB_YQL_PGGATE_PG_DOC_OP_H_
+#pragma once
 
 #include <list>
 #include <memory>
@@ -69,7 +68,7 @@ class PgDocResult {
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
-  const vector<Slice>& ybctids() const {
+  const std::vector<Slice>& ybctids() const {
     DCHECK(syscol_processed_) << "System columns are not yet setup";
     return ybctids_;
   }
@@ -234,7 +233,7 @@ class PgDocResponse {
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get();
+  Result<Data> Get(MonoDelta* wait_time);
 
  private:
   struct PerformInfo {
@@ -317,6 +316,14 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status CreateRequests();
 
   const PgTable& table() const { return table_; }
+
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(uint64_t* read_rpc_count, uint64_t* read_rpc_wait_time) {
+    *read_rpc_count = read_rpc_count_;
+    read_rpc_count_ = 0;
+    *read_rpc_wait_time = read_rpc_wait_time_.ToNanoseconds();
+    read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
+  }
 
  protected:
   PgDocOp(
@@ -427,6 +434,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Output parameter of the execution.
   std::string out_param_backfill_spec_;
+
+  // Read RPC stats for EXPLAIN ANALYZE.
+  uint64_t read_rpc_count_ = 0;
+  MonoDelta read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
 
  private:
   Status SendRequest(bool force_non_bufferable);
@@ -627,5 +638,3 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_DOC_OP_H_

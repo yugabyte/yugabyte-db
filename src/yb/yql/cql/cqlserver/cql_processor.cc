@@ -31,13 +31,14 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/crypt.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -102,33 +103,45 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
+    "If enabled, setting TRACING ON in cqlsh will cause "
+    "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
+    "to disable tracing if an errant application has TRACING enabled by mistake.");
+
 // LDAP specific flags
-DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
-DEFINE_string(ycql_ldap_users_to_skip_csv, "", "Users that are authenticated via the local password"
-  " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
+DEFINE_UNKNOWN_bool(ycql_use_ldap, false, "Use LDAP for user logins");
+DEFINE_UNKNOWN_string(ycql_ldap_users_to_skip_csv, "",
+    "Users that are authenticated via the local password"
+    " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
 TAG_FLAG(ycql_ldap_users_to_skip_csv, sensitive_info);
-DEFINE_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
-DEFINE_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
+DEFINE_UNKNOWN_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
+DEFINE_UNKNOWN_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
 
 // LDAP flags for simple bind mode
-DEFINE_string(ycql_ldap_user_prefix, "", "String used for prepending the user name when forming "
-  "the DN for binding to the LDAP server");
-DEFINE_string(ycql_ldap_user_suffix, "", "String used for appending the user name when forming the "
-  "DN for binding to the LDAP Server.");
+DEFINE_UNKNOWN_string(ycql_ldap_user_prefix, "",
+    "String used for prepending the user name when forming "
+    "the DN for binding to the LDAP server");
+DEFINE_UNKNOWN_string(ycql_ldap_user_suffix, "",
+    "String used for appending the user name when forming the "
+    "DN for binding to the LDAP Server.");
 
 // Flags for LDAP search + bind mode
-DEFINE_string(ycql_ldap_base_dn, "", "Specifies the base directory to begin the user name search");
-DEFINE_string(ycql_ldap_bind_dn, "", "Specifies the username to perform the initial search when "
-  "doing search + bind authentication");
+DEFINE_UNKNOWN_string(ycql_ldap_base_dn, "",
+    "Specifies the base directory to begin the user name search");
+DEFINE_UNKNOWN_string(ycql_ldap_bind_dn, "",
+    "Specifies the username to perform the initial search when "
+    "doing search + bind authentication");
 TAG_FLAG(ycql_ldap_bind_dn, sensitive_info);
-DEFINE_string(ycql_ldap_bind_passwd, "", "Password for username being used to perform the initial "
-  "search when doing search + bind authentication");
+DEFINE_UNKNOWN_string(ycql_ldap_bind_passwd, "",
+    "Password for username being used to perform the initial "
+    "search when doing search + bind authentication");
 TAG_FLAG(ycql_ldap_bind_passwd, sensitive_info);
-DEFINE_string(ycql_ldap_search_attribute, "", "Attribute to match against the username in the "
-  "search when doing search + bind authentication. If no attribute is specified, the uid attribute "
-  "is used.");
-DEFINE_string(ycql_ldap_search_filter, "", "The search filter to use when doing search + bind "
-  "authentication.");
+DEFINE_UNKNOWN_string(ycql_ldap_search_attribute, "",
+    "Attribute to match against the username in the search when doing search + bind "
+    "authentication. If no attribute is specified, the uid attribute is used.");
+DEFINE_UNKNOWN_string(ycql_ldap_search_filter, "",
+    "The search filter to use when doing search + bind "
+    "authentication.");
 
 namespace yb {
 namespace cqlserver {
@@ -144,6 +157,8 @@ using namespace yb::ql; // NOLINT
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::ostream;
+using std::string;
 
 using client::YBClient;
 using client::YBSession;
@@ -246,7 +261,12 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
+  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+    call_->EnsureTraceCreated();
+    call_->trace()->set_end_to_end_traces_requested(true);
+  }
   call_->SetRequest(request_, service_impl_);
+  ADOPT_TRACE(call_->trace());
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_H
-#define YB_DOCDB_DOC_WRITE_BATCH_H
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -231,7 +230,7 @@ class DocWriteBatch {
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
-      std::vector<string>* results = nullptr,
+      std::vector<std::string>* results = nullptr,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 
@@ -261,11 +260,11 @@ class DocWriteBatch {
     return put_batch_;
   }
 
-  void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
+  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb);
 
   // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
   // testing. Consider using MoveToWriteBatchPB in production code.
-  void TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const;
+  void TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
@@ -364,5 +363,3 @@ Result<std::string> WriteBatchToString(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOC_WRITE_BATCH_H

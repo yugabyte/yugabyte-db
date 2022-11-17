@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #ifndef GFLAGS
 #include <cstdio>
 int main() {
@@ -29,8 +28,9 @@ int main() {
 
 #include <cstdio>
 #include <atomic>
+#include <memory>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -47,6 +47,8 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::SetUsageMessage;
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -104,10 +106,10 @@ static void ReplicationThreadBody(void* arg) {
   }
 }
 
-DEFINE_uint64(num_inserts, 1000, "the num of inserts the first thread should"
+DEFINE_UNKNOWN_uint64(num_inserts, 1000, "the num of inserts the first thread should"
     " perform.");
-DEFINE_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
-DEFINE_uint64(wal_size_limit_MB, 10, "the wal size limit for the run"
+DEFINE_UNKNOWN_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
+DEFINE_UNKNOWN_uint64(wal_size_limit_MB, 10, "the wal size limit for the run"
     "(in MB)");
 
 int db_repl_stress(int argc, const char** argv) {
@@ -166,11 +168,3 @@ int db_repl_stress(int argc, const char** argv) {
 int main(int argc, const char** argv) { rocksdb::db_repl_stress(argc, argv); }
 
 #endif  // GFLAGS
-
-#else  // ROCKSDB_LITE
-#include <stdio.h>
-int main(int argc, char** argv) {
-  fprintf(stderr, "Not supported in lite mode.\n");
-  return 1;
-}
-#endif  // ROCKSDB_LITE

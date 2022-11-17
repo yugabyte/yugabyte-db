@@ -11,9 +11,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyObject;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -137,7 +135,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
       ReleaseManager.ReleaseMetadata armRelease =
           ReleaseManager.ReleaseMetadata.create("0.0.5")
               .withFilePath("yugabyte-0.0.5-aarch64.tar.gz")
-              .withPackage("yugabyte-0.0.5-aarch64.tar.gz", Architecture.arm64);
+              .withPackage("yugabyte-0.0.5-aarch64.tar.gz", Architecture.aarch64);
       ReleaseManager.ReleaseMetadata x86Release =
           ReleaseManager.ReleaseMetadata.create("0.0.4")
               .withFilePath("yugabyte-0.0.4-x86_64.tar.gz")
@@ -146,7 +144,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
           ReleaseManager.ReleaseMetadata.create("0.0.3")
               .withFilePath("yugabyte-0.0.3-x86_64.tar.gz")
               .withPackage("yugabyte-0.0.3-x86_64.tar.gz", Architecture.x86_64)
-              .withPackage("yugabyte-0.0.3-aarch64.tar.gz", Architecture.arm64);
+              .withPackage("yugabyte-0.0.3-aarch64.tar.gz", Architecture.aarch64);
       ReleaseManager.ReleaseMetadata disabledRelease =
           ReleaseManager.ReleaseMetadata.create("0.0.2")
               .withFilePath("yugabyte-0.0.2-x86_64.tar.gz")
@@ -212,7 +210,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
     ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("s3", s3));
     Result result = createRelease(customer.uuid, body);
-    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -233,7 +232,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
     ObjectNode body = (ObjectNode) Json.newObject().set("foo", Json.newObject().set("gcs", gcs));
     Result result = createRelease(customer.uuid, body);
-    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertTrue(json.get("success").asBoolean());
@@ -276,6 +276,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         .addReleaseWithMetadata(any(), any());
     Result result = assertPlatformException(() -> createRelease(customer.uuid, body));
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.uuid);
   }
@@ -298,6 +299,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     Result result = assertPlatformException(() -> createRelease(customer.uuid, body));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
 
@@ -308,6 +310,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
     result = assertPlatformException(() -> createRelease(customer.uuid, body2));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
 
@@ -315,6 +318,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = assertPlatformException(() -> createRelease(customer.uuid, body3));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(0)).addGFlagsMetadataFiles(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.uuid);
 
@@ -323,7 +327,8 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ObjectNode body4 =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
     result = createRelease(customer.uuid, body4);
-    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(anyString(), anyObject());
+    verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
+    verify(mockReleaseManager, times(1)).addGFlagsMetadataFiles(any(), any());
     assertOk(result);
     assertAuditEntry(1, customer.uuid);
   }
@@ -440,7 +445,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesByRegionArm() {
     mockNewReleaseData(true);
-    region.setArchitecture(Architecture.valueOf("arm64"));
+    region.setArchitecture(Architecture.valueOf("aarch64"));
     region.update();
     Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
@@ -456,7 +461,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testGetReleasesByRegionEmpty() {
     mockNewReleaseData(false);
-    region.setArchitecture(Architecture.valueOf("arm64"));
+    region.setArchitecture(Architecture.valueOf("aarch64"));
     region.update();
     Result result = getReleasesProvider(customer.uuid, provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));

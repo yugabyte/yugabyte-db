@@ -23,10 +23,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
@@ -49,6 +49,73 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
  84 |  9 | 0084 | 84 |  9 | 0084
   0 |  0 | 0000 |  0 |  0 | 0000
  24 | 24 | 0024 | 24 | 24 | 0024
+(17 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = (t2.a + 1))
+   ->  Seq Scan on p2 t2
+         Remote Filter: (a <= 100)
+   ->  Index Scan using p1_pkey on p1 t1
+         Index Cond: (a = ANY (ARRAY[(t2.a + 1), ($1 + 1), ($2 + 1)]))
+         Remote Filter: (a <= 100)
+(7 rows)
+
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+  a  | b  |  c   | a  | b  |  c
+-----+----+------+----+----+------
+  46 | 21 | 0046 | 45 | 20 | 0045
+  82 |  7 | 0082 | 81 |  6 | 0081
+  22 | 22 | 0022 | 21 | 21 | 0021
+  16 | 16 | 0016 | 15 | 15 | 0015
+  52 |  2 | 0052 | 51 |  1 | 0051
+  10 | 10 | 0010 |  9 |  9 | 0009
+  70 | 20 | 0070 | 69 | 19 | 0069
+  88 | 13 | 0088 | 87 | 12 | 0087
+  58 |  8 | 0058 | 57 |  7 | 0057
+ 100 |  0 | 0100 | 99 | 24 | 0099
+  64 | 14 | 0064 | 63 | 13 | 0063
+  76 |  1 | 0076 | 75 |  0 | 0075
+  28 |  3 | 0028 | 27 |  2 | 0027
+  94 | 19 | 0094 | 93 | 18 | 0093
+  34 |  9 | 0034 | 33 |  8 | 0033
+  40 | 15 | 0040 | 39 | 14 | 0039
+   4 |  4 | 0004 |  3 |  3 | 0003
+(17 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+                QUERY PLAN
+------------------------------------------
+ Nested Loop
+   Join Filter: ((t1.a - 1) = (t2.a + 1))
+   ->  Seq Scan on p2 t2
+         Remote Filter: (a <= 100)
+   ->  Seq Scan on p1 t1
+         Remote Filter: (a <= 100)
+(6 rows)
+
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
+ a  | b  |  c   | a  | b  |  c
+----+----+------+----+----+------
+ 80 |  5 | 0080 | 78 |  3 | 0078
+ 92 | 17 | 0092 | 90 | 15 | 0090
+ 14 | 14 | 0014 | 12 | 12 | 0012
+  8 |  8 | 0008 |  6 |  6 | 0006
+ 98 | 23 | 0098 | 96 | 21 | 0096
+ 44 | 19 | 0044 | 42 | 17 | 0042
+ 50 |  0 | 0050 | 48 | 23 | 0048
+ 62 | 12 | 0062 | 60 | 10 | 0060
+ 74 | 24 | 0074 | 72 | 22 | 0072
+ 38 | 13 | 0038 | 36 | 11 | 0036
+ 56 |  6 | 0056 | 54 |  4 | 0054
+ 20 | 20 | 0020 | 18 | 18 | 0018
+ 68 | 18 | 0068 | 66 | 16 | 0066
+ 32 |  7 | 0032 | 30 |  5 | 0030
+ 86 | 11 | 0086 | 84 |  9 | 0084
+  2 |  2 | 0002 |  0 |  0 | 0000
+ 26 |  1 | 0026 | 24 | 24 | 0024
 (17 rows)
 
 -- Disabling batching for compound clauses
@@ -76,15 +143,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  Seq Scan on p3 t3
-         Filter: (a <= 30)
+         Remote Filter: (a <= 30)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (a = ANY (ARRAY[t3.a, $1, $2]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
 (12 rows)
 
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
@@ -175,7 +242,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -205,7 +272,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.b)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -230,7 +297,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
  YB Batched Nested Loop Semi Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -257,7 +324,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
          ->  Seq Scan on p2 t2
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
 (8 rows)
 
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;

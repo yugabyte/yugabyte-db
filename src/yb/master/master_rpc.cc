@@ -41,7 +41,7 @@
 #include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 
 using std::shared_ptr;
@@ -54,7 +54,7 @@ using yb::rpc::Rpc;
 
 using namespace std::placeholders;
 
-DEFINE_int32(master_leader_rpc_timeout_ms, 500,
+DEFINE_UNKNOWN_int32(master_leader_rpc_timeout_ms, 500,
              "Number of milliseconds that the tserver will keep querying for master leader before"
              "selecting a follower.");
 TAG_FLAG(master_leader_rpc_timeout_ms, advanced);

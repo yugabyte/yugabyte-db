@@ -17,19 +17,21 @@
 #include <regex>
 
 #include "yb/gutil/map-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
-DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
-             "The minimum number of milliseconds a metric will be kept for after it is "
-             "no longer active. (Advanced option)");
-TAG_FLAG(metrics_retirement_age_ms, runtime);
+using std::string;
+using std::vector;
+
+DEFINE_RUNTIME_int32(metrics_retirement_age_ms, 120 * 1000,
+    "The minimum number of milliseconds a metric will be kept for after it is "
+    "no longer active. (Advanced option)");
 TAG_FLAG(metrics_retirement_age_ms, advanced);
 
 // TODO: changed to empty string and add logic to get this from cluster_uuid in case empty.
-DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
+DEFINE_UNKNOWN_string(metric_node_name, "DEFAULT_NODE_NAME",
               "Value to use as node name for metrics reporting");
 
 namespace yb {
@@ -323,6 +325,11 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["namespace_name"] = attrs["namespace_name"];
+    prometheus_attr["stream_id"] = attrs["stream_id"];
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
   } else {
@@ -374,8 +381,7 @@ void MetricEntity::RetireOldMetrics() {
               << "the retention interval";
       // This is the first time we've seen this metric as retirable.
       metric->retire_time_ = now;
-      metric->retire_time_.AddDelta(MonoDelta::FromMilliseconds(
-                                      FLAGS_metrics_retirement_age_ms));
+      metric->retire_time_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_metrics_retirement_age_ms));
       ++it;
       continue;
     }

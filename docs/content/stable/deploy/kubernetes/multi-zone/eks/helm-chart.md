@@ -15,7 +15,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
@@ -93,7 +93,7 @@ As stated in the Prerequisites section, the default configuration in the Yugabyt
 
 ### Create a storage class
 
-We need to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities. 
+We need to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities.
 
 Copy the contents below to a file named `storage.yaml`.
 
@@ -352,15 +352,15 @@ You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql/) tuto
 
 ## 6. Connect using external clients
 
-To connect an external program, get the load balancer `EXTERNAL-IP` address of one of the `yb-tserver-service` service and connect to the 5433 / 9042 ports for YSQL / YCQL services respectively.
+To connect an external program, get the load balancer `EXTERNAL-IP` address of the `yb-tserver-service` service and connect using port 5433 for YSQL or port 9042 for YCQL, as follows:
 
 ```sh
 $ kubectl get services --namespace yb-demo
 ```
 
 ```output
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
+NAME                 TYPE                 CLUSTER-IP     EXTERNAL-IP     PORT(S)                                                                                                                  AGE
 ...
-yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195    ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s
+yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195   ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s
 ...
 ```

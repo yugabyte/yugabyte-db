@@ -10,12 +10,12 @@ import (
 func TestIsValidMethod(t *testing.T) {
 	want, got := false, isValidMethod("test")
 	if want != got {
-		t.Errorf("IsValid Method doesn't return expected value.")
+		t.Fatalf("IsValid Method doesn't return expected value.")
 	}
 
 	want, got = true, isValidMethod(http.MethodDelete)
 	if want != got {
-		t.Errorf("IsValid Method doesn't return expected value.")
+		t.Fatalf("IsValid Method doesn't return expected value.")
 	}
 }
 
@@ -26,12 +26,12 @@ func TestValidate(t *testing.T) {
 		}`
 	got := validate(http.MethodGet, queryParams, dummyData)
 	if got == nil {
-		t.Errorf("Expected a validation error but got success.")
+		t.Fatalf("Expected a validation error but got success.")
 	}
 
 	got = validate(http.MethodPost, queryParams, dummyData)
 	if got != nil {
-		t.Errorf("Expected a success but got validation error.")
+		t.Fatalf("Expected a success but got validation error.")
 	}
 }
 
@@ -43,18 +43,18 @@ func TestHttpClientSuccess(t *testing.T) {
 	)
 	res, err := testClient.Do(http.MethodGet, "/test", nil, nil, nil)
 	if err != nil {
-		t.Errorf("Error while calling the request.")
+		t.Fatalf("Error while calling the request - %s", err.Error())
 	}
 	body, err := ioutil.ReadAll(res.Body)
 	defer res.Body.Close()
 	if err != nil {
-		t.Errorf("Error reading the respone.")
+		t.Fatalf("Error reading the respone - %s", err.Error())
 	}
 	if string(body) != "success" {
-		t.Errorf("Unexpected body in the response")
+		t.Fatalf("Unexpected body in the response")
 	}
 	res, err = testClient.Do(http.MethodPut, "/test", nil, nil, nil)
 	if res.StatusCode != 405 {
-		t.Errorf("Expected 405 status code.")
+		t.Fatalf("Expected 405 status code.")
 	}
 }

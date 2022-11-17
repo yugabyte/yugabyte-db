@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_TEST_BASE_H
-#define YB_MASTER_MASTER_TEST_BASE_H
+#pragma once
 
 #include <algorithm>
 #include <map>
@@ -45,7 +44,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/common_types.pb.h"
@@ -70,8 +69,6 @@
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using std::make_shared;
-using std::shared_ptr;
 
 
 #define NAMESPACE_ENTRY(namespace) \
@@ -127,8 +124,8 @@ using strings::Substitute;
 class MasterTestBase : public YBTest {
  protected:
 
-  string default_namespace_name = "default_namespace";
-  string default_namespace_id;
+  std::string default_namespace_name = "default_namespace";
+  std::string default_namespace_id;
 
   MasterTestBase();
   ~MasterTestBase();
@@ -243,10 +240,8 @@ class MasterTestBase : public YBTest {
   std::unique_ptr<MasterDdlProxy> proxy_ddl_;
   std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
   std::unique_ptr<MasterReplicationProxy> proxy_replication_;
-  shared_ptr<RpcController> controller_;
+  std::shared_ptr<RpcController> controller_;
 };
 
 } // namespace master
 } // namespace yb
-
-#endif /* YB_MASTER_MASTER_TEST_BASE_H */

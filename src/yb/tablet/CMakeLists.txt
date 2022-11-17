@@ -54,6 +54,7 @@ set(TABLET_SRCS
   transaction_participant.cc
   transaction_status_resolver.cc
   operations/operation.cc
+  operations/change_auto_flags_config_operation.cc
   operations/change_metadata_operation.cc
   operations/history_cutoff_operation.cc
   operations/operation_driver.cc
@@ -75,6 +76,7 @@ set(TABLET_DEPS pq_utils)
 
 YRPC_GENERATE(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES

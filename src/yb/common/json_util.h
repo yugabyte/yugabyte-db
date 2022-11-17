@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_JSON_UTIL_H
-#define YB_COMMON_JSON_UTIL_H
+#pragma once
 
 #include <rapidjson/document.h>
 
@@ -25,8 +24,8 @@ class QLValuePB;
 namespace common {
 
 Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
-                                           rapidjson::Value* value,
-                                           rapidjson::Document::AllocatorType* alloc);
+                                   rapidjson::Value* value,
+                                   rapidjson::Document::AllocatorType* alloc);
 
 inline Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
                                                   rapidjson::Document* document) {
@@ -48,5 +47,3 @@ void AddMember(
 
 } // namespace common
 } // namespace yb
-
-#endif // YB_COMMON_JSON_UTIL_H

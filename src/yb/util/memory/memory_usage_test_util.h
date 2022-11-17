@@ -13,8 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_UTIL_MEMORY_MEMORY_USAGE_TEST_UTIL_H
-#define YB_UTIL_MEMORY_MEMORY_USAGE_TEST_UTIL_H
+#pragma once
 
 #include <string>
 
@@ -40,5 +39,3 @@ const auto kMemoryAllocationAccuracyHighLimit = 1.15;
 const auto kDynamicMemoryUsageAccuracyLowLimit = 0.95;
 
 }  // namespace yb
-
-#endif  // YB_UTIL_MEMORY_MEMORY_USAGE_TEST_UTIL_H

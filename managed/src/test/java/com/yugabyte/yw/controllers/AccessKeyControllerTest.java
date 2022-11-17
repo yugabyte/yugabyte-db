@@ -33,8 +33,8 @@ import akka.stream.javadsl.FileIO;
 import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -53,7 +53,6 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -261,11 +260,9 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithInvalidKeyCode() {
-    AccessKey accessKey = AccessKey.create(UUID.randomUUID(), "foo", new AccessKey.KeyInfo());
-    Result result =
-        assertPlatformException(() -> getAccessKey(defaultProvider.uuid, accessKey.getKeyCode()));
+    Result result = assertPlatformException(() -> getAccessKey(defaultProvider.uuid, "foo"));
     assertEquals(BAD_REQUEST, result.status());
-    assertBadRequest(result, "KeyCode not found: " + accessKey.getKeyCode());
+    assertBadRequest(result, "KeyCode not found: foo");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

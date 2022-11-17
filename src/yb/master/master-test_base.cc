@@ -58,6 +58,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::make_shared;
+
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 

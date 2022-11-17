@@ -72,10 +72,8 @@ export const formatDuration = (milliseconds: number) => {
 /**
  * Wraps {@link formatDuration} with special formatting for lag metrics
  */
-export const formatLagMetric = (milliseconds: number) => {
-  if (!isDefinedNotNull(milliseconds)) return '-';
-
-  if (milliseconds && !isFinite(milliseconds)) {
+export const formatLagMetric = (milliseconds: number | undefined) => {
+  if (milliseconds === undefined || !isFinite(milliseconds)) {
     return 'Unreachable';
   }
 

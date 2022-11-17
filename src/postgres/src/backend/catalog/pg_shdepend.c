@@ -1180,8 +1180,8 @@ storeObjectDescription(StringInfo descs,
 static bool
 isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 {
-	if (YBIsPinnedObjectsCacheAvailable())
-		return YBIsSharedObjectPinned(classId, objectId);
+	if (YbIsPinnedObjectsCacheAvailable())
+		return YbIsSharedObjectPinned(classId, objectId);
 
 	bool		result = false;
 	ScanKeyData key[2];

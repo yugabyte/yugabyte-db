@@ -21,7 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_LITE
 
 #include <stdint.h>
 
@@ -35,6 +34,8 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/test_util.h"
+
+using std::unique_ptr;
 
 namespace rocksdb {
 
@@ -235,12 +236,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-#else
-
-int main(int argc, char** argv) {
-  fprintf(stderr, "SKIPPED as SSTDumpTool is not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE  return RUN_ALL_TESTS();

@@ -264,7 +264,7 @@ public class TestAlterTable extends BaseCQLTest {
 
     LOG.info("Alter table ...");
     runInvalidStmt("ALTER TABLE tbl WITH tablets=1",
-                   "Feature Not Supported. Changing the number of tablets is not supported yet");
+                   "Feature Not Supported. Changing the number of tablets is not supported");
 
     runInvalidStmt("ALTER TABLE tbl WITH transactions={'enabled' : 'false'}",
                    "Invalid SQL Statement. syntax error, unexpected '{'");

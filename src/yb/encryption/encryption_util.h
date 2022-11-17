@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTION_UTIL_H
-#define YB_ENCRYPTION_ENCRYPTION_UTIL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -138,7 +137,7 @@ Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
                                     std::unique_ptr<BlockAccessCipherStream>* stream,
                                     uint32_t* header_size) {
   auto encryption_params = EncryptionParams::NewEncryptionParams();
-  string header = VERIFY_RESULT(
+  std::string header = VERIFY_RESULT(
       header_manager->SerializeEncryptionParams(*encryption_params.get()));
   RETURN_NOT_OK(underlying_w->Append(header));
   return CompleteCreateEncryptionInfoForWrite(
@@ -187,5 +186,3 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_ENCRYPTION_UTIL_H

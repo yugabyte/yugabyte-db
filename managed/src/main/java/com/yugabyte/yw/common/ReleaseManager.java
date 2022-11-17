@@ -5,15 +5,24 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -46,6 +55,10 @@ public class ReleaseManager {
   @Inject ConfigHelper configHelper;
 
   @Inject Configuration appConfig;
+
+  @Inject GFlagsValidation gFlagsValidation;
+
+  @Inject Commissioner commissioner;
 
   public enum ReleaseState {
     ACTIVE,
@@ -96,7 +109,9 @@ public class ReleaseManager {
     public static class PackagePaths {
       @ApiModelProperty(value = "Path to x86_64 package")
       @Constraints.Pattern(
-          message = "Must be prefixed with s3://, gs://, or http(s)://",
+          message =
+              "File path must be prefixed with s3://, gs://, or http(s)://,"
+                  + " and must contain path to package file, instead of a directory",
           value = "\\b(?:(https|s3|gs):\\/\\/).+\\b")
       public String x86_64;
 
@@ -508,26 +523,16 @@ public class ReleaseManager {
 
   public synchronized void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    boolean isPresentLocally = false;
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     if (currentReleases.containsKey(version)) {
-      if (getReleaseByVersion(version).filePath.startsWith(ybReleasesPath)) {
-        isPresentLocally = true;
-      }
       LOG.info("Removing release version {}", version);
       currentReleases.remove(version);
       configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
     }
 
-    if (isPresentLocally) {
-      // delete specific release's directory recursively.
-      File releaseDirectory = new File(ybReleasesPath, version);
-      if (!FileUtils.deleteDirectory(releaseDirectory)) {
-        String errorMsg =
-            "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
-        throw new RuntimeException(errorMsg);
-      }
-    }
+    // delete specific release's directory recursively.
+    File releaseDirectory = new File(ybReleasesPath, version);
+    FileUtils.deleteDirectory(releaseDirectory);
   }
 
   public synchronized void importLocalReleases() {
@@ -646,6 +651,8 @@ public class ReleaseManager {
                       + "name matches the DB version in the folder name.");
             }
           }
+          // Add gFlag metadata for newly added release.
+          addGFlagsMetadataFiles(version, localReleases.get(version));
         }
         LOG.info("Importing local releases: [ {} ]", Json.toJson(localReleases));
         localReleases.forEach(currentReleases::put);
@@ -704,7 +711,7 @@ public class ReleaseManager {
             if (fp != null) {
               for (Architecture arch : Architecture.values()) {
                 if (getPathMatcher(arch.getDBGlob()).matches(fp)) {
-                  rm.packages = new ArrayList<>();
+                  rm.packages = (rm.packages == null) ? new ArrayList<>() : rm.packages;
                   rm = rm.withPackage(rm.filePath, arch);
                 }
               }
@@ -717,6 +724,61 @@ public class ReleaseManager {
           updatedReleases.put(version, rm);
         });
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+  }
+
+  public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
+    try {
+      List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
+      if (missingGFlagsFilesList.size() != 0) {
+        String releasesPath = appConfig.getString("yb.releases.path");
+        if (isLocalRelease(releaseMetadata)) {
+          try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
+            gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
+                inputStream, version, missingGFlagsFilesList, releasesPath);
+          }
+          LOG.info("Successfully added gFlags metadata for version: {}", version);
+        } else {
+          AddGFlagMetadata.Params taskParams = new AddGFlagMetadata.Params();
+          taskParams.version = version;
+          taskParams.releaseMetadata = releaseMetadata;
+          taskParams.requiredGFlagsFileList = missingGFlagsFilesList;
+          taskParams.releasesPath = releasesPath;
+          commissioner.submit(TaskType.AddGFlagMetadata, taskParams);
+        }
+
+      } else {
+        LOG.warn("Skipping gFlags metadata addition as all files are already present");
+      }
+    } catch (Exception e) {
+      LOG.error("Could not add GFlags metadata as it errored out with: {}", e);
+    }
+  }
+
+  public synchronized InputStream getTarGZipDBPackageInputStream(
+      String version, ReleaseMetadata releaseMetadata) throws Exception {
+    if (releaseMetadata.s3 != null) {
+      CustomerConfigStorageS3Data configData = new CustomerConfigStorageS3Data();
+      configData.awsAccessKeyId = releaseMetadata.s3.getAccessKeyId();
+      configData.awsSecretAccessKey = releaseMetadata.s3.secretAccessKey;
+      return CloudUtil.getCloudUtil(Util.S3)
+          .getCloudFileInputStream(configData, releaseMetadata.s3.paths.getX86_64());
+    } else if (releaseMetadata.gcs != null) {
+      CustomerConfigStorageGCSData configData = new CustomerConfigStorageGCSData();
+      configData.gcsCredentialsJson = releaseMetadata.gcs.credentialsJson;
+      return CloudUtil.getCloudUtil(Util.GCS)
+          .getCloudFileInputStream(configData, releaseMetadata.gcs.paths.getX86_64());
+    } else if (releaseMetadata.http != null) {
+      return new URL(releaseMetadata.http.getPaths().getX86_64()).openStream();
+    } else {
+      if (!Files.exists(Paths.get(releaseMetadata.filePath))) {
+        throw new RuntimeException(
+            "Cannot add gFlags metadata for version: "
+                + version
+                + " as no file was present at location: "
+                + releaseMetadata.filePath);
+      }
+      return new FileInputStream(releaseMetadata.filePath);
+    }
   }
 
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
@@ -803,5 +865,9 @@ public class ReleaseManager {
 
   public boolean getInUse(String version) {
     return Universe.existsRelease(version);
+  }
+
+  private boolean isLocalRelease(ReleaseMetadata rm) {
+    return !(rm.s3 != null || rm.gcs != null || rm.http != null);
   }
 }

@@ -2,8 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.NodeActionType.HARD_REBOOT;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
@@ -16,6 +20,7 @@ import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
@@ -29,6 +34,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -37,6 +43,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -314,37 +321,39 @@ public class NodeInstanceController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
-    NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
-    taskParams.expectedUniverseVersion = universe.version;
-    taskParams.nodeName = nodeName;
-    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-    if (universe.isYbcEnabled()) {
-      taskParams.installYbc = true;
-      taskParams.enableYbc = true;
-      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
-      taskParams.ybcInstalled = true;
-    }
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    NodeTaskParams taskParams = new NodeTaskParams();
+
+    if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
+      RebootNodeInUniverse.Params params =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
+      params.isHardReboot = nodeAction == HARD_REBOOT;
+      taskParams = params;
+    } else {
+      taskParams =
+          UniverseControllerRequestBinder.deepCopy(
+              universe.getUniverseDetails(), NodeTaskParams.class);
+    }
+
+    taskParams.nodeName = nodeName;
+    taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
     if (nodeAction == NodeActionType.STOP
         || nodeAction == NodeActionType.REMOVE
         || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT) {
+        || nodeAction == NodeActionType.REBOOT
+        || nodeAction == NodeActionType.HARD_REBOOT) {
       // Always check this?? For now leaving it as is since it breaks many tests
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
-    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
         || nodeAction == NodeActionType.STOP) {
-      taskParams.rootCA = universe.getUniverseDetails().rootCA;
-      taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
-      taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(

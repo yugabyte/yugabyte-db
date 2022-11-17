@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.helpers.BundleDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.SupportBundleUtil;
@@ -27,7 +28,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
@@ -61,7 +64,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
-    } catch (IOException | RuntimeException e) {
+    } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
@@ -70,7 +73,8 @@ public class CreateSupportBundle extends AbstractTaskBase {
     }
   }
 
-  public Path generateBundle(SupportBundle supportBundle) throws IOException, RuntimeException {
+  public Path generateBundle(SupportBundle supportBundle)
+      throws IOException, RuntimeException, ParseException {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
@@ -80,50 +84,70 @@ public class CreateSupportBundle extends AbstractTaskBase {
     log.debug("gzip support bundle path: {}", gzipPath.toString());
     log.debug("Fetching Universe {} logs", universe.name);
 
-    // Downloads each type of support bundle component type into the bundle path
-    for (BundleDetails.ComponentType componentType : supportBundle.getBundleDetails().components) {
+    // Simplified the following 4 cases to extract appropriate start and end date
+    // 1. If both of the dates are given and valid
+    // 2. If only the start date is valid, filter from startDate till the end
+    // 3. If only the end date is valid, filter from the beginning till endDate
+    // 4. Default : If no dates are specified, download all the files from last n days
+    Date startDate, endDate;
+    boolean startDateIsValid = supportBundleUtil.isValidDate(supportBundle.getStartDate());
+    boolean endDateIsValid = supportBundleUtil.isValidDate(supportBundle.getEndDate());
+    if (!startDateIsValid && !endDateIsValid) {
+      int default_date_range = config.getInt("yb.support_bundle.default_date_range");
+      endDate = supportBundleUtil.getTodaysDate();
+      startDate = supportBundleUtil.getDateNDaysAgo(endDate, default_date_range);
+    } else {
+      startDate = startDateIsValid ? supportBundle.getStartDate() : new Date(Long.MIN_VALUE);
+      endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
+    }
+
+    // Downloads each type of global level support bundle component type into the bundle path
+    for (BundleDetails.ComponentType componentType :
+        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
       SupportBundleComponent supportBundleComponent =
           supportBundleComponentFactory.getComponent(componentType);
       try {
-        // If both of the dates are given and valid
-        if (supportBundleUtil.isValidDate(supportBundle.getStartDate())
-            && supportBundleUtil.isValidDate(supportBundle.getEndDate())) {
-          supportBundleComponent.downloadComponentBetweenDates(
-              customer,
-              universe,
-              bundlePath,
-              supportBundle.getStartDate(),
-              supportBundle.getEndDate());
-        }
-        // If only the start date is valid, filter from startDate till the end
-        else if (supportBundleUtil.isValidDate(supportBundle.getStartDate())) {
-          supportBundleComponent.downloadComponentBetweenDates(
-              customer,
-              universe,
-              bundlePath,
-              supportBundle.getStartDate(),
-              new Date(Long.MAX_VALUE));
-        }
-        // If only the end date is valid, filter from the beginning till endDate
-        else if (supportBundleUtil.isValidDate(supportBundle.getEndDate())) {
-          supportBundleComponent.downloadComponentBetweenDates(
-              customer, universe, bundlePath, new Date(Long.MIN_VALUE), supportBundle.getEndDate());
-        }
-        // Default : If no dates are specified, download all the files from last n days
-        else {
-          int default_date_range = config.getInt("yb.support_bundle.default_date_range");
-          Date defaultEndDate = supportBundleUtil.getTodaysDate();
-          Date defaultStartDate =
-              supportBundleUtil.getDateNDaysAgo(defaultEndDate, default_date_range);
-          supportBundleComponent.downloadComponentBetweenDates(
-              customer, universe, bundlePath, defaultStartDate, defaultEndDate);
-        }
-      } catch (ParseException e) {
+        // Call the downloadComponentBetweenDates() function for all global level components with
+        // node = null.
+        // Each component verifies if the dates are required and calls the downloadComponent().
+        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+        Files.createDirectories(globalComponentsDirPath);
+        supportBundleComponent.downloadComponentBetweenDates(
+            customer, universe, globalComponentsDirPath, startDate, endDate, null);
+      } catch (Exception e) {
         throw new RuntimeException(
-            String.format("Error while trying to parse the universe files : %s", e.getMessage()));
+            String.format(
+                "Error while trying to download the global level component files : %s",
+                e.getMessage()));
       }
     }
 
+    // Downloads each type of node level support bundle component type into the bundle path
+    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
+    for (NodeDetails node : nodes) {
+      for (BundleDetails.ComponentType componentType :
+          supportBundle.getBundleDetails().getNodeLevelComponents()) {
+        SupportBundleComponent supportBundleComponent =
+            supportBundleComponentFactory.getComponent(componentType);
+        try {
+          // Call the downloadComponentBetweenDates() function for all node level components with
+          // the node object.
+          // Each component verifies if the dates are required and calls the downloadComponent().
+          Path nodeComponentsDirPath =
+              Paths.get(bundlePath.toAbsolutePath().toString(), node.nodeName);
+          Files.createDirectories(nodeComponentsDirPath);
+          supportBundleComponent.downloadComponentBetweenDates(
+              customer, universe, nodeComponentsDirPath, startDate, endDate, node);
+        } catch (Exception e) {
+          throw new RuntimeException(
+              String.format(
+                  "Error while trying to download the node level component files : %s",
+                  e.getMessage()));
+        }
+      }
+    }
+
+    // Tar the support bundle directory and delete the original folder
     try (FileOutputStream fos = new FileOutputStream(gzipPath.toString()); // need to test this path
         GZIPOutputStream gos = new GZIPOutputStream(new BufferedOutputStream(fos));
         TarArchiveOutputStream tarOS = new TarArchiveOutputStream(gos)) {

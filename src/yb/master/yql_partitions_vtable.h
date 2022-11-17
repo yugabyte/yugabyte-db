@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_PARTITIONS_VTABLE_H
-#define YB_MASTER_YQL_PARTITIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/yql_virtual_table.h"
@@ -88,7 +87,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   mutable bool update_cache_ GUARDED_BY(mutex_) = true;
 
   // Store the table as a map for more efficient modifications.
-  mutable std::map<TableId, std::map<string, QLRow>> table_to_partition_start_to_row_map_
+  mutable std::map<TableId, std::map<std::string, QLRow>> table_to_partition_start_to_row_map_
       GUARDED_BY(mutex_);
 
   // Convert the map to the expected vtable format.
@@ -97,4 +96,3 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_PARTITIONS_VTABLE_H

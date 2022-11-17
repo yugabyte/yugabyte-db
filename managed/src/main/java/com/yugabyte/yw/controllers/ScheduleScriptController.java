@@ -41,13 +41,6 @@ public class ScheduleScriptController extends AuthenticatedController {
   @Inject SettableRuntimeConfigFactory sConfigFactory;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  public static final String PLT_EXT_SCRIPT_ACCESS_FULL_PATH = "yb.security.enable_external_script";
-
-  private static final String PLT_EXT_SCRIPT_SCHEDULE_PATH =
-      ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH;
-  private static final String PLT_EXT_SCRIPT_RUNTIME_CONFIG_PATH =
-      ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH;
-
   public Result externalScriptSchedule(UUID customerUUID, UUID universeUUID) {
     // Validate Access
     canAccess();
@@ -74,9 +67,11 @@ public class ScheduleScriptController extends AuthenticatedController {
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Check if a script is already scheduled for this universe.
-    if (config.hasPath(PLT_EXT_SCRIPT_SCHEDULE_PATH)) {
+    if (config.hasPath(ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH)) {
       Schedule schedule =
-          Schedule.getOrBadRequest(UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE_PATH)));
+          Schedule.getOrBadRequest(
+              UUID.fromString(
+                  config.getString(ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH)));
       if (!schedule.getStatus().equals(State.Stopped)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "A External Script is already scheduled for this universe.");
@@ -93,7 +88,7 @@ public class ScheduleScriptController extends AuthenticatedController {
           new ExternalScriptConfObject(
               scriptContent, scriptParam, schedule.scheduleUUID.toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
-      config.setValue(PLT_EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
+      config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Runtime config for script errored out with: " + e.getMessage());
@@ -120,13 +115,14 @@ public class ScheduleScriptController extends AuthenticatedController {
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
     Schedule schedule;
     try {
-      UUID scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE_PATH));
+      UUID scheduleUUID =
+          UUID.fromString(config.getString(ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH));
       schedule = Schedule.getOrBadRequest(scheduleUUID);
     } catch (Exception e) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "No script is scheduled for this universe. it was trying to search at "
-              + PLT_EXT_SCRIPT_SCHEDULE_PATH);
+              + ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH);
     }
 
     if (schedule.getStatus().equals(State.Stopped)) {
@@ -144,7 +140,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
-  public Result updateScheduledScript(UUID customerUUID, UUID universeUUID) throws IOException {
+  public Result updateScheduledScript(UUID customerUUID, UUID universeUUID) {
     // Validate Access
     canAccess();
     // Extract script file, parameters and cronExpression.
@@ -169,7 +165,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Extract the already present External Script Scheduler for universe.
     Schedule schedule;
     try {
-      UUID scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE_PATH));
+      UUID scheduleUUID =
+          UUID.fromString(config.getString(ExternalScriptHelper.EXT_SCRIPT_SCHEDULE_CONF_PATH));
       schedule = Schedule.getOrBadRequest(scheduleUUID);
       if (schedule.getStatus().equals(State.Stopped)) {
         throw new PlatformServiceException(
@@ -188,7 +185,7 @@ public class ScheduleScriptController extends AuthenticatedController {
           new ExternalScriptConfObject(
               scriptContent, scriptParam, schedule.scheduleUUID.toString());
       String json = mapper.writeValueAsString(runtimeConfigObject);
-      config.setValue(PLT_EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
+      config.setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Runtime config for script errored out with: " + e.getMessage());
@@ -268,7 +265,9 @@ public class ScheduleScriptController extends AuthenticatedController {
   }
 
   private void canAccess() {
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean(PLT_EXT_SCRIPT_ACCESS_FULL_PATH)) {
+    if (!runtimeConfigFactory
+        .globalRuntimeConf()
+        .getBoolean(ExternalScriptHelper.EXT_SCRIPT_ACCESS_FULL_PATH)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "External Script APIs are disabled. Please contact support team");
     }

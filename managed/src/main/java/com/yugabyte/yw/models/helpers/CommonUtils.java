@@ -100,7 +100,8 @@ public class CommonUtils {
           // Azure KMS fields
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
-          "AZU_KEY_SIZE");
+          "AZU_KEY_SIZE",
+          "KEYSPACETABLELIST");
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -317,7 +318,7 @@ public class CommonUtils {
   /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
+      return;
     }
 
     if (!node1.isObject() || !node2.isObject()) {

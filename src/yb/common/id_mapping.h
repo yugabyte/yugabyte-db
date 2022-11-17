@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ID_MAPPING_H
-#define YB_COMMON_ID_MAPPING_H
+#pragma once
 
 #include <vector>
 
@@ -177,4 +176,3 @@ class IdMapping {
 };
 
 } // namespace yb
-#endif /* YB_COMMON_ID_MAPPING_H */

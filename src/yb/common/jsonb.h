@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_JSONB_H
-#define YB_COMMON_JSONB_H
+#pragma once
 
 #include <string>
 
@@ -97,6 +96,9 @@ class Jsonb {
   std::string&& MoveSerializedJsonb();
 
   bool operator==(const Jsonb& other) const;
+
+  static std::string kSerializedJsonbEmpty;
+  static std::string kSerializedJsonbNull;
 
  private:
   std::string serialized_jsonb_;
@@ -225,5 +227,3 @@ class Jsonb {
 
 } // namespace common
 } // namespace yb
-
-#endif // YB_COMMON_JSONB_H

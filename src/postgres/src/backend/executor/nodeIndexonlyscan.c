@@ -389,9 +389,16 @@ ExecReScanIndexOnlyScan(IndexOnlyScanState *node)
 
 	/* reset index scan */
 	if (node->ioss_ScanDesc)
+	{
+		IndexScanDesc scandesc = node->ioss_ScanDesc;
+		IndexOnlyScan *plan = (IndexOnlyScan *) scandesc->yb_scan_plan;
+		EState *estate = node->ss.ps.state;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
+	}
 
 	ExecScanReScan(&node->ss);
 }
@@ -774,4 +781,15 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
+}
+
+void
+YbExecUpdateInstrumentIndexOnlyScan(IndexOnlyScanState *node,
+									Instrumentation *instr)
+{
+	YbScanDesc ybscan = (YbScanDesc)node->ioss_ScanDesc->opaque;
+	Assert(PointerIsValid(ybscan));
+	if (ybscan->handle)
+		YbUpdateReadRpcStats(ybscan->handle,
+							 &instr->yb_read_rpcs, &instr->yb_tbl_read_rpcs);
 }

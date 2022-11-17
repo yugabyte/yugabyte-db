@@ -19,12 +19,13 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
-DEFINE_bool(disable_auto_flags_management, false,
+DEFINE_UNKNOWN_bool(disable_auto_flags_management, false,
     "Disables AutoFlags management. A safety switch to turn off automatic promotion of AutoFlags. "
     "More information about AutoFlags can be found in "
     "https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md. Use at "
@@ -32,19 +33,19 @@ DEFINE_bool(disable_auto_flags_management, false,
 TAG_FLAG(disable_auto_flags_management, advanced);
 TAG_FLAG(disable_auto_flags_management, unsafe);
 
-DEFINE_AUTO_bool(
+DEFINE_RUNTIME_AUTO_bool(
     TEST_auto_flags_initialized, kLocalPersisted, false, true,
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     auto_flags_load_from_master_backoff_increment_ms, 100,
     "Number of milliseconds added to the delay between reties of fetching AutoFlags config from "
     "master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, stable);
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, advanced);
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     auto_flags_load_from_master_max_backoff_sec, 3,
     "Maximum number of seconds to delay between reties of fetching AutoFlags config from master "
     "leader. This delay is applied after the RPC reties have been exhausted.");
@@ -230,17 +231,14 @@ Status AutoFlagsManager::LoadFromConfig(
   {
     SharedLock<rw_spinlock> lock(config_mutex_);
 
-    RSTATUS_DCHECK_GE(
-        new_config.config_version(), current_config_.config_version(), InvalidArgument,
-        "New AutoFlags config version is not greater than the current version.");
-
     // First new config can be empty, and should still be written to disk.
-    // Else no-op if it is the same version.
+    // Else no-op if it is the same or lower version.
     if (current_config_.config_version() != 0 &&
-        new_config.config_version() == current_config_.config_version()) {
-      LOG(INFO) << "AutoFlags config update ignored as we are already on the same "
-                   "version. Current version: "
-                << current_config_.config_version();
+        new_config.config_version() <= current_config_.config_version()) {
+      LOG(INFO) << "AutoFlags config update ignored as we are already on the same"
+                   " or higher version. Current version: "
+                << current_config_.config_version()
+                << ", New version: " << new_config.config_version();
       return Status::OK();
     }
   }
@@ -307,12 +305,13 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
   if (!flags_to_promote.empty()) {
     // TODO(Hari): Its ok for this to be INFO level for now, as this is a new feature and we don't
     // have too many AutoFlags. Switch to VLOG when this assumption changes.
-    LOG(INFO) << "AutoFlags Promoted: " << JoinStrings(flags_to_promote, ",");
+    LOG(INFO) << "AutoFlags applied: " << JoinStrings(flags_to_promote, ",");
   }
 
   if (!non_runtime_flags_skipped.empty()) {
-    LOG(WARNING) << "Non-runtime AutoFlags skipped: " << JoinStrings(non_runtime_flags_skipped, ",")
-                 << ". Restart the process to promote these flags.";
+    LOG(WARNING) << "Non-runtime AutoFlags skipped apply: "
+                 << JoinStrings(non_runtime_flags_skipped, ",")
+                 << ". Restart the process to apply these flags.";
   }
 
   return Status::OK();

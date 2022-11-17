@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_OUTBOUND_CALL_H_
-#define YB_RPC_OUTBOUND_CALL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -44,7 +43,7 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/integral_types.h"
@@ -432,5 +431,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_OUTBOUND_CALL_H_

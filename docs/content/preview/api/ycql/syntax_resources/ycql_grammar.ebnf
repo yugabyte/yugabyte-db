@@ -3,7 +3,7 @@ alter_table ::= 'ALTER' 'TABLE' table_name ('ADD' ( column_name column_type ) { 
 column_type ::= '<type>';
 
 create_index ::= 'CREATE' 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
-                     table_name '(' partition_key_columns [ clustering_key_columns ] ')' \
+                     table_name '(' partition_key_columns ',' [ clustering_key_columns ] ')' \
                      [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate];
 
 partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );

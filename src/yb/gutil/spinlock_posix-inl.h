@@ -47,8 +47,7 @@
  * This file is a Posix-specific part of spinlock_internal.cc
  */
 
-#ifndef YB_GUTIL_SPINLOCK_POSIX_INL_H
-#define YB_GUTIL_SPINLOCK_POSIX_INL_H
+#pragma once
 
 #include <errno.h>
 #if defined(HAVE_SCHED_H) || defined(__APPLE__)
@@ -80,5 +79,3 @@ void SpinLockWake(volatile Atomic32 *w, bool all) {
 } // namespace internal
 } // namespace base
 } // namespace yb
-
-#endif  // YB_GUTIL_SPINLOCK_POSIX_INL_H

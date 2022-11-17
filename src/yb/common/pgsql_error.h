@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_PGSQL_ERROR_H
-#define YB_COMMON_PGSQL_ERROR_H
+#pragma once
 
 #include "yb/common/pgsql_protocol.pb.h"
 
@@ -101,5 +100,3 @@ struct AuxilaryMessageTag : StringBackedErrorTag {
 typedef StatusErrorCodeImpl<AuxilaryMessageTag> AuxilaryMessage;
 
 } // namespace yb
-
-#endif // YB_COMMON_PGSQL_ERROR_H

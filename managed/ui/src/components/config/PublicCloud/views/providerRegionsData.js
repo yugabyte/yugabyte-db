@@ -11,6 +11,10 @@ export const regionsData = [
     zones: ['ap-northeast-2a', 'ap-northeast-2b', 'ap-northeast-2c', 'ap-northeast-2d']
   },
   {
+    destVpcRegion: 'ap-northeast-3',
+    zones: ['ap-northeast-3a', 'ap-northeast-3b', 'ap-northeast-3c']
+  },
+  {
     destVpcRegion: 'ap-south-1',
     zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c']
   },

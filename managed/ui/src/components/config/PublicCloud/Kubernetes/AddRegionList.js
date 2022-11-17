@@ -55,6 +55,7 @@ class AddRegionList extends Component {
           kubeDomain: '',
           zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: '',
+          zonePodAddressTemplate: '',
           issuerType: 'NONE'
         }
       ]
@@ -139,6 +140,7 @@ class AddRegionList extends Component {
                 kubeDomain: '',
                 zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: '',
+                zonePodAddressTemplate: '',
                 issuerType: 'NONE'
               });
               this.setState({
@@ -162,6 +164,7 @@ class AddRegionList extends Component {
       kubeDomain: '',
       zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: '',
+      zonePodAddressTemplate: '',
       issuerType: 'NONE'
     });
     if (!this.state.showZoneForm) {
@@ -449,6 +452,30 @@ class AddRegionList extends Component {
                                           component={YBFormInput}
                                           componentClass="textarea"
                                           className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                    </Row>
+
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Pod Address Template</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zonePodAddressTemplate`}
+                                          placeholder="Pod address template for this Zone"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                      <Col lg={1} className="config-zone-tooltip">
+                                        <YBInfoTip
+                                          title="Pod Address Template (optional)"
+                                          content={
+                                            'Use this setting for multi-cluster setups like Istio or MCS to generate the ' +
+                                            'correct pod addresses. Supported fields are {pod_name}, {service_name}, ' +
+                                            '{namespace}, and {cluster_domain}.'
+                                          }
                                         />
                                       </Col>
                                     </Row>

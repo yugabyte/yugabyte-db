@@ -21,7 +21,6 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
-#ifndef ROCKSDB_LITE
 
 namespace rocksdb {
 
@@ -534,7 +533,6 @@ TEST_F(EventListenerTest, CompactionReasonFIFO) {
 }
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_LITE
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

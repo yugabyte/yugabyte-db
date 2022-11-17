@@ -15,13 +15,21 @@
 #include <string>
 
 #include "yb/client/auto_flags_manager.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/master/auto_flags_orchestrator.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/auto_flags_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
+using std::vector;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
     "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");
@@ -43,7 +51,6 @@ bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
   return true;
 }
 
-__attribute__((unused))
 DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClass);
 
 }  // namespace
@@ -51,13 +58,17 @@ DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClas
 DECLARE_bool(disable_auto_flags_management);
 
 namespace yb {
+using OK = Status::OK;
+
 namespace master {
 
 namespace {
 // Add the flags to the config if it is not already present. Bumps up the config version and returns
 // true if any new flags were added. Config with version 0 is always bumped to 1.
 bool InsertFlagsToConfig(
-    const std::map<std::string, vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config) {
+    const std::map<std::string, vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config,
+    bool* non_runtime_flags_added) {
+  *non_runtime_flags_added = false;
   bool config_changed = false;
   // Initial config
   if (config->config_version() == 0) {
@@ -86,6 +97,7 @@ bool InsertFlagsToConfig(
         if (std::find(process_flags_pb->begin(), process_flags_pb->end(), flags_to_promote.name) ==
             process_flags_pb->end()) {
           *process_flags_pb->Add() = flags_to_promote.name;
+          *non_runtime_flags_added |= !flags_to_promote.is_runtime;
           config_changed = true;
         }
       }
@@ -104,7 +116,7 @@ Status PromoteAutoFlags(
     const ApplyNonRuntimeAutoFlags apply_non_runtime, AutoFlagsManager* auto_flag_manager) {
   if (FLAGS_disable_auto_flags_management) {
     LOG(WARNING) << "AutoFlags management is disabled.";
-    return Status::OK();
+    return OK();
   }
 
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
@@ -115,11 +127,12 @@ Status PromoteAutoFlags(
       AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class, promote_non_runtime));
 
   auto new_config = auto_flag_manager->GetConfig();
-  if (InsertFlagsToConfig(eligible_flags, &new_config)) {
+  bool dummy_non_runtime_flags_added;
+  if (InsertFlagsToConfig(eligible_flags, &new_config, &dummy_non_runtime_flags_added)) {
     RETURN_NOT_OK(auto_flag_manager->LoadFromConfig(std::move(new_config), apply_non_runtime));
   }
 
-  return Status::OK();
+  return OK();
 }
 
 }  // namespace
@@ -136,7 +149,7 @@ Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager* auto_flag_manager) {
         auto_flag_manager);
   }
 
-  return Status::OK();
+  return OK();
 }
 
 Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager) {
@@ -146,8 +159,53 @@ Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager) {
   new_config.set_config_version(1);
   RETURN_NOT_OK(
       auto_flag_manager->LoadFromConfig(std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue));
-  return Status::OK();
+  return OK();
 }
 
+Status PromoteAutoFlags(
+    const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime_flags,
+    const bool force, const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager,
+    uint32_t* new_config_version, bool* non_runtime_flags_promoted) {
+  SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
+
+  *non_runtime_flags_promoted = false;
+
+  const auto eligible_flags = VERIFY_RESULT(
+      AutoFlagsUtil::GetFlagsEligibleForPromotion(max_flag_class, promote_non_runtime_flags));
+
+  auto new_config = auto_flag_manager.GetConfig();
+  if (!InsertFlagsToConfig(eligible_flags, &new_config, non_runtime_flags_promoted)) {
+    if (force) {
+      new_config.set_config_version(new_config.config_version() + 1);
+    } else {
+      return STATUS(AlreadyPresent, "Nothing to promote");
+    }
+  }
+
+  consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
+  // SubmitToSysCatalog will set the correct tablet
+  auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
+  *operation->AllocateRequest() = new_config;
+  CountDownLatch latch(1);
+  operation->set_completion_callback(
+      tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
+
+  LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
+            << ", promote_non_runtime: " << promote_non_runtime_flags << ", force: " << force;
+
+  RETURN_NOT_OK(catalog_manager->SubmitToSysCatalog(std::move(operation)));
+
+  latch.Wait();
+
+  if (operation_res.has_error()) {
+    auto status = StatusFromPB(operation_res.error().status());
+    LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
+    return status;
+  }
+
+  *new_config_version = new_config.config_version();
+
+  return OK();
+}
 }  // namespace master
 }  // namespace yb

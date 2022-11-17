@@ -5,24 +5,23 @@ linkTitle: More examples
 description: Build a C# application that uses Entity Framework and the YSQL API.
 menu:
   preview:
-    identifier: build-apps-csharp-3-ysql
+    identifier: build-apps-csharp-1-ysql
     parent: cloud-csharp
     weight: 556
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
   <li>
     <a href="../ysql-entity-framework/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Entity Framework
+      Entity Framework ORM
+    </a>
+  </li>
+  <li>
+    <a href="../ysql-dapper/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Dapper ORM
     </a>
   </li>
 </ul>
@@ -52,7 +51,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
 
 ## Database configuration
 
-- To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
+To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
 
 `Host=$hostName; Port=$dbPort; Username=$dbUser; Password=$dbPassword; Database=$database`
 
@@ -120,8 +119,8 @@ yugabyte=# \c ysql_entityframework
 You are now connected to database "ysql_entityframework" as user "yugabyte".
 ```
 
-```sh
-ysql_entityframework=# SELECT count(*) FROM users;
+```sql
+ysql_entityframework=# SELECT * FROM users;
 ```
 
 ```output
@@ -132,8 +131,8 @@ ysql_entityframework=# SELECT count(*) FROM users;
 (2 rows)
 ```
 
-```sh
-ysql_entityframework=# SELECT count(*) FROM products;
+```sql
+ysql_entityframework=# SELECT * FROM products;
 ```
 
 ```output

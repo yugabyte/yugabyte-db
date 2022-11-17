@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_INSERT_H_
-#define YB_YQL_PGGATE_PG_INSERT_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
@@ -50,5 +49,3 @@ class PgInsert : public PgDmlWrite {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_INSERT_H_

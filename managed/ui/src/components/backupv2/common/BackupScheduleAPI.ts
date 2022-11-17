@@ -67,6 +67,15 @@ export const createBackupSchedule = (values: Record<string, any>) => {
     payload['frequencyTimeUnit'] = values['policy_interval_type'].value.toUpperCase();
   }
 
+  if (values['is_incremental_backup_enabled']) {
+    payload['incrementalBackupFrequency'] =
+      values['incremental_backup_frequency'] *
+      MILLISECONDS_IN[values['incremental_backup_frequency_type'].value.toUpperCase()];
+    payload['incrementalBackupFrequencyTimeUnit'] = values[
+      'incremental_backup_frequency_type'
+    ].value.toUpperCase();
+  }
+
   return axios.post(requestUrl, payload);
 };
 

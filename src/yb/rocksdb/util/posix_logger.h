@@ -24,8 +24,7 @@
 // Logger implementation that can be shared by all environments
 // where enough posix functionality is available.
 
-#ifndef YB_ROCKSDB_UTIL_POSIX_LOGGER_H
-#define YB_ROCKSDB_UTIL_POSIX_LOGGER_H
+#pragma once
 
 #include <stdio.h>
 #include <time.h>
@@ -188,5 +187,3 @@ class PosixLogger : public Logger {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_POSIX_LOGGER_H

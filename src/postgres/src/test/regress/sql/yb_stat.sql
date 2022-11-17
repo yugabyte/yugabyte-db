@@ -69,15 +69,35 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 
 CREATE ROLE test_user WITH login;
 \c yugabyte test_user
-SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
+SELECT * FROM generate_series(0, 100000002);
+SELECT pg_sleep(1);
+SELECT
+    D.datname AS databasename,
+    S.query_text AS query_text
+FROM yb_pg_stat_get_queries(null) AS S
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
 \c yugabyte yugabyte
 GRANT pg_read_all_stats TO test_user;
 \c yugabyte test_user
-SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
+SELECT
+    D.datname AS databasename,
+    S.query_text AS query_text
+FROM yb_pg_stat_get_queries(null) AS S
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
 \c yugabyte yugabyte
 REVOKE pg_read_all_stats FROM test_user;
+GRANT yb_db_admin TO test_user;
+\c yugabyte test_user
+SELECT
+    D.datname AS databasename,
+    S.query_text AS query_text
+FROM yb_pg_stat_get_queries(null) AS S
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+
+\c yugabyte yugabyte
+REVOKE yb_db_admin FROM test_user;
 
 ALTER ROLE test_user WITH superuser;
 ALTER ROLE test_user WITH createdb;

@@ -36,7 +36,7 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/casts.h"
@@ -84,17 +84,17 @@
 using namespace std::literals;
 
 // Test size parameters
-DEFINE_int32(concurrent_inserts, -1, "Number of inserting clients to launch");
-DEFINE_int32(inserts_per_client, -1,
+DEFINE_UNKNOWN_int32(concurrent_inserts, -1, "Number of inserting clients to launch");
+DEFINE_UNKNOWN_int32(inserts_per_client, -1,
              "Number of rows inserted by each inserter client");
-DEFINE_int32(rows_per_batch, -1, "Number of rows per client batch");
+DEFINE_UNKNOWN_int32(rows_per_batch, -1, "Number of rows per client batch");
 
 // Perf-related FLAGS_perf_stat
-DEFINE_bool(perf_record_scan, false, "Call \"perf record --call-graph\" "
+DEFINE_UNKNOWN_bool(perf_record_scan, false, "Call \"perf record --call-graph\" "
             "for the duration of the scan, disabled by default");
-DEFINE_bool(perf_stat_scan, false, "Print \"perf stat\" results during"
+DEFINE_UNKNOWN_bool(perf_stat_scan, false, "Print \"perf stat\" results during"
             "scan to stdout, disabled by default");
-DEFINE_bool(perf_fp_flag, false, "Only applicable with --perf_record_scan,"
+DEFINE_UNKNOWN_bool(perf_fp_flag, false, "Only applicable with --perf_record_scan,"
             " provides argument \"fp\" to the --call-graph flag");
 DECLARE_bool(enable_maintenance_manager);
 

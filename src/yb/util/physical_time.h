@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PHYSICAL_TIME_H
-#define YB_UTIL_PHYSICAL_TIME_H
+#pragma once
 
 #include <functional> // For std::function
 #include <memory>
@@ -72,5 +71,3 @@ const PhysicalClockPtr& AdjTimeClock();
 #endif
 
 } // namespace yb
-
-#endif // YB_UTIL_PHYSICAL_TIME_H

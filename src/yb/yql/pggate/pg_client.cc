@@ -38,12 +38,14 @@
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
-DEFINE_uint64(pg_client_heartbeat_interval_ms, 10000, "Pg client heartbeat interval in ms.");
+DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
+    "Pg client heartbeat interval in ms.");
 
 DECLARE_bool(TEST_index_read_multiple_partitions);
 
@@ -111,8 +113,8 @@ class PgClient::Impl {
   }
 
   Status Start(rpc::ProxyCache* proxy_cache,
-                       rpc::Scheduler* scheduler,
-                       const tserver::TServerSharedObject& tserver_shared_object) {
+               rpc::Scheduler* scheduler,
+               const tserver::TServerSharedObject& tserver_shared_object) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -246,9 +248,12 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  Status RollbackToSubTransaction(SubTransactionId id) {
+  Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgRollbackToSubTransactionRequestPB req;
     req.set_session_id(session_id_);
+    if (options) {
+      options->Swap(req.mutable_options());
+    }
     req.set_sub_transaction_id(id);
 
     tserver::PgRollbackToSubTransactionResponsePB resp;
@@ -258,10 +263,10 @@ class PgClient::Impl {
   }
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called) {
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called) {
     tserver::PgInsertSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -281,8 +286,8 @@ class PgClient::Impl {
                                    uint64_t ysql_catalog_version,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called) {
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called) {
     tserver::PgUpdateSequenceTupleRequestPB req;
     req.set_session_id(session_id_);
     req.set_db_oid(db_oid);
@@ -518,6 +523,16 @@ class PgClient::Impl {
     return resp.is_pitr_active();
   }
 
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo() {
+    tserver::PgGetTserverCatalogVersionInfoRequestPB req;
+    tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTserverCatalogVersionInfo(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -648,8 +663,9 @@ Status PgClient::SetActiveSubTransaction(
   return impl_->SetActiveSubTransaction(id, options);
 }
 
-Status PgClient::RollbackToSubTransaction(SubTransactionId id) {
-  return impl_->RollbackToSubTransaction(id);
+Status PgClient::RollbackToSubTransaction(
+    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
+  return impl_->RollbackToSubTransaction(id, options);
 }
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
@@ -674,8 +690,8 @@ Result<bool> PgClient::UpdateSequenceTuple(int64_t db_oid,
                                            uint64_t ysql_catalog_version,
                                            int64_t last_val,
                                            bool is_called,
-                                           boost::optional<int64_t> expected_last_val,
-                                           boost::optional<bool> expected_is_called) {
+                                           std::optional<int64_t> expected_last_val,
+                                           std::optional<bool> expected_is_called) {
   return impl_->UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, last_val, is_called, expected_last_val,
       expected_is_called);
@@ -704,6 +720,10 @@ void PgClient::PerformAsync(
 
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo() {
+  return impl_->GetTserverCatalogVersionInfo();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

@@ -118,7 +118,8 @@ function mapStateToProps(state, ownProps) {
   initialValues.upgradeOption = 'Rolling';
   initialValues.rollingUpgrade = true;
   initialValues.systemdValue = intialSystemdValue;
-
+  initialValues.universeOverrides = '';
+  initialValues.azOverrides = '';
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {

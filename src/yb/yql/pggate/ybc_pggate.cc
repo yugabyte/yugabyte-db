@@ -30,7 +30,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -52,9 +52,12 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
-DEFINE_int32(pggate_num_connections_to_server, 1,
+using std::string;
+
+DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
+    "Timeout for YSQL's yb-client read/write "
+    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
+DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
 DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
@@ -68,10 +71,14 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DEFINE_bool(ysql_enable_reindex, false,
+DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
+
+DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
+            "If true, disables read, write, and execute of local server files. "
+            "File access can be re-enabled if set to false.");
 
 namespace yb {
 namespace pggate {
@@ -81,6 +88,16 @@ namespace pggate {
 // All C++ objects and structures in this module are listed in the following namespace.
 //--------------------------------------------------------------------------------------------------
 namespace {
+
+inline YBCStatus YBCStatusOK() {
+  return nullptr;
+}
+
+YBCStatus YBCStatusNotSupport(const string& feature_name = std::string()) {
+  return ToYBCStatus(feature_name.empty()
+      ? STATUS(NotSupported, "Feature is not supported")
+      : STATUS_FORMAT(NotSupported, "Feature '$0' not supported", feature_name));
+}
 
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
@@ -504,9 +521,13 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
   return ExtractValueFromResult(pgapi->GetColumnInfo(table_desc, attr_number), column_info);
 }
 
-YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
-                                      uint64_t catalog_cache_version) {
-  return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
+YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version) {
+  return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version));
+}
+
+YBCStatus YBCPgSetDBCatalogCacheVersion(
+    YBCPgStatement handle, YBCPgOid db_oid, uint64_t version) {
+  return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version, db_oid));
 }
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
@@ -565,7 +586,8 @@ static Status CheckAndDecodeKeyEntryValue(docdb::DocKeyDecoder& decoder,
 static Status GetSplitPoints(YBCPgTableDesc table_desc,
                              const YBCPgTypeEntity **type_entities,
                              YBCPgTypeAttrs *type_attrs_arr,
-                             YBCPgSplitDatum *split_datums) {
+                             YBCPgSplitDatum *split_datums,
+                             bool *has_null) {
   CHECK(table_desc->IsRangePartitioned());
   const Schema& schema = table_desc->schema();
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
@@ -609,7 +631,10 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
         bool is_null;
         RETURN_NOT_OK(PgValueFromPB(type_entities[col_idx], type_attrs_arr[col_idx], ql_value,
                                     &split_datums[split_datum_idx].datum, &is_null));
-        CHECK(!is_null);
+        if (is_null) {
+          *has_null = true;
+          return Status::OK();
+        }
       }
     }
   }
@@ -624,8 +649,10 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
 YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
-                            YBCPgSplitDatum *split_datums) {
-  return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums));
+                            YBCPgSplitDatum *split_datums,
+                            bool *has_null) {
+  return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums,
+                                    has_null));
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
@@ -816,6 +843,11 @@ void YBCPgResetOperationsBuffering() {
 
 YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
+}
+
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  pgapi->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
@@ -1033,7 +1065,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
   if (typeentity == nullptr
       || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
       || !typeentity->allow_for_primary_key) {
-    return YBCStatusNotSupport("");
+    return YBCStatusNotSupport();
   }
 
   if (typeentity->datum_fixed_size > 0) {
@@ -1227,21 +1259,27 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
 
-YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
-  return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
+YBCStatus YBCGetSharedDBCatalogVersion(YBCPgOid db_oid, uint64_t* catalog_version) {
+  return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
+}
+
+uint64_t YBCGetSharedAuthKey() {
+  return pgapi->GetSharedAuthKey();
 }
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict
+      .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default
   };
   return &accessor;
 }
@@ -1302,6 +1340,11 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
     }
   }
   return YBCStatusOK();
+}
+
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
 //------------------------------------------------------------------------------------------------

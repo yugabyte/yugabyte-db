@@ -20,7 +20,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
@@ -119,8 +119,6 @@ public class NodeManager extends DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject ConfigHelper configHelper;
-
   @Inject ReleaseManager releaseManager;
 
   @Override
@@ -154,7 +152,8 @@ public class NodeManager extends DevopsBase {
     Remove_Authorized_Key,
     Reboot,
     RunHooks,
-    Wait_For_SSH
+    Wait_For_SSH,
+    Hard_Reboot
   }
 
   public enum CertRotateAction {
@@ -418,13 +417,6 @@ public class NodeManager extends DevopsBase {
   /**
    * Creates certificates if not present. Called from various places like - when node is added to
    * universe
-   *
-   * @param config
-   * @param userIntent
-   * @param taskParam
-   * @param nodeIP
-   * @param ybHomeDir
-   * @return
    */
   private List<String> getCertificatePaths(
       Config config,
@@ -830,7 +822,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -879,7 +871,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -934,7 +926,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -960,7 +952,6 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1046,7 +1037,7 @@ public class NodeManager extends DevopsBase {
 
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1273,9 +1264,8 @@ public class NodeManager extends DevopsBase {
   }
 
   private Path addBootscript(
-      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
-    Path bootScriptFile = null;
-    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+      String bootScript, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile;
     commandArgs.add("--boot_script");
 
     // treat the contents as script body if it starts with a shebang line
@@ -1334,12 +1324,7 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  /**
-   * Remove tags that are restricted by provider.
-   *
-   * @param instanceTags
-   * @param providerType
-   */
+  /** Remove tags that are restricted by provider. */
   private void filterInstanceTags(Map<String, String> instanceTags, Common.CloudType providerType) {
     if (providerType.equals(Common.CloudType.aws)) {
       // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
@@ -1407,8 +1392,9 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+            String bootScript = config.getString(BOOT_SCRIPT_PATH);
+            if (!bootScript.isEmpty()) {
+              bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1539,8 +1525,9 @@ public class NodeManager extends DevopsBase {
           }
 
           Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
-          if (config.hasPath(BOOT_SCRIPT_PATH)) {
-            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+          String bootScript = config.getString(BOOT_SCRIPT_PATH);
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1592,11 +1579,19 @@ public class NodeManager extends DevopsBase {
           } else if (taskParam.updatePackages) {
             commandArgs.add("--update_packages");
           }
+          if (taskParam.installThirdPartyPackages) {
+            commandArgs.add("--install_third_party_packages");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
           sensitiveData.putAll(getReleaseSensitiveData(taskParam));
+          String localPackagePath = getThirdpartyPackagePath();
+          if (localPackagePath != null) {
+            commandArgs.add("--local_package_path");
+            commandArgs.add(localPackagePath);
+          }
           break;
         }
       case List:
@@ -1619,7 +1614,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1639,7 +1634,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1652,7 +1647,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1926,8 +1921,8 @@ public class NodeManager extends DevopsBase {
           break;
         }
       case Wait_For_SSH:
+      case Hard_Reboot:
         {
-          log.info("Connecting to node {}", nodeTaskParam.nodeName);
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
@@ -2020,14 +2015,13 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
+  private void addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     if (!Strings.isNullOrEmpty(nodeIP)) {
       commandArgs.add("--node_ip");
       commandArgs.add(nodeIP);
     }
-    return commandArgs;
   }
 
   private boolean isLowMemInstanceType(String instanceType) {

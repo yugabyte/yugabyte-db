@@ -78,6 +78,8 @@
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // Maintains state for each sub-compaction
@@ -1073,7 +1075,6 @@ void CompactionJob::CleanupCompaction() {
   compact_ = nullptr;
 }
 
-#ifndef ROCKSDB_LITE
 namespace {
 void CopyPrefix(
     const Slice& src, size_t prefix_length, std::string* dst) {
@@ -1083,7 +1084,6 @@ void CopyPrefix(
 }
 }  // namespace
 
-#endif  // !ROCKSDB_LITE
 
 void CompactionJob::UpdateCompactionStats() {
   Compaction* compaction = compact_->compaction;
@@ -1141,7 +1141,6 @@ void CompactionJob::UpdateCompactionInputStatsHelper(
 
 void CompactionJob::UpdateCompactionJobStats(
     const InternalStats::CompactionStats& stats) const {
-#ifndef ROCKSDB_LITE
   if (compaction_job_stats_) {
     compaction_job_stats_->elapsed_micros = stats.micros;
 
@@ -1174,7 +1173,6 @@ void CompactionJob::UpdateCompactionJobStats(
           &compaction_job_stats_->largest_output_key_prefix);
     }
   }
-#endif  // !ROCKSDB_LITE
 }
 
 void CompactionJob::LogCompaction() {

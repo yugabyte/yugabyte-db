@@ -75,7 +75,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.WaitForLoadBalance,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -85,7 +84,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -111,7 +109,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.WaitForLoadBalance,
           TaskType.ChangeMasterConfig, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
@@ -121,7 +118,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -170,7 +166,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
   }
