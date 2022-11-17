@@ -5889,6 +5889,12 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "version" : {
+          "description" : "Provider version",
+          "format" : "int64",
+          "readOnly" : true,
+          "type" : "integer"
         }
       },
       "required" : [ "regions" ],
