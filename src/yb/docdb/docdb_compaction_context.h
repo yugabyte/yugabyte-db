@@ -46,6 +46,8 @@ YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 struct Expiration;
 using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
 
+bool PackedRowEnabled(TableType table_type, bool is_colocated);
+
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {
   // We will not keep history below this hybrid_time. The view of the database at this hybrid_time
@@ -66,8 +68,8 @@ struct CompactionSchemaInfo {
   std::shared_ptr<const SchemaPacking> schema_packing;
   Uuid cotable_id;
   ColumnIds deleted_cols;
+  bool enabled;
 
-  bool enabled() const;
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
 
   // Whether we should keep original write time when combining columns updates into packed row.
