@@ -118,7 +118,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
             .withFallback(UNRESOLVED_STATIC_CONFIG)
             .withFallback(appConfig);
-    LOG.trace("globalConfig : {}", toRedactedString(config));
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("globalConfig : {}", toRedactedString(config));
+    }
     return config;
   }
 
