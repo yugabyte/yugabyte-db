@@ -89,8 +89,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   uint64_t id() const;
 
-  Status Perform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context);
+  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \

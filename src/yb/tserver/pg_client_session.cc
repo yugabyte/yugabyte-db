@@ -260,10 +260,10 @@ Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr
 }
 
 Result<PgClientSessionOperations> PrepareOperations(
-    const PgPerformRequestPB& req, client::YBSession* session, PgTableCache* table_cache) {
-  auto write_time = HybridTime::FromPB(req.write_time());
+    PgPerformRequestPB* req, client::YBSession* session, PgTableCache* table_cache) {
+  auto write_time = HybridTime::FromPB(req->write_time());
   std::vector<std::shared_ptr<client::YBPgsqlOp>> ops;
-  ops.reserve(req.ops().size());
+  ops.reserve(req->ops().size());
   client::YBTablePtr table;
   bool finished = false;
   auto se = ScopeExit([&finished, session] {
@@ -271,22 +271,20 @@ Result<PgClientSessionOperations> PrepareOperations(
       session->Abort();
     }
   });
-  for (const auto& op : req.ops()) {
+  for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
-      const auto& read = op.read();
+      auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
-      const auto read_op = std::make_shared<client::YBPgsqlReadOp>(
-          table, const_cast<PgsqlReadRequestPB*>(&read));
+      auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, &read);
       if (op.read_from_followers()) {
         read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       }
       ops.push_back(read_op);
       session->Apply(std::move(read_op));
     } else {
-      const auto& write = op.write();
+      auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
-      const auto write_op = std::make_shared<client::YBPgsqlWriteOp>(
-          table, const_cast<PgsqlWriteRequestPB*>(&write));
+      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
         write_time = HybridTime::kInvalid;
@@ -301,7 +299,6 @@ Result<PgClientSessionOperations> PrepareOperations(
 
 struct PerformData {
   uint64_t session_id;
-  const PgPerformRequestPB* req;
   PgPerformResponsePB* resp;
   rpc::RpcContext context;
   PgClientSessionOperations ops;
@@ -330,9 +327,9 @@ struct PerformData {
         VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      const auto& req_op = req->ops()[idx];
-      if (req_op.has_read() && req_op.read().is_for_backfill() &&
-          op->response().is_backfill_batch_done()) {
+      if (op->response().is_backfill_batch_done() &&
+          op->type() == client::YBOperation::Type::PGSQL_READ &&
+          down_cast<const client::YBPgsqlReadOp&>(*op).request().is_for_backfill()) {
         // After backfill table schema version is updated, so we reset cache in advance.
         table_cache->Invalidate(op->table()->id());
       }
@@ -669,13 +666,12 @@ Status PgClientSession::FinishTransaction(
 }
 
 Status PgClientSession::Perform(
-    const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  auto session_info = VERIFY_RESULT(SetupSession(req, context->GetClientDeadline()));
+    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
   auto* session = session_info.first;
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
   auto data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
-    .req = &req,
     .resp = resp,
     .context = std::move(*context),
     .ops = std::move(ops),

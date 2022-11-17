@@ -382,8 +382,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  void Perform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
       Respond(status, resp, context);
@@ -462,9 +461,8 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  Status DoPerform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
+  Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+    return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
   TabletServerIf *const tablet_server_ = nullptr;
@@ -524,7 +522,7 @@ PgClientServiceImpl::~PgClientServiceImpl() {}
 
 void PgClientServiceImpl::Perform(
     const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
-  impl_->Perform(*req, resp, &context);
+  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, &context);
 }
 
 void PgClientServiceImpl::InvalidateTableCache() {
