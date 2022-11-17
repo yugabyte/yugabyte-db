@@ -319,7 +319,8 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   const auto first_child_tablet = tablet_peers[0]->shared_tablet();
   ASSERT_OK(first_child_tablet->Flush(tablet::FlushMode::kSync));
   // Force compact on leader, so we can split first_child_tablet.
-  ASSERT_OK(first_child_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(first_child_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
   // Turn off split tablets cleanup in order to later turn it on during compaction of the
   // first_child_tablet to make sure manual compaction won't block tablet shutdown.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
@@ -1335,7 +1336,8 @@ TEST_F(AutomaticTabletSplitITest, PrioritizeLargeTablets) {
         tables[i]->name())); // table (default)
     // Compact so that other splits can proceed.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), tables[i]->id())) {
-      ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact());
+      ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact(
+          rocksdb::CompactionReason::kManualCompaction));
     }
   }
 }
@@ -1416,7 +1418,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
 
       // Compact the tablets that split so they can split again in the next iteration.
       for (const auto& peer : split_peers) {
-        ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact());
+        ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact(
+            rocksdb::CompactionReason::kManualCompaction));
       }
 
       // Return once we hit the tablet count limit for this phase.
@@ -3205,7 +3208,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
 
   // Force manual compaction
   ASSERT_OK(FlushTestTable());
-  ASSERT_OK(tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction));
   ASSERT_OK(LoggedWaitFor(
       [peer]() -> Result<bool> {
         return peer->tablet_metadata()->has_been_fully_compacted();
