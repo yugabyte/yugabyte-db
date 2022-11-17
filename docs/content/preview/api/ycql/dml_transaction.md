@@ -51,6 +51,9 @@ transaction_block ::= START TRANSACTION ';'
 
 - An error is raised if transactions are not enabled in any of the tables inserted, updated, or deleted.
 - Currently, an error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause.
+- If transactions are enabled for a table, its indexes must have them enabled as well, and vice versa.
+- There is no explicit rollback.
+- DDLs are always committed immediately, even if they are inside a transaction block.
 
 ## Examples
 
@@ -81,7 +84,7 @@ ycqlsh:example> INSERT INTO accounts (account_name, account_type, balance)
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1523313964356489
@@ -105,7 +108,7 @@ ycqlsh:example> BEGIN TRANSACTION
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     300 |   1523313983201270
@@ -127,7 +130,7 @@ ycqlsh:example> BEGIN TRANSACTION
 ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) FROM accounts;
 ```
 
-```
+```output
  account_name | account_type | balance | writetime(balance)
 --------------+--------------+---------+--------------------
          John |     checking |     100 |   1523314002218558
@@ -136,12 +139,9 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
         Smith |      savings |    2000 |   1523313964363056
 ```
 
-
-
 {{< note Type="Note" >}}
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
-
 
 ## See also
 
