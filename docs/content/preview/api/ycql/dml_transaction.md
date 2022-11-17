@@ -32,13 +32,14 @@ transaction_block ::= BEGIN TRANSACTION
                       END TRANSACTION ';'
 ```
 
-Where
+Where `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
-- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
+- When using `BEGIN TRANSACTION`, you don't use a semicolon.
+- There is no `COMMIT` for transactions started using `BEGIN`.
 
-### ANSI SQL syntax
+### SQL syntax
 
-Alternatively, YugabyteDB supports ANSI SQL `START TRANSACTION` and `COMMIT` statements.
+YCQL also supports SQL `START TRANSACTION` and `COMMIT` statements.
 
 ```
 transaction_block ::= START TRANSACTION ';'
@@ -46,6 +47,9 @@ transaction_block ::= START TRANSACTION ';'
                       [ ( insert | update | delete ) ';' ...]
                       COMMIT ';'
 ```
+
+- When using `START TRANSACTION`, you must use a semicolon.
+- You can't use `END TRANSACTION` for transactions started using `START`.
 
 ## Semantics
 
