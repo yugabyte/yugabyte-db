@@ -63,6 +63,6 @@ To revoke an API key, click **Revoke** for the API key in the list you want to r
 To use the API, in addition to an API key, you need the following:
 
 - Your YugabyteDB Managed account ID. To view your account ID, click the **Profile** icon in the top right corner of the YugabyteDB Managed window. The account ID is also displayed in the API Key Details.
-- The project ID. The project ID is the unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. To obtain the project ID, call the _GET projects_ API.
+- The project ID. The project ID is a unique identifier of the YugabyteDB Managed project under which database clusters can be deployed. Currently, accounts have only one project. To obtain the project ID, call the [_GET projects_ API](https://api-docs.yugabyte.com/docs/managed-apis/tvsjh28t5ivmw-getting-started#project-id).
 
 For more information, refer to [Getting Started](https://api-docs.yugabyte.com/docs/managed-apis/tvsjh28t5ivmw-getting-started) in the API documentation.
