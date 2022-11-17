@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YbcManager;
@@ -10,6 +11,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,6 +33,7 @@ public class RestoreBackup extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     try {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
@@ -50,6 +53,13 @@ public class RestoreBackup extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
       }
 
+      if (cloudType != CloudType.kubernetes) {
+        // Ansible Configure Task for copying xxhsum binaries from
+        // third_party directory to the DB nodes.
+        installThirdPartyPackagesTask(taskParams().universeUUID, universe)
+            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+      }
+
       createAllRestoreSubtasks(
           taskParams(),
           UserTaskDetails.SubTaskGroupType.RestoringBackup,
@@ -61,9 +71,15 @@ public class RestoreBackup extends UniverseTaskBase {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      unlockUniverseForUpdate();
+    } catch (CancellationException ce) {
+      unlockUniverseForUpdate(false);
+      throw ce;
     } catch (Throwable t) {
-
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      unlockUniverseForUpdate();
+      throw t;
+    } finally {
       if (taskParams().alterLoadBalancer) {
         // Clear previous tasks if any.
         getRunnableTask().reset();
@@ -73,11 +89,6 @@ public class RestoreBackup extends UniverseTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         getRunnableTask().runSubTasks();
       }
-      throw t;
-    } finally {
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
     }
 
     log.info("Finished {} task.", getName());

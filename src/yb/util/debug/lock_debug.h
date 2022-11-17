@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_DEBUG_LOCK_DEBUG_H
-#define YB_UTIL_DEBUG_LOCK_DEBUG_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -95,5 +94,3 @@ class SingleThreadedAtomic {
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_DEBUG_LOCK_DEBUG_H

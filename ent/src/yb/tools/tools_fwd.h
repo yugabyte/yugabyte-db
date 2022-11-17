@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TOOLS_TOOLS_FWD_H
-#define ENT_SRC_YB_TOOLS_TOOLS_FWD_H
+#pragma once
 
 namespace yb {
 namespace tools {
@@ -23,5 +22,3 @@ class ClusterAdminClient;
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
-
-#endif // ENT_SRC_YB_TOOLS_TOOLS_FWD_H

@@ -272,8 +272,7 @@ class WebserverSecureTest : public WebserverTest {
     auto opts = WebserverTest::ServerOptions();
     opts.bind_interface = "127.0.0.2";
 
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto certs_dir = GetCertsDir();
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
     FLAGS_webserver_ca_certificate_file = JoinPathSegments(certs_dir, "ca.crt");

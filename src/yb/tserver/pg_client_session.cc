@@ -103,7 +103,7 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
 Status AppendPsqlErrorCode(const Status& status,
-                                   const client::CollectedErrors& errors) {
+                           const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
     const auto psql_error = PsqlErrorCode(error->status());
@@ -170,7 +170,7 @@ Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status
                   __LINE__,
                   GetStatusStringSet(errors),
                   result.ErrorCodesSlice(),
-                  DupFileName::kFalse);
+                  /* file_name_len= */ size_t(0));
   }
 
   Status result =

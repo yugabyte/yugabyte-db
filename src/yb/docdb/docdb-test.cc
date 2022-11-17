@@ -25,7 +25,7 @@
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
@@ -3284,7 +3284,8 @@ Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
 
 TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
   auto dwb = MakeDocWriteBatch();
-  KeyValueWriteBatchPB kv_pb;
+  Arena arena;
+  LWKeyValueWriteBatchPB kv_pb(&arena);
   dwb.TEST_CopyToWriteBatchPB(&kv_pb);
   ASSERT_FALSE(kv_pb.has_ttl());
 

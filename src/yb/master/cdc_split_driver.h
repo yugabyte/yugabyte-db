@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_CDC_SPLIT_DRIVER_H
-#define YB_MASTER_CDC_SPLIT_DRIVER_H
+#pragma once
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/tablet_split_fwd.h"
@@ -32,4 +31,3 @@ class CDCSplitDriverIf {
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_CDC_SPLIT_DRIVER_H

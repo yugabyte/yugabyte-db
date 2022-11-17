@@ -22,7 +22,7 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/util/decimal.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
 

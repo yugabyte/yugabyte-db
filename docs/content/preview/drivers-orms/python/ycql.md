@@ -11,20 +11,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../yugabyte-psycopg2/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li class="active">
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../yugabyte-psycopg2/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
@@ -113,4 +111,3 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 John 35 Python
 ```
-

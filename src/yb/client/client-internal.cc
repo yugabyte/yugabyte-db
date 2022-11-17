@@ -83,7 +83,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
@@ -1074,10 +1074,10 @@ Status YBClient::Data::FlushTablesHelper(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<YBTableName>& table_names,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<YBTableName>& table_names,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1089,10 +1089,10 @@ Status YBClient::Data::FlushTables(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<TableId>& table_ids,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<TableId>& table_ids,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);

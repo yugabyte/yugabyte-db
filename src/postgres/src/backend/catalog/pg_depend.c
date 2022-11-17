@@ -499,8 +499,8 @@ changeDependencyFor(Oid classId, Oid objectId,
 static bool
 isObjectPinned(const ObjectAddress *object, Relation rel)
 {
-	if (YBIsPinnedObjectsCacheAvailable())
-		return YBIsObjectPinned(object->classId, object->objectId);
+	if (YbIsPinnedObjectsCacheAvailable())
+		return YbIsObjectPinned(object->classId, object->objectId);
 
 	bool		ret = false;
 	SysScanDesc scan;

@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_BACKGROUND_TASK_H
-#define YB_UTIL_BACKGROUND_TASK_H
+#pragma once
 
 #include <condition_variable>
 #include <functional>
@@ -63,5 +62,3 @@ class BackgroundTask {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_BACKGROUND_TASK_H

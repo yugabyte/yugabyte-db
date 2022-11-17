@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_TABLE_INTERNAL_ITERATOR_H
-#define ROCKSDB_TABLE_INTERNAL_ITERATOR_H
 
 #pragma once
 
@@ -113,5 +111,3 @@ extern InternalIterator* NewEmptyInternalIterator();
 extern InternalIterator* NewErrorInternalIterator(const Status& status);
 
 }  // namespace rocksdb
-
-#endif // ROCKSDB_TABLE_INTERNAL_ITERATOR_H

@@ -11,20 +11,20 @@ rightNav:
   hideH4: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+              <img src="/icons/cloud-icon.svg" alt="Icon">
+Use a cloud cluster
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/" class="nav-link">
+              <img src="/icons/server-iconsvg.svg" alt="Icon">
+Use a local cluster
+    </a>
+  </li>
+</ul>
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
@@ -43,7 +43,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
+          <span>Docs</span>
         </div>
         <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
         <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
@@ -54,7 +54,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
+          <span>FAQ</span>
         </div>
         <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
         <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>

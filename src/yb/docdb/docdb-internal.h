@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_INTERNAL_H_
-#define YB_DOCDB_DOCDB_INTERNAL_H_
+#pragma once
 
 #include <assert.h>
 #include <inttypes.h>
@@ -76,5 +75,3 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
 
 } // namespace docdb
 } // namespace yb
-
-#endif  // YB_DOCDB_DOCDB_INTERNAL_H_

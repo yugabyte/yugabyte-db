@@ -91,14 +91,6 @@
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
-YbTserverCatalogInfo yb_tserver_catalog_info = NULL;
-
-/*
- * Shared memory array db_catalog_versions_ index of the slot allocated for the
- * MyDatabaseId.
- */
-int yb_my_database_id_shm_index = -1;
-
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
 	    YBGetDdlNestingLevel() > 0)
@@ -964,7 +956,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
-bool yb_enable_expression_pushdown = false;
+bool yb_enable_expression_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
@@ -982,6 +974,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+char *yb_test_block_index_state_change = "";
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -993,7 +987,7 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char*
-YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
+YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 {
 	Datum attr = (Datum) 0;
 	int natts = tupleDesc->natts;
@@ -1019,6 +1013,14 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
+}
+
+const char*
+YbBitmapsetToString(Bitmapset *bms)
+{
+	StringInfo str = makeStringInfo();
+	outBitmapset(str, bms);
+	return str->data;
 }
 
 bool
@@ -1642,6 +1644,28 @@ void YBTestFailDdlIfRequested() {
 
 	yb_test_fail_next_ddl = false;
 	elog(ERROR, "DDL failed as requested");
+}
+
+void
+YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+							const char *msg)
+{
+	static const int kSpinWaitMs = 100;
+	while (strcmp(*actual, expected) == 0)
+	{
+		ereport(LOG,
+				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		pg_usleep(kSpinWaitMs * 1000);
+
+		/* Reload config in hopes that guc var actual changed. */
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+	}
 }
 
 static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
@@ -2344,10 +2368,7 @@ yb_server_region(PG_FUNCTION_ARGS) {
 	const char *current_region = YBGetCurrentRegion();
 
 	if (current_region == NULL)
-	{
-		elog(NOTICE, "No region was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_region);
 }
@@ -2358,10 +2379,7 @@ yb_server_cloud(PG_FUNCTION_ARGS)
 	const char *current_cloud = YBGetCurrentCloud();
 
 	if (current_cloud == NULL)
-	{
-		elog(NOTICE, "No cloud was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_cloud);
 }
@@ -2372,10 +2390,7 @@ yb_server_zone(PG_FUNCTION_ARGS)
 	const char *current_zone = YBGetCurrentZone();
 
 	if (current_zone == NULL)
-	{
-		elog(NOTICE, "No zone was set in placement_info setting at node startup.");
 		PG_RETURN_NULL();
-	}
 
 	return CStringGetTextDatum(current_zone);
 }
@@ -2923,4 +2938,20 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
 	reads->wait_time += read_wait;
 	tbl_reads->count += tbl_read_count;
 	tbl_reads->wait_time += tbl_read_wait;
+}
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)
+{
+	HandleYBStatus(YBIsDBCatalogVersionMode()
+		? YBCPgSetDBCatalogCacheVersion(handle, MyDatabaseId, version)
+		: YBCPgSetCatalogCacheVersion(handle, version));
+}
+
+uint64_t YbGetSharedCatalogVersion()
+{
+	uint64_t version = 0;
+	HandleYBStatus(YBIsDBCatalogVersionMode()
+		? YBCGetSharedDBCatalogVersion(MyDatabaseId, &version)
+		: YBCGetSharedCatalogVersion(&version));
+	return version;
 }

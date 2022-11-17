@@ -82,7 +82,7 @@ Three rows were removed manually:
 The remaining rows were re-ordered, and blank lines were added, to improve the readability.
 
 {{< tip title="Avoid using the 'abstime' and 'reltime' fields." >}}
-The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a> says this:
+The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fa-solid fa-up-right-from-square"></i></a> says this:
 
 > The data types _abstime_ and _reltime_ are lower precision types which are used internally. Don't use these types in applications; these internal types might disappear in a future release.
 {{< /tip >}}

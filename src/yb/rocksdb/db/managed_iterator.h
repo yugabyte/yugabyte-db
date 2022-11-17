@@ -18,12 +18,9 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_MANAGED_ITERATOR_H
-#define YB_ROCKSDB_DB_MANAGED_ITERATOR_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <mutex>
 #include <queue>
@@ -102,6 +99,3 @@ class ManagedIterator : public Iterator {
 };
 
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_DB_MANAGED_ITERATOR_H

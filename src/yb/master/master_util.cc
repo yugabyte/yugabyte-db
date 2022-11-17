@@ -38,11 +38,6 @@ namespace master {
 
 namespace {
 
-static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
-static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
-static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
-static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
-
 struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;

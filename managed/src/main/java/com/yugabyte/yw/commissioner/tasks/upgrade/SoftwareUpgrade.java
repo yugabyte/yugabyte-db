@@ -94,7 +94,6 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           }
 
           String newVersion = taskParams().ybSoftwareVersion;
-          createPackageInstallTasks(allNodes);
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.

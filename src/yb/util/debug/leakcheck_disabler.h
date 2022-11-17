@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
-#define YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
+#pragma once
 
 #include "yb/gutil/macros.h"
 #include "yb/util/debug/leak_annotations.h"
@@ -70,5 +69,3 @@ class ScopedLeakCheckDisabler {
 
 } // namespace debug
 } // namespace yb
-
-#endif // YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_

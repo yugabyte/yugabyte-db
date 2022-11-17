@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_WEBUI_UTIL_H
-#define YB_SERVER_WEBUI_UTIL_H
+#pragma once
 
 #include <string>
 #include <unordered_set>
@@ -56,5 +55,3 @@ inline std::string TableLongName(const std::string& keyspace_name,
 
 } // namespace server
 } // namespace yb
-
-#endif // YB_SERVER_WEBUI_UTIL_H

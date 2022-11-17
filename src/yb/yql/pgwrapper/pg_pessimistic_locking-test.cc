@@ -39,7 +39,7 @@
 
 #include "yb/util/pb_util.h"
 
-DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
@@ -60,7 +60,7 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_ysql_pg_conf_csv = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
-    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
+    FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
     FLAGS_force_single_shard_waiter_retry_ms = 10000;
@@ -465,18 +465,19 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnbloc
       "insert into foo select generate_series(0, $0), 0", 10));
   TestThreadHolder thread_holder;
 
-  CountDownLatch did_share_lock(1);
+  CountDownLatch did_locks(1);
   CountDownLatch will_try_exclusive_lock(1);
   CountDownLatch did_complete_exclusive_lock(1);
 
   thread_holder.AddThreadFunctor(
-      [this, &did_share_lock, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
+      [this, &did_locks, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (12, 1)"));
     ASSERT_OK(conn.Execute("SAVEPOINT a"));
     ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR KEY SHARE", 9));
-    did_share_lock.CountDown();
+    ASSERT_OK(conn.ExecuteFormat("UPDATE foo SET v=1029 WHERE k=$0", 8));
+    did_locks.CountDown();
     ASSERT_TRUE(will_try_exclusive_lock.WaitFor(5s * kTimeMultiplier));
     std::this_thread::sleep_for(10s * kTimeMultiplier);
     ASSERT_OK(conn.Execute("ROLLBACK TO a"));
@@ -485,12 +486,13 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnbloc
   });
 
   thread_holder.AddThreadFunctor(
-      [this, &did_share_lock, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
+      [this, &did_locks, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_TRUE(did_share_lock.WaitFor(5s * kTimeMultiplier));
+    ASSERT_TRUE(did_locks.WaitFor(5s * kTimeMultiplier));
     will_try_exclusive_lock.CountDown();
 
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", 8));
     ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", 9));
     did_complete_exclusive_lock.CountDown();
     std::this_thread::sleep_for(1s * kTimeMultiplier);
@@ -712,7 +714,7 @@ class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
  protected:
   void SetUp() override {
     FLAGS_rpc_connection_timeout_ms = 60000;
-    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
+    FLAGS_enable_wait_queues = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
     PgTabletSplitTestBase::SetUp();

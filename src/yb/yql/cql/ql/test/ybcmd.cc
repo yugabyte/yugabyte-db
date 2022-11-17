@@ -41,6 +41,7 @@
 #include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/util/flags.h"
 
 using std::cout;
 using std::cin;
@@ -49,9 +50,9 @@ using std::make_shared;
 using std::string;
 using yb::client::YBClientBuilder;
 
-DEFINE_bool(ybcmd_run, false, "Not to run this test unless instructed");
+DEFINE_UNKNOWN_bool(ybcmd_run, false, "Not to run this test unless instructed");
 
-DEFINE_string(ybcmd_master_addresses, "",
+DEFINE_UNKNOWN_string(ybcmd_master_addresses, "",
               "Comma-separated addresses of the existing masters ybcmd to connect to. If unset, "
               "ybcmd will start a simulated cluster instead.");
 

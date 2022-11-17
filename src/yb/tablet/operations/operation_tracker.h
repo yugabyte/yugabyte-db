@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
-#define YB_TABLET_OPERATIONS_OPERATION_TRACKER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -143,5 +142,3 @@ class OperationTracker {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif // YB_TABLET_OPERATIONS_OPERATION_TRACKER_H

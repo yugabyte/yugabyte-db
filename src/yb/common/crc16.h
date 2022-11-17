@@ -54,8 +54,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_CRC16_H_
-#define YB_COMMON_CRC16_H_
+#pragma once
 
 namespace yb {
 
@@ -103,5 +102,3 @@ inline uint16_t crc16(const uint8_t* buf, size_t len) {
 }
 
 } // namespace yb
-
-#endif // YB_COMMON_CRC16_H_

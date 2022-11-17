@@ -24,8 +24,8 @@ namespace tablet {
 
 CleanupIntentsTask::CleanupIntentsTask(
     TransactionParticipantContext* participant_context, TransactionIntentApplier* applier,
-    const TransactionId& id)
-    : participant_context_(*participant_context), applier_(*applier), id_(id) {}
+    RemoveReason reason, const TransactionId& id)
+    : participant_context_(*participant_context), applier_(*applier), reason_(reason), id_(id) {}
 
 void CleanupIntentsTask::Prepare(std::shared_ptr<CleanupIntentsTask> self) {
   retain_self_ = std::move(self);
@@ -35,7 +35,7 @@ void CleanupIntentsTask::Run() {
   RemoveIntentsData data;
   auto status = participant_context_.GetLastReplicatedData(&data);
   if (status.ok()) {
-    status = applier_.RemoveIntents(data, id_);
+    status = applier_.RemoveIntents(data, reason_, id_);
   }
   WARN_NOT_OK(status,
               Format("Failed to remove intents of possible completed transaction $0", id_));

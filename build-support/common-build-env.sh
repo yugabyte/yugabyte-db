@@ -178,8 +178,6 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc11
   gcc12
   clang
-  clang12
-  clang13
   clang14
   clang15
 )
@@ -196,7 +194,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -489,11 +486,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
-        YB_COMPILER_TYPE=clang13
-      else
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2488,6 +2481,9 @@ set_prebuilt_thirdparty_url() {
       if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+      fi
+      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+        thirdparty_tool_cmd_line+=( "--allow-older-os" )
       fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")

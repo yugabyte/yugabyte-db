@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
-#define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -25,8 +24,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
-
-#include <boost/optional.hpp>
 
 namespace yb {
 namespace pgwrapper {
@@ -197,7 +194,7 @@ class PGConnBuilder {
 
 bool HasTryAgain(const Status& status);
 
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_LIBPQ_UTILS_H

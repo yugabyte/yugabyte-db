@@ -21,22 +21,22 @@
 
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(use_node_hostname_for_local_tserver, false,
+DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
 
 // A macro for logging the function name and the state of the current transaction.
@@ -127,17 +127,15 @@ const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
 const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
 #endif
 
-DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
+DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
              "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
 
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
-    const tserver::TServerSharedObject* tserver_shared_object,
     PgCallbacks pg_callbacks)
     : client_(client),
       clock_(std::move(clock)),
-      tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
 }
 

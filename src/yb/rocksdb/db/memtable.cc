@@ -413,12 +413,16 @@ KeyHandle MemTable::PrepareAdd(SequenceNumber s, ValueType type,
   KeyHandle handle = table_->Allocate(encoded_len, &buf);
 
   char* p = EncodeVarint32(buf, internal_key_size);
+  auto* begin = p;
   p = key.CopyAllTo(p);
+  prepared_add->last_key = Slice(begin, p);
   uint64_t packed = PackSequenceAndType(s, type);
   EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);
+  begin = p;
   p = value.CopyAllTo(p);
+  prepared_add->last_value = Slice(begin, p);
   assert((unsigned)(p - buf) == (unsigned)encoded_len);
 
   if (prefix_bloom_) {

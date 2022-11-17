@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCMODIFYTABLE_H
-#define YBCMODIFYTABLE_H
+#pragma once
 
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
@@ -136,8 +135,9 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
  */
 extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
-							 EState *estate,
-							 ModifyTableState *mtstate,
+							 List *returning_columns,
+							 bool target_tuple_fetched,
+							 bool is_single_row_txn,
 							 bool changingPart);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
@@ -158,9 +158,12 @@ extern void YBCExecuteDeleteIndex(Relation index,
  */
 extern bool YBCExecuteUpdate(Relation rel,
 							 TupleTableSlot *slot,
+							 HeapTuple oldtuple,
 							 HeapTuple tuple,
 							 EState *estate,
-							 ModifyTableState *mtstate,
+							 ModifyTable *mt_plan,
+							 bool target_tuple_fetched,
+							 bool is_single_row_txn,
 							 Bitmapset *updatedCols,
 							 bool canSetTag);
 
@@ -173,9 +176,7 @@ extern bool YBCExecuteUpdate(Relation rel,
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple,
-								   EState *estate,
-								   ModifyTableState *mtstate);
+								   HeapTuple tuple);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -208,5 +209,3 @@ extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
  * Returns if a table has secondary indices.
  */
 extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
-
-#endif							/* YBCMODIFYTABLE_H */

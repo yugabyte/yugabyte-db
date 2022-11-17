@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_H
-#define YB_MASTER_CLUSTER_BALANCE_H
+#pragma once
 
 #include <atomic>
 #include <map>
@@ -303,9 +302,9 @@ class ClusterLoadBalancer {
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts,
-                            const std::string& to_ts_path)
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts,
+                    const std::string& to_ts_path)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
@@ -441,4 +440,3 @@ class ClusterLoadBalancer {
 
 }  // namespace master
 }  // namespace yb
-#endif /* YB_MASTER_CLUSTER_BALANCE_H */

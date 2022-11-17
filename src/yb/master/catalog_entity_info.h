@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
-#define YB_MASTER_CATALOG_ENTITY_INFO_H
+#pragma once
 
 #include <shared_mutex>
 #include <mutex>
@@ -992,5 +991,3 @@ class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTim
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_ENTITY_INFO_H

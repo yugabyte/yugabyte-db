@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_CLIENT_MASTER_RPC_H
-#define YB_CLIENT_CLIENT_MASTER_RPC_H
+#pragma once
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -152,5 +151,3 @@ class ClientMasterRpc : public ClientMasterRpcBase {
 } // namespace internal
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_CLIENT_MASTER_RPC_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_UTIL_UTIL_FWD_H
-#define YB_YQL_CQL_QL_UTIL_UTIL_FWD_H
+#pragma once
 
 #include <functional>
 
@@ -33,5 +32,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_UTIL_UTIL_FWD_H

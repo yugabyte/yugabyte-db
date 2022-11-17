@@ -38,8 +38,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_UTIL_H
-#define YB_GUTIL_STRINGS_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <stdio.h>
@@ -501,5 +500,3 @@ int SafeSnprintf(char* str, size_t size, const char* format, ...)
 // file, but doesn't copy it into *str. Returns true if read a delim-terminated
 // line, or false on end-of-file or error.
 bool GetlineFromStdioFile(FILE* file, std::string* str, char delim);
-
-#endif  // YB_GUTIL_STRINGS_UTIL_H

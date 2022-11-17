@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #ifndef GFLAGS
 #include <cstdio>
@@ -32,7 +31,7 @@ int main() {
 #include <iostream>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/filter_policy.h"
@@ -51,21 +50,21 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 
-DEFINE_bool(trigger_deadlock, false,
+DEFINE_UNKNOWN_bool(trigger_deadlock, false,
             "issue delete in range scan to trigger PrefixHashMap deadlock");
-DEFINE_int32(bucket_count, 100000, "number of buckets");
-DEFINE_uint64(num_locks, 10001, "number of locks");
-DEFINE_bool(random_prefix, false, "randomize prefix");
-DEFINE_uint64(total_prefixes, 100000, "total number of prefixes");
-DEFINE_uint64(items_per_prefix, 1, "total number of values per prefix");
-DEFINE_int64(write_buffer_size, 33554432, "");
-DEFINE_int32(max_write_buffer_number, 2, "");
-DEFINE_int32(min_write_buffer_number_to_merge, 1, "");
-DEFINE_int32(skiplist_height, 4, "");
-DEFINE_int32(memtable_prefix_bloom_bits, 10000000, "");
-DEFINE_int32(memtable_prefix_bloom_probes, 10, "");
-DEFINE_int32(memtable_prefix_bloom_huge_page_tlb_size, 2 * 1024 * 1024, "");
-DEFINE_int32(value_size, 40, "");
+DEFINE_UNKNOWN_int32(bucket_count, 100000, "number of buckets");
+DEFINE_UNKNOWN_uint64(num_locks, 10001, "number of locks");
+DEFINE_UNKNOWN_bool(random_prefix, false, "randomize prefix");
+DEFINE_UNKNOWN_uint64(total_prefixes, 100000, "total number of prefixes");
+DEFINE_UNKNOWN_uint64(items_per_prefix, 1, "total number of values per prefix");
+DEFINE_UNKNOWN_int64(write_buffer_size, 33554432, "");
+DEFINE_UNKNOWN_int32(max_write_buffer_number, 2, "");
+DEFINE_UNKNOWN_int32(min_write_buffer_number_to_merge, 1, "");
+DEFINE_UNKNOWN_int32(skiplist_height, 4, "");
+DEFINE_UNKNOWN_int32(memtable_prefix_bloom_bits, 10000000, "");
+DEFINE_UNKNOWN_int32(memtable_prefix_bloom_probes, 10, "");
+DEFINE_UNKNOWN_int32(memtable_prefix_bloom_huge_page_tlb_size, 2 * 1024 * 1024, "");
+DEFINE_UNKNOWN_int32(value_size, 40, "");
 
 // Path to the database on file system
 const std::string kDbName = rocksdb::test::TmpDir() + "/prefix_test";
@@ -580,15 +579,3 @@ int main(int argc, char** argv) {
 }
 
 #endif  // GFLAGS
-
-#else
-#include <stdio.h>
-
-int main(int argc, char** argv) {
-  fprintf(stderr,
-          "SKIPPED as HashSkipList and HashLinkList are not supported in "
-          "ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

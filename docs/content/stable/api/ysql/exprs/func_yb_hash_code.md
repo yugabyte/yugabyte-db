@@ -196,7 +196,7 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_co
 (1 row)
 ```
 
-Because we use what can be assumed to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 78 by 128 gives us a good estimate of the total number of rows (9984 in this case) in the table without querying and iterating over all tablets.
+Because we use what can be assumed to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 74, by 128 gives us a good estimate of the total number of rows (9472 in this case) in the table without querying and iterating over all tablets.
 
 ### Distributed parallel queries
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_DB_SERVER_BASE_H
-#define YB_TSERVER_DB_SERVER_BASE_H
+#pragma once
 
 #include <future>
 
@@ -72,5 +71,3 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_DB_SERVER_BASE_H

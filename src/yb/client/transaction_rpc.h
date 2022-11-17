@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TRANSACTION_RPC_H
-#define YB_CLIENT_TRANSACTION_RPC_H
+#pragma once
 
 #include <functional>
 
@@ -89,5 +88,3 @@ void UpdateClock(const Response& resp, T* t) {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_RPC_H

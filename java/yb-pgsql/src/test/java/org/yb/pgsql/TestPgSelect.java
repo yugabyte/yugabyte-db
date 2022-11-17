@@ -353,9 +353,15 @@ public class TestPgSelect extends BasePgSQLTest {
       verifyStatementPushdownMetric(
           statement, "SELECT COUNT(*) FROM aggtest", true);
 
-      // Don't pushdown if there's a WHERE condition.
+      // Pushdown if there's a pushable WHERE condition.
       verifyStatementPushdownMetric(
-          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", false);
+          statement, "SELECT COUNT(*) FROM aggtest WHERE h > 0", true);
+
+      // Don't pushdown if there's a not pushable WHERE condition.
+      verifyStatementPushdownMetric(
+          statement,
+          "SELECT COUNT(*) FROM aggtest WHERE CASE h WHEN 42 THEN true ELSE false END",
+          false);
 
       // Pushdown for BIGINT COUNT/MAX/MIN.
       verifyStatementPushdownMetric(
@@ -534,10 +540,10 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       if (colOrder.equals("HASH")) {
-        assertTrue("Expect no pushdown for IS NOT NULL when colOrder is HASH",
-                  explainOutput.contains("Filter: (b IS NOT NULL)"));
-        assertTrue("Expect YSQL-level filter",
-                  explainOutput.contains("Rows Removed by Filter: 2"));
+        assertTrue("Expect SeqScan on t1 when colOrder is HASH",
+                  explainOutput.contains("Seq Scan on t1"));
+        assertTrue("Expect filter pushdown to DocDB",
+                  explainOutput.contains("Remote Filter: (b IS NOT NULL)"));
       }
       else {
         assertTrue("Expect pushdown for IS NOT NULL when colOrder is ASC or DESC",
@@ -581,10 +587,10 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       if (colOrder.equals("HASH")) {
-        assertTrue("Expect no pushdown for BETWEEN condition on HASH",
-                   explainOutput.contains("Filter: ((b >= 1) AND (b <= 3))"));
-        assertTrue("Expect YSQL-level filtering for HASH",
-                    explainOutput.contains("Rows Removed by Filter: 2"));
+        assertTrue("Expect SeqScan on t1 when colOrder is HASH",
+                  explainOutput.contains("Seq Scan on t1"));
+        assertTrue("Expect filter pushdown to DocDB",
+                  explainOutput.contains("Remote Filter: ((b >= 1) AND (b <= 3))"));
       } else {
         assertTrue("Expect pushdown for BETWEEN condition on ASC/DESC",
                    explainOutput.contains("Index Cond: ((b >= 1) AND (b <= 3))"));
@@ -723,10 +729,8 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       assertTrue("Expect pushdown for IS NULL" + explainOutput,
-                 explainOutput.contains("Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
+                 explainOutput.contains("Remote Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
                                                 "AND (vr2 IS NULL))"));
-      assertTrue("Expect YSQL-layer filtering",
-                  explainOutput.contains("Rows Removed by Filter: 9"));
 
       // Test hash key + partly set range key (should push down).
       query = "SELECT * FROM test WHERE vh1 IS NULL AND vh2 IS NULL" +

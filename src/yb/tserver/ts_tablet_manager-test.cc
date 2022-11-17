@@ -42,7 +42,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
@@ -61,6 +61,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
@@ -82,6 +83,8 @@ DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(disable_auto_flags_management);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 
 namespace yb {
 namespace tserver {
@@ -138,6 +141,9 @@ class TsTabletManagerTest : public YBTest {
     // does not guarantee the heartbeat events is off immediately and a couple of events
     // may happen until heartbeat's thread sees the effect of `mini_server_->FailHeartbeats()`
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 30 * 24;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 33;
 
     test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
     CreateMiniTabletServer();
@@ -357,7 +363,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     ASSERT_OK(CreateNewTablet(kTableId, tablet_id, schema_, &peer));
     ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
 
-    auto replicate_ptr = std::make_shared<ReplicateMsg>();
+    auto replicate_ptr = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate_ptr->set_op_type(consensus::NO_OP);
     replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
     ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
@@ -702,6 +708,179 @@ TEST_F(TsTabletManagerTest, DataAndWalFilesLocations) {
                                                  &data,
                                                  &wal);
     ASSERT_EQ(data.substr(0, drive_path_len), wal.substr(0, drive_path_len));
+  }
+}
+
+namespace {
+  const HybridTime kNoLastCompact = HybridTime(tablet::kNoLastFullCompactionTime);
+  // An arbitrary realistic time.
+  const HybridTime kTimeRecent = HybridTime(6820217704657506304U);
+} // namespace
+
+// Tests the application of jitter to determine the next compaction time.
+TEST_F(TsTabletManagerTest, FullCompactionCalculateNextCompaction) {
+  struct JitterToTest {
+    TabletId tablet_id;
+    // Frequency with which full compactions should be scheduled.
+    MonoDelta compaction_frequency;
+    // Percentage of compaction frequency to be considered for max jitter.
+    int32_t jitter_factor_percentage;
+    // The last time the tablet was fully compacted. 0 indicates no previous compaction.
+    HybridTime last_compact_time;
+    // The expected max jitter delta, determined by
+    // compaction_frequency * jitter_factor_percentage / 100.
+    MonoDelta expected_max_jitter;
+    // The expected amount of jitter, determined by pseudorandom 0 to 1 from hash of
+    // tablet id and last compaction time * max jitter delta.
+    MonoDelta expected_jitter;
+  };
+
+  // Recent compaction time is several minutes before now.
+  const auto kRecentCompactionTime = kTimeRecent;
+  const auto now = kRecentCompactionTime.AddSeconds(1000);
+
+  const MonoDelta kStandardFrequency = MonoDelta::FromDays(30);
+  const int32_t kStandardJitterFactor = 33;
+  const MonoDelta kStandardMaxJitter = kStandardFrequency * kStandardJitterFactor / 100;
+  const MonoDelta jitter_factor_ten_tablet_id = MonoDelta::FromNanoseconds(11493522086400);
+  auto compaction_manager = tablet_manager_->full_compaction_manager();
+
+  std::vector<JitterToTest> jitter_to_test = {
+    // 1) Standard compaction frequency and jitter factor, with no last compaction time.
+    {kTabletId, kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(652715357120640) /* expected_jitter */},
+
+    // 2) Standard compaction frequency and jitter factor with no last compaction time,
+    //    using a different tablet id.
+    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(756909369279360) /* expected_jitter */},
+
+    // 3) Standard compaction frequency and jitter factor, with a recent compaction.
+    {kTabletId, kStandardFrequency, kStandardJitterFactor, kRecentCompactionTime,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+
+    // 4) Standard compaction frequency and jitter factor, with a recent compaction
+    //    (different tablet id).
+    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor, kTimeRecent,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(724436812408320) /* expected_jitter */},
+
+    // 5) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
+    //    (same expected output as #3).
+    {kTabletId, kStandardFrequency, -1, kRecentCompactionTime,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+
+    // 6) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
+    //    (same expected output as #3 and #5).
+    {kTabletId, kStandardFrequency, 200, kRecentCompactionTime,
+        kStandardMaxJitter /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+
+    // 7) Longer compaction frequency with recent compaction time and standard jitter.
+    {kTabletId, kStandardFrequency * 3, kStandardJitterFactor, kRecentCompactionTime,
+        kStandardMaxJitter * 3 /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(113785868655360) /* expected_jitter */},
+
+    // 8) Standard compaction frequency with recent compaction time and no jitter.
+    {kTabletId, kStandardFrequency, 0, kRecentCompactionTime,
+        MonoDelta::FromNanoseconds(0) /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(0) /* expected_jitter */},
+
+    // 9) Standard compaction frequency with jitter factor of 10%.
+    {kTabletId, kStandardFrequency, 10, kRecentCompactionTime,
+        kStandardFrequency / 10 /* expected_max_jitter */,
+        jitter_factor_ten_tablet_id /* expected_jitter */},
+
+    // 10) Standard compaction frequency with jitter factor of 100%.
+    //     (Expected jitter should be exactly 10X the expected jitter of #9).
+    {kTabletId, kStandardFrequency, 100, kRecentCompactionTime,
+        kStandardFrequency /* expected_max_jitter */,
+        jitter_factor_ten_tablet_id * 10 /* expected_jitter */},
+
+    // 11) Standard compaction frequency with jitter factor of 100% and no previous
+    //     full compaction time.
+    {kTabletId, kStandardFrequency, 100, kNoLastCompact,
+        kStandardFrequency /* expected_max_jitter */,
+        MonoDelta::FromNanoseconds(1977925324608000) /* expected_jitter */},
+  };
+
+  int i = 1;
+  for (auto jtt : jitter_to_test) {
+    LOG(INFO) << "Calculating next compaction time for scenario " << i++;
+    compaction_manager->ResetFrequencyAndJitterIfNeeded(
+        jtt.compaction_frequency, jtt.jitter_factor_percentage);
+    auto jitter =
+        compaction_manager->CalculateJitter(jtt.tablet_id, jtt.last_compact_time.ToUint64());
+    auto next_compact_time =
+        compaction_manager->CalculateNextCompactTime(
+            jtt.tablet_id, now, jtt.last_compact_time, jitter);
+
+    ASSERT_EQ(jtt.expected_max_jitter, compaction_manager->max_jitter());
+    ASSERT_EQ(jtt.expected_jitter, jitter);
+
+    // Expected time of next compaction based on the current time, previous compaction
+    // time compaction, compaction frequency, and jitter. If the previous compaction
+    // time is 0, uses the current time + jitter.
+    HybridTime expected_next_compact_time = jtt.last_compact_time.is_special() ?
+        now.AddDelta(jitter) :
+        jtt.last_compact_time.AddDelta(jtt.compaction_frequency - jtt.expected_jitter);
+    ASSERT_EQ(next_compact_time, expected_next_compact_time);
+  }
+}
+
+// Tests that scheduled compaction times are roughly evenly spread based on jitter factor.
+TEST_F(TsTabletManagerTest, CompactionsEvenlySpreadByJitter) {
+  const auto compaction_frequency = MonoDelta::FromDays(10);
+  const int jitter_factor = 10;
+  const auto now = HybridTime(kTimeRecent);
+  // Use an invalid last compact time to force the compaction near now.
+  const auto last_compact_time = kNoLastCompact;
+
+  auto compaction_manager = tablet_manager_->full_compaction_manager();
+  compaction_manager->ResetFrequencyAndJitterIfNeeded(
+      compaction_frequency, jitter_factor);
+
+  const auto max_jitter = compaction_manager->max_jitter();
+  const auto max_compact_time = now.AddDelta(max_jitter);
+  const int64_t max_compact_to_now = max_compact_time.ToUint64() - now.ToUint64();
+  const int num_times_to_check = 100000;
+  // Number of cross sections to divide possible outcomes into, in order to determine
+  // normal distribution (e.g. 10 cross sections divides into first 10%, second 10%, etc).
+  const int num_cross_sections = 10;
+
+  std::unordered_map<uint64_t, int> all_times;
+  std::unordered_map<int, int> time_cross_sections;
+
+  // Use the same last compaction time (0), but a different tablet id each iteration.
+  for (int i = 0; i < num_times_to_check; i++) {
+    std::string tablet_id = kTabletId + std::to_string(i);
+    auto jitter = compaction_manager->CalculateJitter(tablet_id, last_compact_time.ToUint64());
+    auto time = compaction_manager->CalculateNextCompactTime(
+        tablet_id, now, last_compact_time, jitter);
+    ASSERT_GE(time, now);
+    ASSERT_LT(time, max_compact_time);
+
+    auto time_from_now = time.ToUint64() - now.ToUint64();
+    int cross_section =
+        static_cast<int>(time_from_now * num_cross_sections / max_compact_to_now);
+    time_cross_sections[cross_section]++;
+    all_times[time.ToUint64()]++;
+  }
+
+  // Check that majority of times are unique.
+  ASSERT_GE(all_times.size(), num_times_to_check * 0.95);
+
+  // We expect a roughly equal amount of results for each time cross section,
+  // +/- 5% for varience.
+  const auto expected_minus_five_percent = num_times_to_check / num_cross_sections * 0.95;
+  const auto expected_plus_five_percent = num_times_to_check / num_cross_sections * 1.05;
+  for (auto& it : time_cross_sections) {
+    ASSERT_GE(it.second, expected_minus_five_percent);
+    ASSERT_LE(it.second, expected_plus_five_percent);
   }
 }
 

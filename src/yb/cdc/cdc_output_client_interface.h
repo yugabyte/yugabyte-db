@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
-#define YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
+#pragma once
 
+#include "yb/common/common_fwd.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
@@ -41,11 +41,13 @@ class CDCOutputClient : public std::enable_shared_from_this<CDCOutputClient> {
  public:
   virtual ~CDCOutputClient() {}
   virtual void Shutdown() {}
+
+  // Sets the last compatible consumer schema version
+  virtual void SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) = 0;
+
   // Async call for applying changes.
   virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
 };
 
 } // namespace cdc
 } // namespace yb
-
-#endif // YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H

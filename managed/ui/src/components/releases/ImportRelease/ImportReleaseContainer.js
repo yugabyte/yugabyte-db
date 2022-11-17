@@ -29,6 +29,7 @@ const mapDispatchToProps = (dispatch, props) => {
         if (response.error) {
           toast.error(createErrorMessage(response.payload));
         } else {
+          toast.success('Release imported successfully!.');
           props.onHide();
           props.onModalSubmit();
           dispatch(importYugaByteReleaseResponse(response.payload));

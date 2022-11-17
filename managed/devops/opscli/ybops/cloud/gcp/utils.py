@@ -144,6 +144,22 @@ class Waiter():
         self.project = project
         self.compute = compute
 
+    def get_in_progress_operation(self, zone, instance, operation_type):
+        target_link = \
+            RESOURCE_BASE_URL + "{}/zones/{}/instances/{}".format(self.project, zone, instance)
+        cmd = self.compute.zoneOperations().list(
+            project=self.project,
+            zone=zone,
+            filter='targetLink = "{}" AND status != "DONE" AND '
+                   'operationType = "{}"'.format(target_link, operation_type),
+            maxResults=1)
+        result = cmd.execute()
+        if 'error' in result:
+            raise RuntimeError(result['error'])
+        if 'items' not in result or len(result['items']) == 0:
+            return None
+        return result['items'][0]['id']
+
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
         if operation is None:
@@ -677,6 +693,13 @@ class GoogleCloudAdmin():
                                                   zone=zone,
                                                   instance=instance_name).execute()
         self.waiter.wait(operation, zone=zone)
+
+    def wait_for_operation(self, zone, instance, operation_type):
+        operation = self.waiter.get_in_progress_operation(zone=zone,
+                                                          instance=instance,
+                                                          operation_type=operation_type)
+        if operation:
+            self.waiter.wait(operation=operation, zone=zone)
 
     def start_instance(self, zone, instance_name):
         operation = self.compute.instances().start(project=self.project,

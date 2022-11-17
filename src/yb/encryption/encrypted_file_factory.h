@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H
-#define YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H
+#pragma once
 
 #include <memory>
 
@@ -28,5 +27,3 @@ std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_m
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_ENCRYPTED_FILE_FACTORY_H

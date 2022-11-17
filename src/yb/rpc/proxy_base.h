@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_PROXY_BASE_H
-#define YB_RPC_PROXY_BASE_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -63,5 +62,3 @@ class ProxyBase {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_PROXY_BASE_H

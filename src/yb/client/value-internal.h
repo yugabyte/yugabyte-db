@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CLIENT_VALUE_INTERNAL_H
-#define YB_CLIENT_VALUE_INTERNAL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -72,8 +71,8 @@ class YBValue::Data {
   // The returned pointer in *val_void is only guaranteed to live as long
   // as this YBValue object.
   Status CheckTypeAndGetPointer(const std::string& col_name,
-                                        const std::shared_ptr<QLType>& tp,
-                                        void** val_void);
+                                const std::shared_ptr<QLType>& tp,
+                                void** val_void);
 
  private:
   // Check that this value has the expected type 'type', returning
@@ -99,4 +98,3 @@ class YBValue::Data {
 
 } // namespace client
 } // namespace yb
-#endif /* YB_CLIENT_VALUE_INTERNAL_H */

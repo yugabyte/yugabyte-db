@@ -48,8 +48,7 @@
  * It may not be used directly by code outside of //base.
  */
 
-#ifndef YB_GUTIL_SPINLOCK_INTERNAL_H
-#define YB_GUTIL_SPINLOCK_INTERNAL_H
+#pragma once
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/integral_types.h"
@@ -77,5 +76,3 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop);
 } // namespace internal
 } // namespace base
 } // namespace yb
-
-#endif // YB_GUTIL_SPINLOCK_INTERNAL_H

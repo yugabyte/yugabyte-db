@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_METRIC_ENTITY_H
-#define YB_UTIL_METRIC_ENTITY_H
+#pragma once
 
 #include <functional>
 #include <map>
@@ -238,5 +237,3 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 void WriteRegistryAsJson(JsonWriter* writer);
 
 } // namespace yb
-
-#endif // YB_UTIL_METRIC_ENTITY_H

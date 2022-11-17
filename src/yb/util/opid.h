@@ -12,8 +12,7 @@
 // under the License.
 //
 //
-#ifndef YB_UTIL_OPID_H
-#define YB_UTIL_OPID_H
+#pragma once
 
 #include <iosfwd>
 #include <vector>
@@ -126,5 +125,3 @@ struct OpIdHash {
 typedef std::vector<OpId> OpIds;
 
 } // namespace yb
-
-#endif // YB_UTIL_OPID_H

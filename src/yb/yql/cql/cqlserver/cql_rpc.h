@@ -12,8 +12,7 @@
 // under the License.
 //
 //
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_RPC_H
-#define YB_YQL_CQL_CQLSERVER_CQL_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -179,5 +178,3 @@ using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;
 
 } // namespace cqlserver
 } // namespace yb
-
-#endif // YB_YQL_CQL_CQLSERVER_CQL_RPC_H

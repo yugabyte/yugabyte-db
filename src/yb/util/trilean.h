@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TRILEAN_H_
-#define YB_UTIL_TRILEAN_H_
+#pragma once
 
 #include <ostream>
 #include <string>
@@ -38,5 +37,3 @@ inline std::ostream& operator << (std::ostream& out, Trilean trilean) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_TRILEAN_H_

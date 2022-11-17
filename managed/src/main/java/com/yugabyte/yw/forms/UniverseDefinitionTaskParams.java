@@ -15,7 +15,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -575,9 +575,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
     }
 
-    public String getInstanceTypeForProcessType(
-        @Nullable UniverseDefinitionTaskBase.ServerType type) {
-      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterInstanceType != null) {
+    public String getInstanceTypeForProcessType(@Nullable UniverseTaskBase.ServerType type) {
+      if (type == UniverseTaskBase.ServerType.MASTER && masterInstanceType != null) {
         return masterInstanceType;
       }
       return instanceType;
@@ -587,9 +586,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
     }
 
-    public DeviceInfo getDeviceInfoForProcessType(
-        @Nullable UniverseDefinitionTaskBase.ServerType type) {
-      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
+      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
         return masterDeviceInfo;
       }
       return deviceInfo;

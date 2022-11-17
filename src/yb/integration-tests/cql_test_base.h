@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CQL_TEST_BASE_H
-#define YB_INTEGRATION_TESTS_CQL_TEST_BASE_H
+#pragma once
 
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -70,5 +69,3 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
 };
 
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_CQL_TEST_BASE_H

@@ -2086,7 +2086,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_expression_pushdown,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4372,6 +4372,19 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&jit_provider,
 		"llvmjit",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_block_index_state_change", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Block the given index state change."),
+			gettext_noop("Valid values are \"indisready\", \"getsafetime\","
+						 " and \"indisvalid\". Any other value is ignored."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_block_index_state_change,
+		"",
+		/* Could add a check function, but it's not worth the bother. */
 		NULL, NULL, NULL
 	},
 

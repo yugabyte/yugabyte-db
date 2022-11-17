@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_SERIALIZATION_H_
-#define YB_RPC_SERIALIZATION_H_
+#pragma once
 
 #include <inttypes.h>
 #include <string.h>
@@ -85,13 +84,13 @@ struct ParsedRequestHeader {
 //      parsed_main_message pointing to offset in original buffer containing
 //      the main payload.
 Status ParseYBMessage(const Slice& buf,
-                              google::protobuf::MessageLite* parsed_header,
-                              Slice* parsed_main_message);
+                      google::protobuf::MessageLite* parsed_header,
+                      Slice* parsed_main_message);
 
 
 Status ParseYBMessage(const Slice& buf,
-                              ParsedRequestHeader* parsed_header,
-                              Slice* parsed_main_message);
+                      ParsedRequestHeader* parsed_header,
+                      Slice* parsed_main_message);
 
 struct ParsedRemoteMethod {
   Slice service;
@@ -102,5 +101,3 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_SERIALIZATION_H_

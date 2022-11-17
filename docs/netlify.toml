@@ -424,8 +424,46 @@
    to = "/preview/drivers-orms/python/postgres-psycopg2/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/nodejs/ysql-pg/"
+   to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/csharp/ysql/"
+   to = "/preview/drivers-orms/csharp/postgres-npgsql/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-yb-pgx/"
+   to = "/preview/drivers-orms/go/yb-pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pgx/"
+   to = "/preview/drivers-orms/go/pgx/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/go/ysql-pq/"
+   to = "/preview/drivers-orms/go/pq/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
+
+# Foreign data wrappers from SQL features to Advanced features
+
+[[redirects]]
+   from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
+   to = "/preview/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
+
+# Fault tolerance redirects
+
+[[redirects]]
+   from = "/preview/explore/fault-tolerance/*"
+   to = "/preview/explore/fault-tolerance/macos/"
+
+# Prometheus integration redirects
+
+[[redirects]]
+   from = "/preview/explore/observability/prometheus-integration/*"
+   to = "/preview/explore/observability/prometheus-integration/macos/"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

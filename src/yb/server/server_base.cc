@@ -70,7 +70,6 @@
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -86,25 +85,26 @@
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
 
-DEFINE_int32(num_reactor_threads, -1,
+DEFINE_UNKNOWN_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
 TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
-DEFINE_int32(generic_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(generic_svc_num_threads, 10,
              "Number of RPC worker threads to run for the generic service");
 TAG_FLAG(generic_svc_num_threads, advanced);
 
-DEFINE_int32(generic_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
 TAG_FLAG(generic_svc_queue_length, advanced);
 
-DEFINE_string(yb_test_name, "",
+DEFINE_UNKNOWN_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
-DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
-            "check broadcast address.");
+DEFINE_UNKNOWN_bool(TEST_check_broadcast_address, true,
+    "Break connectivity in test mini cluster to "
+    "check broadcast address.");
 
 DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
 
@@ -255,7 +255,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
     auto count = std::min(16, static_cast<int>(base::NumCPUs()));
-    RETURN_NOT_OK(SetFlagDefaultAndCurrent("num_reactor_threads", std::to_string(count)));
+    RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_reactor_threads, count));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 

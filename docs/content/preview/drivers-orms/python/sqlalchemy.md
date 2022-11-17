@@ -15,7 +15,7 @@ type: docs
 
   <li >
     <a href="../django/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
@@ -148,4 +148,4 @@ Name: Ivy Age: 27 Language: C++
 
 ## Next steps
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB

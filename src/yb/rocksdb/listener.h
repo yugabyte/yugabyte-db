@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_LISTENER_H
-#define YB_ROCKSDB_LISTENER_H
 
 #pragma once
 
@@ -78,7 +76,6 @@ enum class CompactionReason {
   kFilesMarkedForCompaction,
 };
 
-#ifndef ROCKSDB_LITE
 
 struct TableFileDeletionInfo {
   // The name of the database where the file was deleted.
@@ -252,13 +249,5 @@ class EventListener {
   virtual ~EventListener() {}
 };
 
-#else
-
-class EventListener {
-};
-
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_LISTENER_H

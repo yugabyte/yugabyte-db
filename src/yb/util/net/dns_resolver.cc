@@ -46,10 +46,12 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int64(dns_cache_expiration_ms, 60000, "Time to store DNS resolution results in cache.");
+DEFINE_UNKNOWN_int64(dns_cache_expiration_ms, 60000,
+    "Time to store DNS resolution results in cache.");
 
 namespace yb {
 

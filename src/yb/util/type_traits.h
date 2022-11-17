@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_TYPE_TRAITS_H
-#define YB_UTIL_TYPE_TRAITS_H
+#pragma once
 
 #include <type_traits>
 
@@ -91,5 +90,3 @@ class IsPointerLike : public IsPointerLikeImpl<
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_TYPE_TRAITS_H

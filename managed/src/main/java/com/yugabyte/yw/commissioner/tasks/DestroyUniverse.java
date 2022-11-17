@@ -35,7 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
-  private Set<UUID> lockedXClusterUniversesUuidSet = null;
+  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   @Inject
   public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -201,7 +201,7 @@ public class DestroyUniverse extends UniverseTaskBase {
    * <p>Note: it relies on the fact that the unlock universe operation on a universe that is not
    * locked by this task is a no-op.
    */
-  private void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
+  protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
         XClusterConfig.getByUniverseUuid(params().universeUUID)

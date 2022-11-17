@@ -90,7 +90,7 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
   unique_ptr<CassandraSession> session_;
 };
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupWithoutTSWebUI)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
   createTestTable();
 
   // A thread that starts the stopped WebServer after 130 sec. as retry round = 110 sec.
@@ -104,7 +104,7 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupWithoutTSWe
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupRestoreWithoutTSWebUI)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupRestoreWithoutTSWebUI)) {
   createTestTable();
 
   ASSERT_OK(RunBackupCommand(
@@ -192,17 +192,17 @@ void CqlBackupTest::DoTestRestoreUDT(const string& new_ks, UDTypeOp udtOp) {
   cql("DROP TYPE udt1");
 }
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUDT)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUDT)) {
   DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kDrop);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreReuseExistingUDT)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreReuseExistingUDT)) {
   DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kKeep);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUDTIntoNewKS)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUDTIntoNewKS)) {
   DoTestRestoreUDT("ks2", UDTypeOp::kDrop);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -226,7 +226,7 @@ void CqlBackupTest::DoTestImportSnapshotFailure(Fn1 fnBeforeRestore, Fn2 fnAfter
   fnAfterRestore();
 }
 
-TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshot)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshot)) {
   DoTestImportSnapshotFailure(
     []() -> void {}, // Before backup-restore
     [this]() -> void { // After backup-restore
@@ -242,7 +242,7 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnaps
 }
 
 TEST_F(CqlBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshotKeepExistingUDT)) {
+       YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingUDT)) {
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");
@@ -259,7 +259,7 @@ TEST_F(CqlBackupTest,
 }
 
 TEST_F(CqlBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshotKeepExistingKS)) {
+       YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingKS)) {
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");

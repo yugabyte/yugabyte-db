@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
-#define YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
+#pragma once
 
 #include <gtest/gtest.h>
 
@@ -1130,5 +1129,3 @@ class TestLoadBalancerBase {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CATALOG_MANAGER_TEST_BASE_H

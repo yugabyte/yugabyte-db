@@ -11,17 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SESSION_H_
-#define YB_YQL_PGGATE_PG_SESSION_H_
+#pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/tablet_server.h"
@@ -120,7 +118,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
             const std::string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
-            const tserver::TServerSharedObject* tserver_shared_object,
             const YBCPgCallbacks& pg_callbacks);
   virtual ~PgSession();
 
@@ -150,18 +147,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status CreateSequencesDataTable();
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called);
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
@@ -176,7 +173,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   Status DropTablegroup(const PgOid database_oid,
-                                PgOid tablegroup_oid);
+                        PgOid tablegroup_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
@@ -280,22 +277,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  // Return the local tserver's global catalog version stored in shared memory or an error if the
-  // shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedCatalogVersion();
-
-  // Return the local tserver's per-db catalog version stored in shared memory or an error if the
-  // shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
-
-  // Return the tserver catalog version info that can be used to translate a database oid to the
-  // index of its slot in the shared memory array db_catalog_versions_.
-  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
-
-  // Return the local tserver's postgres authentication key stored in shared memory or an error if
-  // the shared memory has not been initialized (e.g. in initdb).
-  Result<uint64_t> GetSharedAuthKey();
-
   using YbctidReader =
       LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
   Result<bool> ForeignKeyReferenceExists(
@@ -384,7 +365,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
-  const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
@@ -392,5 +372,3 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SESSION_H_

@@ -17,21 +17,21 @@ type: docs
 
   <li >
     <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
     <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
   </li>
@@ -79,7 +79,7 @@ There is no need to add any of those directories to PATH.
 
 ## Building the code
 
-Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
+Assuming [this repository][repo] is checked out in `~/code/yugabyte-db`, do the following:
 
 ```sh
 cd ~/code/yugabyte-db
@@ -102,6 +102,8 @@ You can find the binaries you just built in `build/latest` directory, which woul
 {{< /tip >}}
 
 For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
+
+[repo]: https://github.com/yugabyte/yugabyte-db
 
 ## Build Java code
 

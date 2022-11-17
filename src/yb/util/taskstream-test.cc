@@ -38,7 +38,7 @@
 #include <thread>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 

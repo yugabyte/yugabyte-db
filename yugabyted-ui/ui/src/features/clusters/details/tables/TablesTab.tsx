@@ -133,7 +133,7 @@ export const TablesTab: FC = () => {
       name: 'keyspace',
       label:
         dbApi === "YSQL"
-          ? t('clusterDetail.tables.namespace')
+          ? t('clusterDetail.tables.database')
           : t('clusterDetail.tables.keyspace'),
       options: {
         filter: true
@@ -240,7 +240,7 @@ export const TablesTab: FC = () => {
               <Box display="flex" alignItems="center">
                 <strong>{`${
                   dbApi === GetClusterTablesApiEnum.Ysql
-                    ? t('clusterDetail.tables.namespace')
+                    ? t('clusterDetail.tables.database')
                     : t('clusterDetail.tables.keyspace')
                 }:`}</strong>
                 <Box pl={0.25}>{keyspaceOptions[keyspace].label}</Box>

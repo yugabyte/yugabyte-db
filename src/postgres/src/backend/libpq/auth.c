@@ -150,6 +150,8 @@ ULONG		(*__ldap_start_tls_sA) (
 
 static int	CheckLDAPAuth(Port *port);
 
+static char* get_ldap_password(char* ldapbindpasswd);
+
 /* LDAP_OPT_DIAGNOSTIC_MESSAGE is the newer spelling */
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
 #define LDAP_OPT_DIAGNOSTIC_MESSAGE LDAP_OPT_ERROR_STRING
@@ -1048,9 +1050,7 @@ static int
 CheckYbTserverKeyAuth(Port *port, char **logdetail)
 {
 	char	   *passwd;
-	int			result;
 	uint64_t	client_key;
-	uint64_t   *server_key;
 
 	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
 
@@ -1070,17 +1070,10 @@ CheckYbTserverKeyAuth(Port *port, char **logdetail)
 		pfree(passwd);
 	}
 
-	server_key = yb_get_role_password(port->user_name, logdetail);
-	if (server_key)
-	{
-		result = yb_plain_key_verify(port->user_name, *server_key, client_key,
-									 logdetail);
-		pfree(server_key);
-	}
-	else
-		result = STATUS_ERROR;
-
-	return result;
+	uint64_t auth_key;
+	return yb_get_role_password(port->user_name, logdetail, &auth_key)
+		? yb_plain_key_verify(port->user_name, auth_key, client_key, logdetail)
+		: STATUS_ERROR;
 }
 
 
@@ -2680,9 +2673,13 @@ CheckLDAPAuth(Port *port)
 		 * Bind with a pre-defined username/password (if available) for
 		 * searching. If none is specified, this turns into an anonymous bind.
 		 */
+		char* hba_password = get_ldap_password(port->hba->ldapbindpasswd);
+
 		r = ldap_simple_bind_s(ldap,
 							   port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
-							   port->hba->ldapbindpasswd ? port->hba->ldapbindpasswd : "");
+							   hba_password);
+		pfree(hba_password);
+
 		if (r != LDAP_SUCCESS)
 		{
 			ereport(LOG,
@@ -2846,6 +2843,24 @@ errdetail_for_ldap(LDAP *ldap)
 	return 0;
 }
 
+static char *
+get_ldap_password(char* ldapbindpasswd)
+{
+	/* Return password stored in YSQL_LDAP_BIND_PWD_ENV env var */
+	if (strncmp(ldapbindpasswd, "YSQL_LDAP_BIND_PWD_ENV", 22) == 0)
+	{
+		if (getenv("YSQL_LDAP_BIND_PWD_ENV") != NULL)
+		{
+			return pstrdup(getenv("YSQL_LDAP_BIND_PWD_ENV"));
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				errmsg("expected env variable YSQL_LDAP_BIND_PWD_ENV to be defined, got NULL")));
+	}
+
+	/* Return password as defined in hba.conf */
+	return pstrdup(ldapbindpasswd);
+}
 #endif							/* USE_LDAP */
 
 

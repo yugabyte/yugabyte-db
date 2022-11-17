@@ -26,8 +26,7 @@
 // of the location.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PARSER_PARSER_INACTIVE_NODES_H_
-#define YB_YQL_CQL_QL_PARSER_PARSER_INACTIVE_NODES_H_
+#pragma once
 
 #include <limits.h>
 
@@ -236,5 +235,3 @@ typedef enum ImportForeignSchemaType : int {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PARSER_PARSER_INACTIVE_NODES_H_

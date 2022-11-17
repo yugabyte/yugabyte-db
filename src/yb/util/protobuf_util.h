@@ -32,8 +32,7 @@
 
 // Portions Copyright (c) YugaByte, Inc.
 
-#ifndef YB_UTIL_PROTOBUF_UTIL_H
-#define YB_UTIL_PROTOBUF_UTIL_H
+#pragma once
 
 #include <float.h>
 
@@ -91,5 +90,3 @@ void AppendToRepeated(const Source& source, Dest* dest) {
 }
 
 } // namespace yb
-
-#endif  // YB_UTIL_PROTOBUF_UTIL_H

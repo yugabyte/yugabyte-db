@@ -200,8 +200,8 @@ Status PTUpdateStmt::Analyze(SemContext *sem_context) {
 namespace {
 
 Status MultipleColumnSetError(const ColumnDesc* const col_desc,
-                                      const PTAssign* const assign_expr,
-                                      SemContext* sem_context) {
+                              const PTAssign* const assign_expr,
+                              SemContext* sem_context) {
   return sem_context->Error(
       assign_expr,
       strings::Substitute("Multiple incompatible setting of column $0.",

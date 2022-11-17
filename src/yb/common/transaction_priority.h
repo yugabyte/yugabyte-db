@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TRANSACTION_PRIORITY_H
-#define YB_COMMON_TRANSACTION_PRIORITY_H
+#pragma once
 
 #include <limits>
 
@@ -31,5 +30,3 @@ constexpr uint64_t kRegularTxnLowerBound = 0;
 constexpr uint64_t kRegularTxnUpperBound = kHighPriTxnLowerBound - 1;
 
 } // namespace
-
-#endif // YB_COMMON_TRANSACTION_PRIORITY_H

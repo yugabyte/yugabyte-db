@@ -11,17 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PGGATE_FLAGS_H
-#define YB_YQL_PGGATE_PGGATE_FLAGS_H
+#pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 DECLARE_int32(pgsql_rpc_keepalive_time_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
 DECLARE_int32(pggate_tserver_shm_fd);
-DECLARE_bool(TEST_pggate_ignore_tserver_shm);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
@@ -39,6 +37,7 @@ DECLARE_bool(ysql_suppress_unsupported_error);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
+DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);
@@ -46,4 +45,3 @@ DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
 DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
-#endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

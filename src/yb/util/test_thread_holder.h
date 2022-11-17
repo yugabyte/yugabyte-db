@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_TEST_THREAD_HOLDER_H
-#define YB_UTIL_TEST_THREAD_HOLDER_H
+#pragma once
 
 #include <thread>
 
@@ -102,5 +101,3 @@ class TestThreadHolder {
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_TEST_THREAD_HOLDER_H

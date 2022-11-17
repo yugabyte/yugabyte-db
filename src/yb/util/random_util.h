@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RANDOM_UTIL_H
-#define YB_UTIL_RANDOM_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <random>
@@ -150,5 +149,3 @@ typename Collection::const_reference RandomElement(const Collection& collection,
 std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);
 
 } // namespace yb
-
-#endif // YB_UTIL_RANDOM_UTIL_H

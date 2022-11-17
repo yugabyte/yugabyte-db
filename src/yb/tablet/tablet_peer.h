@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_H_
-#define YB_TABLET_TABLET_PEER_H_
+#pragma once
 
 #include <atomic>
 #include <future>
@@ -214,7 +213,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) override;
+      std::shared_ptr<LWTransactionStatePB> request) override;
 
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
@@ -285,7 +284,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   }
 
   Status UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
-                             const std::string& error_message);
+                     const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
@@ -404,12 +403,15 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 
+  Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
   OpId cdc_sdk_min_checkpoint_op_id();
 
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
   Status SetCDCSDKRetainOpIdAndTime(
-      const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+      const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
 
   Result<MonoDelta> GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time);
 
@@ -444,11 +446,11 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
   Status StartPendingOperations(PeerRole my_role,
-                                        const consensus::ConsensusBootstrapInfo& bootstrap_info);
+                                const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
 
-  virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
+  virtual std::unique_ptr<Operation> CreateOperation(consensus::LWReplicateMsg* replicate_msg);
 
   const RaftGroupMetadataPtr meta_;
 
@@ -556,5 +558,3 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif /* YB_TABLET_TABLET_PEER_H_ */

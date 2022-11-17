@@ -157,7 +157,7 @@ public class YbcControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UserIntent userIntent =
         defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
-    userIntent.ybSoftwareVersion = "2.14.0.0-b2";
+    userIntent.ybSoftwareVersion = "2.15.0.0-b2";
     Universe.saveDetails(
         defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     Result result = installYbc(defaultNonYbcUniverse.universeUUID, ybcVersion);
@@ -179,7 +179,7 @@ public class YbcControllerTest extends FakeDBApplication {
         defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     Result result =
         assertPlatformException(() -> installYbc(defaultNonYbcUniverse.universeUUID, "1.0.0-b2"));
-    assertBadRequest(result, "Cannot install universe with DB version lower than 2.14.0.0-b1");
+    assertBadRequest(result, "Cannot install universe with DB version lower than 2.15.0.0-b1");
     verify(mockCommissioner, times(0)).submit(any(), any());
     assertAuditEntry(0, defaultCustomer.uuid);
   }
