@@ -158,17 +158,25 @@ components:
           - filename: /home/enable_ldap.sh
             contents: |
               sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
+
               su - postgres bash -c 'echo host all all all ldap ldapserver=\"{{repl ConfigOption "ldap_server"}}\" ldapprefix=\"{{repl ConfigOption "ldap_dn_prefix"}}\" ldapsuffix=\"{{repl ConfigOption "ldap_base_dn"}}\" ldapport={{repl ConfigOption "ldap_port"}} ldaptls={{repl ConfigOption "secure_ldap"}} >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/setup_auth.sh
             contents: |
               # Disable all the existing auth mechanism for the host
               sleep 5;
-              su - postgres bash -c 'sed -i "s/^host/#&/" /var/lib/postgresql/data/yugaware/pg_hba.conf';
+              cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
+
+              # Enabling sha hash password based auth.
               su - postgres bash -c 'echo host all all all scram-sha-256 >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
               psql -U postgres -f /home/update_password.sql;
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
+          - filename: /home/base_pg_hba.conf
+            contents: |
+              local   all             all                                     trust
+              host    all             all             127.0.0.1/32            trust
+              host    all             all             ::1/128                 trust
           - filename: /home/startup.sh
             contents: |
                 {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
