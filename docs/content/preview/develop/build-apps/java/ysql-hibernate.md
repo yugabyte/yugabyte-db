@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../ysql-hibernate/" class="nav-link active">
+<ul class="nav yb-pills">
+  <li class="active">
+    <a href="../ysql-hibernate/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>

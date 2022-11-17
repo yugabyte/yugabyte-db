@@ -42,6 +42,7 @@
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_fwd.h"
@@ -137,12 +138,13 @@ class YBClient::Data {
 
   // Take one of table id or name.
   Status DeleteTable(YBClient* client,
-                     const YBTableName& table_name,
-                     const std::string& table_id,
-                     bool is_index_table,
-                     CoarseTimePoint deadline,
-                     YBTableName* indexed_table_name,
-                     bool wait = true);
+                             const YBTableName& table_name,
+                             const std::string& table_id,
+                             bool is_index_table,
+                             CoarseTimePoint deadline,
+                             YBTableName* indexed_table_name,
+                             bool wait = true,
+                             const TransactionMetadata *txn = nullptr);
 
   Status IsDeleteTableInProgress(YBClient* client,
                                  const std::string& table_id,

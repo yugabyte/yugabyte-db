@@ -44,7 +44,7 @@ type: docs
 ## Deploy using Cloud Shell
 
 <a href="https://console.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fyugabyte%2Fgcp-deployment-manager.git" target="_blank">
-    <img src="https://gstatic.com/cloudssh/images/open-btn.svg"/>
+    <img src="https://www.gstatic.com/cloudssh/images/open-btn.svg"/>
 </a>
 
 * Change the current directory to the cloned repository.

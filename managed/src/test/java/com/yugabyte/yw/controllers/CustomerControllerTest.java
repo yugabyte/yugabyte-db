@@ -611,6 +611,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
     az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
+    az3.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");

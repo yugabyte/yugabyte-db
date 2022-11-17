@@ -735,17 +735,15 @@ TEST_F_EX(XClusterConsistencyTest, LoginWithNoSafeTime, XClusterConsistencyNoSaf
   // Verify that we can login and query a catalog table.
   auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(
       consumer_table1_->name().namespace_name(), true /*simple_query_protocol*/));
-
-  auto result = ASSERT_RESULT(conn.Fetch("SELECT relname FROM pg_catalog.pg_class LIMIT 1;"));
+  ASSERT_OK(conn.Fetch("SELECT relname FROM pg_catalog.pg_class LIMIT 1"));
 
   // Verify that we can't read user table with default consistency.
   const auto query = Format("SELECT * FROM $0", GetCompleteTableName(consumer_table1_->name()));
-
   ASSERT_NOK(conn.Execute(query));
 
-  // Verify that we can't read user table with tablet level consistency.
+  // Verify that we can read user table with tablet level consistency.
   ASSERT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet"));
-  result = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_OK(conn.Fetch(query));
 }
 
 }  // namespace enterprise

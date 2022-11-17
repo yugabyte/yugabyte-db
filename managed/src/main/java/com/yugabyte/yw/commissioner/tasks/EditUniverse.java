@@ -193,6 +193,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                         .nodeDetailsSet
                         .stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
+        universe.save();
       }
     }
     log.info("Finished {} task.", getName());

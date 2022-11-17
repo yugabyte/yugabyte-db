@@ -134,6 +134,8 @@ class PGConn {
   Status CommitTransaction();
   Status RollbackTransaction();
 
+  Status TestFailDdl(const std::string& ddl_to_fail);
+
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
   Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
