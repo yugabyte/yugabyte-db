@@ -803,6 +803,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   assert(sub_compact->base_outfile);
   const bool is_split_sst = sub_compact->compaction->column_family_data()->ioptions()
       ->table_factory->IsSplitSstForWriteSupported();
+  const CompactionReason compaction_reason = sub_compact->compaction->compaction_reason();
   assert((sub_compact->data_outfile != nullptr) == is_split_sst);
   assert(sub_compact->builder != nullptr);
   assert(sub_compact->current_output() != nullptr);
@@ -872,10 +873,10 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-          " keys, %" PRIu64 " bytes%s %s",
+          " keys, %" PRIu64 " bytes %s %s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
           current_total_bytes,
-          meta.marked_for_compaction ? " (need compaction)" : "",
+          meta.marked_for_compaction ? "(need compaction)" : ToString(compaction_reason).c_str(),
           meta.FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta.fd, info);
