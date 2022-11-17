@@ -121,6 +121,9 @@ function activeLeftNav() {
 
 $(document).ready(() => {
   let searchValue = '';
+  $('ul.nav.yb-pills li').each(function () {
+    $(this).append(`<span class="tooltip">${$(this).find('a').text().trim()}</span>`);
+  });
 
   ((document) => {
     const $codes = document.querySelectorAll('pre');

@@ -71,8 +71,13 @@
         color: $yb-font-blue;
         line-height: 18px;
 
+        &.disabled {
+          color: #4e5f6d;
+        }
+
         &:hover {
-          color: #21313c;
+          text-decoration: underline;
+          text-underline-offset: 3px;
         }
       }
 
