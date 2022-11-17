@@ -37,6 +37,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import javax.persistence.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -170,6 +171,19 @@ public class Provider extends Model {
   public String hostedZoneId = null;
 
   // End Transient Properties
+
+  @Column(nullable = false)
+  @Version
+  @ApiModelProperty(value = "Provider version", accessMode = READ_ONLY)
+  private long version;
+
+  public long getVersion() {
+    return version;
+  }
+
+  public void setVersion(long version) {
+    this.version = version;
+  }
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {

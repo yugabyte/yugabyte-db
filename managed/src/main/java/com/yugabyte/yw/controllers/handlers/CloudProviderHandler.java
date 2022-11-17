@@ -677,6 +677,7 @@ public class CloudProviderHandler {
 
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
+    provider.setVersion(editProviderReq.getVersion());
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     boolean providerDataUpdated =
