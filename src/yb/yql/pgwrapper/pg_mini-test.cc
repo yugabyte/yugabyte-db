@@ -2897,7 +2897,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
 
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
   uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
 
   PGConn conn = ASSERT_RESULT(Connect());
@@ -2906,13 +2907,15 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
 
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
+  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
+      rocksdb::CompactionReason::kManualCompaction));
 
   uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
   LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;

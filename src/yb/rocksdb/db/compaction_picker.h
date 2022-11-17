@@ -75,7 +75,8 @@ class CompactionPicker {
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,
       uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-      InternalKey** compaction_end, bool* manual_conflict);
+      CompactionReason compaction_reason, InternalKey** compaction_end,
+      bool* manual_conflict);
 
   // The maximum allowed output level.  Default value is NumberLevels() - 1.
   virtual int MaxOutputLevel() const {
@@ -318,7 +319,8 @@ class FIFOCompactionPicker : public CompactionPicker {
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,
       uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-      InternalKey** compaction_end, bool* manual_conflict) override;
+      CompactionReason compaction_reason, InternalKey** compaction_end,
+      bool* manual_conflict) override;
 
   // The maximum allowed output level.  Always returns 0.
   virtual int MaxOutputLevel() const override {
@@ -352,6 +354,7 @@ class NullCompactionPicker : public CompactionPicker {
       VersionStorageInfo* vstorage, int input_level,
       int output_level, uint32_t output_path_id,
       const InternalKey* begin, const InternalKey* end,
+      CompactionReason compaction_reason,
       InternalKey** compaction_end,
       bool* manual_conflict) override {
     return nullptr;
