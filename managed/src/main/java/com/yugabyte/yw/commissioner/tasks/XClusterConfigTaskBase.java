@@ -73,6 +73,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   private static final int PARTITION_SIZE_FOR_IS_BOOTSTRAP_REQUIRED_API = 8;
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
+  public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
 
   public static final List<XClusterConfig.XClusterConfigStatusType>
       X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =

@@ -343,6 +343,7 @@ typedef struct PgGFlagsAccessor {
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
+  const bool*     ysql_ddl_rollback_enabled;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

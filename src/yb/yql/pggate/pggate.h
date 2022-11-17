@@ -353,6 +353,8 @@ class PgApiImpl {
 
   Status ExecPostponedDdlStmt(PgStatement *handle);
 
+  Status ExecDropTable(PgStatement *handle);
+
   Status BackfillIndex(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
