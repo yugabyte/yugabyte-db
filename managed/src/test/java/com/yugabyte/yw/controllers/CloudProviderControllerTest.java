@@ -158,6 +158,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         bodyJson);
   }
 
+  private Result getProvider(UUID providerUUID) {
+    return FakeApiHelper.doRequestWithAuthToken(
+        "GET",
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID,
+        user.createAuthToken());
+  }
+
   @Test
   public void testListEmptyProviders() {
     Result result = listProviders();
@@ -678,7 +685,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     config.put("KUBECONFIG", "test.conf");
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
-    ObjectNode bodyJson = Json.newObject();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     config.put("KUBECONFIG_STORAGE_CLASSES", "slow");
     bodyJson.set("config", Json.toJson(config));
     bodyJson.put("name", "kubernetes");
@@ -702,7 +710,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     config.put("KUBECONFIG", "test.conf");
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
 
-    ObjectNode bodyJson = Json.newObject();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     config.put("KUBECONFIG_NAME", "test2.conf");
     config.put("KUBECONFIG_CONTENT", "test5678");
     bodyJson.set("config", Json.toJson(config));
@@ -728,7 +737,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testEditProviderWithAWSProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
-    ObjectNode bodyJson = Json.newObject();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "1234");
     bodyJson.put("name", "aws");
     bodyJson.put("code", "aws");
@@ -746,7 +756,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testEditProviderWithInvalidProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    ObjectNode bodyJson = Json.newObject();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "1234");
     bodyJson.put("name", "aws");
     bodyJson.put("code", "aws");
@@ -759,7 +770,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testEditProviderWithEmptyHostedZoneId() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
-    ObjectNode bodyJson = Json.newObject();
+    Result providerRes = getProvider(p.uuid);
+    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "");
     bodyJson.put("name", "aws");
     bodyJson.put("code", "aws");
