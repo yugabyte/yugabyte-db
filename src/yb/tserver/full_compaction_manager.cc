@@ -84,7 +84,7 @@ void FullCompactionManager::DoScheduleFullCompactions() {
       continue;
     }
     Status s = tablet->TriggerFullCompactionIfNeeded(
-        tablet::FullCompactionReason::Scheduled);
+        rocksdb::CompactionReason::kScheduledFullCompaction);
     if (s.ok()) {
       // Remove tablet from compaction times on successful schedule.
       next_compact_time_per_tablet_.erase(peer->tablet_id());

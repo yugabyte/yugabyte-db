@@ -289,9 +289,6 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       compaction_reason_(_compaction_reason) {
   seen_key_.store(false, std::memory_order_release);
   MarkFilesBeingCompacted(true);
-  if (is_manual_compaction_) {
-    compaction_reason_ = CompactionReason::kManualCompaction;
-  }
 
 #ifndef NDEBUG
   for (size_t i = 1; i < inputs_.size(); ++i) {

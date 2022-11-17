@@ -2561,7 +2561,7 @@ Status CatalogManager::CompactSysCatalog(
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
   return PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
-    return shared_tablet->ForceFullRocksDBCompact();
+    return shared_tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction);
   });
 }
 

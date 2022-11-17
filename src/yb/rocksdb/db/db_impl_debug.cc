@@ -102,7 +102,7 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
           ? level
           : level + 1;
   return RunManualCompaction(cfd, level, output_level, 0, begin, end, true,
-                             disallow_trivial_move);
+                             CompactionReason::kManualCompaction, disallow_trivial_move);
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {

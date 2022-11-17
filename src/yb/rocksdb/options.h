@@ -1661,6 +1661,8 @@ struct CompactRangeOptions {
       BottommostLevelCompaction::kIfHaveCompactionFilter;
 
   bool skip_flush = false;
+
+  CompactionReason compaction_reason = CompactionReason::kManualCompaction;
 };
 }  // namespace rocksdb
 
