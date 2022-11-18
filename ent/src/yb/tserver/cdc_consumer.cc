@@ -92,7 +92,12 @@ CDCClient::~CDCClient() {
 }
 
 void CDCClient::Shutdown() {
-  client->Shutdown();
+  if (client) {
+    client->Shutdown();
+  }
+  if (messenger) {
+    messenger->Shutdown();
+  }
 }
 
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
