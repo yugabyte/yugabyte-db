@@ -339,8 +339,10 @@ void Batcher::TransactionReady(const Status& status) {
   }
 }
 
-std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
-  std::map<PartitionKey, Status> result;
+std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+    Batcher::CollectOpsErrors() {
+  std::map<PartitionKey, Status> errors_by_partition_key;
+  std::map<RetryableRequestId, Status> errors_by_request_id;
   for (auto& op : ops_queue_) {
     if (op.tablet) {
       const Partition& partition = op.tablet->partition();
@@ -378,11 +380,17 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
     }
 
     if (!op.error.ok()) {
-      result.emplace(op.partition_key, op.error);
+      errors_by_partition_key.emplace(op.partition_key, op.error);
+      // Write operations under retrying with the retry batcher should have a valid request_id
+      // for de-duplication at server side. All operations in this batcher having same request
+      // id should be executed by a single WriteRpc.
+      if (op.yb_op->request_id().has_value()) {
+        errors_by_request_id.emplace(*op.yb_op->request_id(), op.error);
+      }
     }
   }
 
-  return result;
+  return std::make_pair(errors_by_partition_key, errors_by_request_id);
 }
 
 void Batcher::AllLookupsDone() {
@@ -396,22 +404,33 @@ void Batcher::AllLookupsDone() {
     return;
   }
 
-  auto errors = CollectOpsErrors();
+  auto errors_pair = CollectOpsErrors();
+  const auto& errors_by_partition_key = errors_pair.first;
+  const auto& errors_by_request_id = errors_pair.second;
 
   state_ = BatcherState::kTransactionPrepare;
 
   VLOG_WITH_PREFIX_AND_FUNC(4)
-      << "Errors: " << errors.size() << ", ops queue: " << ops_queue_.size();
+      << "Errors: " << errors_by_partition_key.size() << ", ops queue: " << ops_queue_.size();
 
-  if (!errors.empty()) {
+  if (!errors_by_partition_key.empty()) {
     // If some operation tablet lookup failed - set this error for all operations designated for
     // the same partition key. We are doing this to keep guarantee on the order of ops for the
     // same partition key (see InFlightOp::sequence_number_).
-    EraseIf([this, &errors](auto& op) {
+    // Also set this error for all operations with same request id. This happens when retrying
+    // a batcher, we do this to avoid the request id is marked as replicated at server side
+    // before all operations with this request id are all done.
+    EraseIf([this, &errors_by_partition_key, &errors_by_request_id](auto& op) {
       if (op.error.ok()) {
-        auto lookup_error_it = errors.find(op.partition_key);
-        if (lookup_error_it != errors.end()) {
+        const auto lookup_error_it = errors_by_partition_key.find(op.partition_key);
+        if (lookup_error_it != errors_by_partition_key.end()) {
           op.error = lookup_error_it->second;
+        } else if (op.yb_op->request_id().has_value()) {
+          const auto lookup_error_by_request_id_it =
+              errors_by_request_id.find(*op.yb_op->request_id());
+          if (lookup_error_by_request_id_it != errors_by_request_id.end()) {
+            op.error = lookup_error_by_request_id_it->second;
+          }
         }
       }
       if (!op.error.ok()) {
