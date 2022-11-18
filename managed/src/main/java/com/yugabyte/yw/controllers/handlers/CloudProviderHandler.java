@@ -579,22 +579,6 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.uuid;
-    if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
-      if (provider.code.equals("gcp")) {
-        // We need to save the destVpcId into the provider config, because we'll need it during
-        // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need
-        // to
-        // store it somewhere and the config is the easiest place to put it. As such, since all the
-        // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getUnmaskedConfig();
-        config.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, taskParams.destVpcId);
-        provider.setConfig(config);
-        provider.save();
-      } else if (provider.code.equals("aws")) {
-        taskParams.destVpcId = null;
-      }
-    }
-
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
@@ -800,6 +784,13 @@ public class CloudProviderHandler {
           String network = currentHostInfo.get("network").asText();
           provider.hostVpcId = network;
           provider.destVpcId = network;
+          // We need to save the destVpcId into the provider config, because we'll need it during
+          // instance creation. Technically, we could make it a ybcloud parameter,
+          // but we'd still need to
+          // store it somewhere and the config is the easiest place to put it.
+          // As such, since all the
+          // config is loaded up as env vars anyway, might as well use in in devops like that...
+          providerConfig.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, network);
           providerConfig.put("GCE_HOST_PROJECT", currentHostInfo.get("host_project").asText());
           provider.save();
         }
@@ -809,6 +800,7 @@ public class CloudProviderHandler {
         if (hasHostInfo(currentHostInfo)) {
           provider.hostVpcRegion = currentHostInfo.get("region").asText();
           provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
+          provider.destVpcId = null;
           provider.save();
         }
         break;
