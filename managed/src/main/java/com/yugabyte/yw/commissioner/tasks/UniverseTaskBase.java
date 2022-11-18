@@ -37,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
@@ -1010,6 +1011,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Creates a task to delete unused root volumes matching the tags for both the nodes and the
+   * universe. If volumeIds is not set or empty, all the matching volumes are deleted, else only the
+   * specified matching volumes are deleted.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes to which the volumes were attached before.
+   * @param volumeIds the volume IDs.
+   * @return SubTaskGroup.
+   */
+  public SubTaskGroup createDeleteRootVolumesTasks(
+      Universe universe, Collection<NodeDetails> nodes, Set<String> volumeIds) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteRootVolumes", executor);
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null || CloudType.onprem.name().equals(node.cloudInfo.cloud)) {
+        continue;
+      }
+      Cluster cluster = universe.getCluster(node.placementUuid);
+      DeleteRootVolumes.Params params = new DeleteRootVolumes.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.azUuid = node.azUuid;
+      params.nodeName = node.nodeName;
+      params.nodeUuid = node.nodeUuid;
+      params.universeUUID = taskParams().universeUUID;
+      params.volumeIds = volumeIds;
+      params.isForceDelete = true;
+      DeleteRootVolumes task = createTask(DeleteRootVolumes.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Creates a task list to pause the nodes and adds to the task queue.
    *
    * @param nodes : a collection of nodes that need to be paused.
@@ -1767,7 +1803,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes set of nodes to be stopped as master
    */
   public SubTaskGroup createStopServerTasks(
-      Collection<NodeDetails> nodes, String serverType, boolean isForceDelete) {
+      Collection<NodeDetails> nodes, String serverType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
@@ -1784,7 +1820,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.command = "stop";
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      params.isForceDelete = isForceDelete;
+      params.isIgnoreError = isIgnoreError;
       // Set the systemd parameter.
       params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.

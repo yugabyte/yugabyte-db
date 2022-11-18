@@ -239,6 +239,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
       }
     }
 
+    // Last task is DeleteRootVolumes.
+    assertEquals(
+        TaskType.DeleteRootVolumes, subTasksByPosition.get(position++).get(0).getTaskType());
     assertEquals(createVolumeOutput.keySet(), replaceRootVolumeParams.keySet());
     createVolumeOutput.forEach(
         (key, value) -> assertEquals(value.size(), (int) replaceRootVolumeParams.get(key)));

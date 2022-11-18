@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
@@ -1854,6 +1855,16 @@ public class NodeManager extends DevopsBase {
         }
       case Delete_Root_Volumes:
         {
+          if (nodeTaskParam instanceof DeleteRootVolumes.Params) {
+            DeleteRootVolumes.Params params = (DeleteRootVolumes.Params) nodeTaskParam;
+            if (params.volumeIds != null) {
+              params.volumeIds.forEach(
+                  id -> {
+                    commandArgs.add("--volume_id");
+                    commandArgs.add(id);
+                  });
+            }
+          }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           break;
         }
