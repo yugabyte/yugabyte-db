@@ -892,25 +892,25 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  auto is_consumer_halted_on_ddl = [&]() -> Status {
-    return WaitFor(
-        [&]() -> Result<bool> {
-          master::SysClusterConfigEntryPB cluster_info;
-          auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-          RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
-          auto& producer_map = cluster_info.consumer_registry().producer_map();
-          auto producer_entry = FindOrNull(producer_map, kUniverseId);
-          if (producer_entry) {
-            CHECK_EQ(producer_entry->stream_map().size(), 1);
-            auto& stream_entry = producer_entry->stream_map().begin()->second;
-            return stream_entry.has_producer_schema() &&
-                   stream_entry.producer_schema().has_pending_schema();
-          }
-          return false;
-        },
-        MonoDelta::FromSeconds(20), "IsConsumerHaltedOnDDL");
+  auto is_consumer_halted_on_ddl = [&]() -> Result<bool> {
+    master::SysClusterConfigEntryPB cluster_info;
+    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
+    auto& producer_map = cluster_info.consumer_registry().producer_map();
+    auto producer_entry = FindOrNull(producer_map, kUniverseId);
+    if (producer_entry) {
+      CHECK_EQ(producer_entry->stream_map().size(), 1);
+      auto& stream_entry = producer_entry->stream_map().begin()->second;
+      return stream_entry.has_producer_schema() &&
+          stream_entry.producer_schema().has_pending_schema();
+    }
+    return false;
   };
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  auto wait_for_consumer_halted_on_ddl = [&]() -> Status {
+    return WaitFor(is_consumer_halted_on_ddl, MonoDelta::FromSeconds(20),
+                   "IsConsumerHaltedOnDDL");
+  };
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
 
   // We read the first batch of writes with the old schema, but not the new schema writes.
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
@@ -940,7 +940,6 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   /***************************/
   /****** RENAME COLUMN ******/
   /***************************/
-
   // 1. ALTER Table to Remove the Column on Producer.
   {
     auto tbl = producer_table->name();
@@ -953,7 +952,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -992,7 +991,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
 
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
 
@@ -1002,15 +1001,17 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
     auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
     // Out-of-order Schema Application in comparison to producer should fail.
     ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // Matching subset of producer should succeed, but not be sufficient to resume replication.
-    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
-                                                "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
-    // TODO: Remove below line when we add atomic DDL apply between XClusters, currently race-y.
-    ASSERT_OK(is_consumer_halted_on_ddl());
+    // Matching subset of producer should fail, insufficient to resume replication.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                 "ADD COLUMN BATCH_2 VARCHAR", tbl.table_name()));
     // Mismatching schema to producer should fail.
-    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_N VARCHAR", tbl.table_name()));
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                 "ADD COLUMN BATCH_2 VARCHAR, "
+                                                 "ADD COLUMN BATCH_3 VARCHAR", tbl.table_name()));
     // Subsequent Matching schema to producer should succeed.
-    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_3 INT", tbl.table_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN BATCH_1 VARCHAR, "
+                                                "ADD COLUMN BATCH_2 VARCHAR, "
+                                                "ADD COLUMN BATCH_3 INT", tbl.table_name()));
   }
 
   // 5. Verify Replication continued and new schema Producer entries are added to Consumer.
@@ -1021,8 +1022,6 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   /***************************/
   /**** DROP/RE-ADD COLUMN ***/
   /***************************/
-  // Test Details:
-
   //  1. Run on Producer: DROP NewCol, Add Data,
   //                      ADD NewCol again (New ID), Add Data.
   {
@@ -1039,7 +1038,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   //  2. Expectations: Replication should add Data 1x, then block because IDs don't match.
   //                   DROP is non-blocking,
   //                   re-ADD blocks until IDs match even though the  Name & Type match.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
   {
@@ -1053,6 +1052,40 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   count += kRecordBatch;
   ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
             MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
+
+  /***************************/
+  /****** REVERSE ORDER ******/
+  /***************************/
+  auto new_int_col = "age";
+
+  //  1. Run on Producer: DROP NewCol, ADD NewInt
+  //                      Add Data.
+  {
+    auto tbl = producer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+    WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
+  }
+
+  //  2. Run on Consumer: ADD NewInt, DROP NewCol
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
+  {
+    auto tbl = consumer_table->name();
+    auto tname = tbl.table_name();
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    // Reverse Order should fail.
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+    // But subsequently running the same order should pass.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN $1", tname, new_column));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 INT", tname, new_int_col));
+  }
+
+  //  3. Expectations: Replication should not block & add Data.
+  count += kRecordBatch;
+  ASSERT_OK(WaitFor([&]() { return data_replicated_correctly(count); },
+      MonoDelta::FromSeconds(20), "IsDataReplicatedCorrectly"));
 
   /***************************/
   /****** FORCE RESUME *******/
@@ -1069,7 +1102,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
   // 2. Write more data so we have some entries with the new schema.
   WriteWorkload(count, count + kRecordBatch, &producer_cluster_, producer_table->name());
   // 3. Verify ALTER was parsed by Consumer, which stopped replication and hasn't read the new data.
-  ASSERT_OK(is_consumer_halted_on_ddl());
+  ASSERT_OK(wait_for_consumer_halted_on_ddl());
   LOG(INFO) << "Consumer count after Producer ALTER halted polling = "
             << EXPECT_RESULT(data_replicated_correctly(count));
   // 4. Force Resume on the Consumer.
