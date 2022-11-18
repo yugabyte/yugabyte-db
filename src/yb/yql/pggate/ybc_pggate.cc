@@ -254,6 +254,15 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
   return YBCStatusOK();
 }
 
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+    return YBCStatusOK();
+}
+
 bool YBCTryMemConsume(int64_t bytes) {
   if (pgapi) {
     pgapi->GetMemTracker().Consume(bytes);
