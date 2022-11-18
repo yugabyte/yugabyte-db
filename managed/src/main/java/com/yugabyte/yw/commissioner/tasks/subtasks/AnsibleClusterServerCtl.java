@@ -31,7 +31,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String process;
     public String command;
     public int sleepAfterCmdMills = 0;
-    public boolean isForceDelete = false;
+    public boolean isIgnoreError = false;
 
     public boolean checkVolumesAttached = false;
   }
@@ -62,7 +62,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
           .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
           .processErrors();
     } catch (Exception e) {
-      if (!taskParams().isForceDelete) {
+      if (!taskParams().isIgnoreError) {
         throw e;
       } else {
         log.debug("Ignoring error: {}", e.getMessage());

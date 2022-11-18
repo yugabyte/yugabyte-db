@@ -457,7 +457,9 @@ public enum TaskType {
 
   InstanceExistCheck(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck.class),
 
-  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class);
+  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class),
+
+  DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -1,9 +1,11 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,5 +46,11 @@ public class ReplaceRootVolume extends NodeTaskBase {
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams())
         .processErrors();
+
+    saveUniverseDetails(
+        u -> {
+          NodeDetails node = u.getNode(taskParams().nodeName);
+          node.cloudInfo.root_volume = taskParams().replacementDisk;
+        });
   }
 }
