@@ -41,7 +41,7 @@ Using the YB Simulation Base Demo application, you can create and drop tables, l
 
 To start a workload simulation against your cluster, do the following:
 
-- Navigate to the application's UI at <http://localhost:8080>. You can see a network diagram with your cluster layout, latency and throughput graphs as follows:
+- Navigate to the application's UI at <http://localhost:8080>. The application displays a network diagram of your cluster topology, along with charts of latency and throughput as follows:
 
     ![Load UI with 3 nodes](/images/ce/load-app-ui.png)
 
