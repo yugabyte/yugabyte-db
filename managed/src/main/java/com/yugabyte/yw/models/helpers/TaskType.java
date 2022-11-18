@@ -63,6 +63,7 @@ public enum TaskType {
   RunApiTriggeredHooks("RunApiTriggeredHooks"),
 
   AddOnClusterCreate("AddOnClusterCreate"),
+
   AddOnClusterDelete("AddOnClusterDelete"),
 
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
@@ -412,7 +413,9 @@ public enum TaskType {
 
   InstanceExistCheck("subtasks.InstanceExistCheck"),
 
-  AddGFlagMetadata("AddGFlagMetadata");
+  AddGFlagMetadata("AddGFlagMetadata"),
+
+  DeleteRootVolumes("subtasks.DeleteRootVolumes");
 
   private String relativeClassPath;
 
