@@ -242,7 +242,7 @@ To start the application against a running local cluster, use the following comm
 java -jar ./yb-simu-base-app.jar
 ```
 
-By default, the application connects to the local cluster at 127.0.0.1, adds tables, seeds some data, and starts a workload.
+By default, the application connects to the local cluster at 127.0.0.1.
 
 To connect to a different address or node, use the -Dnode flag to specify an IP address. For example:
 
@@ -250,7 +250,18 @@ To connect to a different address or node, use the -Dnode flag to specify an IP 
 java -jar ./yb-simu-base-app.jar -Dnode=127.0.0.2
 ```
 
-To view the application UI, navigate to <http://localhost:8080>. to view the generic workload running on the local cluster.
+To view the application UI, navigate to <http://localhost:8080>.
+
+To start a workload, do the following:
+
+1. In the application UI, Click the hamburger icon beside Active Workloads for Generic.
+1. Select the **Usable Operations** tab.
+1. Under **Create Tables**, click **Run Create Tables Workload** to add tables to the database.
+1. Under **Seed Data**, click **Run Seed Data Workload** to add data to the tables.
+1. Under **Simulation**, click **Run Simulation Workload**.
+1. Click **Close**.
+
+The Latency and Throughput charts show the workload.
 
 For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
 
