@@ -68,7 +68,7 @@ Observe that there is consistent latency and throughput as follows:
 
 ## Add node and observe linear scale-out
 
-Add a node to the cluster with the same flags.
+Add a node to the cluster with the same flags as follows:
 
 ```sh
 $ ./bin/yugabyted start \
