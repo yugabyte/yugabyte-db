@@ -164,13 +164,10 @@ class TwoDCTestBase : public YBTest {
   Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
-      YBClient* consumer_client, const std::string& producer_uuid,
+  // Wait for SetupUniverseReplication to complete. resp will contain the errors if any.
+  Status WaitForSetupUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
-
-  Status IsSetupUniverseReplicationDone(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const std::string& universe_id, master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
   Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);

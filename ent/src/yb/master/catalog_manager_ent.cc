@@ -201,6 +201,9 @@ DEFINE_RUNTIME_int32(cdcsdk_table_processing_limit_per_run, 2,
     "The number of newly added tables we will add to CDCSDK streams, per run of the background "
     "task.");
 
+DEFINE_test_flag(bool, fail_setup_system_universe_replication, false,
+    "Cause the setup of system universe replication to fail.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -4953,6 +4956,13 @@ Status CatalogManager::SetupUniverseReplication(const SetupUniverseReplicationRe
 void CatalogManager::MarkUniverseReplicationFailed(
     scoped_refptr<UniverseReplicationInfo> universe, const Status& failure_status) {
   auto l = universe->LockForWrite();
+  MarkUniverseReplicationFailed(failure_status, &l, universe);
+}
+
+void CatalogManager::MarkUniverseReplicationFailed(
+    const Status& failure_status, CowWriteLock<PersistentUniverseReplicationInfo>* universe_lock,
+    scoped_refptr<UniverseReplicationInfo> universe) {
+  auto& l = *universe_lock;
   if (l->pb.state() == SysUniverseReplicationEntryPB::DELETED) {
     l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED_ERROR);
   } else {
@@ -5152,19 +5162,23 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
     // We do this because the target doesn't know the source txn status table id until this
     // callback.
     *(l.mutable_data()->pb.add_tables()) = producer_table;
+
+    if (PREDICT_FALSE(FLAGS_TEST_fail_setup_system_universe_replication)) {
+      auto status = STATUS(IllegalState, "Cannot replicate system tables.");
+      MarkUniverseReplicationFailed(status, &l, universe);
+      return status;
+    }
   }
   auto master_addresses = l->pb.producer_master_addresses();
 
   auto res = universe->GetOrCreateCDCRpcTasks(master_addresses);
   if (!res.ok()) {
-    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), universe);
-    if (!s.ok()) {
-      return CheckStatus(s, "updating universe replication info in sys-catalog");
-    }
-    l.Commit();
-    return STATUS(InternalError,
-        Substitute("Error while setting up client for producer $0", universe->id()));
+    MarkUniverseReplicationFailed(res.status(), &l, universe);
+    return STATUS(
+        InternalError,
+        Substitute(
+            "Error while setting up client for producer $0: $1", universe->id(),
+            res.status().ToString()));
   }
   std::shared_ptr<CDCRpcTasks> cdc_rpc = *res;
   vector<TableId> validated_tables;
@@ -6706,17 +6720,18 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-  bool isAlterRequest = cdc::IsAlterReplicationUniverseId(req->producer_id());
+  const auto& producer_id = req->producer_id();
+  bool is_alter_request = cdc::IsAlterReplicationUniverseId(producer_id);
 
   GetUniverseReplicationRequestPB universe_req;
   GetUniverseReplicationResponsePB universe_resp;
-  universe_req.set_producer_id(req->producer_id());
+  universe_req.set_producer_id(producer_id);
 
   auto s = GetUniverseReplication(&universe_req, &universe_resp, /* RpcContext */ nullptr);
   // If the universe was deleted, we're done.  This is normal with ALTER tmp files.
   if (s.IsNotFound()) {
     resp->set_done(true);
-    if (isAlterRequest) {
+    if (is_alter_request) {
       s = Status::OK();
       StatusToPB(s, resp->mutable_replication_error());
     }
@@ -6731,9 +6746,26 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
   //  - For a regular SetupUniverseReplication, we want to wait for the universe to become ACTIVE.
   //  - For an AlterUniverseReplication, we need to wait until the .ALTER universe gets merged with
   //    the main universe - at which point the .ALTER universe is deleted.
-  auto terminal_state = isAlterRequest ? SysUniverseReplicationEntryPB::DELETED
+  auto terminal_state = is_alter_request ? SysUniverseReplicationEntryPB::DELETED
                                        : SysUniverseReplicationEntryPB::ACTIVE;
   if (universe_resp.entry().state() == terminal_state) {
+    if (producer_id != kSystemXClusterReplicationId &&
+        universe_resp.entry().state() == SysUniverseReplicationEntryPB::ACTIVE) {
+      // If enable_replicate_transaction_status_table is set then we need to wait for the System
+      // replication to also complete setup.
+      auto cluster_config = ClusterConfig();
+      auto l = cluster_config->LockForRead();
+      auto consumer_registry = l.data().pb.consumer_registry();
+
+      if (consumer_registry.enable_replicate_transaction_status_table()) {
+        l.Unlock();
+
+        IsSetupUniverseReplicationDoneRequestPB system_req;
+        system_req.set_producer_id(kSystemXClusterReplicationId);
+        return IsSetupUniverseReplicationDone(&system_req, resp, rpc);
+      }
+    }
+
     resp->set_done(true);
     StatusToPB(Status::OK(), resp->mutable_replication_error());
     return Status::OK();
@@ -6748,7 +6780,7 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     scoped_refptr<UniverseReplicationInfo> universe;
     {
       SharedLock lock(mutex_);
-      universe = FindPtrOrNull(universe_replication_map_, req->producer_id());
+      universe = FindPtrOrNull(universe_replication_map_, producer_id);
       if (universe == nullptr) {
         StatusToPB(
             STATUS(InternalError, "Could not find CDC producer universe after having failed."),
@@ -6757,8 +6789,8 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
       }
     }
     if (!universe->GetSetupUniverseReplicationErrorStatus().ok()) {
-      StatusToPB(universe->GetSetupUniverseReplicationErrorStatus(),
-                 resp->mutable_replication_error());
+      StatusToPB(
+          universe->GetSetupUniverseReplicationErrorStatus(), resp->mutable_replication_error());
     } else {
       LOG(WARNING) << "Did not find setup universe replication error status.";
       StatusToPB(STATUS(InternalError, "unknown error"), resp->mutable_replication_error());
