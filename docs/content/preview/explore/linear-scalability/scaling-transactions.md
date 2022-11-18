@@ -78,7 +78,7 @@ $ ./bin/yugabyted start \
                 --join=127.0.0.1
 ```
 
-Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The 27 tablets will now get distributed evenly across all the 4 nodes.
+Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all the 4 nodes.
 
 The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
