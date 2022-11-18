@@ -73,6 +73,8 @@ const YBCPgCallbacks* YBCGetPgCallbacks();
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
 
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption);
+
 // Call root MemTacker to consume the consumption bytes.
 // Return true if MemTracker exists (inited by pggate); otherwise false.
 bool YBCTryMemConsume(int64_t bytes);
