@@ -62,8 +62,6 @@ To view a table of per-node statistics for the cluster, navigate to the [tablet-
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_observe1.png)
 
-Observe that there is consistent latency and throughput as follows:
-
 ![Latency and throughput with 3 nodes](/images/ce/simulation-graph.png)
 
 ## Add node and observe linear scale-out
