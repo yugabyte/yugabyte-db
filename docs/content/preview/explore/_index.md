@@ -230,11 +230,19 @@ ycqlsh>
 
 YB Simulation Base Demo is a Java application that simulates workloads against YugabyteDB. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
+For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
+
+### Install
+
+YB Simulation Base Demo requires Java 11 or later installed on your computer.
+
 Download the Simulation Base Demo JAR file (`yb-simu-base-app.jar`) using the following command:
 
 ```sh
 wget https://github.com/yugabyte/yb-simulation-base-demo-app/releases/download/1.0/yb-simu-base-app.jar
 ```
+
+### Run
 
 To start the application against a running local cluster, use the following command:
 
@@ -244,13 +252,15 @@ java -jar ./yb-simu-base-app.jar
 
 By default, the application connects to the local cluster at 127.0.0.1.
 
-To connect to a different address or node, use the -Dnode flag to specify an IP address. For example:
+To connect to a different address or node, use the `-Dnode` flag to specify an IP address. For example:
 
 ```sh
 java -jar ./yb-simu-base-app.jar -Dnode=127.0.0.2
 ```
 
 To view the application UI, navigate to <http://localhost:8080>.
+
+### Start a workload
 
 To start a workload, do the following:
 
@@ -262,8 +272,6 @@ To start a workload, do the following:
 1. Click **Close**.
 
 The Latency and Throughput charts show the workload.
-
-For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
 
 ## Next step
 
