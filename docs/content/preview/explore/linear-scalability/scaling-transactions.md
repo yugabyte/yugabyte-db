@@ -58,7 +58,7 @@ Refer to the [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation
 
 ## Observe IOPS per node
 
-You can check a table of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The total read and write IOPS per node are highlighted in the following screenshot. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
+To view a table of per-node statistics for the cluster, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_observe1.png)
 
