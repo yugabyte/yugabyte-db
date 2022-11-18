@@ -22,228 +22,210 @@ In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also suppo
 
 ### Choose your language
 
-<div class="row">
+<ul class="nav yb-pills">
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="java/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-java"></i>
-        </div>
-        <div class="title">Java</div>
-      </div>
+  <li>
+    <a href="java/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="go/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-golang"></i>
-        </div>
-        <div class="title">Go</div>
-      </div>
+  <li>
+    <a href="go/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="python/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-python"></i>
-        </div>
-        <div class="title">Python</div>
-      </div>
+  <li>
+    <a href="python/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="nodejs/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-node-js"></i>
-        </div>
-        <div class="title">NodeJS</div>
-      </div>
+  <li>
+    <a href="nodejs/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      NodeJS
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="c/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-c"></i>
-        </div>
-        <div class="title">C</div>
-      </div>
+  <li>
+    <a href="c/" class="orange">
+      <i class="icon-c"></i>
+      C
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="cpp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-cplusplus"></i>
-        </div>
-        <div class="title">C++</div>
-      </div>
+  <li>
+    <a href="cpp/" class="orange">
+      <i class="icon-cplusplus"></i>
+      C++
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="csharp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-csharp"></i>
-        </div>
-        <div class="title">C#</div>
-      </div>
+  <li>
+    <a href="csharp/" class="orange">
+      <i class="icon-csharp"></i>
+      C#
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="ruby/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-ruby"></i>
-        </div>
-        <div class="title">Ruby</div>
-      </div>
+  <li>
+    <a href="ruby/" class="orange">
+      <i class="icon-ruby"></i>
+      Ruby
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="rust/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-rust"></i>
-        </div>
-        <div class="title">Rust</div>
-      </div>
+  <li>
+    <a href="rust/" class="orange">
+      <i class="fa-brands fa-rust"></i>
+      Rust
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="php/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-php"></i>
-        </div>
-        <div class="title">PHP</div>
-      </div>
+  <li>
+    <a href="php/" class="orange">
+      <i class="fa-brands fa-php"></i>
+      PHP
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="scala/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-scala"></i>
-        </div>
-        <div class="title">Scala</div>
-      </div>
+  <li>
+    <a href="scala/" class="orange">
+      <i class="icon-scala"></i>
+      Scala
     </a>
-  </div>
+  </li>
 
-</div>
+</ul>
 
 ## Supported libraries
 
 The following libraries are officially supported by YugabyteDB.
 
-### Java
+{{< tabpane text=true >}}
+
+  {{% tab header="Java" lang="java" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
-| [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
-| [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD Example](java/ycql) |
-| [YugabyteDB Java Driver for YCQL (4.6)](java/ycql-4.6/) | Full | [CRUD Example](java/ycql-4.6) |
-| [Ebean](java/ebean/) | Full | [CRUD Example](java/ebean/) |
-| [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/) |
-| [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD Example](../integrations/spring-framework/sdyb/#examples) |
+| [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD](java/yugabyte-jdbc/) |
+| [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD](java/postgres-jdbc/) |
+| [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD](java/ycql) |
+| [YugabyteDB Java Driver for YCQL (4.6)](java/ycql-4.6/) | Full | [CRUD](java/ycql-4.6) |
+| [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
+| [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
+| [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |
 | [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [Hello World](../develop/build-apps/java/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
 
-### Go
+  {{% /tab %}}
+
+  {{% tab header="Go" lang="go" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB PGX Smart Driver](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
-| [PGX Driver](go/pgx/) | Full | [CRUD Example](go/pgx/) |
-| [PQ Driver](go/pq/) | Full | [CRUD Example](go/pq/) |
-| [YugabyteDB Go Driver for YCQL](go/ycql/) | Full | [CRUD Example](go/ycql) |
-| [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
-| [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
+| [YugabyteDB PGX Smart Driver](go/yb-pgx/) [Recommended] | Full | [CRUD](go/yb-pgx/) |
+| [PGX Driver](go/pgx/) | Full | [CRUD](go/pgx/) |
+| [PQ Driver](go/pq/) | Full | [CRUD](go/pq/) |
+| [YugabyteDB Go Driver for YCQL](go/ycql/) | Full | [CRUD](go/ycql) |
+| [GORM](go/gorm/) | Full | [CRUD](go/gorm/) |
+| [PG](go/pg/) | Full | [CRUD](go/pg/) |
 
-### Python
+  {{% /tab %}}
+
+  {{% tab header="Python" lang="python" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
-| [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD](python/yugabyte-psycopg2/) |
+| [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD](python/postgres-psycopg2/) |
 | aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
-| [Django](python/django/) | Full | [CRUD Example](python/django/) |
-| [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |
+| [Django](python/django/) | Full | [CRUD](python/django/) |
+| [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD](python/sqlalchemy/) |
 
-### Node.js
+  {{% /tab %}}
 
-| Driver/ORM | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| [YugabyteDB node-postgres Smart Driver](nodejs/yugabyte-node-driver/) [Recommended] | Full | [CRUD Example](nodejs/yugabyte-node-driver/) |
-| [PostgreSQL node-postgres Driver](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
-| [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
-| [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/)
-
-### C
+  {{% tab header="NodeJS" lang="nodejs" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [libpq C Driver](c/ysql/) | Full | [CRUD Example](c/ysql/) |
+| [YugabyteDB node-postgres Smart Driver](nodejs/yugabyte-node-driver/) [Recommended] | Full | [CRUD](nodejs/yugabyte-node-driver/) |
+| [PostgreSQL node-postgres Driver](nodejs/postgres-node-driver/) | Full | [CRUD](nodejs/postgres-node-driver/) |
+| [Sequelize](nodejs/sequelize/) | Full | [CRUD](nodejs/sequelize/) |
+| [Prisma](nodejs/prisma/) | Full | [CRUD](nodejs/prisma/)
 
-### C++
+  {{% /tab %}}
 
-| Driver/ORM | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| [libpqxx C++ Driver](cpp/ysql/) | Full | [CRUD Example](cpp/ysql/) |
-| [YugabyteDB C++ Driver for YCQL](cpp/ycql/) | Full | [CRUD Example](cpp/ycql/) |
-
-### C#
+  {{% tab header="C" lang="c" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [PostgreSQL Npgsql Driver](csharp/postgres-npgsql/) | Full | [CRUD Example](csharp/postgres-npgsql/) |
-| [YugabyteDB C# Driver for YCQL](csharp/ycql/) | Full | [CRUD Example](csharp/ycql/) |
-| [Entity Framework](csharp/entityframework/) | Full | [CRUD Example](csharp/entityframework/) |
+| [libpq C Driver](c/ysql/) | Full | [CRUD](c/ysql/) |
 
-### Ruby
+  {{% /tab %}}
 
-| Driver/ORM | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| [Pg Gem Driver](ruby/ysql-pg/) | Full | [CRUD example](ruby/ysql-pg/) |
-| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
-| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
-| [ActiveRecord ORM](ruby/activerecord/) | Full | [CRUD example](ruby/activerecord/) |
-
-### Rust
+  {{% tab header="C++" lang="cpp" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [Diesel](rust/diesel/) | Full | [CRUD example](rust/diesel/) |
+| [libpqxx C++ Driver](cpp/ysql/) | Full | [CRUD](cpp/ysql/) |
+| [YugabyteDB C++ Driver for YCQL](cpp/ycql/) | Full | [CRUD](cpp/ycql/) |
 
-### PHP
+  {{% /tab %}}
 
-| Driver/ORM | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| [php-pgsql Driver](php/ysql/) | Full | [CRUD example](php/ysql/) |
-
-### Scala
+  {{% tab header="C#" lang="csharp" %}}
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB Java Driver for YCQL](scala/ycql/) | Full | [CRUD example](scala/ycql/) |
+| [PostgreSQL Npgsql Driver](csharp/postgres-npgsql/) | Full | [CRUD](csharp/postgres-npgsql/) |
+| [YugabyteDB C# Driver for YCQL](csharp/ycql/) | Full | [CRUD](csharp/ycql/) |
+| [Entity Framework](csharp/entityframework/) | Full | [CRUD](csharp/entityframework/) |
+
+  {{% /tab %}}
+
+  {{% tab header="Ruby" lang="ruby" %}}
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [Pg Gem Driver](ruby/ysql-pg/) | Full | [CRUD](ruby/ysql-pg/) |
+| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD](ruby/ycql/) |
+| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD](ruby/ycql/) |
+| [ActiveRecord ORM](ruby/activerecord/) | Full | [CRUD](ruby/activerecord/) |
+
+  {{% /tab %}}
+
+  {{% tab header="Rust" lang="rust" %}}
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [Diesel](rust/diesel/) | Full | [CRUD](rust/diesel/) |
+
+  {{% /tab %}}
+
+  {{% tab header="PHP" lang="php" %}}
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [php-pgsql Driver](php/ysql/) | Full | [CRUD](php/ysql/) |
+
+  {{% /tab %}}
+
+  {{% tab header="Scala" lang="scala" %}}
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [YugabyteDB Java Driver for YCQL](scala/ycql/) | Full | [CRUD](scala/ycql/) |
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Read more
 
