@@ -15,63 +15,44 @@ type: indexpage
 
 ### YSQL driver reference
 
-<div class="row">
+<ul class="nav yb-pills">
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="java/yugabyte-jdbc-reference/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-java"></i>
-        </div>
-        <div class="title">Java</div>
-      </div>
+  <li>
+    <a href="java/yugabyte-jdbc-reference/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="go/yb-pgx-reference/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-golang"></i>
-        </div>
-        <div class="title">Go</div>
-      </div>
+  <li>
+    <a href="go/yb-pgx-reference/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="python/yugabyte-psycopg2-reference/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-python"></i>
-        </div>
-        <div class="title">Python</div>
-      </div>
+  <li>
+    <a href="python/yugabyte-psycopg2-reference/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="nodejs/yugabyte-pg-reference/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-node-js"></i>
-        </div>
-        <div class="title">NodeJS</div>
-      </div>
+  <li>
+    <a href="nodejs/yugabyte-pg-reference/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      NodeJS
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="csharp/postgres-npgsql-reference/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-csharp"></i>
-        </div>
-        <div class="title">C#</div>
-      </div>
+  <li>
+    <a href="csharp/postgres-npgsql-reference/" class="orange">
+      <i class="icon-csharp"></i>
+      C#
     </a>
-  </div>
-</div>
+  </li>
+
+</ul>
 
 ### Other languages
 
