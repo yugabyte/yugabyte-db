@@ -91,7 +91,7 @@ Generally, the process involves the following:
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
-![img](/images/yp/docker-pull.png)<br><br>
+![img](/images/yp/docker-pull.png)<br>
 
 
 

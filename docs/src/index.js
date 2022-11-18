@@ -121,6 +121,9 @@ function activeLeftNav() {
 
 $(document).ready(() => {
   let searchValue = '';
+  $('ul.nav.yb-pills li').each(function () {
+    $(this).append(`<span class="tooltip">${$(this).find('a').text().trim()}</span>`);
+  });
 
   ((document) => {
     const $codes = document.querySelectorAll('pre');
@@ -129,6 +132,13 @@ $(document).ready(() => {
         container.parentElement.classList.add('can-be-copied');
         if (container.children && container.children.length > 0) {
           container.parentElement.setAttribute('data-code', container.children.length);
+        } else {
+          const codeLines = (container.innerText.match(/\r|\n/g) || '').length;
+          if (codeLines > 0) {
+            container.parentElement.setAttribute('data-code', codeLines);
+          } else {
+            container.parentElement.setAttribute('data-code', 1);
+          }
         }
       }
     };

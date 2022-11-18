@@ -57,6 +57,14 @@ DEFINE_UNKNOWN_bool(enable_wait_queues, false,
             "If true, use pessimistic locking behavior in conflict resolution.");
 TAG_FLAG(enable_wait_queues, evolving);
 
+DEFINE_RUNTIME_bool(ysql_ddl_rollback_enabled, false,
+            "If true, failed YSQL DDL transactions that affect both pg catalog and DocDB schema "
+            "will be rolled back by YB-Master. Note that this is applicable only for few DDL "
+            "operations such as dropping a table, adding a column, renaming a column/table. This "
+            "flag should not be changed in the middle of a DDL operation.");
+TAG_FLAG(ysql_ddl_rollback_enabled, hidden);
+TAG_FLAG(ysql_ddl_rollback_enabled, advanced);
+
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
                  "only affect the current database and will only increment catalog version for "

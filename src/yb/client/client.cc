@@ -633,14 +633,18 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
                             wait);
 }
 
-Status YBClient::DeleteTable(const string& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::DeleteTable(const string& table_id,
+                             bool wait,
+                             const TransactionMetadata *txn,
+                             CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             false /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,

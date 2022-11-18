@@ -2,26 +2,34 @@
 
 root_certs_generation=false
 node_certs_generation=false
+key_generation=false
 root_certs_path=""
 server_certs_path=""
 temp_certs_path=""
+key_path=""
+keyname=""
 hostname=""
 
 show_help() {
   cat >&1 <<-EOT
 gen_certs.sh is to be used to create SSL certificates for secure deployment of YugabyteDB.
 ---------------------------------------------------------------------------------------------------
-Usage: ${0##*/} [<flags>]
-Flags:
+Usage: ${0##*/} [<action>] [<flags>]
 
-    --help, -h
-        Show help.
-
+Actions:
     generate-ca
         Generate root certificates to be used for generation of each node's certificates
 
     generate-server-cert
         Generate node server certificates.
+
+    generate-key
+        Generate SSL key.
+
+Flags:
+
+    --help, -h
+        Show help.
 
     --root-ca-path, --rcp, -rcp
         Path where root certs needs to be generated or where root certs are present (in case of \
@@ -33,6 +41,12 @@ node certs generation)
     --hostname, --hn, -hn
         Value of node's commonName to be set in certificates. Needs to be same as the
         advertise address of the node
+
+    --key-path, --kp, -kp
+        Path where the key will be generated.
+
+    --keyname, --kn, -kn
+        Name of the key to be generated.
 ---------------------------------------------------------------------------------------------------
 EOT
 }
@@ -70,7 +84,7 @@ generate_root_certs() {
 
     touch $root_certs_path/index.txt
     echo '01' > $root_certs_path/serial.txt
-    openssl genrsa -out $root_certs_path/ca.key >&1
+    openssl genrsa -out $root_certs_path/ca.key
     chmod 400 $root_certs_path/ca.key
     openssl req -new -x509 -config $root_certs_path/ca.conf \
                 -key $root_certs_path/ca.key \
@@ -118,6 +132,12 @@ generate_node_certs() {
     rm -rf $temp_certs_path
 }
 
+generate_key() {
+    mkdir -p $key_path
+
+    openssl rand -out $key_path"/"$keyname".key" 32
+}
+
 while [[ $# -gt 0 ]]; do
     case ${1//_/-} in
     -h|--help)
@@ -142,6 +162,17 @@ while [[ $# -gt 0 ]]; do
         hostname=$2
         shift
     ;;
+    generate-key)
+        key_generation=true
+    ;;
+    --key-path|--kp|-kp)
+        key_path=$2
+        shift
+    ;;
+    --keyname|--kn|-kn)
+        keyname=$2
+        shift
+    ;;
     esac
     shift
 done
@@ -153,4 +184,8 @@ fi
 if "$node_certs_generation"; then
     temp_certs_path=$server_certs_path"/temp"
     generate_node_certs
+fi
+
+if "$key_generation"; then
+    generate_key
 fi

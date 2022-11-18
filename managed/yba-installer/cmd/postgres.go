@@ -10,6 +10,7 @@ import (
 	//"io/ioutil"
 	"os"
 	"strings"
+
 	//"log"
 	"path/filepath"
 	"time"
@@ -88,11 +89,11 @@ func (pg Postgres) Start() {
 		ExecuteBashCommand(SYSTEMCTL, arg3)
 
 	} else {
-
+		restartSeconds := getYamlPathData(".postgres.restartSeconds")
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + pg.Name + "NonRoot.sh"
 
 		command1 := "bash"
-		arg1 := []string{"-c", scriptPath + " > /dev/null 2>&1 &"}
+		arg1 := []string{"-c", scriptPath + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		ExecuteBashCommand(command1, arg1)
 
@@ -309,7 +310,9 @@ func (pg Postgres) Status() {
 }
 
 func (pg Postgres) CreateCronJob() {
+	restartSeconds := getYamlPathData(".postgres.restartSeconds")
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + pg.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
-		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + "\") | sort - | uniq - | crontab - "})
+		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " +
+			restartSeconds + "\") | sort - | uniq - | crontab - "})
 }
