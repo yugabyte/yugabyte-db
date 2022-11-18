@@ -99,7 +99,7 @@ $ ./bin/yugabyted stop \
                   --base_dir=/tmp/ybd4
 ```
 
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. When that number reaches 60s (1 minute), YugabyteDB will change the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed amongst the other nodes.
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. The `Time since heartbeat` value for that node will keep increasing. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
 
 <!-- ![Read and write IOPS with 4th node dead](/images/ce/transactions_deleting_observe.png) -->
 
