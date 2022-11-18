@@ -35,27 +35,6 @@ This page demonstrates YugabyteDB's horizontal scale-out and scale-in capability
 
 {{% explore-setup-multi %}}
 
-## Run a generic workload
-
-Using the YB Simulation Base Demo application, you can create and drop tables, load data, and run different workloads. The application updates charts of the latency and throughput on your YugabyteDB cluster in real time while the workloads are running.
-
-To start a workload simulation against your cluster, do the following:
-
-- Navigate to the application's UI at <http://localhost:8080>. The application displays a network diagram of your cluster topology, along with charts of latency and throughput as follows:
-
-    ![Load UI with 3 nodes](/images/ce/load-app-ui.png)
-
-- Click the **Active Workloads for Generic** menu and select **Usable operations**.
-- Click **Create tables** and select **Run Create Tables Workload** to create tables.
-- Click **Seed Data** and select **Run Seed Data Workload** to load data to the tables.
-- Click **Simulation**, enable **Include new Inserts** and select **Run Simulation Workload** to start a simulation that performs read and write operations across all the nodes of your cluster.
-
-You should see the latency and throughput graphs slowly starting to show up as follows:
-
-![Latency and throughput for 3 nodes](/images/ce/simulation-graph.png)
-
-Refer to the [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app) repository for more details on creating and customizing your workloads.
-
 ## Observe IOPS per node
 
 To view a table of per-node statistics for the cluster, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
