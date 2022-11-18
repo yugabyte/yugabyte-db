@@ -420,6 +420,11 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
+// Change the default value of this flag to false once we declare Colocation GA.
+DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, true,
+            "Whether to create a legacy colocated database using pre-Colocation GA implementation");
+TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
+
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
 DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
@@ -2349,6 +2354,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
 
     Status tablegroup_tablespace_status = sys_catalog_->ReadTablespaceInfoFromPgYbTablegroup(
       database_oid,
+      is_colocated_database,
       table_to_tablespace_map.get());
     if (!tablegroup_tablespace_status.ok()) {
       LOG(WARNING) << "Refreshing tablegroup->tablespace info failed for namespace "
@@ -3568,6 +3574,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
+
+  // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
+  // but after GA, colocated tables are colocated via tablegroups.
   bool is_colocated_via_database;
   NamespaceId namespace_id;
   NamespaceName namespace_name;
@@ -3579,7 +3588,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     namespace_id = ns->id();
     namespace_name = ns->name();
-    is_colocated_via_database = ns->colocated();
+    SharedLock lock(mutex_);
+    is_colocated_via_database = IsColocatedDbParentTableId(req.table_id())
+        || colocated_db_tablets_map_.find(ns->id()) != colocated_db_tablets_map_.end();
   }
 
   // For index table, find the table info
@@ -3679,14 +3690,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Verify that custom placement policy has not been specified for database-colocated table.
   const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
-  if (is_replication_info_set && is_colocated_via_database) {
-    Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
-      "tables colocated via database");
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
-  }
-
   if (is_replication_info_set && req.table_type() == PGSQL_TABLE_TYPE) {
     const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
         "use Tablespaces instead");
@@ -3854,7 +3858,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // 1. Allow Namespaces that are RUNNING
     // 2. Allow Namespaces that are PREPARING under 2 situations
     //    2a. System Namespaces.
-    //    2b. The parent table from a Colocated Namespace.
+    //    2b. The parent table from a legacy Colocated Namespace.
     const auto parent_table_name = GetColocatedDbParentTableName(ns->id());
     bool valid_ns_state = (ns->state() == SysNamespaceEntryPB::RUNNING) ||
       (ns->state() == SysNamespaceEntryPB::PREPARING &&
@@ -3953,7 +3957,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           RSTATUS_DCHECK_EQ(
               tablets.size(), 1U, InternalError,
               "Only one tablet should be created for each tablegroup");
-          CHECK(table->id() == GetTablegroupParentTableId(req.tablegroup_id()))
+          CHECK(table->id() == GetTablegroupParentTableId(req.tablegroup_id()) ||
+                table->id() == GetColocationParentTableId(req.tablegroup_id()))
               << table->id() << ", " << req.tablegroup_id() << ", " << namespace_id;
 
           // Define a new tablegroup
@@ -3965,9 +3970,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       } else {
         // Adding a table to an existing colocation tablet.
-        auto tablet = is_colocated_via_database ?
-            colocated_db_tablets_map_[ns->id()] :
-            tablegroup->tablet();
+        auto tablet = tablegroup ?
+            tablegroup->tablet() :
+            colocated_db_tablets_map_[ns->id()];
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             Format("Colocation group tablet $0 should be marked as colocated",
@@ -7933,8 +7938,25 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = GetTablegroupParentTableId(req->id());
-  const auto parent_table_name = GetTablegroupParentTableName(req->id());
+  TableId parent_table_id;
+  TableName parent_table_name;
+  {
+    LockGuard lock(mutex_);
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+    if (ns == nullptr) {
+      Status s = STATUS_SUBSTITUTE(
+          NotFound, "Could not find namespace by namespace id $0 for request $1.",
+          req->namespace_id(), req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    if (ns->colocated()) {
+      parent_table_id = GetColocationParentTableId(req->id());
+      parent_table_name = GetColocationParentTableName(req->id());
+    } else {
+      parent_table_id = GetTablegroupParentTableId(req->id());
+      parent_table_name = GetTablegroupParentTableName(req->id());
+    }
+  }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
   ctreq.mutable_namespace_()->set_name(req->namespace_name());
@@ -7987,13 +8009,8 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = GetTablegroupParentTableId(req->id());
-  const auto parent_table_name = GetTablegroupParentTableName(req->id());
-
-  dtreq.mutable_table()->set_table_name(parent_table_name);
-  dtreq.mutable_table()->set_table_id(parent_table_id);
-  dtreq.set_is_index_table(false);
-
+  TableId parent_table_id;
+  TableName parent_table_name;
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->Find(req->id());
@@ -8011,7 +8028,26 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
           MasterErrorPB::INVALID_REQUEST,
           STATUS(InvalidArgument, "Cannot delete tablegroup, it still has tables in it"));
     }
+
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+    if (ns == nullptr) {
+      Status s = STATUS_SUBSTITUTE(
+          NotFound, "Could not find namespace by namespace id $0.",
+          tablegroup->database_id());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    if (ns->colocated()) {
+      parent_table_id = GetColocationParentTableId(req->id());
+      parent_table_name = GetColocationParentTableName(req->id());
+    } else {
+      parent_table_id = GetTablegroupParentTableId(req->id());
+      parent_table_name = GetTablegroupParentTableName(req->id());
+    }
   }
+
+  dtreq.mutable_table()->set_table_name(parent_table_name);
+  dtreq.mutable_table()->set_table_id(parent_table_id);
+  dtreq.set_is_index_table(false);
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.
@@ -8177,8 +8213,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         resp));
   }
 
-  // Colocated databases need to create a parent tablet to serve as the base storage location.
-  if (req->colocated()) {
+  // Pre-Colocation GA colocated databases need to create a parent tablet to serve as the base
+  // storage location along with creation of the colocated database.
+  if (PREDICT_TRUE(FLAGS_ysql_legacy_colocated_database_creation) && req->colocated()) {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
     const auto parent_table_id = GetColocatedDbParentTableId(ns->id());
@@ -8275,7 +8312,7 @@ void CatalogManager::ProcessPendingNamespace(
   scoped_refptr<NamespaceInfo> ns;
   {
     LockGuard lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, id);;
+    ns = FindPtrOrNull(namespace_ids_map_, id);
   }
   if (ns == nullptr) {
     LOG(WARNING) << "Pending Namespace not found to finish creation: " << id;
@@ -8394,7 +8431,7 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
   switch (metadata.state()) {
     // Success cases. Done and working.
     case SysNamespaceEntryPB::RUNNING:
-      if (!ns->colocated()) {
+      if (PREDICT_FALSE(!FLAGS_ysql_legacy_colocated_database_creation) || !ns->colocated()) {
         resp->set_done(true);
       } else {
         // Verify system table created as well, if colocated.
@@ -9014,6 +9051,11 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   resp->mutable_namespace_()->set_name(ns->name());
   resp->mutable_namespace_()->set_database_type(ns->database_type());
   resp->set_colocated(ns->colocated());
+  if (ns->colocated()) {
+    LockGuard lock(mutex_);
+    resp->set_legacy_colocated_database(colocated_db_tablets_map_.find(ns->id())
+                                        != colocated_db_tablets_map_.end());
+  }
   return Status::OK();
 }
 
@@ -12275,11 +12317,17 @@ Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
   auto ns_info = VERIFY_RESULT(FindNamespaceById(table->namespace_id()));
   TableId parent_table_id;
 
+  SharedLock lock(mutex_);
+  auto tablegroup = tablegroup_manager_->FindByTable(table->id());
   if (ns_info->colocated()) {
-    parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
+    // Two types of colocated database: (1) pre-Colocation GA (2) Colocation GA
+    // Colocated databases created before Colocation GA don't use tablegroup
+    // to manage its colocated tables.
+    if (tablegroup)
+      parent_table_id = GetColocationParentTableId(tablegroup->id());
+    else
+      parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
   } else {
-    SharedLock lock(mutex_);
-    auto tablegroup = tablegroup_manager_->FindByTable(table->id());
     RSTATUS_DCHECK(tablegroup != nullptr,
                    Corruption,
                    Format("Not able to find the tablegroup for a colocated table $0 whose database "

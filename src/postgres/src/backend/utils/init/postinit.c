@@ -1089,11 +1089,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	RelationCacheInitializePhase3();
 
 	/*
-	 * Also cache whather the database is colocated for optimization purposes.
+	 * Also cache whether the database is colocated for optimization purposes.
 	 */
 	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
 	{
-		MyDatabaseColocated = YbIsDatabaseColocated(MyDatabaseId);
+		MyDatabaseColocated = YbIsDatabaseColocated(MyDatabaseId, &MyColocatedDatabaseLegacy);
 	}
 
 	/* set up ACL framework (so CheckMyDatabase can check permissions) */

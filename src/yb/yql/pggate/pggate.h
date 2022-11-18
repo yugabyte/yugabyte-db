@@ -195,7 +195,8 @@ class PgApiImpl {
   Status ConnectDatabase(const char *database_name);
 
   // Determine whether the given database is colocated.
-  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
+                             bool *legacy_colocated_database);
 
   // Create database.
   Status NewCreateDatabase(const char *database_name,

@@ -29,6 +29,8 @@ namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsUpsert);
 
+bool ShouldYsqlPackRow(bool has_cotable_id);
+
 class PgsqlWriteOperation :
     public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
     public DocExprExecutor {

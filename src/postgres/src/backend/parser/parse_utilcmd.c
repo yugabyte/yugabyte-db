@@ -380,6 +380,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	/* Validate the storage options from the WITH clause */
 	ListCell *cell;
+	bool colocation_option_specified = false;
+	bool colocated_option_specified = false;
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
@@ -400,7 +402,15 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 							errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
+		{
 			(void) defGetBoolean(def);
+			colocated_option_specified = true;
+		}
+		else if (strcmp(def->defname, "colocation") == 0)
+		{
+			(void) defGetBoolean(def);
+			colocation_option_specified = true;
+		}
 		else if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!yb_enable_create_with_table_oid && !IsYsqlUpgrade)
@@ -455,6 +465,17 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("storage parameter %s is unsupported, ignoring", def->defname)));
 	}
+
+	if (colocation_option_specified && colocated_option_specified)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot specify both of 'colocation' and 'colocated' options"),
+				 errhint("Use 'colocation' instead of 'colocated'.")));
+	else if (colocated_option_specified)
+		ereport(WARNING,
+				(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+				 errmsg("'colocated' syntax will be deprecated in a future release"),
+				 errhint("Use 'colocation' instead of 'colocated'.")));
 
 	if (IsYsqlUpgrade && cxt.isSystem &&
 		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
