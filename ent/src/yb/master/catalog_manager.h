@@ -593,6 +593,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe,
                                      const Status& failure_status);
+  // Sets the appropriate failure state and the error status on the universe and commits the
+  // mutation to the sys catalog.
+  void MarkUniverseReplicationFailed(
+      const Status& failure_status, CowWriteLock<PersistentUniverseReplicationInfo>* universe_lock,
+      scoped_refptr<UniverseReplicationInfo> universe);
 
   // Checks if table has at least one cdc stream (includes producers for xCluster replication).
   bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
@@ -670,9 +675,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
   Result<scoped_refptr<UniverseReplicationInfo>> CreateUniverseReplicationInfoForProducer(
-    const std::string& producer_id,
-    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
-    const google::protobuf::RepeatedPtrField<std::string>& table_ids);
+      const std::string& producer_id,
+      const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
   void ProcessCDCParentTabletDeletionPeriodically();
 

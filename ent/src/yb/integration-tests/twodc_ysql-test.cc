@@ -1811,7 +1811,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
-  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+  ASSERT_OK(WaitForSetupUniverseReplication(consumer_cluster(), consumer_client(),
                                             kUniverseId, &is_resp));
   ASSERT_TRUE(is_resp.has_replication_error());
   ASSERT_TRUE(StatusFromPB(is_resp.replication_error()).IsIllegalState());
@@ -2051,7 +2051,7 @@ TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
   LOG(INFO) << "Setup replication completed.";
 
   master::IsSetupUniverseReplicationDoneResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
+  ASSERT_OK(WaitForSetupUniverseReplication(consumer_cluster(), consumer_client(),
                                             kUniverseId, &resp));
   ASSERT_TRUE(resp.has_replication_error());
   auto status = StatusFromPB(resp.replication_error());
