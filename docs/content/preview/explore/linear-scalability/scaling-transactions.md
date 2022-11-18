@@ -107,7 +107,7 @@ Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see t
 
 ![Read and write IOPS with 4th node dead](/images/ce/stop-node-ybtserver.png)
 
-You can notice a slight spike and drop in the latency and throughput when the node is stooped, but resumes back immediately as follows:
+When the node is stopped, you can notice a slight spike and drop in the latency and throughput, both of which resume immediately as follows:
 
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
