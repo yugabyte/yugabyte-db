@@ -22,130 +22,86 @@ In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also suppo
 
 ### Choose your language
 
-<div class="row">
+<ul class="nav yb-pills">
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="java/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-java"></i>
-        </div>
-        <div class="title">Java</div>
-      </div>
+  <li>
+    <a href="java/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="go/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-golang"></i>
-        </div>
-        <div class="title">Go</div>
-      </div>
+  <li>
+    <a href="go/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="python/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-python"></i>
-        </div>
-        <div class="title">Python</div>
-      </div>
+  <li>
+    <a href="python/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="nodejs/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-node-js"></i>
-        </div>
-        <div class="title">NodeJS</div>
-      </div>
+  <li>
+    <a href="nodejs/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      NodeJS
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="c/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-c"></i>
-        </div>
-        <div class="title">C</div>
-      </div>
+  <li>
+    <a href="c/" class="orange">
+      <i class="icon-c"></i>
+      C
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="cpp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-cplusplus"></i>
-        </div>
-        <div class="title">C++</div>
-      </div>
+  <li>
+    <a href="cpp/" class="orange">
+      <i class="icon-cplusplus"></i>
+      C++
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="csharp/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-csharp"></i>
-        </div>
-        <div class="title">C#</div>
-      </div>
+  <li>
+    <a href="csharp/" class="orange">
+      <i class="icon-csharp"></i>
+      C#
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="ruby/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-ruby"></i>
-        </div>
-        <div class="title">Ruby</div>
-      </div>
+  <li>
+    <a href="ruby/" class="orange">
+      <i class="icon-ruby"></i>
+      Ruby
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="rust/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-rust"></i>
-        </div>
-        <div class="title">Rust</div>
-      </div>
+  <li>
+    <a href="rust/" class="orange">
+      <i class="fa-brands fa-rust"></i>
+      Rust
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="php/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-php"></i>
-        </div>
-        <div class="title">PHP</div>
-      </div>
+  <li>
+    <a href="php/" class="orange">
+      <i class="fa-brands fa-php"></i>
+      PHP
     </a>
-  </div>
+  </li>
 
-  <div class="col-6 col-lg-4 col-xl-3">
-    <a class="section-link icon-offset" href="scala/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-scala"></i>
-        </div>
-        <div class="title">Scala</div>
-      </div>
+  <li>
+    <a href="scala/" class="orange">
+      <i class="icon-scala"></i>
+      Scala
     </a>
-  </div>
+  </li>
 
-</div>
+</ul>
 
 ## Supported libraries
 
