@@ -38,6 +38,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
@@ -266,6 +267,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertEquals("234234", provider.hostVpcId);
     assertEquals("234234", provider.destVpcId);
     assertEquals("PROJ", provider.getUnmaskedConfig().get("GCE_HOST_PROJECT"));
+    assertEquals(
+        "234234", provider.getUnmaskedConfig().get(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY));
   }
 
   @Test
