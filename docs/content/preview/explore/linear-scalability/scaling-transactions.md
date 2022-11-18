@@ -37,7 +37,7 @@ This page demonstrates YugabyteDB's horizontal scale-out and scale-in capability
 
 ## Run a generic workload
 
-The YB Simulation Base Demo application contains generic workloads using which you can create and drop tables for a workload, load data, run different simulations; all from the application's UI. The UI provides you with live latency and throughput about your YugabyteDB cluster while these simulations are running.
+Using the YB Simulation Base Demo application, you can create and drop tables, load data, and run different workloads. The application updates charts of the latency and throughput on your YugabyteDB cluster in real time while the workloads are running.
 
 To start a workload simulation against your cluster, do the following:
 
