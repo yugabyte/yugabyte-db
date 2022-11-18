@@ -25,7 +25,7 @@ Use the `TRUNCATE` statement to remove all rows from a specified table.
 
 ### Grammar
 
-```
+```ebnf
 truncate ::= TRUNCATE [ TABLE ] table_name;
 ```
 

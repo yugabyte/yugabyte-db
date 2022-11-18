@@ -74,7 +74,7 @@ Statement | Description |
 
 The following table lists all security statements that are not yet implemented.
 
-Primitive Type |
+Statement |
 ---------------|
 `LIST ROLES` |
 `LIST PERMISSIONS` |

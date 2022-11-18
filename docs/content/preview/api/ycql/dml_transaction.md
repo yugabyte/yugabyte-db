@@ -25,7 +25,7 @@ Use the TRANSACTION statement block to make changes to multiple rows in one or m
 
 ### Grammar
 
-```
+```ebnf
 transaction_block ::= BEGIN TRANSACTION
                           ( insert | update | delete ) ';'
                           [ ( insert | update | delete ) ';' ...]
@@ -34,14 +34,14 @@ transaction_block ::= BEGIN TRANSACTION
 
 Where `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
-- When using `BEGIN TRANSACTION`, you don't use a semicolon. End the transaction block with `END TRANSACTION ;`.
+- When using `BEGIN TRANSACTION`, you don't use a semicolon. End the transaction block with `END TRANSACTION ;` (with a semicolon).
 - There is no `COMMIT` for transactions started using `BEGIN`.
 
 ### SQL syntax
 
 YCQL also supports SQL `START TRANSACTION` and `COMMIT` statements.
 
-```
+```ebnf
 transaction_block ::= START TRANSACTION ';'
                       ( insert | update | delete ) ';'
                       [ ( insert | update | delete ) ';' ...]
