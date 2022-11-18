@@ -113,7 +113,7 @@ When the node is stopped, you can notice a slight spike and drop in the latency 
 
 ## Clean up (optional)
 
-Optionally, you can shut down the local cluster you created earlier.
+Optionally, to shut down the local cluster you created, do the following:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
