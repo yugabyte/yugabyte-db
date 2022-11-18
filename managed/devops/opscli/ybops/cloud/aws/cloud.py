@@ -418,12 +418,12 @@ class AwsCloud(AbstractCloud):
                 instance_state=instance_state,
                 is_running=True if instance_state == "running" else False
             )
-
             disks = data.get("BlockDeviceMappings")
-            root_vol = next(d for d in disks if
-                            d.get("DeviceName") == get_root_label(result["region"], result["ami"]))
-            result["root_volume"] = root_vol["Ebs"]["VolumeId"]
-
+            root_vol = next((d for d in disks if
+                            d.get("DeviceName") == get_root_label(
+                                result["region"], result["ami"])), None)
+            ebs = root_vol.get("Ebs") if root_vol else None
+            result["root_volume"] = ebs.get("VolumeId") if ebs else None
             if not get_all:
                 return result
             results.append(result)
@@ -625,10 +625,16 @@ class AwsCloud(AbstractCloud):
                 'Name': "tag:{}".format(tag),
                 'Values': [value]
             })
+        filters.append({
+            'Name': 'status',
+            'Values': ['available']
+        })
         volume_ids = []
         describe_volumes_args = {
             'Filters': filters
         }
+        if args.volume_id:
+            describe_volumes_args.update('VolumeIds', args.volume_id)
         client = boto3.client('ec2', args.region)
         while True:
             response = client.describe_volumes(**describe_volumes_args)
@@ -636,6 +642,7 @@ class AwsCloud(AbstractCloud):
                 status = volume['State']
                 volume_id = volume['VolumeId']
                 present_tags = volume['Tags']
+                logging.info('[app] Volume {} is in state {}'.format(volume_id, status))
                 if status.lower() != 'available':
                     continue
                 tag_match_count = 0

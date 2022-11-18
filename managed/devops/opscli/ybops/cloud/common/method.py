@@ -502,10 +502,11 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
             self.cloud.stop_instance(host_info)
-            self.cloud.unmount_disk(host_info, current_root_volume)
-            logging.info("==> Root volume {} unmounted from {}".format(
-                current_root_volume, id))
-            unmounted = True
+            if current_root_volume:
+                self.cloud.unmount_disk(host_info, current_root_volume)
+                unmounted = True
+                logging.info("==> Root volume {} unmounted from {}".format(
+                    current_root_volume, id))
             logging.info("==> Mounting {} as the new root volume on {}".format(
                 args.replacement_disk, id))
             self._mount_root_volume(host_info, args.replacement_disk)
@@ -569,12 +570,12 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--assign_public_ip",
                                  action="store_true",
                                  default=False,
-                                 help="The ip of the instance to provision")
+                                 help="The ip of the instance to provision.")
 
         self.parser.add_argument("--assign_static_public_ip",
                                  action="store_true",
                                  default=False,
-                                 help="Assign a static public ip to the instance")
+                                 help="Assign a static public ip to the instance.")
 
         self.parser.add_argument("--boot_disk_size_gb",
                                  type=int,
@@ -584,7 +585,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--auto_delete_boot_disk",
                                  action="store_true",
                                  default=True,
-                                 help="Delete the root volume on VM termination")
+                                 help="Delete the root volume on VM termination.")
         self.parser.add_argument("-j", "--as_json", action="store_true")
 
     def callback(self, args):
@@ -660,12 +661,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  required=False,
                                  help="Path to local directory with the prometheus tarball.")
         self.parser.add_argument("--node_exporter_port", type=int, default=9300,
-                                 help="The port for node_exporter to bind to")
+                                 help="The port for node_exporter to bind to.")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
         self.parser.add_argument('--remote_package_path', default=None,
                                  help="Path to download thirdparty packages "
-                                      "for itest. Only for AWS/onprem")
+                                      "for itest. Only for AWS/onprem.")
         self.parser.add_argument("--os_name",
                                  required=False,
                                  help="The os name to provision the universe in.",
@@ -680,7 +681,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--ntp_server", required=False, action="append",
                                  help="NTP server to connect to.")
         self.parser.add_argument("--lun_indexes", default="",
-                                 help="comma-separated LUN indexes for mounted on instance disks")
+                                 help="Comma-separated LUN indexes for mounted on instance disks.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -797,7 +798,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--num_disks",
                                  required=False,
                                  default=1,
-                                 help="The number of boot disks to allocate in the zone")
+                                 help="The number of boot disks to allocate in the zone.")
 
     def preprocess_args(self, args):
         super(CreateRootVolumesMethod, self).preprocess_args(args)
@@ -824,7 +825,18 @@ class DeleteRootVolumesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(DeleteRootVolumesMethod, self).__init__(base_command, "delete_root_volumes")
 
-    def delete_volumes(self, tags):
+    def add_extra_args(self):
+        super(DeleteRootVolumesMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_id",
+                                 action="append",
+                                 required=False,
+                                 default=None,
+                                 help="The ID of the volume to be deleted.")
+
+    def delete_volumes(self, args):
+        """Deletes volumes in detached state that match the tags
+        or both tags and specific ids (names) if they are specified.
+        """
         pass
 
     def callback(self, args):
@@ -944,7 +956,7 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         # Make sure "instance_type" exists in args
         if args.instance_type is None:
             raise YBOpsRuntimeError("instance_type not defined. Please define your intended type"
-                                    " using --instance_type argument")
+                                    " using --instance_type argument.")
 
     def _resize_instance(self, args, host_info):
         logging.info("Stopping instance {}".format(args.search_pattern))
@@ -1385,7 +1397,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
     def add_extra_args(self):
         super(InitYSQLMethod, self).add_extra_args()
         self.parser.add_argument("--master_addresses", required=True,
-                                 help="host:port csv of tserver's masters")
+                                 help="host:port csv of tserver's masters.")
 
     def callback(self, args):
         ssh_options = {
@@ -1434,9 +1446,9 @@ class AbstractVaultMethod(AbstractMethod):
 
     def add_extra_args(self):
         super(AbstractVaultMethod, self).add_extra_args()
-        self.parser.add_argument("--private_key_file", required=True, help="Private key filename")
-        self.parser.add_argument("--has_sudo_password", action="store_true", help="sudo password")
-        self.parser.add_argument("--vault_file", required=False, help="Vault filename")
+        self.parser.add_argument("--private_key_file", required=True, help="Private key filename.")
+        self.parser.add_argument("--has_sudo_password", action="store_true", help="sudo password.")
+        self.parser.add_argument("--vault_file", required=False, help="Vault filename.")
 
 
 class AccessCreateVaultMethod(AbstractVaultMethod):
@@ -1541,13 +1553,13 @@ class AbstractAccessMethod(AbstractMethod):
 
     def add_extra_args(self):
         super(AbstractAccessMethod, self).add_extra_args()
-        self.parser.add_argument("--key_pair_name", required=True, help="Key Pair name")
-        self.parser.add_argument("--key_file_path", required=True, help="Key file path")
-        self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
-        self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
-        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud")
+        self.parser.add_argument("--key_pair_name", required=True, help="Key Pair name.")
+        self.parser.add_argument("--key_file_path", required=True, help="Key file path.")
+        self.parser.add_argument("--public_key_file", required=False, help="Public key filename.")
+        self.parser.add_argument("--private_key_file", required=False, help="Private key filename.")
+        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud.")
         self.parser.add_argument("--ignore_auth_failure", action="store_true",
-                                 help="Ignore cloud auth failure")
+                                 help="Ignore cloud auth failure.")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file
@@ -1611,17 +1623,17 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         super(TransferXClusterCerts, self).add_extra_args()
         self.parser.add_argument("--root_cert_path",
                                  help="The path to the root cert of the source universe on "
-                                      "the Platform host")
+                                      "the Platform host.")
         self.parser.add_argument("--replication_config_name",
                                  required=True,
                                  help="The format of this name must be "
-                                      "[Source universe UUID]_[Config name]")
+                                      "[Source universe UUID]_[Config name].")
         self.parser.add_argument("--producer_certs_dir",
                                  required=True,
-                                 help="The directory containing the certs on the target universe")
+                                 help="The directory containing the certs on the target universe.")
         self.parser.add_argument("--action",
                                  default="copy",
-                                 help="If true, the root certificate will be removed")
+                                 help="If true, the root certificate will be removed.")
 
     def _verify_params(self, args):
         if len(args.replication_config_name.split("_", 1)) != 2:
@@ -1668,7 +1680,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
     def add_extra_args(self):
         super().add_extra_args()
         self.parser.add_argument("--use_ssh", action='store_true', default=False,
-                                 help="Use 'sudo reboot' instead of cloud provider SDK")
+                                 help="Use 'sudo reboot' instead of cloud provider SDK.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
