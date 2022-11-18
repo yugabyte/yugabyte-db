@@ -27,13 +27,6 @@ type: docs
     </a>
   </li>
 
-<li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
-      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
-      &nbsp;&nbsp;Azure KMS
-    </a>
-  </li>
-
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>&nbsp;
