@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -41,9 +42,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public YBClientService ybService;
 
   private static final int POLL_TIMEOUT_SECONDS = 300;
-  private static final String GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS = "certs_for_cdc_dir";
-  private static final String GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS =
-      "/home/yugabyte/yugabyte-tls-producer/";
+  public static final String GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS = "certs_for_cdc_dir";
+  public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
 
   protected XClusterConfigTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -92,6 +92,23 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected void setXClusterConfigStatus(XClusterConfigStatusType status) {
     taskParams().xClusterConfig.status = status;
     taskParams().xClusterConfig.update();
+  }
+
+  public static String getProducerCertsDir(UUID providerUuid) {
+    return Provider.getOrBadRequest(providerUuid).getYbHome() + DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME;
+  }
+
+  public static String getProducerCertsDir(String providerUuid) {
+    return getProducerCertsDir(UUID.fromString(providerUuid));
+  }
+
+  public String getProducerCertsDir() {
+    return getProducerCertsDir(
+        Universe.getOrBadRequest(taskParams().xClusterConfig.targetUniverseUUID)
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .provider);
   }
 
   protected SubTaskGroup createXClusterConfigSetupTask() {
@@ -262,7 +279,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @throws IllegalArgumentException if setting up a replication config between a universe with
    *     node-to-node TLS and one without. It is not supported by coreDB.
    */
-  protected Optional<File> getSourceCertificateIfNecessary(
+  public static Optional<File> getSourceCertificateIfNecessary(
       Universe sourceUniverse, Universe targetUniverse) {
     String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
     String targetCertificatePath = targetUniverse.getCertificateNodetoNode();
@@ -301,9 +318,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       transferParams.rootCertPath = certificate;
       transferParams.action = TransferXClusterCerts.Params.Action.COPY;
       transferParams.replicationGroupName = configName;
-      if (producerCertsDir != null) {
-        transferParams.producerCertsDirOnTarget = producerCertsDir;
-      }
+      transferParams.producerCertsDirOnTarget = producerCertsDir;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
@@ -311,11 +326,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-  }
-
-  protected void createTransferXClusterCertsCopyTasks(
-      Collection<NodeDetails> nodes, String configName, File certificate) {
-    createTransferXClusterCertsCopyTasks(nodes, configName, certificate, null);
   }
 
   protected void createTransferXClusterCertsRemoveTasks(
@@ -329,9 +339,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       transferParams.azUuid = node.azUuid;
       transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
       transferParams.replicationGroupName = configName;
-      if (producerCertsDir != null) {
-        transferParams.producerCertsDirOnTarget = producerCertsDir;
-      }
+      transferParams.producerCertsDirOnTarget = producerCertsDir;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
@@ -341,11 +349,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
-  protected void createTransferXClusterCertsRemoveTasks(
-      Collection<NodeDetails> nodes, String configName) {
-    createTransferXClusterCertsRemoveTasks(nodes, configName, null);
-  }
-
   protected void upgradeMismatchedXClusterCertsGFlags(
       Collection<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType serverType) {
     createGFlagsOverrideTasks(nodes, serverType);
@@ -353,8 +356,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             nodes,
             serverType,
             true /* force flag update */,
-            ImmutableMap.of(
-                GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS),
+            ImmutableMap.of(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, getProducerCertsDir()),
             false /* updateMasterAddrs */)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
@@ -378,14 +380,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             : userIntent.tserverGFlags;
     String gFlagValue = gFlags.get(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS);
     if (gFlagValue != null) {
-      if (!gFlagValue.equals(GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS)) {
+      if (!gFlagValue.equals(getProducerCertsDir())) {
         throw new IllegalStateException(
             String.format(
                 "%s is present with value %s", GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, gFlagValue));
       }
       return false;
     }
-    gFlags.put(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS);
+    gFlags.put(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, getProducerCertsDir());
     return true;
   }
 
@@ -409,7 +411,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.debug(
           "gflag {} set to {} for masters",
           GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS,
-          GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS);
+          getProducerCertsDir());
       gFlagsUpdated = true;
     }
     if (verifyAndSetCertsForCdcDirGFlag(
@@ -420,7 +422,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.debug(
           "gflag {} set to {} for tservers",
           GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS,
-          GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS);
+          getProducerCertsDir());
       gFlagsUpdated = true;
     }
     if (gFlagsUpdated) {
@@ -435,10 +437,5 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         "Transferring certificate {} to universe {} task created",
         certificate,
         targetUniverse.getUniverseUUID().toString());
-  }
-
-  protected void createSetupSourceCertificateTask(
-      Universe targetUniverse, String configName, File certificate) {
-    createSetupSourceCertificateTask(targetUniverse, configName, certificate, null);
   }
 }

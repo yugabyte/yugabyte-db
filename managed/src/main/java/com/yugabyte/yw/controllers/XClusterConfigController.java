@@ -14,10 +14,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
@@ -95,11 +97,41 @@ public class XClusterConfigController extends AuthenticatedController {
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData();
-    Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
+    Universe sourceUniverse =
+        Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
     Universe targetUniverse =
         Universe.getValidUniverseOrBadRequest(createFormData.targetUniverseUUID, customer);
     checkConfigDoesNotAlreadyExist(
         createFormData.name, createFormData.sourceUniverseUUID, createFormData.targetUniverseUUID);
+
+    // If the certs_for_cdc_dir gflag is not set, and it is required, tell the user to set it
+    // before running this task.
+    try {
+      if (XClusterConfigTaskBase.getSourceCertificateIfNecessary(sourceUniverse, targetUniverse)
+          .isPresent()) {
+        UniverseDefinitionTaskParams.UserIntent userIntent =
+            targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+        String gflagValueOnMasters =
+            userIntent.masterGFlags.get(
+                XClusterConfigTaskBase.GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS);
+        String gflagValueOnTServers =
+            userIntent.tserverGFlags.get(
+                XClusterConfigTaskBase.GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS);
+        String gflagCorrectValue =
+            XClusterConfigTaskBase.getProducerCertsDir(
+                targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        if (!gflagCorrectValue.equals(gflagValueOnMasters)
+            || !gflagCorrectValue.equals(gflagValueOnTServers))
+          throw new PlatformServiceException(
+              METHOD_NOT_ALLOWED,
+              String.format(
+                  "The %s gflag must be set to %s for tservers and masters on the target universe. "
+                      + "Please use `Edit Flags` on the target universe to set it",
+                  XClusterConfigTaskBase.GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS, gflagCorrectValue));
+      }
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
+    }
 
     // Create xCluster config object
     XClusterConfig xClusterConfig =

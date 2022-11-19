@@ -40,7 +40,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       sourceCertificate.ifPresent(
           cert ->
               createSetupSourceCertificateTask(
-                  targetUniverse, xClusterConfig.getReplicationGroupName(), cert));
+                  targetUniverse,
+                  xClusterConfig.getReplicationGroupName(),
+                  cert,
+                  new File(getProducerCertsDir())));
 
       createXClusterConfigSetupTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

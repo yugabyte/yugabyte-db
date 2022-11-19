@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import java.io.File;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,9 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       targetUniverse.ifPresent(
           universe ->
               createTransferXClusterCertsRemoveTasks(
-                  universe.getNodes(), xClusterConfig.getReplicationGroupName()));
+                  universe.getNodes(),
+                  xClusterConfig.getReplicationGroupName(),
+                  new File(getProducerCertsDir())));
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       getRunnableTask().runSubTasks();
