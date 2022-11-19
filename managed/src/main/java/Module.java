@@ -74,6 +74,7 @@ import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.perf_advisor.module.PerfAdvisor;
 import play.Configuration;
 import play.Environment;
 import io.prometheus.client.CollectorRegistry;
@@ -97,6 +98,9 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+
+    bind(PerfAdvisor.class).asEagerSingleton();
+
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
       bind(YBFlywayInit.class).asEagerSingleton();
