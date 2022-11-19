@@ -209,4 +209,3 @@ YBStatusFunctorCallback<Functor>* MakeYBStatusFunctorCallback(const Functor& fun
 
 }  // namespace client
 }  // namespace yb
-

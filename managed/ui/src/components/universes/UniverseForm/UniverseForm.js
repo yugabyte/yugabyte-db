@@ -140,9 +140,11 @@ class UniverseForm extends Component {
     this.setState({ isSubmitting: true });
     if (type === 'Create') {
       this.createUniverse().then((response) => {
-        const { universeUUID, name } = response.payload.data;
-        this.transitionToDefaultRoute(universeUUID);
-        toast.success(`Creating universe "${name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+        const responseData = response?.payload?.data;
+        if (responseData) {
+          this.transitionToDefaultRoute(responseData.universeUUID);
+          toast.success(`Creating universe "${responseData.name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+        }
       });
     } else if (type === 'Async') {
       const {
@@ -246,8 +248,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    universeTaskParams.enableYbc =
+    if(!isEdit){
+      universeTaskParams.enableYbc =
       this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+    }
+    
     universeTaskParams.ybcSoftwareVersion = '';
   };
 

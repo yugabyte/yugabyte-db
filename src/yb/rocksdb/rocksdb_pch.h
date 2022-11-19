@@ -4,6 +4,8 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <math.h>
@@ -15,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <time.h>
@@ -27,6 +30,7 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <compare>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstddef>
@@ -84,6 +88,7 @@
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <google/protobuf/any.pb.h>
@@ -125,6 +130,7 @@
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cache_metrics.h"
@@ -141,7 +147,10 @@
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/file_system_mem.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"

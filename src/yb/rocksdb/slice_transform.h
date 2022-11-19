@@ -85,4 +85,3 @@ extern const SliceTransform* NewCappedPrefixTransform(size_t cap_len);
 extern const SliceTransform* NewNoopTransform();
 
 } // namespace rocksdb
-

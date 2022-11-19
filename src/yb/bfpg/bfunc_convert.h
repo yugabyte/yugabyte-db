@@ -766,4 +766,3 @@ Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
 
 } // namespace bfpg
 } // namespace yb
-

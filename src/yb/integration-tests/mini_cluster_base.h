@@ -72,4 +72,3 @@ class MiniClusterBase {
 };
 
 }  // namespace yb
-

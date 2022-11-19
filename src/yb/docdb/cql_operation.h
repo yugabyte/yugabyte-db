@@ -124,7 +124,7 @@ class QLWriteOperation :
       HybridTime min_hybrid_time);
 
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
-                           const ReadHybridTime& read_ht, CoarseTimePoint deadline);
+                   const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
   UserTimeMicros user_timestamp() const;
@@ -245,4 +245,3 @@ class QLReadOperation : public DocExprExecutor {
 
 }  // namespace docdb
 }  // namespace yb
-

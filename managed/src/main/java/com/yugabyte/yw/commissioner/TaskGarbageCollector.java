@@ -45,10 +45,11 @@ public class TaskGarbageCollector {
   private final PlatformScheduler platformScheduler;
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  // TODO: Instead of runtime config factory inject RuntimeConfigGetter and then do:
+  // Duration d = confGtr.getConfForScope(cust, CustomerConfKeys.taskGcRetentionDuration));
   @Inject
   public TaskGarbageCollector(
       PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
-
     this.platformScheduler = platformScheduler;
     this.runtimeConfigFactory = runtimeConfigFactory;
   }

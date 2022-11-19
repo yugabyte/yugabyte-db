@@ -15,6 +15,8 @@ This document describes the data types supported in YSQL, from the basic data ty
 
 The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
 
+{{% explore-setup-single %}}
+
 ## Strings
 
 The following character types are supported:

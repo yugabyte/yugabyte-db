@@ -319,4 +319,3 @@ const char* QLOperatorAsString(QLOperator ql_op);
 
 }  // namespace ql
 }  // namespace yb
-

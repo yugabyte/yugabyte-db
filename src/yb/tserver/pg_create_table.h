@@ -62,4 +62,3 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
 
 }  // namespace tserver
 }  // namespace yb
-

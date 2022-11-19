@@ -53,6 +53,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -69,20 +70,21 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0,
+DEFINE_UNKNOWN_double(transaction_max_missed_heartbeat_periods, 10.0,
               "Maximum heartbeat periods that a pending transaction can miss before the "
               "transaction coordinator expires the transaction. The total expiration time in "
               "microseconds is transaction_heartbeat_usec times "
               "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
               "fractional.");
-DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
-DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
+DEFINE_UNKNOWN_uint64(transaction_check_interval_usec, 500000,
+    "Transaction check interval in usec.");
+DEFINE_UNKNOWN_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
-DEFINE_uint64(transaction_deadlock_detection_interval_usec, 60000000,
+DEFINE_UNKNOWN_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
-DEFINE_int64(avoid_abort_after_sealing_ms, 20,
+DEFINE_UNKNOWN_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
 
@@ -99,6 +101,10 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
+
+DEFINE_RUNTIME_int32(max_external_transaction_retry_delay_ms, 5000,
+                     "The max amount of delay for sending a new apply external transaction "
+                     "request.");
 
 DECLARE_bool(enable_deadlock_detection);
 
@@ -119,14 +125,21 @@ std::chrono::microseconds GetTransactionTimeout() {
 
 namespace {
 
+constexpr uint32_t kInitialExternalTransactionRetryDelayMs = 100;
+
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
-  const AbortedSubTransactionSetPB& aborted;
+  AbortedSubTransactionSetPB aborted;
   HybridTime commit_time;
   bool sealed;
   bool is_external;
-
+  // Only for external/xcluster transactions. How long to wait before retrying a failed apply
+  // transaction.
+  CoarseBackoffWaiter backoff_waiter = CoarseBackoffWaiter(
+    CoarseTimePoint::max(),
+    GetAtomicFlag(&FLAGS_max_external_transaction_retry_delay_ms) * 1ms,
+    kInitialExternalTransactionRetryDelayMs * 1ms);
   std::string ToString() const {
     return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3 is_external $4}",
                   tablet, transaction, commit_time, sealed, is_external);
@@ -1020,8 +1033,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response) {
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions postponed_leader_actions;
@@ -1448,7 +1461,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     if (action.is_external) {
       req.set_is_external(true);
       state.set_external_commit_ht(action.commit_time.ToUint64());
-    } else {
     }
     *state.mutable_aborted() = action.aborted;
 
@@ -1469,10 +1481,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               return;
             }
             if (action.is_external && status.IsTryAgain()) {
+              auto new_action = action;
+              new_action.backoff_waiter.Wait();
               // We are trying to apply an external transaction on a tablet that is not caught up
               // to commit_ht, keep retrying until it succeeds.
               SendUpdateTransactionRequest(
-                  action, context_.clock().Now(), TransactionRpcDeadline());
+                  new_action, context_.clock().Now(), TransactionRpcDeadline());
               return;
             }
             LOG_WITH_PREFIX(WARNING)

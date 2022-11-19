@@ -45,8 +45,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
-                                const bool add_indexes = true,
-                                const int flush_timeout_secs = 0);
+                        const bool add_indexes = true,
+                        const int flush_timeout_secs = 0);
   Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
   Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
@@ -66,10 +66,10 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status DeleteSnapshot(const std::string& snapshot_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
-                                        const std::string& file_name);
+                                const std::string& file_name);
   Status ImportSnapshotMetaFile(const std::string& file_name,
-                                        const TypedNamespaceName& keyspace,
-                                        const std::vector<client::YBTableName>& tables);
+                                const TypedNamespaceName& keyspace,
+                                const std::vector<client::YBTableName>& tables);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
   Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
@@ -93,8 +93,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status CreateCDCStream(const TableId& table_id);
 
-  Status CreateCDCSDKDBStream(const TypedNamespaceName& ns,
-                                      const std::string& CheckPointType);
+  Status CreateCDCSDKDBStream(
+      const TypedNamespaceName& ns, const std::string& CheckPointType,
+      const std::string& RecordType);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -107,12 +108,12 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
   Status SetupUniverseReplication(const std::string& producer_uuid,
-                                          const std::vector<std::string>& producer_addresses,
-                                          const std::vector<TableId>& tables,
-                                          const std::vector<std::string>& producer_bootstrap_ids);
+                                  const std::vector<std::string>& producer_addresses,
+                                  const std::vector<TableId>& tables,
+                                  const std::vector<std::string>& producer_bootstrap_ids);
 
   Status DeleteUniverseReplication(const std::string& producer_id,
-                                           bool ignore_errors = false);
+                                   bool ignore_errors = false);
 
   Status AlterUniverseReplication(
       const std::string& producer_uuid,
@@ -124,14 +125,14 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
-                                           const std::string& new_universe_name);
+                                   const std::string& new_universe_name);
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
   Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
-                                               bool is_enabled);
+                                       bool is_enabled);
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
@@ -176,4 +177,3 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
-

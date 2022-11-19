@@ -79,17 +79,18 @@ DEFINE_RUNTIME_int32(ybclient_print_trace_every_n, 0,
     "disables printing the collected traces.");
 TAG_FLAG(ybclient_print_trace_every_n, advanced);
 
-DEFINE_bool(forward_redis_requests, true, "If false, the redis op will not be served if it's not "
-            "a local request. The op response will be set to the redis error "
-            "'-MOVED partition_key 0.0.0.0:0'. This works with jedis which only looks at the MOVED "
-            "part of the reply and ignores the rest. For now, if this flag is true, we will only "
-            "attempt to read from leaders, so redis_allow_reads_from_followers will be ignored.");
+DEFINE_UNKNOWN_bool(forward_redis_requests, true,
+    "If false, the redis op will not be served if it's not "
+    "a local request. The op response will be set to the redis error "
+    "'-MOVED partition_key 0.0.0.0:0'. This works with jedis which only looks at the MOVED "
+    "part of the reply and ignores the rest. For now, if this flag is true, we will only "
+    "attempt to read from leaders, so redis_allow_reads_from_followers will be ignored.");
 
-DEFINE_bool(detect_duplicates_for_retryable_requests, true,
+DEFINE_UNKNOWN_bool(detect_duplicates_for_retryable_requests, true,
             "Enable tracking of write requests that prevents the same write from being applied "
                 "twice.");
 
-DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
+DEFINE_UNKNOWN_bool(ysql_forward_rpcs_to_local_tserver, false,
             "DEPRECATED. Feature has been removed");
 
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);

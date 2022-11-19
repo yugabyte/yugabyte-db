@@ -228,7 +228,7 @@ class Messenger : public ProxyContext {
 
   // Dump the current RPCs into the given protobuf.
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
-                                 DumpRunningRpcsResponsePB* resp);
+                         DumpRunningRpcsResponsePB* resp);
 
   void RemoveScheduledTask(ScheduledTaskId task_id);
 
@@ -395,4 +395,3 @@ class Messenger : public ProxyContext {
 
 }  // namespace rpc
 }  // namespace yb
-

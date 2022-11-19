@@ -75,8 +75,8 @@ class NodeConnectModal extends Component {
 
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
-      const podNamespace = currentRow.privateIP.split('.')[2];
-      const podName = currentRow.privateIP.split('.')[0];
+      const podNamespace = currentRow.privateIP?.split('.')[2];
+      const podName = currentRow.privateIP?.split('.')[0];
       let container_name_selector = '';
 
       if (currentRow.isMaster === 'Details') {

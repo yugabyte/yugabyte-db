@@ -91,4 +91,3 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
 };
 
 } // namespace yb
-

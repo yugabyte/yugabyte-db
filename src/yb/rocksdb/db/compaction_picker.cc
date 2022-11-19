@@ -48,8 +48,9 @@
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
+#include "yb/util/flags.h"
 
-DEFINE_bool(aggressive_compaction_for_read_amp, false,
+DEFINE_UNKNOWN_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
             "number of files alone, without regards to relative sizes of the SSTable files.");
 
@@ -63,9 +64,6 @@ uint64_t TotalCompensatedFileSize(const std::vector<FileMetaData*>& files) {
   }
   return sum;
 }
-
-// Universal compaction is not supported in ROCKSDB_LITE
-#ifndef ROCKSDB_LITE
 
 // Used in universal compaction when trivial move is enabled.
 // This structure is used for the construction of min heap
@@ -127,7 +125,6 @@ SmallestKeyHeap create_level_heap(Compaction* c, const Comparator* ucmp) {
   }
   return smallest_key_priority_q;
 }
-#endif  // !ROCKSDB_LITE
 }  // anonymous namespace
 
 // Determine compression type, based on user options, level of the output
@@ -688,7 +685,6 @@ bool HaveOverlappingKeyRanges(
   return HaveOverlappingKeyRanges(c, a.smallest, a.largest, b.smallest, b.largest);
 }
 
-#ifndef ROCKSDB_LITE
 namespace {
 
 // Updates smallest/largest keys using keys from specified file.
@@ -891,7 +887,6 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
 
   return Status::OK();
 }
-#endif  // !ROCKSDB_LITE
 
 bool LevelCompactionPicker::NeedsCompaction(const VersionStorageInfo* vstorage)
     const {
@@ -1183,7 +1178,6 @@ bool LevelCompactionPicker::PickCompactionBySize(VersionStorageInfo* vstorage,
   return inputs->size() > 0;
 }
 
-#ifndef ROCKSDB_LITE
 bool UniversalCompactionPicker::NeedsCompaction(
     const VersionStorageInfo* vstorage) const {
   const int kLevel0 = 0;
@@ -2059,6 +2053,5 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::CompactRange(
   return c;
 }
 
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
@@ -35,6 +36,7 @@ func (plat Platform) Install() {
 	createDevopsAndYugawareDirectories(plat.Version)
 	untarDevopsAndYugawarePackages(plat.Version)
 	copyYugabyteReleaseFile(plat.Version)
+	copyYbcPackages(plat.Version)
 	renameAndCreateSymlinks(plat.Version)
 	configureConfHTTPS()
 
@@ -73,6 +75,8 @@ func createNecessaryDirectories(version string) {
 	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_rules", os.ModePerm)
 	os.MkdirAll(INSTALL_ROOT+"/yb-platform/data", os.ModePerm)
 	os.MkdirAll(INSTALL_ROOT+"/yb-platform/third-party", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/release", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/releases", os.ModePerm)
 
 }
 
@@ -95,7 +99,7 @@ func untarDevopsAndYugawarePackages(version string) {
 	}
 
 	for _, f := range files {
-		if strings.Contains(f.Name(), "devops") {
+		if strings.Contains(f.Name(), "devops") && strings.Contains(f.Name(), "tar") {
 
 			devopsTgzName := f.Name()
 			devopsTgzPath := packageFolderPath + "/" + devopsTgzName
@@ -104,9 +108,12 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			tar.Untar(rExtract, packageFolderPath+"/devops")
+			if err := tar.Untar(rExtract, packageFolderPath+"/devops",
+				tar.WithMaxUntarSize(-1)); err != nil {
+				LogError(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
+			}
 
-		} else if strings.Contains(f.Name(), "yugaware") {
+		} else if strings.Contains(f.Name(), "yugaware") && strings.Contains(f.Name(), "tar") {
 
 			yugawareTgzName := f.Name()
 			yugawareTgzPath := packageFolderPath + "/" + yugawareTgzName
@@ -115,7 +122,10 @@ func untarDevopsAndYugawarePackages(version string) {
 				LogError("Error in starting the File Extraction process.")
 			}
 
-			tar.Untar(rExtract, packageFolderPath+"/yugaware")
+			if err := tar.Untar(rExtract, packageFolderPath+"/yugaware",
+				tar.WithMaxUntarSize(-1)); err != nil {
+				LogError(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
+			}
 
 		}
 	}
@@ -144,6 +154,24 @@ func copyYugabyteReleaseFile(version string) {
 	}
 }
 
+func copyYbcPackages(version string) {
+	packageFolderPath := INSTALL_VERSION_DIR + "/packages/yugabyte-" + version
+	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
+
+	matches, err := filepath.Glob(ybcPattern)
+	if err != nil {
+		LogError(
+			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
+									packageFolderPath, err.Error()))
+	}
+
+	for _, f := range matches {
+		_, fileName := filepath.Split(f)
+		// TODO: Check if file does not already exist?
+		CopyFileGolang(f, INSTALL_ROOT+"/yb-platform/ybc/release/" + fileName)
+	}
+
+}
 func renameAndCreateSymlinks(version string) {
 
 	packageFolder := "yugabyte-" + version
@@ -195,12 +223,13 @@ func (plat Platform) Start() {
 	} else {
 
 		containerExposedPort := getYamlPathData(".platform.containerExposedPort")
+		restartSeconds := getYamlPathData(".platform.restartSeconds")
 
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 
 		command1 := "bash"
 		arg1 := []string{"-c", scriptPath + " " + INSTALL_VERSION_DIR + " " + containerExposedPort +
-			" > /dev/null 2>&1 &"}
+			" " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		ExecuteBashCommand(command1, arg1)
 
@@ -352,8 +381,9 @@ func configureConfHTTPS() {
 
 func (plat Platform) CreateCronJob() {
 	containerExposedPort := getYamlPathData(".platform.containerExposedPort")
+	restartSeconds := getYamlPathData(".platform.restartSeconds")
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + INSTALL_VERSION_DIR + " " +
-			containerExposedPort + "\") | sort - | uniq - | crontab - "})
+			containerExposedPort + " " + restartSeconds + "\") | sort - | uniq - | crontab - "})
 }

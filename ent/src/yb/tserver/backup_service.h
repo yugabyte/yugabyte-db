@@ -33,4 +33,3 @@ class TabletServiceBackupImpl : public TabletServerBackupServiceIf {
 
 }  // namespace tserver
 }  // namespace yb
-

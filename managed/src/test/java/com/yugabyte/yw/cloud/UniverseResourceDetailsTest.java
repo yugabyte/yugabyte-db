@@ -33,9 +33,11 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -371,5 +373,51 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     assertThat(details.pricePerHour, equalTo(0.0));
+  }
+
+  @Test
+  public void testRRWithDiffProvider() {
+    InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
+    Provider provider2 = ModelFactory.gcpProvider(customer);
+    String testInstanceType2 = "c4.large";
+    InstanceType.upsert(provider2.uuid, testInstanceType2, 5, 5.0, null);
+
+    // Set up PriceComponent
+    PriceComponent.PriceDetails instanceDetails = new PriceComponent.PriceDetails();
+    instanceDetails.pricePerHour = instancePrice;
+    PriceComponent.upsert(provider.uuid, region.code, testInstanceType, instanceDetails);
+
+    // Set up userIntent
+    UserIntent userIntent =
+        getDummyUserIntent(getDummyDeviceInfo(numVolumes, volumeSize), provider, testInstanceType);
+
+    UserIntent rrIntent =
+        getDummyUserIntent(
+            getDummyDeviceInfo(numVolumes, volumeSize), provider2, testInstanceType2);
+
+    // Set up TaskParams
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null);
+    sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
+    params.nodeDetailsSet = setUpNodeDetailsSet(2, null);
+    params.upsertCluster(rrIntent, null, UUID.randomUUID());
+    NodeDetails nodeDetails = new NodeDetails();
+    nodeDetails.cloudInfo = new CloudSpecificInfo();
+    nodeDetails.cloudInfo.cloud = provider2.code;
+    nodeDetails.cloudInfo.instance_type = testInstanceType2;
+    nodeDetails.cloudInfo.region = region.code;
+    nodeDetails.cloudInfo.az = az.code;
+    nodeDetails.azUuid = az.uuid;
+    nodeDetails.state = NodeDetails.NodeState.Live;
+    nodeDetails.placementUuid = params.getReadOnlyClusters().get(0).uuid;
+    params.nodeDetailsSet.add(nodeDetails);
+
+    context = new Context(null, customer, params);
+    InstanceType type1 = context.getInstanceType(provider.uuid, testInstanceType);
+    InstanceType type2 = context.getInstanceType(provider2.uuid, testInstanceType2);
+
+    assertThat(type1, notNullValue());
+    assertThat(type2, notNullValue());
+    assertThat(type1, CoreMatchers.not(equalTo(type2)));
   }
 }

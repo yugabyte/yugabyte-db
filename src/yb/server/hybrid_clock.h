@@ -171,4 +171,3 @@ class HybridClock : public Clock {
 
 }  // namespace server
 }  // namespace yb
-

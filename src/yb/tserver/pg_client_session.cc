@@ -32,6 +32,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -52,6 +54,7 @@
 using std::string;
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace tserver {
@@ -101,7 +104,7 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
 Status AppendPsqlErrorCode(const Status& status,
-                                   const client::CollectedErrors& errors) {
+                           const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
     const auto psql_error = PsqlErrorCode(error->status());
@@ -258,10 +261,10 @@ Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr
 }
 
 Result<PgClientSessionOperations> PrepareOperations(
-    const PgPerformRequestPB& req, client::YBSession* session, PgTableCache* table_cache) {
-  auto write_time = HybridTime::FromPB(req.write_time());
+    PgPerformRequestPB* req, client::YBSession* session, PgTableCache* table_cache) {
+  auto write_time = HybridTime::FromPB(req->write_time());
   std::vector<std::shared_ptr<client::YBPgsqlOp>> ops;
-  ops.reserve(req.ops().size());
+  ops.reserve(req->ops().size());
   client::YBTablePtr table;
   bool finished = false;
   auto se = ScopeExit([&finished, session] {
@@ -269,22 +272,20 @@ Result<PgClientSessionOperations> PrepareOperations(
       session->Abort();
     }
   });
-  for (const auto& op : req.ops()) {
+  for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
-      const auto& read = op.read();
+      auto& read = *op.mutable_read();
       RETURN_NOT_OK(GetTable(read.table_id(), table_cache, &table));
-      const auto read_op = std::make_shared<client::YBPgsqlReadOp>(
-          table, const_cast<PgsqlReadRequestPB*>(&read));
+      auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, &read);
       if (op.read_from_followers()) {
         read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
       }
       ops.push_back(read_op);
       session->Apply(std::move(read_op));
     } else {
-      const auto& write = op.write();
+      auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), table_cache, &table));
-      const auto write_op = std::make_shared<client::YBPgsqlWriteOp>(
-          table, const_cast<PgsqlWriteRequestPB*>(&write));
+      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
         write_time = HybridTime::kInvalid;
@@ -299,7 +300,6 @@ Result<PgClientSessionOperations> PrepareOperations(
 
 struct PerformData {
   uint64_t session_id;
-  const PgPerformRequestPB* req;
   PgPerformResponsePB* resp;
   rpc::RpcContext context;
   PgClientSessionOperations ops;
@@ -328,9 +328,9 @@ struct PerformData {
         VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      const auto& req_op = req->ops()[idx];
-      if (req_op.has_read() && req_op.read().is_for_backfill() &&
-          op->response().is_backfill_batch_done()) {
+      if (op->response().is_backfill_batch_done() &&
+          op->type() == client::YBOperation::Type::PGSQL_READ &&
+          down_cast<const client::YBPgsqlReadOp&>(*op).request().is_for_backfill()) {
         // After backfill table schema version is updated, so we reset cache in advance.
         table_cache->Invalidate(op->table()->id());
       }
@@ -428,7 +428,13 @@ Status PgClientSession::DropTable(
     return Status::OK();
   }
 
-  RETURN_NOT_OK(client().DeleteTable(yb_table_id, true, context->GetClientDeadline()));
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      true /* use_transaction */, context->GetClientDeadline()));
+  // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
+  // table deletion to complete. The table will be deleted in the background only after the
+  // transaction has been determined to be a success.
+  RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_ddl_rollback_enabled, metadata,
+        context->GetClientDeadline()));
   table_cache_.Invalidate(yb_table_id);
   return Status::OK();
 }
@@ -667,13 +673,12 @@ Status PgClientSession::FinishTransaction(
 }
 
 Status PgClientSession::Perform(
-    const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  auto session_info = VERIFY_RESULT(SetupSession(req, context->GetClientDeadline()));
+    PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
   auto* session = session_info.first;
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
   auto data = std::make_shared<PerformData>(PerformData {
     .session_id = id_,
-    .req = &req,
     .resp = resp,
     .context = std::move(*context),
     .ops = std::move(ops),
@@ -962,8 +967,8 @@ Status PgClientSession::InsertSequenceTuple(
   auto psql_write(client::YBPgsqlWriteOp::NewInsert(table));
 
   auto write_request = psql_write->mutable_request();
-  RETURN_NOT_OK(
-      (SetCatalogVersion<PgInsertSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
+  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
@@ -990,8 +995,8 @@ Status PgClientSession::UpdateSequenceTuple(
   std::shared_ptr<client::YBPgsqlWriteOp> psql_write(client::YBPgsqlWriteOp::NewUpdate(table));
 
   auto write_request = psql_write->mutable_request();
-  RETURN_NOT_OK(
-      (SetCatalogVersion<PgUpdateSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
+  write_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
@@ -1053,8 +1058,8 @@ Status PgClientSession::ReadSequenceTuple(
   std::shared_ptr<client::YBPgsqlReadOp> psql_read(client::YBPgsqlReadOp::NewSelect(table));
 
   auto read_request = psql_read->mutable_request();
-  RETURN_NOT_OK(
-      (SetCatalogVersion<PgReadSequenceTupleRequestPB, PgsqlReadRequestPB>(req, read_request)));
+  read_request->set_ysql_catalog_version(req.ysql_catalog_version());
+
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 

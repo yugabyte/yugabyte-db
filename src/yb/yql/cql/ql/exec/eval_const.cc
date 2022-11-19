@@ -44,8 +44,8 @@ namespace ql {
 using strings::Substitute;
 
 Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
-                                     QLValuePB *const_pb,
-                                     bool negate) {
+                             QLValuePB *const_pb,
+                             bool negate) {
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
     SetNull(const_pb);
   }
@@ -123,7 +123,7 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
 }
 
 Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
-                                    bool negate) {
+                            bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value: {
       int64_t value;
@@ -229,7 +229,7 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
 }
 
 Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
-                                    bool negate) {
+                            bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kDecimalValue: {
       return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
@@ -257,7 +257,7 @@ Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
 // The following numeric functions might be needed if we fold constant at compile time.
 // Leave them here for now.
 Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
-                                    bool negate) {
+                            bool negate) {
   int64_t value = const_pt->value();
   if (negate) {
     value = -value;
@@ -294,7 +294,7 @@ Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
 }
 
 Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *const_pb,
-                                    bool negate) {
+                            bool negate) {
   long double value = const_pt->value();
   if (negate) {
     value = -value;

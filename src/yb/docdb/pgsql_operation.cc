@@ -57,7 +57,7 @@ DECLARE_bool(ysql_disable_index_backfill);
 
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
-DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
+DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
               "was received. It defines the moment in time when client has definitely timed out "
               "and if the request is yet in processing after the deadline, it can be canceled. "
@@ -66,7 +66,7 @@ DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
               "delays.");
 
-DEFINE_bool(pgsql_consistent_transactional_paging, true,
+DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
             "Whether to enforce consistency of data returned for second page and beyond for YSQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
@@ -76,12 +76,12 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+DEFINE_UNKNOWN_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
-DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, false,
             "Whether to enable packed row for colocated tables.");
 
-DEFINE_uint64(
+DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
@@ -92,12 +92,17 @@ DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
 namespace yb {
 namespace docdb {
 
+bool ShouldYsqlPackRow(bool is_colocated) {
+  return FLAGS_ysql_enable_packed_row &&
+         (!is_colocated || FLAGS_ysql_enable_packed_row_for_colocated_table);
+}
+
 namespace {
 
 // Compatibility: accept column references from a legacy nodes as a list of column ids only
 Status CreateProjection(const Schema& schema,
-                                const PgsqlColumnRefsPB& column_refs,
-                                Schema* projection) {
+                        const PgsqlColumnRefsPB& column_refs,
+                        Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
@@ -183,11 +188,6 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
-}
-
-bool DisablePackedRowIfColocatedTable(const Schema& schema) {
-  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
-         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -578,8 +578,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row &&
-      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
+  if (ShouldYsqlPackRow(doc_read_context_->schema.is_colocated())) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -684,8 +683,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
-    if (FLAGS_ysql_enable_packed_row &&
-        !DisablePackedRowIfColocatedTable(schema) &&
+    if (ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));

@@ -96,7 +96,7 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
                  "progress");
 
 // No longer used because leader stepdown is not as slow as it used to be.
-DEPRECATE_FLAG(bool, load_balancer_skip_leader_as_remove_victim, "10_2022")
+DEPRECATE_FLAG(bool, load_balancer_skip_leader_as_remove_victim, "10_2022");
 
 DEFINE_RUNTIME_bool(allow_leader_balancing_dead_node, true,
     "When a tserver is marked as dead, do we continue leader balancing for tables that "

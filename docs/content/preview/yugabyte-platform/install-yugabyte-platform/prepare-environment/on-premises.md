@@ -57,7 +57,7 @@ type: docs
 
 </ul>
 
-To run a YugabyteDB universe on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere, which is in turn used to install and manage the nodes included in the universe.
+<br>To run a YugabyteDB universe on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere, which is in turn used to install and manage the nodes included in the universe.
 
 A YugabyteDB Anywhere node has the following requirements:
 

@@ -108,9 +108,9 @@ class TSDescriptor {
 
   // Register this tablet server.
   Status Register(const NodeInstancePB& instance,
-                          const TSRegistrationPB& registration,
-                          CloudInfoPB local_cloud_info,
-                          rpc::ProxyCache* proxy_cache);
+                  const TSRegistrationPB& registration,
+                  CloudInfoPB local_cloud_info,
+                  rpc::ProxyCache* proxy_cache);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
@@ -309,7 +309,7 @@ class TSDescriptor {
  private:
   template <class TProxy>
   Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                                  std::shared_ptr<TProxy>* result_cache);
+                          std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
@@ -445,4 +445,3 @@ struct cloud_hash {
 };
 } // namespace master
 } // namespace yb
-

@@ -463,4 +463,3 @@ template<>
 void ContiguousRowCell<ConstContiguousRow>::set_null(bool null) const;
 
 } // namespace yb
-

@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -74,6 +75,7 @@ public class YbcBackupUtil {
   public static final int WAIT_EACH_ATTEMPT_MS = 15000;
   public static final int MAX_TASK_RETRIES = 10;
   public static final String DEFAULT_REGION_STRING = "default_region";
+  public static final String YBC_SUCCESS_MARKER_TASK_SUFFIX = "_success_marker";
 
   @Inject UniverseInfoHandler universeInfoHandler;
   @Inject YbcClientService ybcService;
@@ -193,7 +195,11 @@ public class YbcBackupUtil {
           rL.REGION = r;
           rL.LOCATION =
               BackupUtil.getExactRegionLocation(
-                  tableParams.storageLocation, regionLocationMap.get(r));
+                  tableParams.storageLocation,
+                  regionLocationMap.get(r),
+                  config.name.equals("NFS")
+                      ? ((CustomerConfigStorageNFSData) configData).nfsBucket
+                      : "");
           regionLocations.add(rL);
         });
     return regionLocations;
@@ -597,11 +603,17 @@ public class YbcBackupUtil {
    * @param universeUUID
    */
   public YbcClient getYbcClient(UUID universeUUID) throws PlatformServiceException {
+    return getYbcClient(universeUUID, null);
+  }
+
+  public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String leaderIP = getMasterLeaderAddress(universe);
+    if (StringUtils.isBlank(nodeIp)) {
+      nodeIp = getMasterLeaderAddress(universe);
+    }
     String certificate = universe.getCertificateNodetoNode();
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    YbcClient ybcClient = ybcService.getNewClient(leaderIP, ybcPort, certificate);
+    YbcClient ybcClient = ybcService.getNewClient(nodeIp, ybcPort, certificate);
     if (ybcClient == null) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not create Yb-controller client.");

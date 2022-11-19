@@ -107,4 +107,3 @@ Status CheckArgumentsCount(size_t count, size_t min, size_t max);
 
 }  // namespace tools
 }  // namespace yb
-

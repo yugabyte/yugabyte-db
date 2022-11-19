@@ -84,6 +84,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -344,6 +345,8 @@ DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -417,7 +420,12 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
+// Change the default value of this flag to false once we declare Colocation GA.
+DEFINE_NON_RUNTIME_bool(ysql_legacy_colocated_database_creation, true,
+            "Whether to create a legacy colocated database using pre-Colocation GA implementation");
+TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
+
+DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
 DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
     "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
@@ -1132,8 +1140,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // Prepare various default system configurations.
   RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
-  if ((FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql) &&
-      !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
+  if (FLAGS_enable_ysql && !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot) {
     if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
       // Since this field is not set, this means that is an existing cluster created without D19510.
@@ -2347,6 +2354,7 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
 
     Status tablegroup_tablespace_status = sys_catalog_->ReadTablespaceInfoFromPgYbTablegroup(
       database_oid,
+      is_colocated_database,
       table_to_tablespace_map.get());
     if (!tablegroup_tablespace_status.ok()) {
       LOG(WARNING) << "Refreshing tablegroup->tablespace info failed for namespace "
@@ -3274,7 +3282,8 @@ Status CatalogManager::CreateYsqlSysTable(
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
     WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
+                  txn, table, false /* has_ysql_txn_ddl_state */, when_done)),
                 "Could not submit VerifyTransaction to thread pool");
   }
 
@@ -3565,6 +3574,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   auto ns = VERIFY_RESULT(FindNamespace(req.namespace_()));
+
+  // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
+  // but after GA, colocated tables are colocated via tablegroups.
   bool is_colocated_via_database;
   NamespaceId namespace_id;
   NamespaceName namespace_name;
@@ -3576,7 +3588,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     namespace_id = ns->id();
     namespace_name = ns->name();
-    is_colocated_via_database = ns->colocated();
+    SharedLock lock(mutex_);
+    is_colocated_via_database = IsColocatedDbParentTableId(req.table_id())
+        || colocated_db_tablets_map_.find(ns->id()) != colocated_db_tablets_map_.end();
   }
 
   // For index table, find the table info
@@ -3676,14 +3690,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  // Verify that custom placement policy has not been specified for database-colocated table.
   const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
-  if (is_replication_info_set && is_colocated_via_database) {
-    Status s = STATUS(InvalidArgument, "Custom placement policy should not be set for "
-      "tables colocated via database");
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
-  }
-
   if (is_replication_info_set && req.table_type() == PGSQL_TABLE_TYPE) {
     const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
         "use Tablespaces instead");
@@ -3851,7 +3858,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // 1. Allow Namespaces that are RUNNING
     // 2. Allow Namespaces that are PREPARING under 2 situations
     //    2a. System Namespaces.
-    //    2b. The parent table from a Colocated Namespace.
+    //    2b. The parent table from a legacy Colocated Namespace.
     const auto parent_table_name = GetColocatedDbParentTableName(ns->id());
     bool valid_ns_state = (ns->state() == SysNamespaceEntryPB::RUNNING) ||
       (ns->state() == SysNamespaceEntryPB::PREPARING &&
@@ -3950,7 +3957,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           RSTATUS_DCHECK_EQ(
               tablets.size(), 1U, InternalError,
               "Only one tablet should be created for each tablegroup");
-          CHECK(table->id() == GetTablegroupParentTableId(req.tablegroup_id()))
+          CHECK(table->id() == GetTablegroupParentTableId(req.tablegroup_id()) ||
+                table->id() == GetColocationParentTableId(req.tablegroup_id()))
               << table->id() << ", " << req.tablegroup_id() << ", " << namespace_id;
 
           // Define a new tablegroup
@@ -3962,26 +3970,22 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       } else {
         // Adding a table to an existing colocation tablet.
-        auto tablet = is_colocated_via_database ?
-            colocated_db_tablets_map_[ns->id()] :
-            tablegroup->tablet();
+        auto tablet = tablegroup ?
+            tablegroup->tablet() :
+            colocated_db_tablets_map_[ns->id()];
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             Format("Colocation group tablet $0 should be marked as colocated",
                    tablet->id()));
         tablets.push_back(tablet.get());
 
-        auto tablet_lock = tablet->LockForWrite();
-
-        tablet_lock.mutable_data()->pb.add_table_ids(table->id());
-        RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet));
-        tablet_lock.Commit();
+        tablet->mutable_metadata()->StartMutation();
+        tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
 
         CHECK(colocation_id != kColocationIdNotSet);
         table->mutable_metadata()->mutable_dirty()->
             pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
 
-        tablet->mutable_metadata()->StartMutation();
         table->AddTablet(tablet);
 
         if (tablegroup) {
@@ -4006,11 +4010,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Tables with a transaction should be rolled back if the transaction does not get committed.
   // Store this on the table persistent state until the transaction has been a verified success.
   TransactionMetadata txn;
-  if (req.has_transaction() && FLAGS_enable_transactional_ddl_gc) {
+  bool schedule_ysql_txn_verifier = false;
+  if (req.has_transaction() &&
+      (FLAGS_enable_transactional_ddl_gc || FLAGS_ysql_ddl_rollback_enabled)) {
     table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
         CopyFrom(req.transaction());
     txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
     RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+
+    // Set the YsqlTxnVerifierState.
+    if (FLAGS_ysql_ddl_rollback_enabled && !IsIndex(req) && !colocated &&
+        !table->is_matview()) {
+      table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
+        set_contains_create_table_op(true);
+      schedule_ysql_txn_verifier = true;
+    }
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
@@ -4094,18 +4108,27 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // Verify Transaction gets committed, which occurs after table create finishes.
-  if (req.has_transaction() && PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
-    LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
-    std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
-    WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
-        "Could not submit VerifyTransaction to thread pool");
+  if (req.has_transaction()) {
+    if (schedule_ysql_txn_verifier) {
+      ScheduleYsqlTxnVerification(table, txn);
+    } else if (PREDICT_TRUE(FLAGS_enable_transactional_ddl_gc)) {
+      LOG(INFO) << "Enqueuing table for Transaction Verification: " << req.name();
+      std::function<Status(bool)> when_done =
+          std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
+      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
+                    txn, table, false /* has_ysql_ddl_txn_state */, when_done)),
+          "Could not submit VerifyTransaction to thread pool");
+    }
   }
 
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
             << ns->ToString() << " per request from " << RequestorString(rpc);
-  background_tasks_->Wake();
+  // Kick the background task to start asynchronously creating tablets and assigning tablet leaders.
+  // If the table is joining an existing colocated group there's no work to do.
+  if (!joining_colocation_group) {
+    background_tasks_->Wake();
+  }
 
   // Add the new table's entry to the in-memory structure cdc_stream_map_.
   // This will be used by the background task to determine if the table needs to associated to an
@@ -5596,6 +5619,59 @@ Status CatalogManager::DeleteTable(
     }
   }
 
+  // Check whether DDL rollback is enabled.
+  if (FLAGS_ysql_ddl_rollback_enabled && req->has_transaction()) {
+    bool ysql_txn_verifier_state_present = false;
+    bool table_created_by_same_transaction = false;
+    auto l = table->LockForWrite();
+    if (l->has_ysql_ddl_txn_verifier_state()) {
+      DCHECK(!l->pb_transaction_id().empty());
+
+      // If the table is already undergoing DDL transaction verification as part of a different
+      // transaction then fail this request.
+      if (l->pb_transaction_id() != req->transaction().transaction_id()) {
+        const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
+        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+      }
+      // This DROP operation is part of a DDL transaction that has already made changes
+      // to this table.
+      ysql_txn_verifier_state_present = true;
+      // If this table is being dropped in the same transaction where it was being created, then
+      // it can be dropped without waiting for the transaction to end. This is because this table
+      // will be dropped anyway whether this transaction commits or aborts.
+      table_created_by_same_transaction = l->is_being_created_by_ysql_ddl_txn();
+    }
+
+    // If this table has not been created in the same transaction that is dropping it, mark this
+    // table for deletion upon successful commit of this transaction.
+    if (!table_created_by_same_transaction &&
+        table->GetTableType() == PGSQL_TABLE_TYPE && !table->is_matview() &&
+        !req->is_index_table() && !table->colocated()) {
+      // Setup a background task. It monitors the YSQL transaction. If it commits, the task drops
+      // the table. Otherwise it removes the deletion marker in the ysql_ddl_txn_verifier_state.
+      TransactionMetadata txn;
+      auto& pb = l.mutable_data()->pb;
+      if (!ysql_txn_verifier_state_present) {
+        pb.mutable_transaction()->CopyFrom(req->transaction());
+        txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+        RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+        pb.add_ysql_ddl_txn_verifier_state()->set_contains_drop_table_op(true);
+      } else {
+        DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+        pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+      }
+      // Upsert to sys_catalog.
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+      // Update the in-memory state.
+      TRACE("Committing in-memory state as part of DeleteTable operation");
+      l.Commit();
+      if (!ysql_txn_verifier_state_present) {
+        ScheduleYsqlTxnVerification(table, txn);
+      }
+      return Status::OK();
+    }
+  }
+
   return DeleteTableInternal(req, resp, rpc);
 }
 
@@ -6056,12 +6132,12 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 namespace {
 
 Status ApplyAlterSteps(server::Clock* clock,
-                               const TableId& table_id,
-                               const SysTablesEntryPB& current_pb,
-                               const AlterTableRequestPB* req,
-                               Schema* new_schema,
-                               ColumnId* next_col_id,
-                               std::vector<DdlLogEntry>* ddl_log_entries) {
+                       const TableId& table_id,
+                       const SysTablesEntryPB& current_pb,
+                       const AlterTableRequestPB* req,
+                       Schema* new_schema,
+                       ColumnId* next_col_id,
+                       std::vector<DdlLogEntry>* ddl_log_entries) {
   const SchemaPB& current_schema_pb = current_pb.schema();
   Schema cur_schema;
   RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
@@ -6208,6 +6284,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
+  // If the table is already undergoing an alter operation, return failure.
+  if (FLAGS_ysql_ddl_rollback_enabled && l->has_ysql_ddl_txn_verifier_state()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    if (l->pb_transaction_id() != req->transaction().transaction_id()) {
+      const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
+      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
+    }
+  }
+
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
   const TableName table_name = l->name();
@@ -6216,6 +6302,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
+  Schema previous_schema;
+  RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
+  string previous_table_name = l->pb.name();
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
   if (req->alter_schema_steps_size() || req->has_alter_properties()) {
     TRACE("Apply alter schema");
@@ -6347,7 +6436,67 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       SysTablesEntryPB::ALTERING,
       Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
-  // Update sys-catalog with the new table schema.
+  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
+        table, ddl_log_entries, new_namespace_id, new_table_name, resp));
+
+  // Remove the old name. Not present if PGSQL.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
+      (req->has_new_namespace() || req->has_new_table_name())) {
+    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
+          namespace_id, table_name);
+    LockGuard lock(mutex_);
+    table_names_map_.erase({namespace_id, table_name});
+  }
+
+  // Update a task to rollback alter if the corresponding YSQL transaction
+  // rolls back.
+  TransactionMetadata txn;
+  bool schedule_ysql_txn_verifier = false;
+  if (!FLAGS_ysql_ddl_rollback_enabled) {
+    // If DDL rollback is no longer enabled, make sure that there is no transaction
+    // verification state present.
+    table_pb.clear_ysql_ddl_txn_verifier_state();
+  } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE &&
+             !table->colocated()) {
+    if (!l->has_ysql_ddl_txn_verifier_state()) {
+      table_pb.mutable_transaction()->CopyFrom(req->transaction());
+      auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
+      SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
+      ddl_state->set_previous_table_name(previous_table_name);
+      schedule_ysql_txn_verifier = true;
+    }
+    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+    RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+    DCHECK_EQ(table_pb.ysql_ddl_txn_verifier_state_size(), 1);
+    table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l.Commit();
+
+  // Verify Transaction gets committed, which occurs after table alter finishes.
+  if (schedule_ysql_txn_verifier) {
+    ScheduleYsqlTxnVerification(table, txn);
+  }
+  RETURN_NOT_OK(SendAlterTableRequest(table, req));
+
+  // Increment transaction status version if needed.
+  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
+  }
+
+  LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
+            << table->ToString() << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateSysCatalogWithNewSchema(
+    const scoped_refptr<TableInfo>& table,
+    const std::vector<DdlLogEntry>& ddl_log_entries,
+    const string& new_namespace_id,
+    const string& new_table_name,
+    AlterTableResponsePB* resp) {
   TRACE("Updating metadata on disk");
   std::vector<const DdlLogEntry*> ddl_log_entry_pointers;
   ddl_log_entry_pointers.reserve(ddl_log_entries.size());
@@ -6361,38 +6510,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                    s.ToString()));
     LOG(WARNING) << s.ToString();
     if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-        (req->has_new_namespace() || req->has_new_table_name())) {
+        (!new_namespace_id.empty() || !new_table_name.empty())) {
       LockGuard lock(mutex_);
       VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
       CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
     }
-    // TableMetadaLock follows RAII paradigm: when it leaves scope,
-    // 'l' will be unlocked, and the mutation will be aborted.
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    if (resp)
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+
+    return CheckIfNoLongerLeader(s);
   }
-
-  // Remove the old name. Not present if PGSQL.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-      (req->has_new_namespace() || req->has_new_table_name())) {
-    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
-          namespace_id, table_name);
-    LockGuard lock(mutex_);
-    table_names_map_.erase({namespace_id, table_name});
-  }
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l.Commit();
-
-  RETURN_NOT_OK(SendAlterTableRequest(table, req));
-
-  // Increment transaction status version if needed.
-  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    RETURN_NOT_OK(IncrementTransactionTablesVersion());
-  }
-
-  LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
-            << table->ToString() << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
 
@@ -6411,6 +6538,136 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   resp->set_schema_version(l->pb.version());
   resp->set_done(l->pb.state() != SysTablesEntryPB::ALTERING);
 
+  return Status::OK();
+}
+
+void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
+                                                 const TransactionMetadata& txn) {
+  auto l = table->LockForRead();
+  LOG(INFO) << "Enqueuing table for DDL transaction Verification: " << table->name()
+            << " id: " << table->id() << " schema version: " << l->pb.version();
+  std::function<Status(bool)> when_done =
+    std::bind(&CatalogManager::YsqlTableSchemaChecker, this, table,
+              l->pb_transaction_id(), _1);
+  // For now, just print warning if submission to thread pool fails. Fix this as part of
+  // #13358.
+  WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
+    std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, table,
+              true /* has_ysql_ddl_state */, when_done)),
+      "Could not submit VerifyTransaction to thread pool");
+}
+
+Status CatalogManager::YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
+                                            const string& txn_id_pb,
+                                            bool txn_rpc_success) {
+  if (!txn_rpc_success) {
+    return STATUS_FORMAT(IllegalState, "Failed to find Transaction Status for table $0",
+                         table->ToString());
+  }
+  bool is_committed = VERIFY_RESULT(ysql_transaction_->PgSchemaChecker(table));
+  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed);
+}
+
+Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
+                                                  const string& txn_id_pb,
+                                                  bool success) {
+  DCHECK(!txn_id_pb.empty());
+  DCHECK(table);
+  const string& id = "table id: " + table->id();
+  auto txn = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  auto l = table->LockForWrite();
+  LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
+            << " for transaction " << txn
+            << ": Success: " << (success ? "true" : "false")
+            << " ysql_ddl_txn_verifier_state: "
+            << l->ysql_ddl_txn_verifier_state().DebugString();
+
+  if (!l->has_ysql_ddl_txn_verifier_state()) {
+    // The table no longer has any DDL state to clean up. It was probably cleared by
+    // another thread, nothing to do.
+    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked but no ysql transaction "
+              << "verification state found for " << id << " , ignoring";
+    return Status::OK();
+  }
+
+  if (txn_id_pb != l->pb_transaction_id()) {
+    // Now the table has transaction state for a different transaction.
+    // Do nothing.
+    LOG(INFO) << "YsqlDdlTxnCompleteCallback was invoked for transaction " << txn << " but the "
+              << "schema contains state for a different transaction";
+    return Status::OK();
+  }
+
+  if (success && !l->is_being_deleted_by_ysql_ddl_txn()) {
+    // This transaction was successful. We did not drop this table in this
+    // transaction. In that case, we have nothing else to do.
+    LOG(INFO) << "Clearing ysql_ddl_txn_verifier_state from " << id;
+    auto& pb = l.mutable_data()->pb;
+    pb.clear_ysql_ddl_txn_verifier_state();
+    pb.clear_transaction();
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+    l.Commit();
+    return Status::OK();
+  }
+
+  if ((success && l->is_being_deleted_by_ysql_ddl_txn()) ||
+      (!success && l->is_being_created_by_ysql_ddl_txn())) {
+    // This is either a successful DROP operation or a failed CREATE operation.
+    // In both cases, drop the table.
+    LOG(INFO) << "Dropping " << id;
+    l.Commit();
+    DeleteTableRequestPB dtreq;
+    DeleteTableResponsePB dtresp;
+
+    dtreq.mutable_table()->set_table_name(table->name());
+    dtreq.mutable_table()->set_table_id(table->id());
+    dtreq.set_is_index_table(false);
+    return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */);
+  }
+
+  auto& table_pb = l.mutable_data()->pb;
+  if (!success && l->ysql_ddl_txn_verifier_state().contains_alter_table_op()) {
+    LOG(INFO) << "Alter transaction " << txn << " failed, rolling back its schema changes";
+    std::vector<DdlLogEntry> ddl_log_entries;
+    ddl_log_entries.emplace_back(
+        master_->clock()->Now(),
+        table->id(),
+        l->pb,
+        "Rollback of DDL Transaction");
+    table_pb.mutable_schema()->CopyFrom(table_pb.ysql_ddl_txn_verifier_state(0).previous_schema());
+    const string& new_table_name = table_pb.ysql_ddl_txn_verifier_state(0).previous_table_name();
+    l.mutable_data()->pb.set_name(new_table_name);
+    table_pb.set_version(table_pb.version() + 1);
+    table_pb.set_updates_only_index_permissions(false);
+    l.mutable_data()->set_state(
+        SysTablesEntryPB::ALTERING,
+        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+
+    table_pb.clear_ysql_ddl_txn_verifier_state();
+    table_pb.clear_transaction();
+
+    // Update sys-catalog with the new table schema.
+    RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
+          table,
+          ddl_log_entries,
+          "" /* new_namespace_id */,
+          new_table_name,
+          nullptr /* resp */));
+    l.Commit();
+    LOG(INFO) << "Sending Alter Table request as part of rollback for table " << table->name();
+    return SendAlterTableRequestInternal(table, TransactionId::Nil());
+  }
+
+  // This must be a failed transaction with only a delete operation in it and no alter operations.
+  // Hence we don't need to do anything other than clear the transaction state.
+  DCHECK(!success && l->is_being_deleted_by_ysql_ddl_txn())
+    << "Unexpected state for table " << table->ToString() << " with transaction verification "
+    << "state " << l->ysql_ddl_txn_verifier_state().DebugString();
+
+  table_pb.clear_ysql_ddl_txn_verifier_state();
+  table_pb.clear_transaction();
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+  l.Commit();
   return Status::OK();
 }
 
@@ -7681,8 +7938,25 @@ Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = GetTablegroupParentTableId(req->id());
-  const auto parent_table_name = GetTablegroupParentTableName(req->id());
+  TableId parent_table_id;
+  TableName parent_table_name;
+  {
+    LockGuard lock(mutex_);
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+    if (ns == nullptr) {
+      Status s = STATUS_SUBSTITUTE(
+          NotFound, "Could not find namespace by namespace id $0 for request $1.",
+          req->namespace_id(), req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    if (ns->colocated()) {
+      parent_table_id = GetColocationParentTableId(req->id());
+      parent_table_name = GetColocationParentTableName(req->id());
+    } else {
+      parent_table_id = GetTablegroupParentTableId(req->id());
+      parent_table_name = GetTablegroupParentTableName(req->id());
+    }
+  }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
   ctreq.mutable_namespace_()->set_name(req->namespace_name());
@@ -7735,13 +8009,8 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   }
 
   // Use the tablegroup id as the prefix for the parent table id.
-  const auto parent_table_id = GetTablegroupParentTableId(req->id());
-  const auto parent_table_name = GetTablegroupParentTableName(req->id());
-
-  dtreq.mutable_table()->set_table_name(parent_table_name);
-  dtreq.mutable_table()->set_table_id(parent_table_id);
-  dtreq.set_is_index_table(false);
-
+  TableId parent_table_id;
+  TableName parent_table_name;
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->Find(req->id());
@@ -7759,7 +8028,26 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
           MasterErrorPB::INVALID_REQUEST,
           STATUS(InvalidArgument, "Cannot delete tablegroup, it still has tables in it"));
     }
+
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+    if (ns == nullptr) {
+      Status s = STATUS_SUBSTITUTE(
+          NotFound, "Could not find namespace by namespace id $0.",
+          tablegroup->database_id());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    if (ns->colocated()) {
+      parent_table_id = GetColocationParentTableId(req->id());
+      parent_table_name = GetColocationParentTableName(req->id());
+    } else {
+      parent_table_id = GetTablegroupParentTableId(req->id());
+      parent_table_name = GetTablegroupParentTableName(req->id());
+    }
   }
+
+  dtreq.mutable_table()->set_table_name(parent_table_name);
+  dtreq.mutable_table()->set_table_id(parent_table_id);
+  dtreq.set_is_index_table(false);
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.
@@ -7925,8 +8213,9 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
         resp));
   }
 
-  // Colocated databases need to create a parent tablet to serve as the base storage location.
-  if (req->colocated()) {
+  // Pre-Colocation GA colocated databases need to create a parent tablet to serve as the base
+  // storage location along with creation of the colocated database.
+  if (PREDICT_TRUE(FLAGS_ysql_legacy_colocated_database_creation) && req->colocated()) {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
     const auto parent_table_id = GetColocatedDbParentTableId(ns->id());
@@ -8023,7 +8312,7 @@ void CatalogManager::ProcessPendingNamespace(
   scoped_refptr<NamespaceInfo> ns;
   {
     LockGuard lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, id);;
+    ns = FindPtrOrNull(namespace_ids_map_, id);
   }
   if (ns == nullptr) {
     LOG(WARNING) << "Pending Namespace not found to finish creation: " << id;
@@ -8056,7 +8345,7 @@ void CatalogManager::ProcessPendingNamespace(
               std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
           WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
               std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
-                        txn, when_done)),
+                        txn, nullptr /* table */, false /* has_ysql_ddl_state */, when_done)),
               "Could not submit VerifyTransaction to thread pool");
         }
       } else {
@@ -8142,7 +8431,7 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
   switch (metadata.state()) {
     // Success cases. Done and working.
     case SysNamespaceEntryPB::RUNNING:
-      if (!ns->colocated()) {
+      if (PREDICT_FALSE(!FLAGS_ysql_legacy_colocated_database_creation) || !ns->colocated()) {
         resp->set_done(true);
       } else {
         // Verify system table created as well, if colocated.
@@ -8762,6 +9051,11 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   resp->mutable_namespace_()->set_name(ns->name());
   resp->mutable_namespace_()->set_database_type(ns->database_type());
   resp->set_colocated(ns->colocated());
+  if (ns->colocated()) {
+    LockGuard lock(mutex_);
+    resp->set_legacy_colocated_database(colocated_db_tablets_map_.find(ns->id())
+                                        != colocated_db_tablets_map_.end());
+  }
   return Status::OK();
 }
 
@@ -9690,8 +9984,6 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
 Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                                      const AlterTableRequestPB* req) {
-  auto tablets = table->GetTablets();
-
   bool is_ysql_table_with_transaction_metadata =
       table->GetTableType() == TableType::PGSQL_TABLE_TYPE &&
       req != nullptr &&
@@ -9720,6 +10012,12 @@ Status CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& tab
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
+  return SendAlterTableRequestInternal(table, txn_id);
+}
+
+Status CatalogManager::SendAlterTableRequestInternal(const scoped_refptr<TableInfo>& table,
+                                                     const TransactionId& txn_id) {
+  auto tablets = table->GetTablets();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     auto call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id);
     table->AddTask(call);
@@ -12019,11 +12317,17 @@ Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
   auto ns_info = VERIFY_RESULT(FindNamespaceById(table->namespace_id()));
   TableId parent_table_id;
 
+  SharedLock lock(mutex_);
+  auto tablegroup = tablegroup_manager_->FindByTable(table->id());
   if (ns_info->colocated()) {
-    parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
+    // Two types of colocated database: (1) pre-Colocation GA (2) Colocation GA
+    // Colocated databases created before Colocation GA don't use tablegroup
+    // to manage its colocated tables.
+    if (tablegroup)
+      parent_table_id = GetColocationParentTableId(tablegroup->id());
+    else
+      parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
   } else {
-    SharedLock lock(mutex_);
-    auto tablegroup = tablegroup_manager_->FindByTable(table->id());
     RSTATUS_DCHECK(tablegroup != nullptr,
                    Corruption,
                    Format("Not able to find the tablegroup for a colocated table $0 whose database "

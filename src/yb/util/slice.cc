@@ -33,8 +33,9 @@
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
+DEFINE_UNKNOWN_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
              "Non graph charaters percentage to use hexadecimal rendering");
 
 namespace yb {

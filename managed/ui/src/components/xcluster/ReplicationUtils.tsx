@@ -19,7 +19,7 @@ import {
 import { api } from '../../redesign/helpers/api';
 import { assertUnreachableCase } from '../../utils/ErrorUtils';
 
-import { XClusterConfig } from './XClusterTypes';
+import { XClusterConfig, XClusterTable, XClusterTableDetails } from './XClusterTypes';
 import { Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
@@ -325,3 +325,30 @@ export const getXClusterConfigTableType = (
   sourceUniverseTables.find((table) =>
     xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
   )?.tableType;
+
+/**
+ * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
+ */
+export const augmentTablesWithXClusterDetails = (
+  ybTable: YBTable[],
+  xClusterConfigTables: XClusterTableDetails[]
+): XClusterTable[] => {
+  const ybTableMap = new Map<string, YBTable>();
+  ybTable.forEach((table) => {
+    const { tableUUID, ...tableDetails } = table;
+    const adaptedTableUUID = adaptTableUUID(table.tableUUID);
+    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
+  });
+  return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
+    const ybTableDetails = ybTableMap.get(table.tableId);
+    if (ybTableDetails) {
+      const { tableId, ...xClusterTableDetails } = table;
+      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
+    } else {
+      console.error(
+        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
+      );
+    }
+    return tables;
+  }, []);
+};

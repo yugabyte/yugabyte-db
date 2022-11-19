@@ -1,0 +1,9 @@
+--
+-- Tablegroup Deprecation Warning Test
+--
+CREATE TABLEGROUP tg;
+CREATE TABLE tbl (k INT, v INT) TABLEGROUP tg;
+ALTER TABLEGROUP tg OWNER TO postgres;
+ALTER TABLEGROUP tg RENAME TO tg2;
+DROP TABLE tbl;
+DROP TABLEGROUP tg2;

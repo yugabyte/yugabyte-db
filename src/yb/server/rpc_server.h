@@ -117,4 +117,3 @@ class RpcServer {
 
 } // namespace server
 } // namespace yb
-

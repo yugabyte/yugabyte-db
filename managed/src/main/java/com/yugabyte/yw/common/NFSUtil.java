@@ -27,7 +27,7 @@ public class NFSUtil implements StorageUtil {
       String previousBackupLocation,
       CustomerConfigData configData) {
     String cloudDir = BackupUtil.appendSlash(commonDir);
-    String bucket = DEFAULT_YUGABYTE_NFS_BUCKET;
+    String bucket = ((CustomerConfigStorageNFSData) configData).nfsBucket;
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       previousCloudDir =
@@ -41,10 +41,12 @@ public class NFSUtil implements StorageUtil {
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
-    String bucket = DEFAULT_YUGABYTE_NFS_BUCKET;
+    String bucket = ((CustomerConfigStorageNFSData) configData).nfsBucket;
     Map<String, String> credsMap = new HashMap<>();
     if (isDsm) {
-      String location = BackupUtil.getBackupIdentifier(storageLocation, true);
+      String location =
+          getNfsLocationString(
+              storageLocation, bucket, ((CustomerConfigStorageData) configData).backupLocation);
       location = BackupUtil.appendSlash(location);
       credsMap = createCredsMapYbc(((CustomerConfigStorageData) configData).backupLocation);
       return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", credsMap, Util.NFS);
@@ -69,5 +71,13 @@ public class NFSUtil implements StorageUtil {
           .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
     return regionLocationsMap;
+  }
+
+  private String getNfsLocationString(String backupLocation, String bucket, String configLocation) {
+    String location =
+        StringUtils.removeStart(
+            backupLocation, BackupUtil.getCloudpathWithConfigSuffix(configLocation, bucket));
+    location = StringUtils.removeStart(location, "/");
+    return location;
   }
 }

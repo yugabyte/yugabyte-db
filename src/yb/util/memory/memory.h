@@ -1023,4 +1023,3 @@ std::shared_ptr<U> FakeSharedPtr(U* u) {
 std::string TcMallocStats();
 
 }  // namespace yb
-

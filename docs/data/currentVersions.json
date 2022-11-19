@@ -4,21 +4,18 @@
     {
       "series": "v2.15",
       "display": "v2.15 (Preview)",
-      "version": "2.15.3.0",
+      "version": "2.15.3.2",
       "versionShort": "2.15.3",
-      "appVersion": "2.15.3.0-b231",
-      "alias": "preview",
-      "isStable": false
+      "appVersion": "2.15.3.2-b1",
+      "alias": "preview"
     },
     {
       "series": "v2.14",
-      "display": "v2.14 (LTS)",
-      "version": "2.14.4.0",
-      "versionShort": "2.14.4",
-      "appVersion": "2.14.4.0-b26",
-      "alias": "stable",
-      "isStable": true,
-      "isLTS": true
+      "display": "v2.14 (Stable)",
+      "version": "2.14.5.0",
+      "versionShort": "2.14.5",
+      "appVersion": "2.14.5.0-b18",
+      "alias": "stable"
     },
     {
       "series": "v2.12",

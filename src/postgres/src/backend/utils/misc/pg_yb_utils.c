@@ -316,10 +316,11 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YbIsDatabaseColocated(Oid dbid)
+YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database)
 {
 	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated));
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated,
+											legacy_colocated_database));
 	return colocated;
 }
 
@@ -974,6 +975,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+char *yb_test_block_index_state_change = "";
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -985,7 +988,7 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char*
-YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
+YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 {
 	Datum attr = (Datum) 0;
 	int natts = tupleDesc->natts;
@@ -1011,6 +1014,14 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
+}
+
+const char*
+YbBitmapsetToString(Bitmapset *bms)
+{
+	StringInfo str = makeStringInfo();
+	outBitmapset(str, bms);
+	return str->data;
 }
 
 bool
@@ -1117,6 +1128,11 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 	--ddl_transaction_state.nesting_level;
 	if (ddl_transaction_state.nesting_level == 0)
 	{
+		if (yb_test_fail_next_ddl)
+		{
+			yb_test_fail_next_ddl = false;
+			elog(ERROR, "Failed DDL operation as requested");
+		}
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
@@ -1628,12 +1644,26 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	last_attr->is_null = true;
 }
 
-void YBTestFailDdlIfRequested() {
-	if (!yb_test_fail_next_ddl)
-		return;
+void
+YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+							const char *msg)
+{
+	static const int kSpinWaitMs = 100;
+	while (strcmp(*actual, expected) == 0)
+	{
+		ereport(LOG,
+				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		pg_usleep(kSpinWaitMs * 1000);
 
-	yb_test_fail_next_ddl = false;
-	elog(ERROR, "DDL failed as requested");
+		/* Reload config in hopes that guc var actual changed. */
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+	}
 }
 
 static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
@@ -2787,10 +2817,6 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			db_id = TemplateDbOid;
 			break;
 
-		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
-			db_id = TemplateDbOid;
-			break;
-
 		// MyDb tables
 		case AccessMethodProcedureRelationId:             // pg_amproc
 			sys_table_index_id = AccessMethodProcedureIndexId;
@@ -2841,6 +2867,10 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case CastRelationId:        switch_fallthrough(); // pg_cast
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
+
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			db_id = YbMasterCatalogVersionTableDBOid();
+			break;
 
 		default:
 		{
@@ -2922,13 +2952,4 @@ uint64_t YbGetSharedCatalogVersion()
 		? YBCGetSharedDBCatalogVersion(MyDatabaseId, &version)
 		: YBCGetSharedCatalogVersion(&version));
 	return version;
-}
-
-uint32_t YbGetNumberOfDatabases()
-{
-	Assert(YBIsDBCatalogVersionMode());
-	uint32_t num_databases = 0;
-	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
-	Assert(num_databases > 0);
-	return num_databases;
 }

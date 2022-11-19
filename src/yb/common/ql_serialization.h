@@ -25,4 +25,3 @@ void SerializeValue(
     faststring* buffer);
 
 }  // namespace yb
-

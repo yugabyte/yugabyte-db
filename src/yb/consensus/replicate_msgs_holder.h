@@ -75,4 +75,3 @@ class LWReplicateMsgsHolder {
 
 }  // namespace consensus
 }  // namespace yb
-

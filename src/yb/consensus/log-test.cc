@@ -53,8 +53,9 @@
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_batches, 10000,
+DEFINE_UNKNOWN_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
 
 DECLARE_int32(log_min_segments_to_retain);

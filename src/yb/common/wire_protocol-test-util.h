@@ -137,4 +137,3 @@ void AddKVToPB(int32_t key_val,
                docdb::LWKeyValueWriteBatchPB* write_batch);
 
 } // namespace yb
-

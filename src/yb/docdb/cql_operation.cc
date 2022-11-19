@@ -55,21 +55,21 @@
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
-DEFINE_bool(ycql_consistent_transactional_paging, false,
+DEFINE_UNKNOWN_bool(ycql_consistent_transactional_paging, false,
             "Whether to enforce consistency of data returned for second page and beyond for YCQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
             "be stale. The latter is preferable for long scans. The data returned for the first "
             "page of results is never stale regardless of this flag.");
 
-DEFINE_bool(ycql_disable_index_updating_optimization, false,
+DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "If true all secondary indexes must be updated even if the update does not change "
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
 
-DEFINE_uint64(
+DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
 
@@ -97,7 +97,7 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
 Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
-                                 Schema* static_projection, Schema* non_static_projection) {
+                         Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb.
   unordered_set<ColumnId> static_columns, non_static_columns;
 
@@ -128,8 +128,8 @@ Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& colu
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
-                           const size_t begin_idx, const size_t col_count,
-                           QLRow* row, size_t *col_idx) {
+                   const size_t begin_idx, const size_t col_count,
+                   QLRow* row, size_t *col_idx) {
   for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
     RETURN_NOT_OK(table_row.GetValue(schema.column_id(i), row->mutable_column((*col_idx)++)));
   }
@@ -137,7 +137,7 @@ Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& projection,
-                           QLRow* row, size_t* col_idx) {
+                   QLRow* row, size_t* col_idx) {
   return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
 
@@ -204,12 +204,12 @@ bool JoinNonStaticRow(
 }
 
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
-                                  int index,
-                                  rapidjson::Value* document,
-                                  rapidjson::Value::MemberIterator* memberit,
-                                  rapidjson::Value::ValueIterator* valueit,
-                                  bool* last_elem_object,
-                                  IsInsert is_insert) {
+                          int index,
+                          rapidjson::Value* document,
+                          rapidjson::Value::MemberIterator* memberit,
+                          rapidjson::Value::ValueIterator* valueit,
+                          bool* last_elem_object,
+                          IsInsert is_insert) {
   *last_elem_object = false;
 
   int64_t array_index;

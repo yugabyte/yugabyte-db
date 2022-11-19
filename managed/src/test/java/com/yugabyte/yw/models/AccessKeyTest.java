@@ -23,11 +23,13 @@ import play.libs.Json;
 
 public class AccessKeyTest extends FakeDBApplication {
   Provider defaultProvider;
+  Provider anotherProvider;
 
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(customer);
+    anotherProvider = ModelFactory.gcpProvider(customer);
   }
 
   @Test
@@ -85,14 +87,14 @@ public class AccessKeyTest extends FakeDBApplication {
   public void testGetAllWithValidKeyCodes() {
     AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
     AccessKey.create(defaultProvider.uuid, "access-code2", new AccessKey.KeyInfo());
-    AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
+    AccessKey.create(anotherProvider.uuid, "access-code3", new AccessKey.KeyInfo());
     List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
     assertEquals(2, accessKeys.size());
   }
 
   @Test
   public void testGetAllWithNoKeyCodes() {
-    AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
+    AccessKey.create(anotherProvider.uuid, "access-code3", new AccessKey.KeyInfo());
     List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
     assertEquals(0, accessKeys.size());
   }

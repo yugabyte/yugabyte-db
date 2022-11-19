@@ -106,4 +106,3 @@ class PgCommandTestBase : public PgWrapperTestBase {
 
 } // namespace pgwrapper
 } // namespace yb
-

@@ -262,4 +262,3 @@ struct GoodFastHash<const std::basic_string<_CharT, _Traits, _Alloc> > {
   static const size_t bucket_size = 4;  // These are required by MSVC
   static const size_t min_buckets = 8;  // 4 and 8 are defaults.
 };
-

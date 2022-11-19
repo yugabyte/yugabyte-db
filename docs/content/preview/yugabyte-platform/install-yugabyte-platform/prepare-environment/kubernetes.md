@@ -59,7 +59,7 @@ type: docs
 
 </ul>
 
-The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+<br>The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
 - Kubernetes 1.20 or later.
 - Helm 3.4 or later.

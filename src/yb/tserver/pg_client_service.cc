@@ -50,10 +50,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(pg_client_session_expiration_ms, 60000,
+DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
               "Pg client session expiration time in milliseconds.");
 
 namespace yb {
@@ -370,14 +371,7 @@ class PgClientServiceImpl::Impl {
       PgGetTserverCatalogVersionInfoResponsePB* resp,
       rpc::RpcContext* context) {
     GetTserverCatalogVersionInfoResponsePB info;
-    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(req.size_only(), &info));
-    if (req.size_only()) {
-      // We only ask for the size of catalog version map in tserver and should not need to
-      // populate any entries.
-      DCHECK_EQ(info.entries_size(), 0);
-      resp->set_num_entries(info.num_entries());
-      return Status::OK();
-    }
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(&info));
     resp->mutable_entries()->Reserve(info.entries_size());
     for (const auto& src : info.entries()) {
       auto* dst = resp->add_entries();
@@ -388,8 +382,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  void Perform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
       Respond(status, resp, context);
@@ -468,9 +461,8 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  Status DoPerform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
+  Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+    return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
   const TabletServerIf& tablet_server_;
@@ -530,7 +522,7 @@ PgClientServiceImpl::~PgClientServiceImpl() = default;
 
 void PgClientServiceImpl::Perform(
     const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
-  impl_->Perform(*req, resp, &context);
+  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, &context);
 }
 
 void PgClientServiceImpl::InvalidateTableCache() {

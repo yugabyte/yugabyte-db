@@ -225,6 +225,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
     u.updateConfig(config);
+    u.save();
     return u;
   }
 

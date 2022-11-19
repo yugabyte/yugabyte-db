@@ -91,16 +91,14 @@ Generally, the process involves the following:
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
-![img](/images/yp/docker-pull.png)<br><br>
+![img](/images/yp/docker-pull.png)<br>
 
 
 
 You need to perform the following steps:
 
-1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file.
-
-   To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
-
+1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+   
    ```sh
    docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
    
@@ -110,6 +108,8 @@ You need to perform the following steps:
 1. Fetch the YugabyteDB Helm chart on your desktop (install Helm on your desktop). Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
 
    ```sh
+   helm repo add yugabytedb https://charts.yugabyte.com 
+   helm repo update 
    helm fetch yugabytedb/yugaware - - version= {{ version }}
    tar zxvf yugaware-{{ version }}.tgz
    cd yugaware
@@ -118,28 +118,26 @@ You need to perform the following steps:
    
    ```properties
    image:
-	commonRegistry: ""
+   commonRegistry: ""
     	repository: **quay.io/yugabyte/yugaware**
-   ```
-
- 	tag: **{{ version.build }}**
- 	pullPolicy: IfNotPresent
- 	pullSecret: yugabyte-k8s-pull-secret
- 	thirdparty-deps:
- 		registry: quay.io
- 		tag: **latest**
- 		name: **yugabyte/thirdparty-deps** 
- 	prometheus:
- 		registry: ""
- 		tag:  **{{ version.prometheus }}**
- 		name: **prom/prometheus**
- 	nginx:
- 		registry: ""
- 		tag: **{{ version.nginx }}**
- 		name: nginx
+    	tag: **{{ version.build }}**
+   pullPolicy: IfNotPresent
+   pullSecret: yugabyte-k8s-pull-secret
+   thirdparty-deps:
+   	registry: quay.io
+   	tag: **latest**
+   	name: **yugabyte/thirdparty-deps** 
+   prometheus:
+   	registry: ""
+   	tag:  **{{ version.prometheus }}**
+   	name: **prom/prometheus**
+   nginx:
+   	registry: ""
+   	tag: **{{ version.nginx }}**
+   	name: nginx
    ```
    
-2. Pull images to your Docker Desktop, as follows:
+1. Pull images to your Docker Desktop, as follows:
 
    ```sh
    docker pull quay.io/yugabyte/yugaware:{{ version.build }}
@@ -193,7 +191,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull postgres: {{}}
+   docker pull postgres:11.5
    ```
 
    ```output
@@ -218,7 +216,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull prom/prometheus: {{}}
+   docker pull prom/prometheus:v2.2.1
    ```
 
    ```output
@@ -309,7 +307,7 @@ You need to perform the following steps:
    ```
    ![img](/images/yp/docker-image.png)
    
-7. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
+1. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
 
    ```properties
    image:

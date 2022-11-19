@@ -16,8 +16,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "yb/util/flags.h"
 
-DEFINE_string(initial_sys_catalog_snapshot_dest_path, "",
+DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_dest_path, "",
               "Destination path to write the initial sys catalog snapshot to");
 
 namespace yb {

@@ -157,4 +157,3 @@ class MiniTabletServer {
 
 } // namespace tserver
 } // namespace yb
-

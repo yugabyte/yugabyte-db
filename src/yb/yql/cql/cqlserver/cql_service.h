@@ -186,4 +186,3 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
 }  // namespace cqlserver
 }  // namespace yb
-

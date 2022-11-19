@@ -299,4 +299,3 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #else
 #define FASTDEBUG_FAKE_INIT(x)
 #endif
-

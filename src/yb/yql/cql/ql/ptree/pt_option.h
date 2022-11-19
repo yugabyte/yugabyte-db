@@ -85,4 +85,3 @@ std::ostream& operator<<(std::ostream& out, ObjectType object_type);
 
 }  // namespace ql
 }  // namespace yb
-

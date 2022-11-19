@@ -503,8 +503,8 @@ class QLValue {
 
   //----------------------------- serializer / deserializer ---------------------------------
   Status Deserialize(const std::shared_ptr<QLType>& ql_type,
-                             const QLClient& client,
-                             Slice* data);
+                     const QLClient& client,
+                     Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -609,4 +609,3 @@ std::vector<QLValuePB> SortTuplesbyOrdering(
   } break;
 
 } // namespace yb
-

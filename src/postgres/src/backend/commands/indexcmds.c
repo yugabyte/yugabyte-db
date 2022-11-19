@@ -704,10 +704,13 @@ DefineIndex(Oid relationId,
 				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 	/*
+	 * Skip the check in a colocated database because any user can create tables
+	 * in an implicit tablegroup.
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
 	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
 	 */
-	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	if (!MyDatabaseColocated &&
+		OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 	{
 		AclResult  aclresult;
 
@@ -1427,6 +1430,10 @@ DefineIndex(Oid relationId,
 
 	/* Delay after committing pg_index update. */
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"indisready",
+									"index state change indisready=true");
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
@@ -1449,6 +1456,10 @@ DefineIndex(Oid relationId,
 
 	/* Delay after committing pg_index update. */
 	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"getsafetime",
+									"index state change to getsafetime");
 
 	StartTransactionCommand();
 	YBIncrementDdlNestingLevel();
@@ -1457,6 +1468,11 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+	if (IsYugaByteEnabled() && yb_test_block_index_state_change[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_state_change,
+									"indisvalid",
+									"index state change indisvalid=true");
 
 	/*
 	 * Index can now be marked valid -- update its pg_index entry
@@ -1681,7 +1697,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid)
+						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									 errmsg("cannot create a hash partitioned"

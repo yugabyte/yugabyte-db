@@ -699,10 +699,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
-		 * only read shared relations and therefore can use any database OID.
-		 * We will update yb_catalog_cache_version to match MyDatabaseId once
-		 * the latter is resolved so we will never use the catalog version of
-		 * template1 to query relations that are private to MyDatabaseId.
+		 * only read the above shared relations and therefore can use any
+		 * database OID. We will update yb_catalog_cache_version to match
+		 * MyDatabaseId once the latter is resolved so we will never use
+		 * the catalog version of template1 to query relations that are
+		 * private to MyDatabaseId.
 		 */
 		yb_catalog_cache_version = YbGetMasterCatalogVersion();
 	}
@@ -1088,11 +1089,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	RelationCacheInitializePhase3();
 
 	/*
-	 * Also cache whather the database is colocated for optimization purposes.
+	 * Also cache whether the database is colocated for optimization purposes.
 	 */
 	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
 	{
-		MyDatabaseColocated = YbIsDatabaseColocated(MyDatabaseId);
+		MyDatabaseColocated = YbIsDatabaseColocated(MyDatabaseId, &MyColocatedDatabaseLegacy);
 	}
 
 	/* set up ACL framework (so CheckMyDatabase can check permissions) */

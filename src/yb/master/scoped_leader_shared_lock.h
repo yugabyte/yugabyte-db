@@ -188,4 +188,3 @@ class ScopedLeaderSharedLock {
 
 }  // namespace master
 }  // namespace yb
-

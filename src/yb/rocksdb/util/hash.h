@@ -46,4 +46,3 @@ inline uint32_t GetSliceHash(const Slice& s) {
 }
 
 }  // namespace rocksdb
-

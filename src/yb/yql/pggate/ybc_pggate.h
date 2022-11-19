@@ -65,10 +65,6 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 YBCStatus YBCGetSharedDBCatalogVersion(
     YBCPgOid db_oid, uint64_t* catalog_version);
 
-// Return the number of rows in pg_yb_catalog_table. Only used when per-db
-// catalog version mode is enabled.
-YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
-
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -93,20 +89,20 @@ bool YBCTryMemRelease(int64_t bytes);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(const char *database_name);
 
-// Get whether the given database is colocated.
-YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated);
+// Get whether the given database is colocated
+// and whether the database is a legacy colocated database.
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
+                                   bool *legacy_colocated_database);
 
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called);
 
 YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -116,7 +112,6 @@ YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
 YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped);
@@ -124,7 +119,6 @@ YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called);
 
@@ -310,6 +304,8 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
+
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
@@ -642,4 +638,3 @@ void YBCInitPgGateEx(
 } // namespace pggate
 } // namespace yb
 #endif
-

@@ -222,9 +222,9 @@ Status InitHashPartitionKey(
 
 template <class Req>
 Status SetRangePartitionBounds(const Schema& schema,
-                                       const std::string& last_partition,
-                                       Req* request,
-                                       std::string* key_upper_bound) {
+                               const std::string& last_partition,
+                               Req* request,
+                               std::string* key_upper_bound) {
   vector<docdb::KeyEntryValue> range_components, range_components_end;
   RETURN_NOT_OK(GetRangePartitionBounds(
       schema, *request, &range_components, &range_components_end));

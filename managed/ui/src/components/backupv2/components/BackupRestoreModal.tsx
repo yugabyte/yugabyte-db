@@ -67,7 +67,8 @@ interface RestoreModalProps {
 
 const TEXT_RESTORE = 'Restore';
 const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
-
+const RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG =
+  'Cannot restore ybc backup to non-ybc universe';
 const STEPS = [
   {
     title: 'Restore Backup',
@@ -122,7 +123,16 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
 
   const restore = useMutation(
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
-      if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
+      const isYBCEnabledinTargetUniverse = isYBCEnabledInUniverse(
+        universeList!,
+        values['targetUniverseUUID'].value
+      );
+      if (backup_details.category === 'YB_CONTROLLER' && !isYBCEnabledinTargetUniverse) {
+        toast.error(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+        return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+      }
+
+      if (isYBCEnabledinTargetUniverse) {
         values = omit(values, 'parallelThreads');
       }
       if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
@@ -414,6 +424,14 @@ function RestoreChooseUniverseForm({
           <h5>Restore to</h5>
         </Col>
       </Row>
+      {backup_details.category === 'YB_CONTROLLER' &&
+        isDefinedNotNull(values['targetUniverseUUID']?.value) &&
+        !isYbcEnabledinCurrentUniverse && (
+          <div>
+            <Alert bsStyle="danger">{RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG}</Alert>
+          </div>
+        )}
+
       <Row>
         <Col lg={8} className="no-padding">
           <Field
@@ -523,7 +541,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && (
+      {!isYbcEnabledinCurrentUniverse && backup_details.category !== 'YB_CONTROLLER' && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field

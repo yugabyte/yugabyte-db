@@ -34,4 +34,3 @@ struct IndexColumn {
 };
 
 } // namespace yb
-

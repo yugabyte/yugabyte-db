@@ -20,4 +20,3 @@ namespace yb {
 using UserTimeMicros = int64_t;
 
 }  // namespace yb
-

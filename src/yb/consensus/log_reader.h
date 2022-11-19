@@ -86,7 +86,7 @@ class LogReader {
   Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
 
   Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
-                                              SegmentSequence* segments) const;
+                                      SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -251,4 +251,3 @@ class LogReader {
 
 }  // namespace log
 }  // namespace yb
-

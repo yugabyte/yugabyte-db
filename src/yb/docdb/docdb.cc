@@ -78,7 +78,7 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_int32(cdc_max_stream_intent_records, 1000,
+DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1000,
              "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {
@@ -88,8 +88,8 @@ namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 Status ApplyIntent(RefCntPrefix key,
-                           const IntentTypeSet intent_types,
-                           LockBatchEntries *keys_locked) {
+                   const IntentTypeSet intent_types,
+                   LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   size_t size = key.size();
@@ -871,8 +871,10 @@ Result<ApplyTransactionState> GetIntentsBatch(
             auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
 
             IntentKeyValueForCDC intent_metadata;
-            intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
-            intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
+            Slice(key_parts, &(intent_metadata.key_buf));
+            intent_metadata.key = intent.doc_path;
+            Slice(value_parts, &(intent_metadata.value_buf));
+            intent_metadata.value = decoded_value.body;
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
             intent_metadata.intent_ht = doc_ht;

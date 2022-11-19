@@ -119,7 +119,7 @@ using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::StateChangeReason;
 
-DEFINE_bool(notify_peer_of_removal_from_cluster, true,
+DEFINE_UNKNOWN_bool(notify_peer_of_removal_from_cluster, true,
             "Notify a peer after it has been removed from the cluster.");
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
@@ -138,8 +138,9 @@ METRIC_DEFINE_counter(
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
-DEFINE_uint64(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
+DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
+    "Max bytes per batch for copy pg sql tables");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -1086,6 +1087,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
 Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t database_oid,
+    bool is_colocated_database,
     TableToTablespaceIdMap *table_tablespace_map) {
   TRACE_EVENT0("master", "ReadTablespaceInfoFromPgYbTablegroup");
 
@@ -1131,7 +1133,9 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
 
     const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
-    const TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
+    const TableId parent_table_id = is_colocated_database ?
+                                      GetColocationParentTableId(tablegroup_id) :
+                                      GetTablegroupParentTableId(tablegroup_id);
     boost::optional<TablespaceId> tablespace_id = boost::none;
 
     // If no valid tablespace found, then this tablegroup has no placement info

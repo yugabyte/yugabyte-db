@@ -55,7 +55,7 @@
 #include "yb/util/striped64.h"
 #include "yb/util/trace.h"
 
-DEFINE_int32(lock_contention_trace_threshold_cycles,
+DEFINE_UNKNOWN_int32(lock_contention_trace_threshold_cycles,
              2000000, // 2M cycles should be about 1ms
              "If acquiring a spinlock takes more than this number of "
              "cycles, and a Trace is currently active, then the current "

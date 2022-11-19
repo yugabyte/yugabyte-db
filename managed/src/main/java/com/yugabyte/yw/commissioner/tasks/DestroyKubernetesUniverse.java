@@ -48,6 +48,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
 
+      // Delete xCluster configs involving this universe and put the locked universes to
+      // lockedUniversesUuidList.
+      createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
+
       preTaskActions();
 
       Map<String, String> universeConfig = universe.getConfig();
@@ -173,6 +177,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
+    } finally {
+      unlockXClusterUniverses(lockedXClusterUniversesUuidSet, params().isForceDelete);
     }
     log.info("Finished {} task.", getName());
   }

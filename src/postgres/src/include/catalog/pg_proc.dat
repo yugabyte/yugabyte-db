@@ -10378,4 +10378,9 @@
   proname => 'yb_server_zone', provolatile => 's',
   prorettype => 'varchar', proargtypes => '',
   prosrc => 'yb_server_zone' },
+
+{ oid => '8045', descr => 'function to preserve tablegroup oid',
+  proname => 'binary_upgrade_set_next_tablegroup_oid', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'binary_upgrade_set_next_tablegroup_oid' },
 ]

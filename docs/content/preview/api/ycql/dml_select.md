@@ -31,7 +31,7 @@ Use the `SELECT` statement to retrieve (part of) rows of specified columns that 
 
 ### Grammar
 
-```
+```ebnf
 select ::= SELECT [ DISTINCT ] { * | column_name [ , column_name ... ] }
                FROM table_name
                [ WHERE where_expression ]
@@ -81,7 +81,7 @@ Where
 - The `if_expression` can only specify conditions for non-primary-key columns although it can used on a key column of a secondary index.
 - While WHERE condition is used to generate efficient query plan, the IF condition is not. ALL rows that satisfy WHERE condition will be read from the database before the IF condition is used to filter unwanted data. In the following example, although the two queries yield the same result set, SELECT with WHERE clause will use INDEX-SCAN while SELECT with IF clause will use FULL-SCAN.
 
-```
+```cql
 SELECT * FROM a_table WHERE key = 'my_key';
 SELECT * FROM a_table IF key = 'my_key';
 ```
@@ -132,7 +132,7 @@ ycqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, emp
 ycqlsh:example> SELECT * FROM employees;
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -147,7 +147,7 @@ ycqlsh:example> SELECT * FROM employees;
 ycqlsh:example> SELECT * FROM employees LIMIT 2;
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -160,7 +160,7 @@ ycqlsh:example> SELECT * FROM employees LIMIT 2;
 ycqlsh:example> SELECT * FROM employees LIMIT 2 OFFSET 1;
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           2 | Accounting |          Jane
@@ -173,7 +173,7 @@ ycqlsh:example> SELECT * FROM employees LIMIT 2 OFFSET 1;
 ycqlsh:example> SELECT DISTINCT dept_name FROM employees;
 ```
 
-```
+```output
  dept_name
 ------------
  Accounting
@@ -186,7 +186,7 @@ ycqlsh:example> SELECT DISTINCT dept_name FROM employees;
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 2;
 ```
 
-```
+```output
  department_id | employee_id | dept_name | employee_name
 ---------------+-------------+-----------+---------------
              2 |           1 | Marketing |           Joe
@@ -198,7 +198,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 2;
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <= 2;
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -211,7 +211,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -224,7 +224,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_nam
 ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 IF employee_name != 'John';
 ```
 
-```
+```output
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           2 | Accounting |          Jane
@@ -266,7 +266,7 @@ Reverse scan, opposite of the table's clustering order.
 ycqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id DESC, ts ASC;
 ```
 
-```
+```output
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         2 | 2018-01-01 12:30:30.000000+0000 |     x
@@ -281,7 +281,7 @@ Forward scan, same as a SELECT without an ORDER BY clause.
 ycqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts DESC;
 ```
 
-```
+```output
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         1 | 2018-01-01 12:30:31.000000+0000 |     b
@@ -296,7 +296,7 @@ Other orderings are not allowed.
 ycqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
 ```
 
-```
+```output
 InvalidRequest: Unsupported order by relation
 SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
                                                         ^^^^^^^^^^^^^^^^^^^^^

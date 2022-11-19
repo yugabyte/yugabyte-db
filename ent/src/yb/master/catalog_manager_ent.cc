@@ -2165,13 +2165,24 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
         // For YSQL, the table must be created via external call. Therefore, continue the search for
         // the table, this time checking for name matches rather than id matches.
 
-        // TODO(alex): Handle tablegroups in #11632
         if (meta.colocated() && IsColocatedDbParentTableId(table_data->old_table_id)) {
           // For the parent colocated table we need to generate the new_table_id ourselves
           // since the names will not match.
           // For normal colocated tables, we are still able to follow the normal table flow, so no
           // need to generate the new_table_id ourselves.
           table_data->new_table_id = GetColocatedDbParentTableId(new_namespace_id);
+          is_parent_colocated_table = true;
+        } else if (meta.colocated() && IsTablegroupParentTableId(table_data->old_table_id)) {
+          // Since we preserve tablegroup oid in ysql_dump, for the parent tablegroup table, if we
+          // didn't find a match by id in the previous step, then we need to generate the
+          // new_table_id ourselves because the namespace id of the namespace where this tablegroup
+          // was created changes.
+          uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(new_namespace_id));
+          uint32_t tablegroup_oid =
+              VERIFY_RESULT(GetPgsqlTablegroupOid(
+                  GetTablegroupIdFromParentTableId(table_data->old_table_id)));
+          table_data->new_table_id =
+              GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {
@@ -3355,7 +3366,12 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
 
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
   for (const auto& tid : table_ids) {
-    auto newstreams = FindCDCStreamsForTableToDeleteMetadata(tid);
+    std::vector<scoped_refptr<CDCStreamInfo>> newstreams;
+    {
+      LockGuard lock(mutex_);
+      cdcsdk_tables_to_stream_map_.erase(tid);
+      newstreams = FindCDCStreamsForTableToDeleteMetadata(tid);
+    }
     streams.insert(streams.end(), newstreams.begin(), newstreams.end());
   }
 
@@ -3409,7 +3425,6 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
 std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTableToDeleteMetadata(
     const TableId& table_id) const {
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  SharedLock lock(mutex_);
 
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
@@ -3655,7 +3670,9 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
           // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
           // will store this info in the map in the 'kCdcData' column.
           auto column_id = cdc_table.ColumnId(master::kCdcData);
-          cdc_table.AddMapColumnValue(req, column_id, "active_time", "0");
+          auto map_value_pb = client::AddMapColumn(req, column_id);
+          client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
+          client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
         }
 
         session->Apply(op);
@@ -3970,8 +3987,9 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         QLAddStringRangeValue(insert_req, stream->id());
         cdc_table.AddStringColumnValue(
             insert_req, master::kCdcCheckpoint, OpId::Invalid().ToString());
-        cdc_table.AddMapColumnValue(
-            insert_req, cdc_table.ColumnId(master::kCdcData), "active_time", "0");
+        auto map_value_pb = client::AddMapColumn(insert_req, cdc_table.ColumnId(master::kCdcData));
+        client::AddMapEntryToColumn(map_value_pb, "active_time", "0");
+        client::AddMapEntryToColumn(map_value_pb, "cdc_sdk_safe_time", "0");
         session->Apply(insert_op);
       }
 
@@ -3993,6 +4011,14 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
         LOG(WARNING) << "Encountered error while trying to update sys_catalog of stream: "
                      << stream->id() << ", with table: " << table_id;
         continue;
+      }
+
+      // Add the table/ stream pair details to 'cdcsdk_tables_to_stream_map_', so that parent
+      // tablets on which tablet split is successful will be hidden rather than deleted straight
+      // away, as needed.
+      {
+        LockGuard lock(mutex_);
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->id());
       }
 
       stream_lock.Commit();
@@ -5321,6 +5347,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
   // Get the consumer tablegroup ID. Since this call is expensive (one needs to reverse lookup
   // the tablegroup ID from table ID), we only do this call once and do validation afterward.
   TablegroupId consumer_tablegroup_id;
+  // Starting Colocation GA, colocated databases create implicit underlying tablegroups.
+  bool colocated_database;
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->FindByTable(*validated_consumer_tables.begin());
@@ -5333,6 +5361,17 @@ void CatalogManager::GetTablegroupSchemaCallback(
       return;
     }
     consumer_tablegroup_id = tablegroup->id();
+
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+    if (ns == nullptr) {
+      std::string message =
+          Format("Could not find namespace by namespace id $0",
+                 tablegroup->database_id());
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+    colocated_database = ns->colocated();
   }
 
   // tables_in_consumer_tablegroup are the tables listed within the consumer_tablegroup_id.
@@ -5386,11 +5425,21 @@ void CatalogManager::GetTablegroupSchemaCallback(
                << producer_tablegroup_id << ": " << status;
   }
 
+  TableId producer_parent_table_id;
+  TableId consumer_parent_table_id;
+  if (colocated_database) {
+    producer_parent_table_id = GetColocationParentTableId(producer_tablegroup_id);
+    consumer_parent_table_id = GetColocationParentTableId(consumer_tablegroup_id);
+  } else {
+    producer_parent_table_id = GetTablegroupParentTableId(producer_tablegroup_id);
+    consumer_parent_table_id = GetTablegroupParentTableId(consumer_tablegroup_id);
+  }
+
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
       table_bootstrap_ids,
-      GetTablegroupParentTableId(producer_tablegroup_id),
-      GetTablegroupParentTableId(consumer_tablegroup_id));
+      producer_parent_table_id,
+      consumer_parent_table_id);
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;
@@ -5770,8 +5819,11 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         if (is_cdcsdk_stream) {
           auto last_active_time = GetCurrentTimeMicros();
           auto column_id = cdc_table.ColumnId(master::kCdcData);
-          cdc_table.AddMapColumnValue(
-              insert_req, column_id, "active_time", std::to_string(last_active_time));
+          auto map_value_pb = client::AddMapColumn(insert_req, column_id);
+          client::AddMapEntryToColumn(
+              map_value_pb, "active_time", std::to_string(last_active_time));
+          client::AddMapEntryToColumn(
+              map_value_pb, "cdc_sdk_safe_time", std::to_string(last_active_time));
         }
         session->Apply(insert_op);
       }

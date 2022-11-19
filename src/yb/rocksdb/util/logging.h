@@ -72,4 +72,3 @@ extern std::string EscapeString(const Slice& value);
 extern bool ConsumeDecimalNumber(Slice* in, uint64_t* val);
 
 }  // namespace rocksdb
-

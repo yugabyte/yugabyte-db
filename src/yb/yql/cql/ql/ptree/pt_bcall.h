@@ -184,4 +184,3 @@ class PTPartitionHash : public PTToken {
 
 }  // namespace ql
 }  // namespace yb
-

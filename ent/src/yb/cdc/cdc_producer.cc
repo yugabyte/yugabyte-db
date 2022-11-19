@@ -46,10 +46,10 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
-DEFINE_int32(cdc_transaction_timeout_ms, 0,
+DEFINE_UNKNOWN_int32(cdc_transaction_timeout_ms, 0,
   "Don't check for an aborted transaction unless its original write is lagging by this duration.");
 
-DEFINE_bool(cdc_enable_replicate_intents, true,
+DEFINE_UNKNOWN_bool(cdc_enable_replicate_intents, true,
             "Enable replication of intents before they've been committed.");
 
 DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
@@ -300,8 +300,8 @@ Result<TxnStatusMap> BuildTxnStatusMap(const ReplicateMsgs& messages,
 }
 
 Status SetRecordTime(const TransactionId& txn_id,
-                             const TxnStatusMap& txn_map,
-                             CDCRecordPB* record) {
+                     const TxnStatusMap& txn_map,
+                     CDCRecordPB* record) {
   auto txn_status = txn_map.find(txn_id);
   if (txn_status == txn_map.end()) {
     return STATUS(IllegalState, "Unexpected transaction ID", txn_id.ToString());
@@ -312,11 +312,11 @@ Status SetRecordTime(const TransactionId& txn_id,
 
 // Populate CDC record corresponding to WAL batch in ReplicateMsg.
 Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
-                                   const TxnStatusMap& txn_map,
-                                   const StreamMetadata& metadata,
-                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                   ReplicateIntents replicate_intents,
-                                   GetChangesResponsePB* resp) {
+                           const TxnStatusMap& txn_map,
+                           const StreamMetadata& metadata,
+                           const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                           ReplicateIntents replicate_intents,
+                           GetChangesResponsePB* resp) {
   const auto& batch = msg->write().write_batch();
   auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& schema = *shared_tablet->schema();

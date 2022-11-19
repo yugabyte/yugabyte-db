@@ -69,4 +69,3 @@ Status UpdateTabletMappingOnProducerSplit(
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-

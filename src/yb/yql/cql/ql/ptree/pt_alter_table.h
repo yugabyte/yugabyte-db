@@ -172,4 +172,3 @@ class PTAlterTable : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

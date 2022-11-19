@@ -161,6 +161,21 @@ export const AddTableModal = ({
     }
   );
 
+  /**
+   * Wrapper around setFieldValue from formik.
+   * Reset `isTableSelectionValidated` to false if changing
+   * a validated table selection.
+   */
+  const setSelectedTableUUIDs = (
+    tableUUIDs: string[],
+    formikActions: FormikActions<AddTableFormValues>
+  ) => {
+    if (isTableSelectionValidated) {
+      setIsTableSelectionValidated(false);
+    }
+    formikActions.setFieldValue('tableUUIDs', tableUUIDs);
+  };
+
   const resetModalState = () => {
     setCurrentStep(FIRST_FORM_STEP);
     setBootstrapRequiredTableUUIDs([]);
@@ -176,7 +191,7 @@ export const AddTableModal = ({
   const isBootstrapStepRequired = bootstrapRequiredTableUUIDs.length > 0;
   const handleFormSubmit = (
     values: AddTableFormValues,
-    actions: FormikActions<AddTableFormErrors>
+    actions: FormikActions<AddTableFormValues>
   ) => {
     switch (currentStep) {
       case FormStep.SELECT_TABLES:
@@ -315,12 +330,10 @@ export const AddTableModal = ({
                     setCurrentStep,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
-                      formik.current.setFieldValue('tableUUIDs', tableUUIDs),
+                      setSelectedTableUUIDs(tableUUIDs, formik.current),
                     tableType: configTableType,
                     isFixedTableType: true,
                     setTableType: (_) => null,
-                    isTableSelectionValidated,
-                    setIsTableSelectionValidated,
                     selectedKeyspaces,
                     setSelectedKeyspaces,
                     selectionError: errors.tableUUIDs,
@@ -422,6 +435,8 @@ const validateForm = async (
 
       throw errors;
     }
+    default:
+      return {};
   }
 };
 
