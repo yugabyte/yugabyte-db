@@ -39,6 +39,7 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -482,12 +483,13 @@ message SetCDCCheckpointResponsePB {
 }
 
 message TabletCheckpointPair {
-  optional bytes tablet_id = 1;
+  optional yb.master.TabletLocationsPB tablet_locations = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
 }
 
 message GetTabletListToPollForCDCRequestPB {
   optional TableInfo table_info = 1;
+  optional bytes tablet_id = 2;
 }
 
 message GetTabletListToPollForCDCResponsePB {
