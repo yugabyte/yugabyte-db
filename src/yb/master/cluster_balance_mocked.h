@@ -57,8 +57,13 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
         replication_info_.live_replicas() : replication_info_.read_replicas(0);
   }
 
-  const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
-  const BlacklistPB& GetLeaderBlacklist() const override { return leader_blacklist_; }
+  void SetBlacklist() const override {
+    // Set the blacklist so we can also mark the tablet servers as we add them up.
+    global_state_->SetBlacklist(blacklist_);
+
+    // Set the leader blacklist so we can also mark the tablet servers as we add them up.
+    global_state_->SetLeaderBlacklist(leader_blacklist_);
+  }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,

@@ -359,6 +359,9 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   int pending_remove_replica_tasks = 0;
   int pending_stepdown_leader_tasks = 0;
 
+  // Set blacklist upfront since per table states require it.
+  SetBlacklist();
+
   for (const auto& table : GetTableMap()) {
     if (SkipLoadBalancing(*table.second)) {
       // Populate the list of tables for which LB has been skipped
@@ -1443,13 +1446,17 @@ void ClusterLoadBalancer::GetAllAffinitizedZones(
   CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 }
 
+void ClusterLoadBalancer::SetBlacklist() const {
+  // Set the blacklist and leader blacklist so
+  // we can also mark the tablet servers as we add them up.
+  {
+    auto l = catalog_manager_->ClusterConfig()->LockForRead();
+    global_state_->SetBlacklist(l->pb.server_blacklist());
+    global_state_->SetLeaderBlacklist(l->pb.leader_blacklist());
+  }
+}
+
 void ClusterLoadBalancer::InitializeTSDescriptors() {
-  // Set the blacklist so we can also mark the tablet servers as we add them up.
-  state_->SetBlacklist(GetServerBlacklist());
-
-  // Set the leader blacklist so we can also mark the tablet servers as we add them up.
-  state_->SetLeaderBlacklist(GetLeaderBlacklist());
-
   // Loop over tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
@@ -1503,14 +1510,6 @@ const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   } else {
     return GetReadOnlyPlacementFromUuid(l->pb.replication_info());
   }
-}
-
-const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
-  return catalog_manager_->ClusterConfig()->LockForRead()->pb.server_blacklist();
-}
-
-const BlacklistPB& ClusterLoadBalancer::GetLeaderBlacklist() const {
-  return catalog_manager_->ClusterConfig()->LockForRead()->pb.leader_blacklist();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
