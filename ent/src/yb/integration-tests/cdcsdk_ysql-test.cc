@@ -996,7 +996,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 
   Result<GetTabletListToPollForCDCResponsePB> GetTabletListToPollForCDC(
-      const CDCStreamId& stream_id, const TableId& table_id) {
+      const CDCStreamId& stream_id, const TableId& table_id, const TabletId& tablet_id = "") {
     RpcController rpc;
     GetTabletListToPollForCDCRequestPB get_tablet_list_req;
     GetTabletListToPollForCDCResponsePB get_tablet_list_resp;
@@ -1009,6 +1009,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
     get_tablet_list_req.mutable_table_info()->set_table_id(table_id);
     get_tablet_list_req.mutable_table_info()->set_stream_id(stream_id);
+    get_tablet_list_req.set_tablet_id(tablet_id);
 
     RETURN_NOT_OK(
         cdc_proxy_->GetTabletListToPollForCDC(get_tablet_list_req, &get_tablet_list_resp, &rpc));
@@ -5482,7 +5483,7 @@ TEST_F(
   // We should no longer see the entry corresponding to the parent tablet.
   TabletId parent_tablet_id = tablets[0].tablet_id();
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_TRUE(parent_tablet_id != tablet_id);
 
     if (tablet_id == tablets_after_split[0].tablet_id()) {
@@ -5539,7 +5540,7 @@ TEST_F(
   TabletId parent_tablet_id = tablets[0].tablet_id();
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 1);
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_TRUE(parent_tablet_id == tablet_id);
   }
 }
@@ -5578,7 +5579,7 @@ TEST_F(
   // We should only see the entry corresponding to the children tablets.
   TabletId parent_tablet_id = tablets[0].tablet_id();
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_TRUE(parent_tablet_id != tablet_id);
 
     if (tablet_id == tablets_after_split[0].tablet_id()) {
@@ -5694,7 +5695,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 1);
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_EQ(tablet_id, tablets[0].tablet_id());
   }
 
@@ -5716,7 +5717,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
   const auto& parent_tablet_id = tablets[0].tablet_id();
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_TRUE(parent_tablet_id != tablet_id);
 
     if (tablet_id == tablets_after_first_split[0].tablet_id()) {
@@ -8060,7 +8061,7 @@ TEST_F(
 
   auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_2_id));
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_TRUE(expected_tablet_ids.contains(tablet_id));
   }
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 3);
@@ -9255,6 +9256,79 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletS
       stream_id, second_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint());
 
   ASSERT_GE(child1_record_count + child2_record_count, 200);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTabletId)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_aborted_intent_cleanup_ms = 1000;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+
+  // Calling 'GetTabletListToPollForCDC' before the split has been reported should only return the
+  // details of the current tablet.
+  auto get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
+  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 1);
+
+  change_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
+  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
+
+  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
+  // tablet should fail.
+  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "The tablet split error is now communicated to the client.";
+
+  get_tablets_resp =
+      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
+  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
+
+  // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
+  SleepFor(MonoDelta::FromSeconds(2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
+
+  bool saw_row_child_one = false;
+  bool saw_row_child_two = false;
+  // We should no longer see the entry corresponding to the parent tablet.
+  TabletId parent_tablet_id = tablets[0].tablet_id();
+  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
+    ASSERT_TRUE(parent_tablet_id != tablet_id);
+
+    if (tablet_id == tablets_after_split[0].tablet_id()) {
+      saw_row_child_one = true;
+    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
+      saw_row_child_two = true;
+    }
+  }
+
+  ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
 }  // namespace enterprise
