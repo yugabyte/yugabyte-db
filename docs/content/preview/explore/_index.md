@@ -262,13 +262,13 @@ To view the application UI, navigate to <http://localhost:8080>.
 
 ### Start a workload
 
-To start a workload, do the following:
+To start a workload that performs read and write operations across all the nodes of the cluster, do the following:
 
 1. In the application UI, Click the hamburger icon beside Active Workloads for Generic.
 1. Select the **Usable Operations** tab.
 1. Under **Create Tables**, click **Run Create Tables Workload** to add tables to the database.
 1. Under **Seed Data**, click **Run Seed Data Workload** to add data to the tables.
-1. Under **Simulation**, click **Run Simulation Workload**.
+1. Under **Simulation**, select the **Include new Inserts** option, and click **Run Simulation Workload**.
 1. Click **Close**.
 
 The Latency and Throughput charts show the workload.
