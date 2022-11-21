@@ -169,6 +169,6 @@ Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
 [Connect applications to YugabyteDB Managed](../yugabyte-cloud/cloud-connect/connect-applications/)
 
-[Explore more applications](../develop/build-apps/)
+[Explore YugabyteDB](../explore/)
 
 [Drivers and ORMS](../drivers-orms/)
