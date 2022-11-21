@@ -2184,8 +2184,15 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           uint32_t tablegroup_oid =
               VERIFY_RESULT(GetPgsqlTablegroupOid(
                   GetTablegroupIdFromParentTableId(table_data->old_table_id)));
-          table_data->new_table_id =
-              GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+          if (IsColocatedDbTablegroupParentTableId(table_data->old_table_id)) {
+            // This tablegroup parent table is in a colocated database, and has string 'colocation'
+            // in its id.
+            table_data->new_table_id =
+                GetColocationParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+          } else {
+            table_data->new_table_id =
+                GetTablegroupParentTableId(GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+          }
           is_parent_colocated_table = true;
         } else {
           if (!table_data->new_table_id.empty()) {

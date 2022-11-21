@@ -50,6 +50,11 @@ TABLEGROUP_NAME_SUFFIX = '.tablegroup.parent.tablename'
 TABLEGROUP_UUID_RE_STR = UUID_RE_STR + TABLEGROUP_UUID_SUFFIX
 TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
     TABLEGROUP_UUID_RE_STR + '[ ]*\t' + TABLEGROUP_UUID_RE_STR)
+COLOCATION_UUID_SUFFIX = '.colocation.parent.uuid'
+COLOCATION_NAME_SUFFIX = '.colocation.parent.tablename'
+COLOCATION_UUID_RE_STR = UUID_RE_STR + COLOCATION_UUID_SUFFIX
+COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATION_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
@@ -422,7 +427,9 @@ def keyspace_type(keyspace):
 
 
 def is_parent_table_name(table_name):
-    return table_name.endswith(COLOCATED_NAME_SUFFIX) or table_name.endswith(TABLEGROUP_NAME_SUFFIX)
+    return table_name.endswith(COLOCATED_NAME_SUFFIX) or \
+           table_name.endswith(TABLEGROUP_NAME_SUFFIX) or \
+           table_name.endswith(COLOCATION_NAME_SUFFIX)
 
 
 def get_postgres_oid_from_table_id(table_id):
@@ -432,10 +439,10 @@ def get_postgres_oid_from_table_id(table_id):
 
 def verify_tablegroup_parent_table_ids(old_id, new_id):
     # Perform check on tablegroup parent tables
-    if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+    if old_id.endswith(TABLEGROUP_UUID_SUFFIX) or old_id.endswith(COLOCATION_UUID_SUFFIX):
         # Assert that the postgres tablegroup oids are the same.
-        old_oid = get_postgres_oid_from_table_id(old_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
-        new_oid = get_postgres_oid_from_table_id(new_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
+        old_oid = get_postgres_oid_from_table_id(old_id[:32])
+        new_oid = get_postgres_oid_from_table_id(new_id[:32])
         if (old_oid != new_oid):
             raise BackupException('Tablegroup parent table have different tablegroup oids: '
                                   'Old oid: {}, New oid: {}'.format(old_oid, new_oid))
@@ -3303,11 +3310,13 @@ class YBBackup:
                     logging.info('Imported colocated table id was changed from {} to {}'
                                  .format(old_id, new_id))
             elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
-                  TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                  TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
                 # Parent colocated/tablegroup table
                 (entity, old_id, new_id) = split_by_tab(line)
                 assert entity == 'ParentColocatedTable'
-                if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+                if (old_id.endswith(TABLEGROUP_UUID_SUFFIX) or
+                        old_id.endswith(COLOCATION_UUID_SUFFIX)):
                     verify_tablegroup_parent_table_ids(old_id, new_id)
                 snapshot_metadata['table'][new_id] = old_id
                 # Colocated parent table includes both tablegroup parent table

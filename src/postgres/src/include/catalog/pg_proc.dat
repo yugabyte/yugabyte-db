@@ -10352,7 +10352,8 @@
 
 { oid => '8034', descr => 'is the database colocated in the YB server?',
   proname => 'yb_is_database_colocated', provolatile => 's',
-  prorettype => 'bool', proargtypes => '',
+  prorettype => 'bool', proargtypes => 'bool',
+  proargnames => '{check_legacy}',
   prosrc => 'yb_is_database_colocated' },
 
 # getting YB range-split table SPLIT AT clause
@@ -10414,4 +10415,5 @@
   proname => 'yb_get_effective_transaction_isolation_level', provolatile => 'v',
   prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_effective_transaction_isolation_level' },
+
 ]
