@@ -228,7 +228,7 @@ ycqlsh>
 
 ## Set up YB Simulation Base Demo
 
-YB Simulation Base Demo is a Java application that simulates workloads against YugabyteDB. Some Explore topics use the application to demonstrate features of YugabyteDB.
+YB Simulation Base Demo is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
 For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
 
@@ -264,14 +264,14 @@ To view the application UI, navigate to <http://localhost:8080>.
 
 To start a workload that performs read and write operations across all the nodes of the cluster, do the following:
 
-1. In the application UI, Click the hamburger icon beside Active Workloads for Generic.
+1. In the [application UI](http://localhost:8080), click the hamburger icon at the top of the page beside Active Workloads for Generic.
 1. Select the **Usable Operations** tab.
 1. Under **Create Tables**, click **Run Create Tables Workload** to add tables to the database.
 1. Under **Seed Data**, click **Run Seed Data Workload** to add data to the tables.
 1. Under **Simulation**, select the **Include new Inserts** option, and click **Run Simulation Workload**.
 1. Click **Close**.
 
-The Latency and Throughput charts show the workload.
+The Latency and Throughput charts show the workload running on the cluster.
 
 ## Next step
 
