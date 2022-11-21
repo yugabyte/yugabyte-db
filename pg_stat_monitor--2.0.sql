@@ -168,7 +168,7 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT toplevel            BOOLEAN
 )
 RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'pg_stat_monitor'
+AS 'MODULE_PATHNAME', 'pg_stat_monitor_2_0'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
 -- Register a view on the function for ease of use.

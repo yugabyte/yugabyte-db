@@ -23,9 +23,19 @@
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
 
+ /*
+  * Extension version number, for supporting older extension versions' objects
+  */
+ typedef enum pgsmVersion
+ {
+     PGSM_V1_0 = 0,
+     PGSM_V2_0
+ } pgsmVersion;
+
+
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "1.1.1"
+#define BUILD_VERSION                   "2.0.0-dev"
 #define PG_STAT_STATEMENTS_COLS         52	/* maximum of above */
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
@@ -107,6 +117,8 @@ static ExecutorCheckPerms_hook_type prev_ExecutorCheckPerms_hook = NULL;
 
 PG_FUNCTION_INFO_V1(pg_stat_monitor_version);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_reset);
+PG_FUNCTION_INFO_V1(pg_stat_monitor_1_0);
+PG_FUNCTION_INFO_V1(pg_stat_monitor_2_0);
 PG_FUNCTION_INFO_V1(pg_stat_monitor);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 PG_FUNCTION_INFO_V1(get_histogram_timings);
@@ -178,6 +190,7 @@ static void pgss_store(uint64 queryid,
 					   pgssStoreKind kind);
 
 static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
+									 pgsmVersion api_version,
 									 bool showtext);
 
 #if PG_VERSION_NUM < 140000
@@ -1574,9 +1587,26 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 }
 
 Datum
+pg_stat_monitor_1_0(PG_FUNCTION_ARGS)
+{
+	pg_stat_monitor_internal(fcinfo, PGSM_V1_0, true);
+	return (Datum) 0;
+}
+
+Datum
+pg_stat_monitor_2_0(PG_FUNCTION_ARGS)
+{
+	pg_stat_monitor_internal(fcinfo, PGSM_V2_0, true);
+	return (Datum) 0;
+}
+
+/*
+  * Legacy entry point for pg_stat_monitor() API versions 1.0
+  */
+Datum
 pg_stat_monitor(PG_FUNCTION_ARGS)
 {
-	pg_stat_monitor_internal(fcinfo, true);
+	pg_stat_monitor_internal(fcinfo, PGSM_V1_0, true);
 	return (Datum) 0;
 }
 
@@ -1603,6 +1633,7 @@ IsBucketValid(uint64 bucketid)
 /* Common code for all versions of pg_stat_statements() */
 static void
 pg_stat_monitor_internal(FunctionCallInfo fcinfo,
+						 pgsmVersion api_version,
 						 bool showtext)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
