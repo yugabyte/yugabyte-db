@@ -1921,6 +1921,7 @@ YBPreloadRelCache()
 	 * During the cache loading process postgres reads the data from multiple sys tables.
 	 * It is reasonable to prefetch all these tables in one shot.
 	 */
+	YbTryRegisterCatalogVersionTableForPrefetching();
 	YbRegisterSysTableForPrefetching(DatabaseRelationId);              // pg_database
 	YbRegisterSysTableForPrefetching(RelationRelationId);              // pg_class
 	YbRegisterSysTableForPrefetching(AttributeRelationId);             // pg_attribute
@@ -2014,6 +2015,8 @@ YBPreloadRelCache()
 	 * be sent a master and negative cache entry will be created for a future use.
 	 */
 	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
+
+	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 }
 
 /*
@@ -6474,7 +6477,7 @@ load_relcache_init_file(bool shared)
 		 * If we already have a newer cache version (e.g. from reading the
 		 * shared init file) or master has newer catalog version then this file is too old.
 		 */
-		if (yb_catalog_cache_version > ybc_stored_cache_version)
+		if (YbGetCatalogCacheVersion() > ybc_stored_cache_version)
 		{
 			unlink_initfile(initfilename, ERROR);
 			goto read_failed;
@@ -6819,10 +6822,8 @@ load_relcache_init_file(bool shared)
 		 * The checks above will ensure that if it is already initialized then
 		 * we should leave it unchanged (see also comment in pg_yb_utils.h).
 		 */
-		if (yb_catalog_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
-		{
-			yb_catalog_cache_version = ybc_stored_cache_version;
-		}
+		if (YbGetCatalogCacheVersion() == YB_CATCACHE_VERSION_UNINITIALIZED)
+			YbUpdateCatalogCacheVersion(ybc_stored_cache_version);
 	}
 
 	if (shared)
@@ -6901,10 +6902,11 @@ write_relcache_init_file(bool shared)
 	if (IsYugaByteEnabled())
 	{
 		/* Write the ysql_catalog_version */
-		if (fwrite(&yb_catalog_cache_version,
+		const uint64_t catalog_cache_version = YbGetCatalogCacheVersion();
+		if (fwrite(&catalog_cache_version,
 		           1,
-		           sizeof(yb_catalog_cache_version),
-		           fp) != sizeof(yb_catalog_cache_version))
+		           sizeof(catalog_cache_version),
+		           fp) != sizeof(catalog_cache_version))
 		{
 			elog(FATAL, "could not write init file");
 		}

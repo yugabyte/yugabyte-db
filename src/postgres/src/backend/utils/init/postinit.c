@@ -48,6 +48,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "libpq/auth.h"
@@ -683,8 +684,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
+		const uint64_t catalog_master_version =
+			YbGetCatalogCacheVersionForTablePrefetching();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching();
+		YBCStartSysTablePrefetching(catalog_master_version);
 		*yb_sys_table_prefetching_started = true;
 		YbRegisterSysTableForPrefetching(
 				AuthIdRelationId);        // pg_authid
@@ -705,7 +708,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		 * the catalog version of template1 to query relations that are
 		 * private to MyDatabaseId.
 		 */
-		yb_catalog_cache_version = YbGetMasterCatalogVersion();
+		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	}
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
@@ -969,7 +972,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		 *       at this point (due to concurrent DDL). Cache refresh is
 		 *       required in this case. GH #14741 is created to handle this.
 		 */
-		yb_catalog_cache_version = YbGetSharedCatalogVersion();
+		YbUpdateCatalogCacheVersion(YbGetSharedCatalogVersion());
 	}
 
 	/*
@@ -1161,8 +1164,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	PG_TRY();
 	{
 		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, out_dbname, override_allow_connections,
-			&sys_table_prefetching_started);
+			in_dbname, dboid, username, useroid, out_dbname,
+			override_allow_connections, &sys_table_prefetching_started);
 	}
 	PG_CATCH();
 	{

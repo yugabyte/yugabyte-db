@@ -1297,7 +1297,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
   };
   return &accessor;
 }
@@ -1405,8 +1406,8 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching() {
-  pgapi->StartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
 }
 
 void YBCStopSysTablePrefetching() {
