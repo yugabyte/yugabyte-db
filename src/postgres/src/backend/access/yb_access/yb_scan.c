@@ -1765,7 +1765,8 @@ ybcBeginScan(Relation relation,
 		* for system catalog tables.
 		*/
 		if (!IsSystemRelation(relation))
-			YbSetCatalogCacheVersion(ybScan->handle, yb_catalog_cache_version);
+			YbSetCatalogCacheVersion(
+				ybScan->handle, YbGetCatalogCacheVersion());
 	} else
 		ybScan->quit_scan = true;
 

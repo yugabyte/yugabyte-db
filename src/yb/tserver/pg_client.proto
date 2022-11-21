@@ -339,6 +339,10 @@ enum ReadTimeManipulation {
 }
 
 message PgPerformOptionsPB {
+  message CachingInfo {
+    bytes key = 1;
+  }
+
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
   // Replace with IsolationLevel after migration to proto3.
   uint32 isolation = 2;
@@ -356,6 +360,7 @@ message PgPerformOptionsPB {
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
+  CachingInfo caching_info = 17;
 }
 
 message PgPerformRequestPB {

@@ -40,6 +40,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/pg_response_cache.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -304,6 +305,7 @@ struct PerformData {
   PgClientSessionOperations ops;
   PgTableCache* table_cache;
   PgClientSession::UsedReadTimePtr used_read_time;
+  PgResponseCache::Setter cache_setter;
 
   void FlushDone(client::FlushStatus* flush_status) {
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
@@ -313,9 +315,19 @@ struct PerformData {
     if (!status.ok()) {
       StatusToPB(status, resp->mutable_status());
     }
+    if (cache_setter) {
+      std::vector<PgResponseCache::RowsData> rows_data;
+      rows_data.reserve(ops.size());
+      for (const auto& op : ops) {
+        rows_data.emplace_back(op->rows_data_holder(), op->rows_data());
+      }
+      cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
+                   IsFailure(!status.ok()));
+    }
     context.RespondSuccess();
   }
 
+ private:
   Status ProcessResponse() {
     int idx = 0;
     for (const auto& op : ops) {
@@ -362,13 +374,15 @@ client::YBSessionPtr CreateSession(
 PgClientSession::PgClientSession(
     uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map)
+    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map,
+    PgResponseCache* response_cache)
     : id_(id),
       client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
       table_cache_(*table_cache),
-      xcluster_safe_time_map_(xcluster_safe_time_map) {}
+      xcluster_safe_time_map_(xcluster_safe_time_map),
+      response_cache_(*response_cache) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -667,6 +681,16 @@ Status PgClientSession::FinishTransaction(
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  PgResponseCache::Setter setter;
+  auto& options = *req->mutable_options();
+  if (options.has_caching_info()) {
+    setter = response_cache_.Get(
+        std::move(*options.mutable_caching_info()->mutable_key()), resp, context);
+    if (!setter) {
+      return Status::OK();
+    }
+  }
+
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline()));
   auto* session = session_info.first;
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &table_cache_));
@@ -676,7 +700,8 @@ Status PgClientSession::Perform(
     .context = std::move(*context),
     .ops = std::move(ops),
     .table_cache = &table_cache_,
-    .used_read_time = session_info.second
+    .used_read_time = session_info.second,
+    .cache_setter = std::move(setter)
   });
   session->FlushAsync([data](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);

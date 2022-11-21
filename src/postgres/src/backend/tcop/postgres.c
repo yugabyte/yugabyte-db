@@ -3675,17 +3675,16 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static uint64_t
+static void
 YbPreloadRelCacheHelper()
 {
-	uint64_t catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	const uint64_t catalog_master_version =
+		YbGetCatalogCacheVersionForTablePrefetching();
 	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching();
+	YBCStartSysTablePrefetching(catalog_master_version);
 	PG_TRY();
 	{
-		YbTryRegisterCatalogVersionTableForPrefetching();
 		YBPreloadRelCache();
-		catalog_version = YbGetMasterCatalogVersion();
 	}
 	PG_CATCH();
 	{
@@ -3694,7 +3693,6 @@ YbPreloadRelCacheHelper()
 	}
 	PG_END_TRY();
 	YBCStopSysTablePrefetching();
-	return catalog_version;
 }
 
 /*
@@ -3741,18 +3739,13 @@ static void YBRefreshCache()
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
-	const uint64_t catalog_master_version = YbPreloadRelCacheHelper();
+
+	YbPreloadRelCacheHelper();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());
 
-	/* Set the new ysql cache version. */
-	yb_catalog_cache_version = catalog_master_version;
 	yb_need_cache_refresh = false;
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: set local catalog version: %" PRIu64,
-						__func__, yb_catalog_cache_version)));
 
 	finish_xact_command();
 }
@@ -3799,7 +3792,11 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 */
 	YBCPgResetCatalogReadTime();
 	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
-	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
+	bool need_global_cache_refresh = false;
+	if (YbGetCatalogCacheVersion() != catalog_master_version) {
+		need_global_cache_refresh = true;
+		YbUpdateLastKnownCatalogCacheVersion(catalog_master_version);
+	}
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 	{
 		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
@@ -4029,7 +4026,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 
 	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
 	const bool need_global_cache_refresh =
-		yb_catalog_cache_version < shared_catalog_version;
+		YbGetCatalogCacheVersion() < shared_catalog_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 	{
 		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
@@ -4039,6 +4036,7 @@ static void YBCheckSharedCatalogCacheVersion() {
 	}
 	if (need_global_cache_refresh)
 	{
+		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 		YBRefreshCache();
 	}
 }

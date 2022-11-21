@@ -45,4 +45,5 @@ DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
 DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
+DECLARE_bool(ysql_enable_read_request_caching);
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

@@ -609,7 +609,7 @@ void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-void YBCStartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
 
 void YBCStopSysTablePrefetching();
 
