@@ -79,7 +79,7 @@ BOOL
    ;
 
 NULL
-   : 'null' 
+   : 'null'
    ;
 
 
@@ -125,4 +125,3 @@ fragment EXP
 WS
    : [ \t\n\r] + -> skip
    ;
-   

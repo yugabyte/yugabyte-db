@@ -3385,8 +3385,9 @@ AS 'MODULE_PATHNAME';
 --
 -- query functions
 --
-CREATE FUNCTION ag_catalog.cypher(graph_name name, query_string cstring,
-                       params agtype = NULL)
+CREATE FUNCTION ag_catalog.cypher(graph_name name = NULL,
+                                  query_string cstring = NULL,
+                                  params agtype = NULL)
 RETURNS SETOF record
 LANGUAGE c
 AS 'MODULE_PATHNAME';
@@ -4150,6 +4151,13 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.age_delete_global_graphs(agtype)
+RETURNS boolean
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_prepare_cypher(cstring, cstring)
 RETURNS boolean
 LANGUAGE c
 STABLE

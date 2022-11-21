@@ -42,6 +42,7 @@
 #include "parser/cypher_parse_node.h"
 #include "parser/cypher_parser.h"
 #include "utils/ag_func.h"
+#include "utils/age_session_info.h"
 #include "utils/agtype.h"
 
 /*
@@ -74,6 +75,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         const char *query_str, int query_loc,
                                         char *graph_name, Oid graph_oid,
                                         Param *params);
+
 
 void post_parse_analyze_init(void)
 {
@@ -302,15 +304,18 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
 {
     RangeTblFunction *rtfunc = linitial(rte->functions);
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
-    Node *arg;
-    Name graph_name;
-    Oid graph_oid;
-    const char *query_str;
-    int query_loc;
-    Param *params;
-    errpos_ecb_state ecb_state;
-    List *stmt;
-    Query *query;
+    Node *arg1 = NULL;
+    Node *arg2 = NULL;
+    Node *arg3 = NULL;
+    Name graph_name = NULL;
+    char *graph_name_str = NULL;
+    Oid graph_oid = InvalidOid;
+    const char *query_str = NULL;
+    int query_loc = -1;
+    Param *params = NULL;
+    errpos_ecb_state ecb_state = {{0}};
+    List *stmt = NULL;
+    Query *query = NULL;
 
     /*
      * We cannot apply this feature directly to SELECT subquery because the
@@ -326,28 +331,14 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                  parser_errposition(pstate, exprLocation((Node *)funcexpr))));
     }
 
-    arg = linitial(funcexpr->args);
-    Assert(exprType(arg) == NAMEOID);
+    /* get our first 2 arguments */
+    arg1 = linitial(funcexpr->args);
+    arg2 = lsecond(funcexpr->args);
 
-    graph_name = expr_get_const_name(arg);
-    if (!graph_name)
-    {
-        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("a name constant is expected"),
-                        parser_errposition(pstate, exprLocation(arg))));
-    }
+    Assert(exprType(arg1) == NAMEOID);
+    Assert(exprType(arg2) == CSTRINGOID);
 
-    graph_oid = get_graph_oid(NameStr(*graph_name));
-    if (!OidIsValid(graph_oid))
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                 errmsg("graph \"%s\" does not exist", NameStr(*graph_name)),
-                 parser_errposition(pstate, exprLocation(arg))));
-    }
-
-    arg = lsecond(funcexpr->args);
-    Assert(exprType(arg) == CSTRINGOID);
+    graph_name = expr_get_const_name(arg1);
 
     /*
      * Since cypher() function is nothing but an interface to get a Cypher
@@ -361,32 +352,131 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
      *   may differ from what they are shown. This will confuse users.
      * * In the case above, the error position may not be accurate.
      */
-    query_str = expr_get_const_cstring(arg, pstate->p_sourcetext);
-    if (!query_str)
-    {
-        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("a dollar-quoted string constant is expected"),
-                        parser_errposition(pstate, exprLocation(arg))));
-    }
-    query_loc = get_query_location(((Const *)arg)->location,
-                                   pstate->p_sourcetext);
+    query_str = expr_get_const_cstring(arg2, pstate->p_sourcetext);
 
     /*
-     * Check to see if the cypher function had any parameters passed to it,
+     * Validate appropriate cypher function usage -
+     *
+     * Session info OVERRIDES ANY INPUT PASSED and if any is passed, it will
+     * cause the cypher function to error out.
+     *
+     * If this is using session info, both of the first 2 input parameters need
+     * to be NULL, in addition to the session info being set up. Furthermore,
+     * the input parameters passed in by session info need to both be non-NULL.
+     *
+     * If this is not using session info, both input parameters need to be
+     * non-NULL.
+     *
+     */
+    if (is_session_info_prepared())
+    {
+        /* check to see if either input parameter is non-NULL*/
+        if (graph_name != NULL || query_str != NULL)
+        {
+            Node *arg = (graph_name == NULL) ? arg1 : arg2;
+
+            /*
+             * Make sure to clean up session info because the ereport will
+             * cause the function to exit.
+             */
+            reset_session_info();
+
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("session info requires cypher(NULL, NULL) to be passed"),
+                     parser_errposition(pstate, exprLocation(arg))));
+        }
+        /* get our input parameters from session info */
+        else
+        {
+            graph_name_str = get_session_info_graph_name();
+            query_str = get_session_info_cypher_statement();
+
+            /* check to see if either are NULL */
+            if (graph_name_str == NULL || query_str == NULL)
+            {
+                /*
+                 * Make sure to clean up session info because the ereport will
+                 * cause the function to exit.
+                 */
+                reset_session_info();
+
+                ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("both session info parameters need to be non-NULL"),
+                     parser_errposition(pstate, -1)));
+            }
+        }
+    }
+    /* otherwise, we get the parameters from the passed function input */
+    else
+    {
+        /* get the graph name string from the passed parameters */
+        if (!graph_name)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("a name constant is expected"),
+                     parser_errposition(pstate, exprLocation(arg1))));
+        }
+        else
+        {
+            graph_name_str = NameStr(*graph_name);
+        }
+        /* get the query string from the passed parameters */
+        if (!query_str)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_SYNTAX_ERROR),
+                     errmsg("a dollar-quoted string constant is expected"),
+                     parser_errposition(pstate, exprLocation(arg2))));
+        }
+    }
+
+    /*
+     * The session info is only valid for one cypher call. Now that we are done
+     * with it, if it was used, we need to reset it to free the memory used.
+     * Additionally, the query location is dependent on how we got the query
+     * string, so set the location accordingly.
+     */
+    if (is_session_info_prepared())
+    {
+        reset_session_info();
+        query_loc = 0;
+    }
+    else
+    {
+        /* this call will crash if we use session info */
+        query_loc = get_query_location(((Const *)arg2)->location,
+                                       pstate->p_sourcetext);
+    }
+
+    /* validate the graph exists */
+    graph_oid = get_graph_oid(graph_name_str);
+    if (!OidIsValid(graph_oid))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graph \"%s\" does not exist", graph_name_str),
+                 parser_errposition(pstate, exprLocation(arg1))));
+    }
+
+    /*
+     * Check to see if the cypher function had a third parameter passed to it,
      * if so make sure Postgres parsed the second argument to a Param node.
      */
     if (list_length(funcexpr->args) == 3)
     {
-        arg = lthird(funcexpr->args);
-        if (!IsA(arg, Param))
+        arg3 = lthird(funcexpr->args);
+        if (!IsA(arg3, Param))
         {
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                      errmsg("third argument of cypher function must be a parameter"),
-                     parser_errposition(pstate, exprLocation(arg))));
+                     parser_errposition(pstate, exprLocation(arg3))));
         }
 
-        params = (Param *)arg;
+        params = (Param *)arg3;
     }
     else
     {
@@ -454,13 +544,13 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
         }
 
         query = analyze_cypher(stmt, pstate, query_str, query_loc,
-                               NameStr(*graph_name), graph_oid, params);
+                               graph_name_str, graph_oid, params);
     }
     else
     {
         query = analyze_cypher_and_coerce(stmt, rtfunc, pstate, query_str,
-                                          query_loc, NameStr(*graph_name),
-                                          graph_oid, params);
+                                          query_loc, graph_name_str, graph_oid,
+                                          params);
     }
 
     pstate->p_lateral_active = false;

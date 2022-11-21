@@ -76,29 +76,34 @@ func execCypher(cursorProvider CursorProvider, tx *sql.Tx, graphName string, col
 
 	cypherStmt := fmt.Sprintf(cypher, args...)
 
-	buf.WriteString("SELECT * from cypher('")
-	buf.WriteString(graphName)
-	buf.WriteString("', $$ ")
-	buf.WriteString(cypherStmt)
-	buf.WriteString(" $$)")
-	buf.WriteString(" as (")
-	buf.WriteString("v0 agtype")
+        buf.WriteString("SELECT * from cypher(NULL,NULL) as (v0 agtype")
+
 	for i := 1; i < columnCount; i++ {
 		buf.WriteString(fmt.Sprintf(", v%d agtype", i))
 	}
-	buf.WriteString(")")
+	buf.WriteString(");")
 
 	stmt := buf.String()
 
+        // Pass in the graph name and cypher statement via parameters to prepare
+        // the cypher function call for session info.
+
+        prepare_stmt := "SELECT * FROM age_prepare_cypher($1, $2);"
+        _, perr := tx.Exec(prepare_stmt, graphName, cypherStmt)
+        if perr != nil {
+                        fmt.Println(prepare_stmt + " " + graphName + " " + cypher)
+                        return nil, perr
+        }
+
 	if columnCount == 0 {
-		_, err := tx.Exec(stmt)
+                _, err := tx.Exec(stmt)
 		if err != nil {
 			fmt.Println(stmt)
 			return nil, err
 		}
 		return nil, nil
 	} else {
-		rows, err := tx.Query(stmt)
+                rows, err := tx.Query(stmt)
 		if err != nil {
 			fmt.Println(stmt)
 			return nil, err
@@ -132,33 +137,6 @@ func ExecCypherMap(tx *sql.Tx, graphName string, columnCount int, cypher string,
 	}
 	return cypherMapCursor, err
 }
-
-// // ExecCypher execute without return
-// // CREATE , DROP .... */
-// func ExecCypher2(tx *sql.Tx, graphName string, cypher string, args ...interface{}) error {
-// 	cypherStmt := fmt.Sprintf(cypher, args...)
-// 	stmt := fmt.Sprintf("SELECT * from cypher('%s', $$ %s $$) as (v agtype);",
-// 		graphName, cypherStmt)
-
-// 	_, err := tx.Exec(stmt)
-// 	return err
-// }
-
-// // QueryCypher execute with return
-// // MATCH .... RETURN ....
-// // CREATE , DROP .... RETURN ...
-// func QueryCypher(tx *sql.Tx, graphName string, cypher string, args ...interface{}) (*CypherCursor, error) {
-// 	cypherStmt := fmt.Sprintf(cypher, args...)
-// 	stmt := fmt.Sprintf("SELECT * from cypher('%s', $$ %s $$) as (v agtype);",
-// 		graphName, cypherStmt)
-
-// 	rows, err := tx.Query(stmt)
-// 	if err != nil {
-// 		return nil, err
-// 	} else {
-// 		return NewCypherCursor(1, rows), nil
-// 	}
-// }
 
 type Age struct {
 	db        *sql.DB
