@@ -24,7 +24,11 @@ import {
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
-import { SortOrder, XClusterConfigAction, XClusterTableIneligibleStatuses } from '../../constants';
+import {
+  SortOrder,
+  XClusterConfigAction,
+  XCLUSTER_TABLE_INELIGIBLE_STATUSES
+} from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
@@ -560,7 +564,7 @@ function getReplicationItemsFromTables(
         items[tableType].keyspaces[keyspace].sizeBytes += sizeBytes;
         items[tableType].keyspaces[keyspace].tables.push(xClusterTable);
         items[tableType].tableCount += 1;
-        if (XClusterTableIneligibleStatuses.includes(eligibilityDetails.status)) {
+        if (XCLUSTER_TABLE_INELIGIBLE_STATUSES.includes(eligibilityDetails.status)) {
           items[tableType].keyspaces[keyspace].tableEligibilityCount.ineligible += 1;
         } else if (
           eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG
