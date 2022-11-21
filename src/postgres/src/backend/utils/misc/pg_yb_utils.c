@@ -2425,10 +2425,19 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
 }
 
+/*
+ * This PG function takes one optional bool input argument (legacy).
+ * If the input argument is not specified or its value is false, this function
+ * returns whether the current database is a colocated database.
+ * If the value of the input argument is true, this function returns whether the
+ * current database is a legacy colocated database.
+ */
 Datum
 yb_is_database_colocated(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_BOOL(MyDatabaseColocated);
+	if (!PG_GETARG_BOOL(0))
+		PG_RETURN_BOOL(MyDatabaseColocated);
+	PG_RETURN_BOOL(MyDatabaseColocated && MyColocatedDatabaseLegacy);
 }
 
 /*

@@ -106,6 +106,8 @@ TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
 
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
 
+bool IsColocatedDbTablegroupParentTableId(const TableId& table_id);
+
 TableId GetColocationParentTableId(const TablegroupId& tablegroup_id);
 
 TableName GetColocationParentTableName(const TablegroupId& tablegroup_id);
