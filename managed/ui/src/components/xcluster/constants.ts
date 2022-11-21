@@ -1,16 +1,30 @@
 import { Metrics } from './XClusterTypes';
 
-export enum ReplicationStatus {
-  INITIALIZED = 'Initialized',
-  RUNNING = 'Running',
-  UPDATING = 'Updating',
-  DELETED_UNIVERSE = 'DeletedUniverse',
-  DELETION_FAILED = 'DeletionFailed',
-  FAILED = 'Failed'
-}
+//------------------------------------------------------------------------------------
+// XCluster Status Constants
+
+export const XClusterConfigStatus = {
+  INITIALIZED: 'Initialized',
+  RUNNING: 'Running',
+  UPDATING: 'Updating',
+  DELETED_UNIVERSE: 'DeletedUniverse',
+  DELETION_FAILED: 'DeletionFailed',
+  FAILED: 'Failed'
+} as const;
+export type XClusterConfigStatus = typeof XClusterConfigStatus[keyof typeof XClusterConfigStatus];
+
+export const BROKEN_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = [
+  XClusterConfigStatus.DELETED_UNIVERSE,
+  XClusterConfigStatus.DELETION_FAILED
+];
+
+export const TRANSITORY_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = [
+  XClusterConfigStatus.INITIALIZED,
+  XClusterConfigStatus.UPDATING
+];
 
 export const XClusterConfigState = {
-  RUNNING: ReplicationStatus.RUNNING,
+  RUNNING: XClusterConfigStatus.RUNNING,
   PAUSED: 'Paused'
 } as const;
 export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
@@ -25,6 +39,7 @@ export const XClusterTableStatus = {
   BOOTSTRAPPING: 'Bootstrapping'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
+//------------------------------------------------------------------------------------
 
 /**
  * Actions on an xCluster replication config.
@@ -62,7 +77,7 @@ export const XClusterTableEligibility = {
 } as const;
 export type XClusterTableEligibility = typeof XClusterTableEligibility[keyof typeof XClusterTableEligibility];
 
-export const XClusterTableIneligibleStatuses: readonly XClusterTableEligibility[] = [
+export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibility[] = [
   XClusterTableEligibility.INELIGIBLE_IN_USE,
   XClusterTableEligibility.INELIGIBLE_NO_MATCH
 ] as const;
@@ -156,11 +171,6 @@ export const MetricTraceName = {
 } as const;
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
-
-export const TRANSITORY_STATES = [
-  ReplicationStatus.INITIALIZED,
-  ReplicationStatus.UPDATING
-] as const;
 
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
