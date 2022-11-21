@@ -9331,6 +9331,193 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithoutBeforeImage)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  // Testing compaction without compaction file filtering for TTL expiration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
+  SleepFor(MonoDelta::FromSeconds(5));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+  ASSERT_LT(count_after_compaction, count_before_compaction);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBeforeImage)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  auto set_resp =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, false, 0, true));
+  ASSERT_FALSE(set_resp.has_error());
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  bool do_update = true;
+  GetChangesResponsePB change_resp_updated;
+  vector<int> excepted_result(2);
+  vector<int> actual_result(2);
+  while (true) {
+    if (do_update) {
+      ASSERT_OK(UpdateRows(100, 1001, &test_cluster_));
+      ASSERT_OK(DeleteRows(1, &test_cluster_));
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+      ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+      do_update = false;
+    }
+    change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    if (record_size == 0) {
+      break;
+    }
+    uint32_t read_count = 0;
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      std::stringstream s;
+
+      if (record.row_message().op() == RowMessage::READ) {
+        for (int jdx = 0; jdx < record.row_message().new_tuple_size(); jdx++) {
+          s << " " << record.row_message().new_tuple(jdx).datum_int32();
+        }
+        LOG(INFO) << "row: " << i << " : " << s.str();
+        // we should only get row values w.r.t snapshot, not changed values during snapshot.
+        if (actual_result[0] == 100) {
+          excepted_result[0] = 100;
+          excepted_result[1] = 101;
+          ASSERT_EQ(actual_result, excepted_result);
+        } else if (actual_result[0] == 1) {
+          excepted_result[0] = 1;
+          excepted_result[1] = 2;
+          ASSERT_EQ(actual_result, excepted_result);
+        }
+        read_count++;
+      }
+    }
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+  }
+  ASSERT_EQ(reads_snapshot, 100);
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+  auto result = test_cluster_.mini_cluster_->CompactTablets();
+
+  ASSERT_OK(WriteRows(101 /* start */, 102 /* end */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
+            << change_resp.cdc_sdk_proto_records_size();
+  ASSERT_OK(UpdateRows(1 /* key */, 5 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 10 /* value */, &test_cluster_));
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  int count_after_compaction;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto result = test_cluster_.mini_cluster_->CompactTablets();
+        if (!result.ok()) {
+          return false;
+        }
+        count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+        if (count_after_compaction < count_before_compaction) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60),
+      "Compaction is resticted for the stream."));
+  LOG(INFO) << "count_before_compaction: " << count_before_compaction
+            << " count_after_compaction: " << count_after_compaction;
+  ASSERT_LT(count_after_compaction, count_before_compaction);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, false, 0, true));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
+  // Testing compaction without compaction file filtering for TTL expiration.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
+
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  ASSERT_OK(UpdateRows(1 /* key */, 3 /* value */, &test_cluster_));
+  ASSERT_OK(UpdateRows(1 /* key */, 4 /* value */, &test_cluster_));
+
+  LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion)";
+  SleepFor(MonoDelta::FromSeconds(5));
+  auto peers = ListTabletPeers(test_cluster(), ListPeersFilter::kLeaders);
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  OpId op_id = {change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index()};
+  auto set_resp2 =
+      ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, op_id, change_resp.safe_hybrid_time()));
+  ASSERT_FALSE(set_resp2.has_error());
+
+  auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
+
+  ASSERT_EQ(count_before_compaction, count_after_compaction);
+
+  FLAGS_cdc_intent_retention_ms = 100;
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto result = GetChangesFromCDC(stream_id, tablets);
+        if (!result.ok()) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60),
+      "Stream is not expired."));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  auto count_compaction_after_expired = CountEntriesInDocDB(peers, table.table_id());
+  ASSERT_LE(count_compaction_after_expired, count_after_compaction);
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
