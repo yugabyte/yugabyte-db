@@ -111,6 +111,8 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(use_libbacktrace);
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
+DECLARE_uint64(aborted_intent_cleanup_ms);
 
 namespace yb {
 
@@ -566,7 +568,6 @@ class TwoDCYSqlTestConsistentTransactionsTest : public TwoDCYsqlTest {
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
     RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &resp));
-
     RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
     RETURN_NOT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
 
@@ -888,6 +889,38 @@ TEST_F(TwoDCYSqlTestConsistentTransactionsTest, ReplicationPause) {
   // Resume replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
   test_thread_holder.JoinAll();
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+TEST_F(TwoDCYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
+  // This test ensures that the compactions flow does not cleanup external intents from transactions
+  // thought to be aborted. In the xcluster case, it is possible that a transaction is thought to
+  // be aborted when the consumer has just yet to replicate the CREATE + COMMIT records for this
+  // transaction.
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = true;
+  FLAGS_aborted_intent_cleanup_ms = 0;
+  auto producer_table = tables_pair.first;
+  auto consumer_table = tables_pair.second;
+  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
+  master::WaitForReplicationDrainRequestPB req;
+  PopulateWaitForReplicationDrainRequest({tables_pair.first}, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_NO_FATALS(WriteGenerateSeries(51, 100 , &producer_cluster_, producer_table->name()));
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  // 2. Trigger a compaction on the consumer cluster.
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+  // 3. Enable replication of txn status table.
+  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = false;
+  // 4. Ensure records match.
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
