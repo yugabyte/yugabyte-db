@@ -82,6 +82,7 @@ public class LinkUnlinkController extends AbstractPlatformController {
   }
 
   public Result importUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Http.MultipartFormData<TemporaryFile> body = request().body().asMultipartFormData();
     Http.MultipartFormData.FilePart<TemporaryFile> tempSpecFile = body.getFile("spec");
 
@@ -91,7 +92,7 @@ public class LinkUnlinkController extends AbstractPlatformController {
 
     String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
     File tempFile = (File) tempSpecFile.getFile();
-    UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, storagePath);
+    UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, storagePath, customer);
     universeSpec.save(storagePath);
     return PlatformResults.withData(universeSpec);
   }
