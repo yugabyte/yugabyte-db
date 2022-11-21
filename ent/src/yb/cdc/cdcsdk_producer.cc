@@ -582,7 +582,8 @@ Status PopulateCDCSDKWriteRecord(
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
     GetChangesResponsePB* resp,
-    const Schema& current_schema) {
+    const Schema& current_schema,
+    const SchemaVersion current_schema_version) {
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
@@ -593,7 +594,7 @@ Status PopulateCDCSDKWriteRecord(
   // We'll use DocDB key hash to identify the records that belong to the same row.
   Slice prev_key;
   Schema schema = current_schema;
-  SchemaVersion schema_version = tablet_ptr->metadata()->schema_version();
+  SchemaVersion schema_version = current_schema_version;
   std::string table_name = tablet_ptr->metadata()->table_name();
   SchemaPackingStorage schema_packing_storage;
   schema_packing_storage.AddSchema(schema_version, schema);
@@ -1358,7 +1359,7 @@ Status GetChangesForCDCSDK(
             if (!batch.has_transaction()) {
               RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
                   msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map, resp,
-                  current_schema));
+                  current_schema, *cached_schema_version));
 
               SetCheckpoint(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
