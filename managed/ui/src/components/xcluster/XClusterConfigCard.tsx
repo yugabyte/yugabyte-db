@@ -15,7 +15,7 @@ import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
 import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
-import { ReplicationStatus } from './constants';
+import { XClusterConfigStatus } from './constants';
 
 import styles from './XClusterConfigCard.module.scss';
 
@@ -34,12 +34,14 @@ export const XClusterConfigCard = ({
     fetchUniversesList().then((res) => res.data)
   );
 
-  const sourceUniverseName = !universeListQuery.isLoading
-    ? findUniverseName(universeListQuery.data, xClusterConfig.sourceUniverseUUID)
-    : '';
-  const targetUniverseName = !universeListQuery.isLoading
-    ? findUniverseName(universeListQuery.data, xClusterConfig.targetUniverseUUID)
-    : '';
+  const sourceUniverseName =
+    !universeListQuery.isLoading && xClusterConfig.sourceUniverseUUID
+      ? findUniverseName(universeListQuery.data, xClusterConfig.sourceUniverseUUID)
+      : '';
+  const targetUniverseName =
+    !universeListQuery.isLoading && xClusterConfig.targetUniverseUUID
+      ? findUniverseName(universeListQuery.data, xClusterConfig.targetUniverseUUID)
+      : '';
 
   return (
     <div className={styles.configCard}>
@@ -80,7 +82,11 @@ export const XClusterConfigCard = ({
           />
         </div>
         {_.includes(
-          [ReplicationStatus.FAILED, ReplicationStatus.INITIALIZED, ReplicationStatus.UPDATING],
+          [
+            XClusterConfigStatus.FAILED,
+            XClusterConfigStatus.INITIALIZED,
+            XClusterConfigStatus.UPDATING
+          ],
           xClusterConfig.status
         ) ? (
           <div className={styles.viewTasksPrompt}>
@@ -99,7 +105,8 @@ export const XClusterConfigCard = ({
               <div className={styles.label}>Current Lag</div>
               <div className={styles.value}>
                 <CurrentReplicationLag
-                  replicationUUID={xClusterConfig.uuid}
+                  xClusterConfigUUID={xClusterConfig.uuid}
+                  xClusterConfigStatus={xClusterConfig.status}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                 />
               </div>
