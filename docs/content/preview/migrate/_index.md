@@ -112,4 +112,15 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
     </a>
   </div>
+      <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="troubleshoot/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true">
+        <div class="title">Troubleshoot</div>
+      </div>
+      <div class="body">
+        Troubleshoot issues and solutions when using yb-voyager.
+      </div>
+    </a>
+  </div>
 </div>
