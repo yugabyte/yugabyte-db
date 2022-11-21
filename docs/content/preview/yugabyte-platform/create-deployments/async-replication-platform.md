@@ -39,9 +39,7 @@ You can set up xCluster replication as follows:
 
    ![Configure Replication](/images/yp/asynch-replication-221.png)
 
-1. Provide a name for your replication. 
-
-   This name cannot contain any of the following: [SPACE '_' '*' '<' '>' '?' '|' '"' NULL].
+1. Provide a name for your replication. This name cannot contain [SPACE '_' '*' '<' '>' '?' '|' '"' NULL].
 
 1. Select the target universe.
 
@@ -53,7 +51,7 @@ You can set up xCluster replication as follows:
 
    ![Create Replication](/images/yp/asynch-replication-333.png)
 
-   Note that even though index tables are not displayed, their replication is set up if the main table is selected for replication.
+   Note that even though index tables are not displayed in the YugabyteDB Anywhere UI, the replication is automatically restarted for them if it is restarted for the main table. If a new index table is created after the replication has been set up, this index table is automatically included in the replication configuration.
 
    See [About the table selection](#about-the-table-selection) for additional information.
 
@@ -61,15 +59,11 @@ You can set up xCluster replication as follows:
 
    This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables: 
    
-   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to proceed. 
+   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication: 
    
      ![Create Replication](/images/yp/asynch-replication-332.png)
    
-   - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to proceed, as per the following illustration:
-   
-     ![Create Replication](/images/yp/asynch-replication-331.png)
-   
-     Complete the fields of the dialog shown in the following illustration:
+   - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
    
      ![Create Replication](/images/yp/asynch-replication-335.png)
    
@@ -77,7 +71,7 @@ You can set up xCluster replication as follows:
    
      Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
    
-     Clicking **Bootstrap and Enable Replication** starts the process. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
+     Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
    
      You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
    
@@ -130,7 +124,7 @@ This page allows you to do the following:
 
   Note that even though index tables are not displayed in the preceding dialog, the replication is automatically restarted for them if it is restarted for the main table.
 
-- Delete the replication regardless of its status or errors by clicking **Actions > Delete Replication**.
+- Delete the replication configuration by clicking **Actions > Delete Replication**.
 
 - Rename the replication by clicking **Actions > Edit Replication Name**.
 
@@ -140,27 +134,29 @@ This page allows you to do the following:
 
   - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-  - To check if the replication has been properly configured for a table. If so, the table's status is shown as Operational. If the replication lag increase beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as Warning. If the replication lag has increased to the extend that the replication cannot continue without bootstrapping of current data, the status is shown as Error: the table's replication stream is broken and data is missing on the target universe. If a lag alert is enabled on the replication, you will be notified when the excessive lag has caused the error, in which case you would be able to restart the replication so the data is bootstrapped and the replication is recreated.
+  - To check if the replication has been properly configured for a table. If so, the table's status is shown as Operational. 
 
-  - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. Note that you may prevent an index table from being replicated without affecting its main table.
+    If the replication lag increase beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as Warning. 
+
+    If the replication lag has increased to the extend that the replication cannot continue without bootstrapping of current data, the status is shown as Error: the table's replication stream is broken, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
+
+  - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
 
   - To add more tables to the replication, click **Add Tables** to open the **Add Tables to Replication** dialog which allows you to make a selection from a list of tables that have not been replicated, and then click **Validate Table Selection**.
 
-    Note that a table with the same name in the same database (or the same namespace) with the same schema must exist on the target universe before the table can be added. Otherwise the table is tagged as No Match and cannot be selected. See [About the table selection](#about-the-table-selection) for additional information.
+    Note that a table with the same name in the same keyspace and with the same schema must exist on the target universe. Otherwise the table is tagged as No Match and cannot be selected. See [About the table selection](#about-the-table-selection) for additional information.
     
-    When using YCQL, it is recommended to add new tables as soon as they are created. If the table contains enough data, and then you decide to add it to the replication configuration, bootstrapping will be required, in which case other tables in the same database must be removed from the replication and also subjected to bootstrapping.
-    
-    When using YSQL, new tables in a database can be added to the replication configuration. Moreover, if a subset of YSQL tables of a database is already in replication in a configuration, the remaining tables in that database must be added to the same configuration.
+    To make the add table operation faster, it is recommended to add new tables to the replication as soon as they are created. When using YSQL, if a subset of tables of a database is already in replication in a configuration, the remaining tables in that database can only be added to the same configuration. Moreover, if adding a YSQL table requires bootstrapping, the other tables in the same database which are already in replication will be removed from replication. The replication will be set up again for all the tables in that database.
 
 - View detailed statistics on the asynchronous replication lag by selecting **Metrics**, as per the following illustration:
 
-  ![Alert](/images/yp/asynch-replication-61.png)<br>
+  ![Alert](/images/yp/asynch-replication-61.png)
 
 ## Set up bidirectional replication
 
 You can set up bidirectional replication using either the YugabyteDB Anywhere UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
 
-Bootstrapping is not enabled for bidirectional replication.
+Bootstrapping is skipped for tables on the target universe that are already in replication. It means that, while setting up bidirectional replication, bootstrapping can be done in only one direction, that of the first replication configuration. For example, when you set up replication for table  t1 from universe u1 to u2, it may go through bootstrapping. However, if  you set up replication in the reverse direction, from universe u2 to u1 for table t1, bootstrapping is skipped.
 
 ## Limitations
 
