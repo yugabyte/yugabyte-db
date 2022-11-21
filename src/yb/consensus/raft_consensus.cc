@@ -131,6 +131,9 @@ DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "the first TEST_follower_reject_update_consensus_requests_seconds seconds after "
                  "the Consensus objet is created.");
 
+DEFINE_test_flag(bool, leader_skip_no_op, false,
+                 "Whether a leader replicate NoOp to follower.");
+
 DEFINE_test_flag(bool, follower_fail_all_prepare, false,
                  "Whether a follower will fail preparing all operations.");
 
@@ -1068,18 +1071,20 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // because this method is not executed on the TabletPeer's prepare thread.
   replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-  auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
-  round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
-      [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
-    // Set 'Leader is ready to serve' flag only for committed NoOp operation
-    // and only if the term is up-to-date.
-    // It is guaranteed that successful notification is called only while holding replicate state
-    // mutex.
-    if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
-      state_->SetLeaderNoOpCommittedUnlocked(true);
-    }
-  }));
-  RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
+  if (!PREDICT_FALSE(FLAGS_TEST_leader_skip_no_op)) {
+    auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
+    round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
+        [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
+      // Set 'Leader is ready to serve' flag only for committed NoOp operation
+      // and only if the term is up-to-date.
+      // It is guaranteed that successful notification is called only while holding replicate state
+      // mutex.
+      if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
+        state_->SetLeaderNoOpCommittedUnlocked(true);
+      }
+    }));
+    RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
+  }
 
   peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
@@ -1349,8 +1354,12 @@ void RaftConsensus::UpdateMajorityReplicated(
     }
   }
 
-  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
-  leader_lease_wait_cond_.notify_all();
+  s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
+  if (s.ok()) {
+    leader_lease_wait_cond_.notify_all();
+  } else {
+    LOG(WARNING) << "Leader lease expiration was not set: " << s;
+  }
 
   VLOG_WITH_PREFIX(1) << "Marking majority replicated up to "
       << majority_replicated_data.ToString();
@@ -1484,6 +1493,7 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
+
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
 
   auto reject_mode = reject_mode_.load(std::memory_order_acquire);
