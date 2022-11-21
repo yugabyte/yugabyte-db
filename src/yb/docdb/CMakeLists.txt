@@ -38,6 +38,8 @@ set(DOCDB_ENCODING_SRCS
     primitive_value_util.cc
     intent.cc
     doc_scanspec_util.cc
+    doc_key_base.cc
+    pgsql_ybctid.cc
     )
 
 set(DOCDB_ENCODING_DEPS

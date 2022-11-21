@@ -32,7 +32,7 @@
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/docdb/pgsql_ybctid.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
@@ -1209,7 +1209,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
                     target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return processor(docdb::DocKey(std::move(range_components)).Encode());
+            return processor(docdb::PgsqlYbctid(std::move(range_components)).Encode());
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
@@ -1217,7 +1217,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(
-              docdb::DocKey(hash, std::move(hashed_components),
+              docdb::PgsqlYbctid(hash, std::move(hashed_components),
                 std::move(range_components)).Encode());
         }
         break;
