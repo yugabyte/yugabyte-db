@@ -692,5 +692,48 @@ Status TwoDCTestBase::WaitForValidSafeTimeOnAllTServers(const NamespaceId& names
   return Status::OK();
 }
 
+Status TwoDCTestBase::WaitForReplicationDrain(
+    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
+    const master::WaitForReplicationDrainRequestPB& req,
+    int expected_num_nondrained,
+    int timeout_secs) {
+  master::WaitForReplicationDrainResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
+  auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
+  return SetupWaitForReplicationDrainStatus(s, resp, expected_num_nondrained);
+}
+
+void TwoDCTestBase::PopulateWaitForReplicationDrainRequest(
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    master::WaitForReplicationDrainRequestPB* req) {
+  for (const auto& producer_table : producer_tables) {
+    master::ListCDCStreamsResponsePB list_resp;
+    ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
+    ASSERT_EQ(list_resp.streams_size(), 1);
+    ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
+    req->add_stream_ids(list_resp.streams(0).stream_id());
+  }
+}
+
+Status TwoDCTestBase::SetupWaitForReplicationDrainStatus(
+    Status api_status,
+    const master::WaitForReplicationDrainResponsePB& api_resp,
+    int expected_num_nondrained) {
+  if (!api_status.ok()) {
+    return api_status;
+  }
+  if (api_resp.has_error()) {
+    return STATUS(IllegalState,
+        Format("WaitForReplicationDrain returned error: $0", api_resp.error().DebugString()));
+  }
+  if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
+    return STATUS(IllegalState,
+        Format("Mismatched number of non-drained streams. Expected $0, got $1.",
+               expected_num_nondrained, api_resp.undrained_stream_info_size()));
+  }
+  return Status::OK();
+}
+
 } // namespace enterprise
 } // namespace yb
