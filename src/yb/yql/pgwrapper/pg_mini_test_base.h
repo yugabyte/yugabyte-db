@@ -86,10 +86,10 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   HostPort pg_host_port_;
 };
 
-class HistogramMetricWatcher {
+class MetricWatcher {
  public:
   using DeltaFunctor = std::function<Status()>;
-  HistogramMetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
+  MetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
 
   Result<size_t> Delta(const DeltaFunctor& functor) const;
 

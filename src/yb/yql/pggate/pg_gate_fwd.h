@@ -39,8 +39,10 @@ class PgTableDesc;
 using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 
 class PgsqlOp;
+class PgsqlReadOp;
 class PgsqlWriteOp;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
+using PgsqlReadOpPtr = std::shared_ptr<PgsqlReadOp>;
 using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;
 using PgsqlOps = std::vector<PgsqlOpPtr>;
 

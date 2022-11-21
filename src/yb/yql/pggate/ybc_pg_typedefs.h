@@ -344,6 +344,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
   const bool*     ysql_ddl_rollback_enabled;
+  const bool*     ysql_enable_read_request_caching;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

@@ -20,6 +20,7 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <boost/functional/hash.hpp>
 
@@ -59,6 +60,7 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
+
 namespace yb {
 namespace pggate {
 
@@ -174,9 +176,9 @@ class PgSession::RunHelper {
   }
 
   Status Apply(const PgTableDesc& table,
-               const PgsqlOpPtr& op,
+               PgsqlOpPtr op,
                uint64_t* in_txn_limit,
-               bool force_non_bufferable) {
+               ForceNonBufferable force_non_bufferable) {
     auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
@@ -212,13 +214,14 @@ class PgSession::RunHelper {
       LOG(INFO) << "Applying operation: " << op->ToString();
     }
 
-    operations_.Add(op, table.id());
+    const auto row_mark_type = GetRowMarkType(*op);
+
+    operations_.Add(std::move(op), table.id());
 
     if (!IsTransactional()) {
       return Status::OK();
     }
 
-    const auto row_mark_type = GetRowMarkType(*op);
     const auto txn_priority_requirement =
       pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
         ? kHighestPriority :
@@ -229,13 +232,15 @@ class PgSession::RunHelper {
         read_only, txn_priority_requirement, in_txn_limit);
   }
 
-  Result<PerformFuture> Flush() {
+  Result<PerformFuture> Flush(std::string&& cache_key) {
     if (operations_.empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
     }
 
-    return pg_session_.Perform(std::move(operations_), IsCatalog());
+    return pg_session_.Perform(
+        std::move(operations_),
+        {.use_catalog_session = IsCatalog(), .cache_key = std::move(cache_key)});
   }
 
  private:
@@ -516,18 +521,14 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
   // very first (and all further) request as flushing is done asynchronously (i.e. YSQL may send
   // multiple bunch of operations in parallel). As a result PgClientService is unable to use read
   // time from remote t-server or generate its own.
-  const auto ensure_read_time_set_for_current_txn_serial_no = !transactional;
   return Perform(
-      std::move(ops), UseCatalogSession::kFalse, ensure_read_time_set_for_current_txn_serial_no);
+      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet(!transactional)});
 }
 
-Result<PerformFuture> PgSession::Perform(
-    BufferableOperations ops,
-    UseCatalogSession use_catalog_session,
-    bool ensure_read_time_set_for_current_txn_serial_no) {
+Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
-  if (use_catalog_session) {
+  if (ops_options.use_catalog_session) {
     if (catalog_read_time_) {
       catalog_read_time_.ToPB(options.mutable_read_time());
     }
@@ -535,7 +536,7 @@ Result<PerformFuture> PgSession::Perform(
   } else {
     const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
     ProcessPerformOnTxnSerialNo(
-        txn_serial_no, ensure_read_time_set_for_current_txn_serial_no, &options);
+        txn_serial_no, ops_options.ensure_read_time_is_set, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -545,7 +546,7 @@ Result<PerformFuture> PgSession::Perform(
 
   options.set_use_xcluster_database_consistency(
       yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(use_catalog_session || pg_txn_manager_->IsDdlMode()));
+      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode()));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
@@ -576,15 +577,20 @@ Result<PerformFuture> PgSession::Perform(
     }
   }
 
+  if (!ops_options.cache_key.empty()) {
+    options.mutable_caching_info()->set_key(std::move(ops_options.cache_key));
+  }
+
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
 }
 
-void PgSession::ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
-                                            bool ensure_read_time_set_for_current_txn_serial_no,
-                                            tserver::PgPerformOptionsPB* options) {
+void PgSession::ProcessPerformOnTxnSerialNo(
+    uint64_t txn_serial_no,
+    EnsureReadTimeIsSet ensure_read_time_set_for_current_txn_serial_no,
+    tserver::PgPerformOptionsPB* options) {
   if (txn_serial_no != std::get<0>(last_perform_on_txn_serial_no_).txn_serial_no) {
     last_perform_on_txn_serial_no_.emplace<0>(
         txn_serial_no,
@@ -753,29 +759,53 @@ Status PgSession::ValidatePlacement(const std::string& placement_info) {
   return pg_client_.ValidatePlacement(&req);
 }
 
-Result<PerformFuture> PgSession::RunAsync(
-  const OperationGenerator& generator, uint64_t* in_txn_limit, bool force_non_bufferable) {
+template<class Generator>
+Result<PerformFuture> PgSession::DoRunAsync(
+    const Generator& generator, uint64_t* in_txn_limit,
+    ForceNonBufferable force_non_bufferable, std::string&& cache_key) {
   auto table_op = generator();
-  SCHECK(table_op.operation, IllegalState, "Operation list must not be empty");
+  SCHECK(!table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
   const auto* op = table_op.operation;
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *table, **op));
   RunHelper runner(this, group_session_type);
   const auto ddl_mode = pg_txn_manager_->IsDdlMode();
-  for (; table_op.operation; table_op = generator()) {
+  for (; !table_op.IsEmpty(); table_op = generator()) {
     table = table_op.table;
     op = table_op.operation;
     const auto op_session_type = VERIFY_RESULT(GetRequiredSessionType(
         *pg_txn_manager_, *table, **op));
-    SCHECK_EQ(op_session_type,
-              group_session_type,
-              IllegalState,
-              "Operations on different sessions can't be mixed");
+    SCHECK_EQ(
+        op_session_type, group_session_type,
+        IllegalState, "Operations on different sessions can't be mixed");
     has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
     RETURN_NOT_OK(runner.Apply(*table, *op, in_txn_limit, force_non_bufferable));
   }
-  return runner.Flush();
+  return runner.Flush(std::move(cache_key));
+}
+
+Result<PerformFuture> PgSession::RunAsync(const OperationGenerator& generator,
+                                          uint64_t* in_txn_limit,
+                                          ForceNonBufferable force_non_bufferable) {
+  return DoRunAsync(
+      generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+}
+
+Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generator,
+                                          uint64_t* in_txn_limit,
+                                          ForceNonBufferable force_non_bufferable) {
+  return DoRunAsync(
+      generator, in_txn_limit, force_non_bufferable, std::string() /* cache_key */);
+}
+
+Result<PerformFuture> PgSession::RunAsyncCacheable(
+    const ReadOperationGenerator& generator, uint64_t* in_txn_limit, std::string&& cache_key) {
+  SCHECK(!cache_key.empty(), InvalidArgument, "Cache key can't be empty");
+  // Ensure no buffered requests will be added to cached request.
+  RETURN_NOT_OK(buffer_.Flush());
+  return DoRunAsync(
+      generator, in_txn_limit, ForceNonBufferable::kFalse, std::move(cache_key));
 }
 
 Result<bool> PgSession::CheckIfPitrActive() {

@@ -66,7 +66,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  Result<RequestSent> Execute(bool force_non_bufferable) override {
+  Result<RequestSent> Execute(ForceNonBufferable force_non_bufferable) override {
     return RequestSent::kTrue;
   }
 
@@ -241,7 +241,7 @@ const PgExecParameters& PgDocOp::ExecParameters() const {
   return exec_params_;
 }
 
-Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
+Result<RequestSent> PgDocOp::Execute(ForceNonBufferable force_non_bufferable) {
   // As of 09/25/2018, DocDB doesn't cache or keep any execution state for a statement, so we
   // have to call query execution every time.
   // - Normal SQL convention: Exec, Fetch, Fetch, ...
@@ -260,7 +260,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
-      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+      RETURN_NOT_OK(SendRequest());
     }
 
     DCHECK(response_.Valid());
@@ -270,7 +270,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     DCHECK(!result.empty() || end_of_data_);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
-      RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
+      RETURN_NOT_OK(SendRequest());
     }
   }
 
@@ -290,7 +290,7 @@ void PgDocOp::MoveInactiveOpsOutside() {
   active_op_count_ = inactive_op_begin - pgsql_ops_.begin();
 }
 
-Status PgDocOp::SendRequest(bool force_non_bufferable) {
+Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
@@ -298,7 +298,7 @@ Status PgDocOp::SendRequest(bool force_non_bufferable) {
   return exec_status_;
 }
 
-Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
+Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
@@ -419,7 +419,7 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t in_txn_limit, bool force_non_bufferable) {
+    uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
   auto result = VERIFY_RESULT(session->RunAsync(
       ops, ops_count, table, &in_txn_limit, force_non_bufferable));
   return PgDocResponse(std::move(result), in_txn_limit);
