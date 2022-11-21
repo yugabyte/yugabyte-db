@@ -19,7 +19,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -30,7 +32,7 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -90,7 +92,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -101,7 +105,7 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -164,7 +168,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-python-app.git && cd yugabyte-simple-python-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -175,7 +181,7 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -232,7 +238,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-node-app.git && cd yugabyte-simple-node-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -243,7 +251,7 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -308,7 +316,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-c-app.git && cd yugabyte-simple-c-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -319,7 +329,7 @@ To build and run the application, do the following:
         - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -382,7 +392,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && cd yugabyte-simple-cpp-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -393,7 +405,7 @@ To build and run the application, do the following:
         - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -460,7 +472,9 @@ To build and run the application, do the following:
     <PackageReference Include="npgsql" Version="6.0.3" />
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -471,7 +485,7 @@ To build and run the application, do the following:
         - **urlBuilder.Host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
         - **urlBuilder.SslMode** - the SSL mode to use; use `SslMode.VerifyFull`.
         - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
@@ -529,7 +543,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-ruby-app.git && cd yugabyte-simple-ruby-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -540,7 +556,7 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbname** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -597,7 +613,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-rust-app.git && cd yugabyte-simple-rust-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -608,7 +626,7 @@ To build and run the application, do the following:
         - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
@@ -665,7 +683,9 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-php-app.git && cd yugabyte-simple-php-app
     ```
 
-1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
+1. Provide connection parameters.
+
+    (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -676,7 +696,7 @@ To build and run the application, do the following:
         - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database to connect to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (yugabyte and yugabyte). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
 
     - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
