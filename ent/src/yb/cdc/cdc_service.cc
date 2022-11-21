@@ -1709,7 +1709,9 @@ void CDCServiceImpl::GetChanges(
           UpdateCheckpointAndActiveTime(
               producer_tablet, OpId::FromPB(resp->checkpoint().op_id()), op_id, session,
               last_record_hybrid_time, record.source_type, false,
-              HybridTime::FromPB(resp->safe_hybrid_time())),
+              record.record_type == CDCRecordType::ALL
+                  ? HybridTime::FromPB(resp->safe_hybrid_time())
+                  : HybridTime::kInvalid),
           resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     }
 
