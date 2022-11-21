@@ -19,7 +19,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-java-app.git && cd yugabyte-simple-java-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -90,7 +90,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-go-app.git && cd yugabyte-simple-go-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -164,7 +164,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-python-app.git && cd yugabyte-simple-python-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -232,7 +232,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-node-app.git && cd yugabyte-simple-node-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -308,7 +308,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-c-app.git && cd yugabyte-simple-c-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -382,7 +382,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-cpp-app.git && cd yugabyte-simple-cpp-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -460,7 +460,7 @@ To build and run the application, do the following:
     <PackageReference Include="npgsql" Version="6.0.3" />
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -529,7 +529,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-ruby-app.git && cd yugabyte-simple-ruby-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -597,7 +597,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-rust-app.git && cd yugabyte-simple-rust-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
@@ -665,7 +665,7 @@ To build and run the application, do the following:
     git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-php-app.git && cd yugabyte-simple-php-app
     ```
 
-1. Provide connection parameters.
+1. Provide connection parameters. (You can skip this step and use the defaults if your cluster is running locally and listening on 127.0.0.1:5433.)
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
