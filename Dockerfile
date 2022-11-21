@@ -17,7 +17,7 @@
 #
 
 
-FROM postgres:11
+FROM postgres:11-buster
 
 RUN apt-get update 
 RUN apt-get install --assume-yes --no-install-recommends --no-install-suggests \
