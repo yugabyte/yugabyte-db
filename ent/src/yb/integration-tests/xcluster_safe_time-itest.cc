@@ -26,6 +26,8 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/xcluster/xcluster_consumer_metrics.h"
+#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -539,7 +541,7 @@ class XClusterConsistencyTest : public TwoDCTestBase {
     return count;
   }
 
-  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId namespace_id) {
+  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId& namespace_id) {
     master::GetXClusterEstimatedDataLossRequestPB req;
     master::GetXClusterEstimatedDataLossResponsePB resp;
     rpc::RpcController rpc;
@@ -559,6 +561,18 @@ class XClusterConsistencyTest : public TwoDCTestBase {
 
     return STATUS_FORMAT(
         NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
+  }
+
+  Result<uint64_t> GetXClusterEstimatedDataLossFromMetrics(const NamespaceId& namespace_id) {
+    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    const auto metrics =
+        cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
+    const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
+    const auto safe_time_skew = metrics->consumer_safe_time_skew->value();
+    CHECK_GE(safe_time_lag, safe_time_skew);
+    LOG(INFO) << "Current safe time lag from metrics: " << safe_time_lag
+              << ", Current safe time skew from metrics: " << safe_time_skew;
+    return safe_time_lag;
   }
 
  protected:
@@ -622,6 +636,12 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   LOG(INFO) << "High RPO is " << high_rpo;
   // RPO only gets updated every second, so only checking for at least one timeout.
   ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMicroseconds());
+  // The estimated data loss from the metrics is from a snapshot, as opposed to the result from
+  // GetXClusterEstimatedDataLoss which is a current, newly calculated value. Thus we can't expect
+  // these values to be equal, but should still expect the same assertions to hold.
+  ASSERT_GT(
+      ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)),
+      MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMilliseconds());
 
   // Resume replication and verify all data is written on the consumer.
   ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, 0));
@@ -636,6 +656,7 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   const auto final_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
   LOG(INFO) << "Final RPO is " << final_rpo;
   ASSERT_LT(final_rpo, high_rpo);
+  ASSERT_LT(ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)), high_rpo / 1000);
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
