@@ -857,7 +857,8 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      xcluster_safe_time_service_(std::make_unique<XClusterSafeTimeService>(master, this)),
+      xcluster_safe_time_service_(
+          std::make_unique<XClusterSafeTimeService>(master, this, master_->metric_registry())),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this, this, master_->metric_entity()) {
@@ -12367,7 +12368,7 @@ Result<XClusterNamespaceToSafeTimeMap> CatalogManager::GetXClusterNamespaceToSaf
 }
 
 Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(
-    const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map) {
+    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
   google::protobuf::Map<std::string, google::protobuf::uint64> map_pb;
   for (auto& entry : safe_time_map) {
     map_pb[entry.first] = entry.second.ToUint64();

@@ -79,6 +79,7 @@ class SysRowEntries;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
+class XClusterSafeTimeService;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlTablegroupManager;
