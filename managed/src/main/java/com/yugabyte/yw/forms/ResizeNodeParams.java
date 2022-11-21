@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
@@ -12,13 +11,12 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -93,12 +91,10 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             + " got "
             + newUserIntent.deviceInfo.volumeSize;
       }
-      if (!Objects.equals(
-          currentUserIntent.deviceInfo.numVolumes, newUserIntent.deviceInfo.numVolumes)) {
-        return "Number of volumes cannot be changed. It was "
-            + currentUserIntent.deviceInfo.numVolumes
-            + " got "
-            + newUserIntent.deviceInfo.numVolumes;
+      DeviceInfo newDeviceInfoCloned = newUserIntent.deviceInfo.clone();
+      newDeviceInfoCloned.volumeSize = currDiskSize;
+      if (!newDeviceInfoCloned.equals(currentUserIntent.deviceInfo)) {
+        return "Only volume size should be changed to do smart resize";
       }
       diskChanged = !Objects.equals(currDiskSize, newUserIntent.deviceInfo.volumeSize);
     }
