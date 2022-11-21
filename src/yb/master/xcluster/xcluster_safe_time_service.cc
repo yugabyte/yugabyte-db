@@ -23,7 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/util/atomic.h"
-#include "yb/util/flags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/client/schema.h"
@@ -40,7 +40,7 @@ TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
-// TODO(jhe) METRIC_DEFINE for max/cur_safe_time
+METRIC_DECLARE_entity(cluster);
 
 namespace yb {
 using OK = Status::OK;
@@ -50,14 +50,16 @@ namespace master {
 const client::YBTableName kSafeTimeTableName(
     YQL_DATABASE_CQL, kSystemNamespaceName, kXClusterSafeTimeTableName);
 
-XClusterSafeTimeService::XClusterSafeTimeService(Master* master, CatalogManager* catalog_manager)
+XClusterSafeTimeService::XClusterSafeTimeService(
+    Master* master, CatalogManager* catalog_manager, MetricRegistry* metric_registry)
     : master_(master),
       catalog_manager_(catalog_manager),
       shutdown_(false),
       shutdown_cond_(&shutdown_cond_lock_),
       task_enqueued_(false),
       safe_time_table_ready_(false),
-      cluster_config_version_(kInvalidClusterConfigVersion) {}
+      cluster_config_version_(kInvalidClusterConfigVersion),
+      metric_registry_(metric_registry) {}
 
 XClusterSafeTimeService::~XClusterSafeTimeService() { Shutdown(); }
 
@@ -120,18 +122,21 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   if (wait_time <= 0) {
     // Can only happen in tests
     VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_safe_time_update_interval_secs flag";
+    EnterIdleMode("xcluster_safe_time_update_interval_secs flag");
     return;
   }
 
   auto leader_term_result = GetLeaderTermFromCatalogManager();
   if (!leader_term_result.ok()) {
     VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
+    EnterIdleMode("master leader change");
     return;
   }
   int64_t leader_term = leader_term_result.get();
 
+  // Compute safe time now and also update the metrics.
   bool further_computation_needed = true;
-  auto result = ComputeSafeTime(leader_term);
+  auto result = ComputeSafeTime(leader_term, /* update_metrics */ true);
   if (result.ok()) {
     further_computation_needed = result.get();
   } else {
@@ -140,6 +145,7 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 
   if (!further_computation_needed) {
     VLOG_WITH_FUNC(1) << "Going into idle mode due to lack of work";
+    EnterIdleMode("no more work left");
     return;
   }
 
@@ -156,11 +162,10 @@ Result<std::unordered_map<NamespaceId, uint64_t>>
 XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
   // Recompute safe times again before fetching maps.
   const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
-
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
-    max_safe_time_map = VERIFY_RESULT(GetMaxNamespaceSafeTimeFromTable());
+    max_safe_time_map = GetMaxNamespaceSafeTimeFromMap(VERIFY_RESULT(GetSafeTimeFromTable()));
   }
 
   std::unordered_map<NamespaceId, uint64_t> safe_time_diff_map;
@@ -286,12 +291,13 @@ XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
 }
 }  // namespace
 
-Result<bool> XClusterSafeTimeService::ComputeSafeTime(const int64_t leader_term) {
+Result<bool> XClusterSafeTimeService::ComputeSafeTime(
+    const int64_t leader_term, bool update_metrics) {
   std::lock_guard lock(mutex_);
   auto tablet_to_safe_time_map = VERIFY_RESULT(GetSafeTimeFromTable());
 
   // The tablet map has to be updated after we read the table, as consumer registry could have
-  // changed and tservers may have already started populating new entires in it
+  // changed and tservers may have already started populating new entries in it.
   RETURN_NOT_OK(RefreshProducerTabletToNamespaceMap());
 
   std::map<NamespaceId, HybridTime> namespace_safe_time_map;
@@ -330,7 +336,12 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(const int64_t leader_term)
   // Use the leader term to ensure leader has not changed between the time we did our computation
   // and setting the new config. Its important to make sure that the config we persist is accurate
   // as only that protects the safe time from going backwards.
-  RETURN_NOT_OK(SetXClusterSafeTime(leader_term, std::move(new_safe_time_map)));
+  RETURN_NOT_OK(SetXClusterSafeTime(leader_term, new_safe_time_map));
+
+  if (update_metrics) {
+    // Update the metrics using the newly computed maps.
+    UpdateMetrics(tablet_to_safe_time_map, new_safe_time_map);
+  }
 
   // There is no guarantee that we are still running on a leader. But this is ok as we are just
   // performing idempotent clean up of stale entries in the table.
@@ -404,10 +415,10 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   return tablet_safe_time;
 }
 
-Result<XClusterNamespaceToSafeTimeMap> XClusterSafeTimeService::GetMaxNamespaceSafeTimeFromTable() {
+XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeFromMap(
+    const ProducerTabletToSafeTimeMap& tablet_to_safe_time_map) {
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
-  ProducerTabletToSafeTimeMap tablet_safe_times = VERIFY_RESULT(GetSafeTimeFromTable());
-  for (const auto& [prod_tablet_info, safe_time] : tablet_safe_times) {
+  for (const auto& [prod_tablet_info, safe_time] : tablet_to_safe_time_map) {
     const auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, prod_tablet_info);
     if (!namespace_id) {
       // Stale entry in the table, can skip this namespace.
@@ -475,7 +486,7 @@ XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
 }
 
 Status XClusterSafeTimeService::SetXClusterSafeTime(
-    const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map) {
+    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& new_safe_time_map) {
   if (VLOG_IS_ON(2)) {
     for (auto& [namespace_id, safe_time] : new_safe_time_map) {
       VLOG_WITH_FUNC(2) << "NamespaceId: " << namespace_id
@@ -483,8 +494,7 @@ Status XClusterSafeTimeService::SetXClusterSafeTime(
     }
   }
 
-  return catalog_manager_->SetXClusterNamespaceToSafeTimeMap(
-      leader_term, std::move(new_safe_time_map));
+  return catalog_manager_->SetXClusterNamespaceToSafeTimeMap(leader_term, new_safe_time_map);
 }
 
 Status XClusterSafeTimeService::CleanupEntriesFromTable(
@@ -535,6 +545,80 @@ Result<int64_t> XClusterSafeTimeService::GetLeaderTermFromCatalogManager() {
   }
 
   return l.GetLeaderReadyTerm();
+}
+
+void XClusterSafeTimeService::UpdateMetrics(
+    const ProducerTabletToSafeTimeMap& safe_time_map,
+    const XClusterNamespaceToSafeTimeMap& current_safe_time_map) {
+  const auto max_safe_time_map = GetMaxNamespaceSafeTimeFromMap(safe_time_map);
+  const auto cur_time_micros = GetCurrentTimeMicros();
+
+  // current_safe_time_map is the source of truth, so loop over it to construct the final mapping.
+  for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
+    // Check if the metric exists or not.
+    auto metrics_it = cluster_metrics_per_namespace_.find(namespace_id);
+    if (metrics_it == cluster_metrics_per_namespace_.end()) {
+      // Instantiate the metric.
+      MetricEntity::AttributeMap attrs;
+      attrs["namespace_id"] = namespace_id;
+
+      scoped_refptr<yb::MetricEntity> entity;
+      entity = METRIC_ENTITY_cluster.Instantiate(metric_registry_, namespace_id, attrs);
+
+      metrics_it =
+          cluster_metrics_per_namespace_
+              .emplace(
+                  namespace_id, std::make_unique<xcluster::XClusterConsumerClusterMetrics>(entity))
+              .first;
+    }
+
+    // In the case that we cannot get valid safe times yet, set the metrics to 0.
+    uint64_t consumer_safe_time_skew_ms = 0;
+    uint64_t consumer_safe_time_lag_ms = 0;
+
+    if (!safe_time.is_special()) {
+      // Fetch the max safe time if it is valid.
+      const auto it = max_safe_time_map.find(namespace_id);
+      if (it != max_safe_time_map.end() && !it->second.is_special()) {
+        DCHECK_GE(it->second, safe_time);
+        const auto& max_safe_time = std::max(it->second, safe_time);
+
+        // Compute the metrics, note conversion to milliseconds.
+        consumer_safe_time_skew_ms = max_safe_time.PhysicalDiff(safe_time) /
+            MonoTime::kMicrosecondsPerMillisecond;
+        consumer_safe_time_lag_ms = (cur_time_micros - safe_time.GetPhysicalValueMicros()) /
+            MonoTime::kMicrosecondsPerMillisecond;
+      }
+    }
+
+    // Set the metric values.
+    metrics_it->second->consumer_safe_time_skew->set_value(consumer_safe_time_skew_ms);
+    metrics_it->second->consumer_safe_time_lag->set_value(consumer_safe_time_lag_ms);
+  }
+
+  // Delete any non-existant namespaces leftover in the metrics.
+  for (auto it = cluster_metrics_per_namespace_.begin();
+       it != cluster_metrics_per_namespace_.end();) {
+    const auto& namespace_id = it->first;
+    if (!current_safe_time_map.contains(namespace_id)) {
+      it = cluster_metrics_per_namespace_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+void XClusterSafeTimeService::EnterIdleMode(const std::string& reason) {
+  VLOG(1) << "XClusterSafeTimeService entering idle mode due to: " << reason;
+  std::lock_guard lock(mutex_);
+  cluster_metrics_per_namespace_.clear();
+  return;
+}
+
+xcluster::XClusterConsumerClusterMetrics* XClusterSafeTimeService::TEST_GetMetricsForNamespace(
+    const NamespaceId& namespace_id) {
+  std::lock_guard lock(mutex_);
+  return cluster_metrics_per_namespace_[namespace_id].get();
 }
 
 }  // namespace master

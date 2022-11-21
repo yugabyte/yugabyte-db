@@ -601,6 +601,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
 
+  XClusterSafeTimeService* TEST_xcluster_safe_time_service() override {
+    return xcluster_safe_time_service_.get();
+  }
+
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
@@ -1007,7 +1011,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
+      const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
 
   Status GetXClusterEstimatedDataLoss(
       const GetXClusterEstimatedDataLossRequestPB* req,
