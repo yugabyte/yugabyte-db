@@ -6,14 +6,16 @@ package cmd
 
 import (
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 // Reads info from input config file and sets all template parameters
 // for each individual config file (for every component separately)
 func ValidateUserPython(filename string) (valid bool) {
 
-	pythonPath := getYamlPathData(".python.path")
-	pythonVersion := getYamlPathData(".python.version")
+	pythonPath := viper.GetString("python.path")
+	pythonVersion := viper.GetString("python.version")
 
 	LogDebug("User provided Python path: " + pythonPath)
 	LogDebug("User provided Python version: " + pythonVersion)

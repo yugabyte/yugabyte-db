@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/spf13/viper"
 )
 
 // Component 2: Prometheus
@@ -18,11 +19,11 @@ type Prometheus struct {
 	Name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
-	templateFileName		string
+	templateFileName    string
 	Version             string
 	isUpgrade           bool
-	DataDir							string
-	PromDir							string
+	DataDir             string
+	PromDir             string
 }
 
 // TODO: Pass this in from common when defining services? At that point can pull from input.yaml
@@ -80,18 +81,19 @@ func (prom Prometheus) Start() {
 		ExecuteBashCommand(SYSTEMCTL, []string{"status", "prometheus"})
 
 	} else {
-
-		maxConcurrency := getYamlPathData(".prometheus.maxConcurrency")
-		maxSamples := getYamlPathData(".prometheus.maxSamples")
-		timeout := getYamlPathData(".prometheus.timeout")
-		externalPort := getYamlPathData(".prometheus.externalPort")
-		restartSeconds := getYamlPathData(".prometheus.restartSeconds")
-
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
+		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
+			scriptPath,
+			viper.GetInt("prometheus.externalPort"),
+			viper.GetInt("prometheus.maxConcurrency"),
+			viper.GetInt("prometheus.maxSamples"),
+			viper.GetInt("prometheus.timeout"),
+			viper.GetInt("prometheus.restartSeconds"),
+		)
+		command1 := "bash"
+		arg1 := []string{"-c", bashCmd}
 
-		ExecuteBashCommand("bash", []string{"-c", scriptPath + " " + externalPort + " " +
-			maxConcurrency + " " + maxSamples + " " + timeout + " " + restartSeconds +
-			" > /dev/null 2>&1 &"})
+		ExecuteBashCommand(command1, arg1)
 
 	}
 
@@ -256,7 +258,7 @@ func (prom Prometheus) createPrometheusSymlinks(ver string, isUpgrade bool) {
 	}
 
 	pkgConsoleLibraryDir := INSTALL_VERSION_DIR + "/packages/prometheus-" +
-	 												ver + ".linux-amd64/console_libraries/"
+		ver + ".linux-amd64/console_libraries/"
 
 	arg7 := []string{"-sf", pkgConsoleLibraryDir, prom.PromDir}
 
@@ -278,7 +280,7 @@ func (prom Prometheus) createPrometheusSymlinks(ver string, isUpgrade bool) {
 func (prom Prometheus) Status() {
 
 	name := "prometheus"
-	port := getYamlPathData(".prometheus.externalPort")
+	port := fmt.Sprintf("%d", viper.GetInt("prometheus.externalPort"))
 
 	runningStatus := ""
 
@@ -324,15 +326,15 @@ func (prom Prometheus) Status() {
 }
 
 func (prom Prometheus) CreateCronJob() {
-	maxConcurrency := getYamlPathData(".prometheus.maxConcurrency")
-	maxSamples := getYamlPathData(".prometheus.maxSamples")
-	timeout := getYamlPathData(".prometheus.timeout")
-	externalPort := getYamlPathData(".prometheus.externalPort")
-	restartSeconds := getYamlPathData(".prometheus.restartSeconds")
-
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
-	ExecuteBashCommand("bash", []string{"-c",
-		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + externalPort + " " +
-			maxConcurrency + " " + maxSamples + " " + timeout + " " + restartSeconds +
-			"\") | sort - | uniq - | crontab - "})
+	bashCmd := fmt.Sprintf(
+		"(crontab -l 2>/dev/null; echo \"@reboot %s %d %d %d %d %d \") | sort - | uniq - | crontab - ",
+		scriptPath,
+		viper.GetInt("prometheus.externalPort"),
+		viper.GetInt("prometheus.maxConcurrency"),
+		viper.GetInt("prometheus.maxSamples"),
+		viper.GetInt("prometheus.timeout"),
+		viper.GetInt("prometheus.restartSeconds"),
+	)
+	ExecuteBashCommand("bash", []string{"-c", bashCmd})
 }

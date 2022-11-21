@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/spf13/viper"
 )
 
 // Component 3: Platform
@@ -19,7 +20,7 @@ type Platform struct {
 	Name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
-	templateFileName		string
+	templateFileName    string
 	Version             string
 	CorsOrigin          string
 }
@@ -159,13 +160,13 @@ func (plat Platform) copyYbcPackages() {
 	if err != nil {
 		LogError(
 			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
-									packageFolderPath, err.Error()))
+				packageFolderPath, err.Error()))
 	}
 
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
-		CopyFileGolang(f, INSTALL_ROOT+"/data/yb-platform/ybc/release/" + fileName)
+		CopyFileGolang(f, INSTALL_ROOT+"/data/yb-platform/ybc/release/"+fileName)
 	}
 
 }
@@ -185,12 +186,12 @@ func (plat Platform) renameAndCreateSymlinks() {
 		err := os.Symlink(yugawarePackagePath, yugawareSymlink)
 		if err != nil {
 			LogError(fmt.Sprintf("Error %s creating symlink %s to %s",
-			 				 	err.Error(), yugawareSymlink, yugawarePackagePath))
+				err.Error(), yugawareSymlink, yugawarePackagePath))
 		}
 		err = os.Symlink(devopsPackagePath, devopsSymlink)
 		if err != nil {
 			LogError(fmt.Sprintf("Error %s creating symlink %s to %s",
-								err.Error(), devopsSymlink, devopsPackagePath))
+				err.Error(), devopsSymlink, devopsPackagePath))
 		}
 	} else {
 		LogError("Symlinking not implemented for non-root.")
@@ -209,8 +210,8 @@ func (plat Platform) Start() {
 
 	} else {
 
-		containerExposedPort := getYamlPathData(".platform.containerExposedPort")
-		restartSeconds := getYamlPathData(".platform.restartSeconds")
+		containerExposedPort := fmt.Sprintf("%d", viper.GetInt("platform.containerExposedPort"))
+		restartSeconds := fmt.Sprintf("%d", viper.GetInt("platform.restartSeconds"))
 
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 
@@ -314,7 +315,7 @@ func (plat Platform) VersionInfo() string {
 func (plat Platform) Status() {
 
 	name := "yb-platform"
-	port := getYamlPathData(".platform.containerExposedPort")
+	port := fmt.Sprintf("%d", viper.GetInt("platform.externalPort"))
 
 	runningStatus := ""
 
@@ -370,7 +371,7 @@ func configureConfHTTPS() {
 	os.MkdirAll(INSTALL_ROOT+"/yb-platform/certs", os.ModePerm)
 	LogDebug(INSTALL_ROOT + "/yb-platform/certs directory successfully created.")
 
-	keyStorePassword := getYamlPathData(".platform.keyStorePassword")
+	keyStorePassword := viper.GetString("platform.keyStorePassword")
 
 	ExecuteBashCommand("bash", []string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
 		"-keystore-password " + keyStorePassword + " -cert-file myserver=cert.pem " +
@@ -389,8 +390,8 @@ func configureConfHTTPS() {
 }
 
 func (plat Platform) CreateCronJob() {
-	containerExposedPort := getYamlPathData(".platform.containerExposedPort")
-	restartSeconds := getYamlPathData(".platform.restartSeconds")
+	containerExposedPort := fmt.Sprintf("%d", viper.GetInt("platform.containerExposedPort"))
+	restartSeconds := fmt.Sprintf("%d", viper.GetInt("platform.restartSeconds"))
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + plat.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " + INSTALL_VERSION_DIR + " " +
