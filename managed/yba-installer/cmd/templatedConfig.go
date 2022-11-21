@@ -31,7 +31,6 @@ var randomDbPassword string = GenerateRandomStringURLSafe(20)
 // the parameters have been specified appropriately using the available
 // JSON schema.
 func validateJSONSchema(filename string) {
-
 	createdBytes, err := ioutil.ReadFile(filename)
 	if err != nil {
 		LogError(fmt.Sprintf("Error: %v.", err))
@@ -142,10 +141,10 @@ func readConfigAndTemplate(configYmlFileName string, service component) ([]byte,
 
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
-		"yamlPath":          		getYamlPathData,
-		"installRoot":       		GetInstallRoot,
-		"installVersionDir": 		GetInstallVersionDir,
-		"osType":            		getOStype,
+		"yamlPath":          getYamlPathData,
+		"installRoot":       GetInstallRoot,
+		"installVersionDir": GetInstallVersionDir,
+		"osType":            getOStype,
 	}
 
 	tmpl, err := template.New(filepath.Base("configFiles/" + configYmlFileName)).

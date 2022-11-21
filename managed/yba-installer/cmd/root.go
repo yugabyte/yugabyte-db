@@ -7,13 +7,13 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"text/tabwriter"
 
 	pre "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var INSTALL_ROOT = GetInstallRoot()
@@ -29,14 +29,6 @@ var steps = make(map[string][]functionPointer)
 var order []string
 
 var version = GetVersion()
-
-var serviceManagementMode = getYamlPathData(".serviceManagementMode")
-
-var logLevel = getYamlPathData(".logLevel")
-
-var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
-
-var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
 
 var goBinaryName = "yba-ctl"
 
@@ -367,10 +359,8 @@ var reConfigureCmd = &cobra.Command{
 
 		order = []string{platform.Name, prometheus.Name}
 
-		if !bringOwnPostgres {
-
+		if !viper.GetBool("postgres.bringOwn") {
 			order = []string{platform.Name, postgres.Name, prometheus.Name}
-
 		}
 
 		loopAndExecute("reconfigure")
@@ -469,15 +459,7 @@ func installCmd() *cobra.Command {
 
 			ValidateArgLength("install", args, -1, 0)
 
-			if errPostgres != nil {
-				LogError("Please set postgres.BringOwn to either true or false before installation.")
-			}
-
-			if errPython != nil {
-				LogError("Please set python.BringOwn to either true or false before installation!.")
-			}
-
-			if bringOwnPostgres {
+			if viper.GetBool("postgres.bringOwn") {
 
 				if !ValidateUserPostgres("yba-installer-input.yml") {
 					LogError("User Postgres not correctly configured! " +
@@ -486,7 +468,7 @@ func installCmd() *cobra.Command {
 
 			}
 
-			if bringOwnPython {
+			if viper.GetBool("python.bringOwn") {
 
 				if !ValidateUserPython("yba-installer-input.yml") {
 
@@ -512,7 +494,7 @@ func installCmd() *cobra.Command {
 			order = []string{common.Name, prometheus.Name,
 				platform.Name}
 
-			if !bringOwnPostgres {
+			if !viper.GetBool("postgres.bringOwn") {
 
 				order = []string{common.Name, prometheus.Name,
 					postgres.Name, platform.Name}
@@ -565,7 +547,7 @@ var upgradeCmd = &cobra.Command{
 
 		order = []string{common.Name, prometheus.Name, platform.Name}
 
-		if !bringOwnPostgres {
+		if !viper.GetBool("postgres.bringOwn") {
 
 			order = []string{common.Name, prometheus.Name,
 				postgres.Name, platform.Name}
@@ -598,6 +580,11 @@ func init() {
 		paramsCmd, reConfigureCmd, createBackupCmd(), restoreBackupCmd(), installCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 
+	// Use Viper to read in the config file
+	viper.SetConfigFile("yba-installer-input.yml")
+	viper.AddConfigPath(".")
+	viper.ReadInConfig()
+
 	// Currently only the log message with an info level severity or above are
 	// logged (warn, error, fatal, panic).
 	// Change the log level to debug for more verbose logging output.
@@ -605,25 +592,24 @@ func init() {
 		ForceColors:   true,
 		DisableColors: false,
 	})
-
-	if logLevel == "TraceLevel" {
+	switch viper.GetString("logLevel") {
+	case "TraceLevel":
 		log.SetLevel(log.TraceLevel)
-	} else if logLevel == "DebugLevel" {
+	case "DebugLevel":
 		log.SetLevel(log.DebugLevel)
-	} else if logLevel == "InfoLevel" {
+	case "InfoLevel":
 		log.SetLevel(log.InfoLevel)
-	} else if logLevel == "WarnLevel" {
+	case "WarnLevel":
 		log.SetLevel(log.WarnLevel)
-	} else if logLevel == "ErrorLevel" {
+	case "ErrorLevel":
 		log.SetLevel(log.ErrorLevel)
-	} else if logLevel == "FatalLevel" {
+	case "FatalLevel":
 		log.SetLevel(log.FatalLevel)
-	} else if logLevel == "PanicLevel" {
+	case "PanicLevel":
 		log.SetLevel(log.PanicLevel)
-	} else {
+	default:
 		LogError("Invalid Logging Level specified in yba-installer-input.yml!")
 	}
-
 	log.SetOutput(os.Stdout)
 }
 

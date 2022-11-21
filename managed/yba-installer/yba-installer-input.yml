@@ -216,7 +216,7 @@ additional: |
 # postgress
 postgres:
    bringOwn: false
-   port: "5432"
+   port: 5432
    username: "postgres"
    password: ""
    restartSeconds: 10
@@ -237,9 +237,14 @@ python:
 # during uninstalls of Yugabyte Platform, and add it to the corresponding
 # comma-separated service list.
 dataVolumes:
-   yb-platform: "data"
-   prometheus: "storage, swamper_targets, swamper_rules"
-   postgres: "data"
+   yb-platform:
+      - "data"
+   prometheus:
+      - "storage"
+      - "swamper_targets"
+      - "swamper_rules"
+   postgres:
+      - "data"
 
 # Service Management. For installation of Yugabyte Anywhere, you can choose
 # to have all of your services either be systemd managed or crontab managed,

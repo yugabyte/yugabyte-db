@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
 	// "time"
 	"path/filepath"
+
+	"github.com/spf13/viper"
 )
 
 // Component 1: Postgres
@@ -17,12 +20,12 @@ type Postgres struct {
 	Name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
-	templateFileName 		string
+	templateFileName    string
 	Version             string
-	MountPath						string
-	dataDir							string
-	PgCtl								string
-	LogFile							string
+	MountPath           string
+	dataDir             string
+	PgCtl               string
+	LogFile             string
 }
 
 func NewPostgres(installRoot, version string) Postgres {
@@ -113,7 +116,7 @@ func (pg Postgres) Start() {
 		ExecuteBashCommand(SYSTEMCTL, arg3)
 
 	} else {
-		restartSeconds := getYamlPathData(".postgres.restartSeconds")
+		restartSeconds := fmt.Sprintf("%d", viper.GetInt("postgres.restartSeconds"))
 		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + pg.Name + "NonRoot.sh"
 
 		command1 := "bash"
@@ -136,7 +139,6 @@ func (pg Postgres) Stop() {
 
 		// Delete the file used by the crontab bash script for monitoring.
 		os.RemoveAll(INSTALL_ROOT + "/postgres/testfile")
-
 
 		command1 := "bash"
 		arg1 := []string{"-c",
@@ -210,11 +212,10 @@ func (pg Postgres) runInitDB() {
 
 	if hasSudoAccess() {
 
-
 		// Need to give the yugabyte user ownership of the entire postgres
 		// directory.
-		Chown(INSTALL_ROOT + "/postgres/", "yugabyte", "yugabyte", true)
-		Chown(INSTALL_ROOT + "/data/logs/", "yugabyte", "yugabyte", true)
+		Chown(INSTALL_ROOT+"/postgres/", "yugabyte", "yugabyte", true)
+		Chown(INSTALL_ROOT+"/data/logs/", "yugabyte", "yugabyte", true)
 
 		command3 := "sudo"
 		arg3 := []string{"-u", "yugabyte", "bash", "-c",
@@ -262,7 +263,7 @@ func (pg Postgres) setUpDataDir() {
 		ExecuteBashCommand(
 			"sudo",
 			[]string{"-u", "yugabyte", "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
-							 pg.ConfFileLocation, ";"})
+				pg.ConfFileLocation, ";"})
 
 	}
 }
@@ -306,7 +307,7 @@ func (pg Postgres) createYugawareDatabase() {
 func (pg Postgres) Status() {
 
 	name := "postgres"
-	port := getYamlPathData(".platform.externalPort")
+	port := fmt.Sprintf("%d", viper.GetInt("postgres.port"))
 
 	runningStatus := ""
 
@@ -353,7 +354,7 @@ func (pg Postgres) Status() {
 
 // CreateCronJob sets up the cron script in the cron tab.
 func (pg Postgres) CreateCronJob() {
-	restartSeconds := getYamlPathData(".postgres.restartSeconds")
+	restartSeconds := fmt.Sprintf("%d", viper.GetInt("postgres.port"))
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + pg.Name + "NonRoot.sh"
 	ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + scriptPath + " " +

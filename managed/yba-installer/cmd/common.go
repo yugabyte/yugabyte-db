@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
@@ -206,52 +205,41 @@ func (com Common) Uninstall() {
 // file.
 // TODO: Simplify: can probably just remove INSTALL_ROOT/service and leave INSTALL_ROOT/data intact
 func RemoveAllExceptDataVolumes(services []string) {
-
-	dataVolumesList := []string{}
-
-	for _, service := range services {
-		dataVolumes := getYamlPathData(".dataVolumes." + service)
-		dataVolumesList = append(dataVolumesList, service+": "+dataVolumes)
-	}
-
-	LogDebug("All directories will be deleted except the following: " +
-		strings.Join(dataVolumesList, "|") + ".")
 	//In case more base dirs get added in the future.
 	rootDirs := []string{INSTALL_ROOT}
 	for _, dir := range rootDirs {
 		// Only remove all except data volumes if the base directories exist.
 		if _, err := os.Stat(dir); err == nil {
 			for _, service := range services {
-
 				baseDir := dir + "/" + service
 				splitBaseDir := strings.Split(baseDir, "/")
 				baseDirOneUp := strings.Join(splitBaseDir[0:len(splitBaseDir)-1], "/")
-				dataVolumes := getYamlPathData(".dataVolumes." + service)
-				if strings.ReplaceAll(strings.TrimSuffix(dataVolumes, "\n"), " ", "") != "" {
-					splitDataVolumes := strings.Split(dataVolumes, ",")
-					for _, volume := range splitDataVolumes {
-						volume = strings.ReplaceAll(volume, " ", "")
-						volume = baseDir + "/" + volume
-						if _, err := os.Stat(volume); err == nil {
-							if strings.Contains(volume, baseDir) {
-								volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
-								MoveFileGolang(volume, volumeMoved)
-							}
-						}
-					}
-				}
-				os.RemoveAll(baseDir)
-				os.MkdirAll(baseDir, os.ModePerm)
-				if strings.ReplaceAll(strings.TrimSuffix(dataVolumes, "\n"), " ", "") != "" {
-					splitDataVolumes := strings.Split(dataVolumes, ",")
-					for _, volume := range splitDataVolumes {
-						volume = strings.ReplaceAll(volume, " ", "")
-						volume = baseDir + "/" + volume
+
+				configPath := fmt.Sprintf("dataVolumes.%s", service)
+				volumes := viper.GetStringSlice(configPath)
+
+				// Move the data volumes we are saving
+				for _, volume := range volumes {
+					volume = baseDir + "/" + volume
+					if _, err := os.Stat(volume); err == nil {
 						if strings.Contains(volume, baseDir) {
 							volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
-							if _, err := os.Stat(volumeMoved); err == nil {
-								MoveFileGolang(volumeMoved, volume)
-							}
+							MoveFileGolang(volume, volumeMoved)
+						}
+					}
+
+				}
+				// Remove Directories
+				os.RemoveAll(baseDir)
+				os.MkdirAll(baseDir, os.ModePerm)
+
+				// Replace our volumes-to-save
+				for _, volume := range volumes {
+					volume = baseDir + "/" + volume
+					if strings.Contains(volume, baseDir) {
+						volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
+						if _, err := os.Stat(volumeMoved); err == nil {
+							MoveFileGolang(volumeMoved, volume)
 						}
 					}
 				}
@@ -274,12 +262,6 @@ func (com Common) Upgrade() {
 }
 
 func installPrerequisites() {
-	var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
-
-	if errPython != nil {
-		LogError("Please set python.BringOwn to either true or false.")
-	}
-
 	if hasSudoAccess() {
 
 		//Check if a Python3 install already exists that is symlinked to
@@ -294,7 +276,7 @@ func installPrerequisites() {
 
 		if !re.MatchString(outputTrimmed) {
 
-			if !bringOwnPython {
+			if !viper.GetBool("python.bringOwn") {
 				InstallOS([]string{"python3"})
 			}
 
