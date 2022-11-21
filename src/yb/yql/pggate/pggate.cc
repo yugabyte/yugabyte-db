@@ -179,7 +179,7 @@ class PrecastRequestSender {
  public:
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
           ops, ops_count, table, &in_txn_limit, force_non_bufferable));
@@ -215,12 +215,13 @@ class PrecastRequestSender {
     auto i = ops_.begin();
     auto perform_future = VERIFY_RESULT(session->RunAsync(make_lw_function(
         [&i, end = ops_.end()] {
+          using TO = PgSession::TableOperation<PgsqlOpPtr>;
           if (i == end) {
-            return PgSession::TableOperation();
+            return TO();
           }
           auto& info = *i++;
-          return PgSession::TableOperation{.operation = &info.operation, .table = info.table};
-        }), &provider_state_->in_txn_limit, false /* force_non_bufferable */));
+          return TO{.operation = &info.operation, .table = info.table};
+        }), &provider_state_->in_txn_limit));
     provider_state_->response = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
@@ -245,7 +246,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
     return precast_sender.Send(session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
@@ -1252,7 +1253,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_TRUNCATE:
       {
         auto dml_write = down_cast<PgDmlWrite *>(handle);
-        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
+        RETURN_NOT_OK(dml_write->Exec(ForceNonBufferable(rows_affected_count != nullptr)));
         if (rows_affected_count) {
           *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
@@ -1624,7 +1625,9 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
            IllegalState,
            "Failed to find suitable shared memory index for db $0", *db_oid);
   } else if (catalog_version_db_index_->first != *db_oid) {
-    return STATUS(IllegalState, "Forbidden db switch from $0 to $1 detected");
+    return STATUS_FORMAT(
+        IllegalState, "Forbidden db switch from $0 to $1 detected",
+        catalog_version_db_index_->first, *db_oid);
   }
   return tserver_shared_object_->ysql_db_catalog_version(
       static_cast<size_t>(catalog_version_db_index_->second));
@@ -1783,12 +1786,13 @@ Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching() {
+void PgApiImpl::StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
+
   CHECK(!pg_session_->HasCatalogReadPoint());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(latest_known_ysql_catalog_version));
 }
 
 void PgApiImpl::StopSysTablePrefetching() {

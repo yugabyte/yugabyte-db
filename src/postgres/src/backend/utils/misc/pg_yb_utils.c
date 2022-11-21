@@ -89,7 +89,9 @@
 #include <sys/prctl.h>
 #endif
 
-uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static uint64_t yb_last_known_catalog_cache_version =
+	YB_CATCACHE_VERSION_UNINITIALIZED;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
@@ -99,7 +101,55 @@ uint64_t YBGetActiveCatalogCacheVersion() {
 	return yb_catalog_cache_version;
 }
 
-void YBResetCatalogVersion() {
+uint64_t
+YbGetCatalogCacheVersion()
+{
+	return yb_catalog_cache_version;
+}
+
+uint64_t
+YbGetLastKnownCatalogCacheVersion()
+{
+	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
+	return shared_catalog_version > yb_last_known_catalog_cache_version ?
+		shared_catalog_version : yb_last_known_catalog_cache_version;
+}
+
+uint64_t
+YbGetCatalogCacheVersionForTablePrefetching()
+{
+	// TODO: In future YBGetLastKnownCatalogCacheVersion must be used instead of
+	//       YbGetMasterCatalogVersion to reduce numer of RPCs to a master.
+	//       But this requires some additional changes. This optimization will
+	//       be done separately.
+	if (!*YBCGetGFlags()->ysql_enable_read_request_caching)
+		return YB_CATCACHE_VERSION_UNINITIALIZED;
+	YBCPgResetCatalogReadTime();
+	return YbGetMasterCatalogVersion();
+}
+
+void
+YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+{
+	yb_catalog_cache_version = catalog_cache_version;
+	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
+	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		ereport(LOG,
+		        (errmsg("set local catalog version: %" PRIu64,
+		                yb_catalog_cache_version)));
+
+}
+
+void
+YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version)
+{
+	if (yb_last_known_catalog_cache_version < catalog_cache_version)
+		yb_last_known_catalog_cache_version	= catalog_cache_version;
+}
+
+void
+YbResetCatalogCacheVersion()
+{
   yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 }
 
@@ -1239,7 +1289,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateEnumStmt:
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
-		case T_CreatedbStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
@@ -1273,7 +1322,13 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			break;
 		}
-
+		case T_CreatedbStmt:
+		{
+			*is_catalog_version_increment =
+				*YBCGetGFlags()->ysql_enable_read_request_caching;
+			*is_breaking_catalog_change = false;
+			break;
+		}
 		case T_CompositeTypeStmt: // CREATE TYPE
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
@@ -2813,7 +2868,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_table_index_id = DatabaseNameIndexId;
 			break;
 
-		case DbRoleSettingRelationId:                     // pg_db_role_setting
+		case DbRoleSettingRelationId: switch_fallthrough(); // pg_db_role_setting
+		case YBCatalogVersionRelationId:                    // pg_yb_catalog_version
 			db_id = TemplateDbOid;
 			break;
 
@@ -2867,10 +2923,6 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case CastRelationId:        switch_fallthrough(); // pg_cast
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
-
-		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
-			db_id = YbMasterCatalogVersionTableDBOid();
-			break;
 
 		default:
 		{
