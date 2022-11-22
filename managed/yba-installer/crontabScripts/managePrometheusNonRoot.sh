@@ -35,8 +35,8 @@ then
 
 # restart <process>
 $INSTALL_ROOT"/prometheus/bin/prometheus" \
-"--config.file" $INSTALL_ROOT"/prometheus/conf/prometheus.yml" \
-"--storage.tsdb.path" $INSTALL_ROOT"/prometheus/storage/" \
+"--config.file" $INSTALL_ROOT"/data/prometheus/conf/prometheus.yml" \
+"--storage.tsdb.path" $INSTALL_ROOT"/data/prometheus/storage/" \
 "--web.console.templates="$INSTALL_ROOT"/prometheus/consoles" \
 "--web.console.libraries="$INSTALL_ROOT"/prometheus/console_libraries" \
 "--web.enable-admin-api" \
@@ -44,7 +44,7 @@ $INSTALL_ROOT"/prometheus/bin/prometheus" \
 "--web.listen-address=:$externalPort" \
 "--query.max-concurrency=$maxConcurrency" \
 "--query.max-samples=$maxSamples" \
-"--query.timeout=$timeout""s" > $INSTALL_ROOT/$process_name/bin/prometheus.log 2>&1 &
+"--query.timeout=$timeout""s" > $INSTALL_ROOT/data/$process_name/prometheus.log 2>&1 &
 fi
 sleep ${restartSeconds}
 
