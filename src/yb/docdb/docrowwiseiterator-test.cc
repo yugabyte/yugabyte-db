@@ -299,7 +299,7 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   InsertTestRangeData();
-  DocReadContext doc_read_context(test_range_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(test_range_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue::Int32(5)};
 
@@ -348,7 +348,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRange() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -431,7 +431,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -556,7 +556,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -635,7 +635,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -723,7 +723,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
 
 void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   const std::vector<KeyEntryValue> hashed_components{KeyEntryValue(INDIA)};
 
@@ -810,7 +810,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIterator() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -922,7 +922,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -979,7 +979,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1194,7 +1194,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1243,7 +1243,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1304,7 +1304,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = kSchemaForIteratorTests;
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
-  DocReadContext doc_read_context(schema_copy, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
 
   // Read should have results before delete...
   {
@@ -1376,7 +1376,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1442,7 +1442,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() 
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1498,7 +1498,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
       &projection, 2));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -1657,7 +1657,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
       TransactionId::GenerateRandom(), &txn_status_manager);
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   LOG(INFO) << "=============================================== ReadTime-2000";
   {
@@ -1905,7 +1905,7 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   auto iter = ASSERT_RESULT(CreateIterator(
       projection, doc_read_context, txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
@@ -1972,7 +1972,7 @@ void DocRowwiseIteratorTest::TestLargeKeys() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -2046,7 +2046,7 @@ void DocRowwiseIteratorTest::TestPackedRow() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
@@ -2133,7 +2133,7 @@ void DocRowwiseIteratorTest::TestDeletedDocumentUsingLivenessColumnDelete() {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     auto iter = ASSERT_RESULT(CreateIterator(
