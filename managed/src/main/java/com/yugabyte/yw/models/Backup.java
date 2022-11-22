@@ -536,7 +536,9 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-    if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
+    if (this.state.equals(newState)) {
+      LOG.debug("Skipping state transition as backup is already in the {} state", this.state);
+    } else if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
       LOG.debug("Backup state transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
