@@ -109,6 +109,7 @@ Parameters
 * `include-not-null`: add _not null_ information as _columnoptionals_. Default is _false_.
 * `include-default`: add default expression. Default is _false_.
 * `include-pk`: add _primary key_ information as _pk_. Column name and data type is included. Default is _false_.
+* `numeric-data-types-as-string`: use string for numeric data types. JSON specification does not recognize `Infinity` and `NaN` as valid numeric values. There might be [potential interoperability problems](https://datatracker.ietf.org/doc/html/rfc7159#section-6) for double precision numbers. Default is _false_.
 * `pretty-print`: add spaces and indentation to JSON structures. Default is _false_.
 * `write-in-chunks`: write after every change instead of every changeset. Only used when `format-version` is `1`. Default is _false_.
 * `include-lsn`: add _nextlsn_ to each changeset. Default is _false_.
