@@ -2043,7 +2043,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
                       operation->schema_version(), current_table_info->table_id);
   if (operation->has_new_table_name()) {
     metadata_->SetTableName(
-        current_table_info->namespace_name, operation->new_table_name().ToBuffer());
+        current_table_info->namespace_name, operation->new_table_name().ToBuffer(),
+        current_table_info->table_id);
     if (table_metrics_entity_) {
       table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
