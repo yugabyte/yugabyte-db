@@ -541,6 +541,11 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
                            "heartbeat in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
 
+DEFINE_RUNTIME_bool(
+    create_pg_catalog_on_tserver, false,
+    "Whether the PG catalog tables of a database are created on tserver (database parent tablet) "
+    "or on master (sys catalog tablet) during database creation.");
+
 namespace yb {
 namespace master {
 
