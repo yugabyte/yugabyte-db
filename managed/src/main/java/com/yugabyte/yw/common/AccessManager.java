@@ -18,10 +18,12 @@ import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.annotation.Transactional;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,12 +48,19 @@ import org.apache.commons.lang3.ObjectUtils;
 @Slf4j
 public class AccessManager extends DevopsBase {
 
-  @Inject play.Configuration appConfig;
-  @Inject Commissioner commissioner;
+  private final play.Configuration appConfig;
+  private final Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
-  private static final String PEM_PERMISSIONS = "r--------";
-  private static final String PUB_PERMISSIONS = "rw-r--r--";
+  public static final String PEM_PERMISSIONS = "r--------";
+  public static final String PUB_PERMISSIONS = "rw-r--r--";
+  public static final String STORAGE_PATH = "yb.storage.path";
+
+  @Inject
+  public AccessManager(play.Configuration appConfig, Commissioner commissioner) {
+    this.appConfig = appConfig;
+    this.commissioner = commissioner;
+  }
 
   @Override
   protected String getCommandType() {
@@ -74,8 +83,20 @@ public class AccessManager extends DevopsBase {
     }
   }
 
-  private String getOrCreateKeyFilePath(UUID providerUUID) {
-    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+  @Transactional
+  private void writeKeyFileData(AccessKey.KeyInfo keyInfo) {
+    FileData.writeFileToDB(keyInfo.vaultFile);
+    FileData.writeFileToDB(keyInfo.vaultPasswordFile);
+    if (keyInfo.privateKey != null) {
+      FileData.writeFileToDB(keyInfo.privateKey);
+    }
+    if (keyInfo.publicKey != null) {
+      FileData.writeFileToDB(keyInfo.publicKey);
+    }
+  }
+
+  public String getOrCreateKeyFilePath(UUID providerUUID) {
+    File keyBasePathName = new File(appConfig.getString(STORAGE_PATH), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
     synchronized (this) {
@@ -94,7 +115,7 @@ public class AccessManager extends DevopsBase {
   }
 
   private String getOrCreateKeyFilePath(String path) {
-    File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+    File keyBasePathName = new File(appConfig.getString(STORAGE_PATH), "/keys");
     // Protect against multi-threaded access and validate that we only error out if mkdirs fails
     // correctly, by NOT creating the final dir path.
     synchronized (this) {
@@ -202,6 +223,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.setUpChrony = setUpChrony;
     keyInfo.showSetUpChrony = showSetUpChrony;
     keyInfo.deleteRemote = deleteRemote;
+    writeKeyFileData(keyInfo);
     return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
   }
 
@@ -343,6 +365,7 @@ public class AccessManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
     String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
 
     commandArgs.add("--key_pair_name");
@@ -400,6 +423,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.setUpChrony = setUpChrony;
       keyInfo.ntpServers = ntpServers;
       keyInfo.showSetUpChrony = showSetupChrony;
+      writeKeyFileData(keyInfo);
       accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
 
@@ -495,6 +519,7 @@ public class AccessManager extends DevopsBase {
       ObjectMapper mapper = new ObjectMapper();
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
       mapper.writeValue(new File(credentialsFilePath), credentials);
+      FileData.writeFileToDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {
       throw new RuntimeException("Failed to create credentials file", e);
@@ -533,6 +558,7 @@ public class AccessManager extends DevopsBase {
     }
     try {
       Files.write(configFile, configFileContent.getBytes());
+      FileData.writeFileToDB(configFile.toAbsolutePath().toString());
       return configFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create kubernetes config", e);
@@ -557,6 +583,7 @@ public class AccessManager extends DevopsBase {
     }
     try {
       Files.write(pullSecretFile, pullSecretFileContent.getBytes());
+      FileData.writeFileToDB(pullSecretFile.toAbsolutePath().toString());
       return pullSecretFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create pull secret", e);
