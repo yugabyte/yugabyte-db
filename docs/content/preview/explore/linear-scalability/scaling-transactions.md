@@ -63,7 +63,7 @@ The cluster automatically lets the client know to use the newly added node for s
 
 ![Read and write IOPS with 4 nodes](/images/ce/add-node-ybtserver.png)
 
-You can notice a slight spike and drop in the latency and throughput when the node is added, but resumes back immediately as follows:
+You can notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph.png)
 
