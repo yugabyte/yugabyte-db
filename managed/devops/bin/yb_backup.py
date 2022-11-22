@@ -1353,6 +1353,13 @@ class YBBackup:
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
             access_token = None
+            proxy_config = ''
+            if os.getenv('PROXY_HOST'):
+                proxy_config = 'proxy_host = ' + os.environ['PROXY_HOST'] + '\n'
+
+                if os.getenv('PROXY_PORT'):
+                    proxy_config += 'proxy_port = ' + os.environ['PROXY_PORT'] + '\n'
+
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
@@ -1361,12 +1368,14 @@ class YBBackup:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
-                                     'access_token = ' + metadata[2] + '\n')
+                                     'access_token = ' + metadata[2] + '\n' +
+                                     proxy_config)
                     else:
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + '\n' +
                                      'secret_key = ' + '\n' +
-                                     'access_token = ' + '\n')
+                                     'access_token = ' + '\n' +
+                                     proxy_config)
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 path_style_access = True if os.getenv('PATH_STYLE_ACCESS',
@@ -1386,7 +1395,8 @@ class YBBackup:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
                                  'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n' +
-                                 host_base_cfg)
+                                 host_base_cfg +
+                                 proxy_config)
             else:
                 raise BackupException(
                     "Missing either AWS access key or secret key for S3 "
