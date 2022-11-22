@@ -7,11 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -20,14 +22,24 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Singleton
@@ -46,8 +58,11 @@ public class BackupGarbageCollector {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
-  private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
+  private final TaskInfoManager taskInfoManager;
 
+  private final Commissioner commissioner;
+
+  private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
@@ -60,13 +75,17 @@ public class BackupGarbageCollector {
       RuntimeConfigFactory runtimeConfigFactory,
       TableManagerYb tableManagerYb,
       BackupUtil backupUtil,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      TaskInfoManager taskInfoManager,
+      Commissioner commissioner) {
     this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
     this.backupUtil = backupUtil;
     this.ybcManager = ybcManager;
+    this.taskInfoManager = taskInfoManager;
+    this.commissioner = commissioner;
   }
 
   public void start() {
@@ -102,7 +121,7 @@ public class BackupGarbageCollector {
                     backupList.forEach(backup -> deleteBackup(customer.uuid, backup.backupUUID));
                   } catch (Exception e) {
                     log.error(
-                        "Error occured while deleting backups associated with {} storage config",
+                        "Error occurred while deleting backups associated with {} storage config",
                         config.configName);
                   } finally {
                     config.delete();
@@ -110,7 +129,6 @@ public class BackupGarbageCollector {
                   }
                 });
           });
-
       customersList.forEach(
           (customer) -> {
             List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.uuid);
@@ -118,9 +136,112 @@ public class BackupGarbageCollector {
               backupList.forEach((backup) -> deleteBackup(customer.uuid, backup.backupUUID));
             }
           });
+      // Delete expired backups
+      Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
+      expiredBackups.forEach(
+          (customer, backups) -> {
+            deleteExpiredBackupsForCustomer(customer, backups);
+          });
     } catch (Exception e) {
       log.error("Error running backup garbage collector", e);
     }
+  }
+
+  private void deleteExpiredBackupsForCustomer(Customer customer, List<Backup> expiredBackups) {
+    Map<UUID, List<Backup>> expiredBackupsPerSchedule = new HashMap<>();
+    List<Backup> backupsToDelete = new ArrayList<>();
+    expiredBackups.forEach(
+        backup -> {
+          UUID scheduleUUID = backup.getScheduleUUID();
+          if (scheduleUUID == null) {
+            backupsToDelete.add(backup);
+          } else {
+            if (!expiredBackupsPerSchedule.containsKey(scheduleUUID)) {
+              expiredBackupsPerSchedule.put(scheduleUUID, new ArrayList<>());
+            }
+            expiredBackupsPerSchedule.get(scheduleUUID).add(backup);
+          }
+        });
+    for (UUID scheduleUUID : expiredBackupsPerSchedule.keySet()) {
+      backupsToDelete.addAll(
+          getBackupsToDeleteForSchedule(
+              customer.getUuid(), scheduleUUID, expiredBackupsPerSchedule.get(scheduleUUID)));
+    }
+
+    for (Backup backup : backupsToDelete) {
+      if (checkValidStorageConfig(backup)) {
+        this.runDeleteBackupTask(customer, backup);
+      } else {
+        log.error(
+            "Cannot delete expired backup {} as storage config {} does not exists",
+            backup.backupUUID,
+            backup.storageConfigUUID);
+        backup.transitionState(BackupState.FailedToDelete);
+      }
+    }
+  }
+
+  private List<Backup> getBackupsToDeleteForSchedule(
+      UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
+    List<Backup> backupsToDelete = new ArrayList<Backup>();
+    int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
+        totalBackupsCount =
+            Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.maybeGet(scheduleUUID).orElse(null);
+    if (schedule != null && schedule.getTaskParams().has("minNumBackupsToRetain")) {
+      minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
+    }
+    backupsToDelete.addAll(
+        expiredBackups
+            .stream()
+            .filter(backup -> !backup.state.equals(BackupState.Completed))
+            .collect(Collectors.toList()));
+    expiredBackups.removeIf(backup -> !backup.state.equals(BackupState.Completed));
+    int numBackupsToDelete =
+        Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
+    if (numBackupsToDelete > 0) {
+      Collections.sort(
+          expiredBackups,
+          new Comparator<Backup>() {
+            @Override
+            public int compare(Backup b1, Backup b2) {
+              return b1.getCreateTime().compareTo(b2.getCreateTime());
+            }
+          });
+      for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+        backupsToDelete.add(expiredBackups.get(i));
+      }
+    }
+    return backupsToDelete;
+  }
+
+  private void runDeleteBackupTask(Customer customer, Backup backup) {
+    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+      log.warn("Cannot delete backup {} since it is in a progress state", backup.backupUUID);
+      return;
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+      log.warn(
+          "Cannot delete backup {} since a delete backup task is already present",
+          backup.backupUUID);
+      return;
+    }
+    DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
+    taskParams.customerUUID = customer.getUuid();
+    taskParams.backupUUID = backup.backupUUID;
+    UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
+    String target =
+        !StringUtils.isEmpty(backup.universeName)
+            ? backup.universeName
+            : String.format("univ-%s", backup.universeUUID.toString());
+    log.info(
+        "Submitted task to delete expired backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
+    CustomerTask.create(
+        customer,
+        backup.backupUUID,
+        taskUUID,
+        CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Delete,
+        target);
   }
 
   public synchronized void deleteBackup(UUID customerUUID, UUID backupUUID) {
@@ -259,5 +380,18 @@ public class BackupGarbageCollector {
       isValid = false;
     }
     return isValid;
+  }
+
+  private boolean checkValidStorageConfig(Backup backup) {
+    try {
+      backupUtil.validateBackupStorageConfig(backup);
+    } catch (Exception e) {
+      return false;
+    }
+    log.debug(
+        "Successfully validated storage config {} assigned to backup {}",
+        backup.storageConfigUUID,
+        backup.backupUUID);
+    return true;
   }
 }
