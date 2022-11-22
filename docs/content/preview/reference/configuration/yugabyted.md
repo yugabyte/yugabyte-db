@@ -60,6 +60,7 @@ The following commands are available:
 
 - [start](#start)
 - [configure](#configure)
+- [cert](#cert)
 - [stop](#stop)
 - [destroy](#destroy)
 - [status](#status)
@@ -189,18 +190,35 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 
 ### configure
 
-Use the `yugabyted configure` command to configure the data placement constraints for the YugabyteDB cluster.
+Use the `yugabyted configure` command to configure the data placement policy of the cluster or enable/disable encryption-at-rest.
+
+#### Commands
+
+The following sub-commands are available for `yugabyted configure` command:
+
+- [data_placement](#data-placement)
+- [encrypt_at_rest](#encrypt-at-rest)
 
 #### Syntax
 
-```text
-Usage: yugabyted configure [flags]
+```sh
+Usage: yugabyted configure [command] [flags]
+```
+
+#### data_placement
+
+Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster.
+
+#### Syntax
+
+```sh
+Usage: yugabyted configure data_placement [flags]
 ```
 
 For example, to create a multi zone YugabyteDB cluster:
 
 ```sh
-yugabyted configure --fault_tolerance=zone
+yugabyted configure data_placement --fault_tolerance=zone
 ```
 
 #### Flags
@@ -208,10 +226,10 @@ yugabyted configure --fault_tolerance=zone
 -h | --help
 : Print the command line help and exit.
 
---fault_tolerance *fault_tolerance*
+--fault_tolerance *fault-tolerance*
 : Specify the fault tolerance for the cluster. This flag can accept one of these values - zone, region, or cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in 3 different zones, if available.
 
---data_placement_constraint *data-placement-constraint*
+--constraint_value *data-placement-constraint-value*
 : Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-seperated values in the format `cloud.region.zone`.
 
 --rf *replication-factor*
@@ -226,7 +244,110 @@ yugabyted configure --fault_tolerance=zone
 --base_dir *base-directory*
 : The base directory for the yugabyted server.
 
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
+
+#### encrypt_at_rest
+
+Use the `yugabyted configure encrypt_at_rest` sub-command to enable/disable encryption-at-rest for the deployed cluster.
+
+#### Syntax
+
+```text
+Usage: yugabyted configure encrypt_at_rest [flags]
+```
+
+Examples:
+- To enable encryption-at-rest for a deployed YugabyteDB cluster:
+
+  ```sh
+  yugabyted configure encrypt_at_rest --enable
+  ```
+
+- To diable encryption-at-rest for YugabyteDB cluster which has encryption-at-rest enabled:
+
+  ```sh
+  yugabyted configure encrypt_at_rest --disable
+  ```
+
+#### Flags
+
+-h | --help
+: Print the command line help and exit.
+
+--disable *disable*
+: Disable encryption at rest for the cluster. No need to set a value for the flag. Use --enable or --disable flag to toggle encryption features on a YugabyteDB cluster.
+
+--enable *enable*
+: Enable encryption at rest for the cluster. No need to set a value for the flag. Use --enable or --disable flag to toggle encryption features on a YugabyteDB cluster.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 -----
+
+### cert
+
+Use the `yugabyted cert` command to create TLS/SSL certificates for deploying a secure YugabyteDB cluster.
+
+#### Commands
+
+The following sub-commands are available for `yugabyted cert` command:
+
+- [generate_server_certs](#generate-server-certs)
+
+#### Syntax
+
+```text
+Usage: yugabyted cert [command] [flags]
+```
+
+#### generate_server_certs
+
+Use the `yugabyted cert generate_server_certs` sub-command to generate keys and certificates for the specified hostnames.
+
+#### Syntax
+
+```text
+Usage: yugabyted cert generate_server_certs [flags]
+```
+
+For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0.2, 127.0.0.3:
+
+```sh
+Usage: yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
+```
+
+#### Flags
+
+-h | --help
+: Print the command line help and exit.
+
+--hostnames *hostnames*
+: Hostnames of the nodes to be added in the cluster. Mandatory flag.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server. 
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
+------
 
 ### stop
 
@@ -235,8 +356,7 @@ Use the `yugabyted stop` command to stop a YugabyteDB cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                               [--base_dir BASE_DIR]
+Usage: yugabyted stop [flags]
 ```
 
 #### Flags
@@ -253,6 +373,9 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be stopped.
 
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
 -----
 
 ### destroy
@@ -262,8 +385,7 @@ Use the `yugabyted destroy` command to delete a cluster.
 #### Syntax
 
 ```sh
-Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                [--base_dir BASE_DIR]
+Usage: yugabyted destroy [flags]
 ```
 
 #### Flags
@@ -280,6 +402,9 @@ Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that needs to be destroyed.
 
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
 -----
 
 ### status
@@ -289,8 +414,7 @@ Use the `yugabyted status` command to check the status.
 #### Syntax
 
 ```sh
-Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                 [--base_dir BASE_DIR]
+Usage: yugabyted status [flags]
 ```
 
 #### Flags
@@ -307,6 +431,9 @@ Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that whose status is desired.
 
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
 -----
 
 ### version
@@ -316,8 +443,7 @@ Use the `yugabyted version` command to check the version number.
 #### Syntax
 
 ```sh
-Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
-                                  [--base_dir BASE_DIR]
+Usage: yugabyted version [flags]
 ```
 
 #### Flags
@@ -334,6 +460,9 @@ Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
 --base_dir *base-directory*
 : The base directory for the yugabyted server that whose version is desired.
 
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
 -----
 
 ### collect_logs
@@ -343,9 +472,56 @@ Use the `yugabyted collect_logs` command to generate a zipped file with all logs
 #### Syntax
 
 ```sh
-Usage: yugabyted collect_logs [-h] [--config CONFIG]
-                                       [--data_dir DATA_DIR]
-                                       [--base_dir BASE_DIR]
+Usage: yugabyted collect_logs [flags]
+```
+
+#### Flags
+
+-h | --help
+: Print the command line help and exit.
+
+--stdout *stdout*
+: Redirect the logs.tar.gz file's content to stdout. Ex: docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose logs are desired.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose logs are desired.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server whose logs are desired.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
+-----
+
+### connect
+
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh).
+
+#### Commands
+
+The following sub-commands are available for `yugabyted connect` command:
+
+- [ysql](#ysql)
+- [ycql](#ycql)
+
+#### Syntax
+
+```sh
+Usage: yugabyted connect [command] [flags]
+```
+
+#### ysql
+
+Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysqlsh](../../../admin/ysqlsh/).
+
+#### Syntax
+
+```sh
+Usage: yugabyted connect ysql [flags]
 ```
 
 #### Flags
@@ -362,16 +538,17 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 --base_dir *base-directory*
 : The base directory for the yugabyted server whose logs are desired.
 
------
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
-### connect
+#### ycql
 
-Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh).
+Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycqlsh](../../../admin/ycqlsh).
 
 #### Syntax
 
 ```sh
-Usage: yugabyted connect [-h] {ycql,ysql} ...
+Usage: yugabyted connect ycql [flags]
 ```
 
 #### Flags
@@ -379,22 +556,45 @@ Usage: yugabyted connect [-h] {ycql,ysql} ...
 -h | --help
 : Print the command line help and exit.
 
---ysql
-: Connect with ysqlsh.
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose logs are desired.
 
---ycql
-: Connect with ycqlsh.
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose logs are desired.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server whose logs are desired.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
 -----
 
 ### demo
 
-Use the `yugabyted demo connect` command to start YugabyteDB with the [Northwind sample dataset](../../../sample-data/northwind/).
+Use the `yugabyted demo` command to use the demo [Northwind sample dataset](../../../sample-data/northwind/) with YugabyteDB.
+
+#### Commands
+
+The following sub-commands are available for `yugabyted demo` command:
+
+- [connect](#connect-1)
+- [destroy](#destroy-1)
 
 #### Syntax
 
 ```sh
-Usage: yugabyted demo [-h] {connect,destroy} ...
+Usage: yugabyted demo [command] [flags]
+```
+
+#### connect
+
+Use the `yugabyted demo connect` sub-command to load the [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database and then open the `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
+
+#### Syntax
+
+```sh
+Usage: yugabyted demo connect [flags]
 ```
 
 #### Flags
@@ -402,12 +602,44 @@ Usage: yugabyted demo [-h] {connect,destroy} ...
 -h | --help
 : Print the help message and exit.
 
-connect
-: Loads the Northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens the `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose logs are desired.
 
-destroy
-: Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
-: Deletes the `yb_demo_northwind` database.
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose logs are desired.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server whose logs are desired.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+
+#### destroy
+
+Use the `yuagbyted demo destroy` sub-command to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This sub-command also deletes the `yb_demo_northwind` database.
+
+#### Syntax
+
+```sh
+Usage: yugabyted demo destroy [flags]
+```
+
+#### Flags
+
+-h | --help
+: Print the help message and exit.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose logs are desired.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose logs are desired.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server whose logs are desired.
+
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
 
 -----
 
@@ -489,12 +721,26 @@ Combinations of environment variables and their uses.
 
 ## Examples
 
-### Create a single-node cluster
+### Create a single-node cluster (Insecure)
 
 Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+```
+
+### Create a single-node cluster (Secure)
+
+{{< note title="Note" >}}
+
+openssl must be installed in the machine to deploy a secure cluster.
+
+{{< /note >}}
+
+Create a single-node secure cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+
+```sh
+./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
 ### Pass additional flags to YB-TServer
@@ -505,7 +751,7 @@ Create a single-node cluster and set additional flags for the YB-TServer process
 ./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
 ```
 
-### Create a local multi-node cluster
+### Create a local multi-node cluster (Insecure)
 
 Run the following command:
 
@@ -527,17 +773,79 @@ Add two more nodes to the cluster using the `join` option.
 ./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
 ```
 
+### Create a local multi-node cluster (Secure)
+
+{{< note title="Note" >}}
+
+openssl must be installed in the machine to deploy a secure cluster.
+
+{{< /note >}}
+
+Create the certificates for SSL/TLS connection:
+
+```sh
+./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
+```
+
+The certs are generated at `<HOME>/var/generated_certs/<hostname>`. Copy the certificates to the respective node's `<base_dir>/certs`.
+
+```sh
+cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
+cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
+cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
+```
+
+Start the 1st node by running the following command:
+
+```sh
+./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
+```
+
+On MacOS and Linux, the additional nodes need loopback addresses configured:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+Add two more nodes to the cluster using the `join` option.
+
+```sh
+./bin/yugabyted start --secure --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
+./bin/yugabyted start --secure --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
+```
+
+### Toggling Encryption-at-rest in a local cluster
+
+{{< note title="Note" >}}
+
+openssl must be installed in the machine to enable encryption-at-rest.
+
+{{< /note >}}
+
+Create a cluster using desired local deployment example given above.
+
+To enable encryption-at-rest in a deployed cluster, run:
+```sh
+./bin/yugabyted configure encrypt_at_rest --enable --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+```
+
+To disbale encryption-at-rest in a cluster with encryption-at-rest enabled, run:
+```sh
+./bin/yugabyted configure encrypt_at_rest --disable --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+```
+
 ### Destroy a local multi-node cluster
 
 Destroy the above multi-node cluster.
 
 ```sh
-./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
-./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data2
-./bin/yugabyted destroy --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
-### Create a multi-zone cluster
+### Create a multi-zone cluster (Insecure)
 
 To create a multi-node cluster, you start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
@@ -556,26 +864,81 @@ Start the second and the third node on two separate VMs:
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure data_placement --fault_tolerance=zone
 ```
 
 This command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, the configure command configures the cluster to survive at least 1 availability zone failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
-You can set the data placement constraint manually using the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
+You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+./bin/yugabyted configure data_placement --fault_tolerance=zone --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+./bin/yugabyted configure data_placement --fault_tolerance=zone --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
 ```
 
-### Create a multi-region cluster
+### Create a multi-zone cluster (Secure)
+
+{{< note title="Note" >}}
+
+openssl must be installed in the 1st VM to deploy a secure cluster.
+
+{{< /note >}}
+
+To create a multi-node secrue cluster, you start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+
+```sh
+./bin/yugabyted start --secure --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+```
+
+Create the certificates for 2nd and 3rd VM for SSL/TLS connection.
+
+```sh
+./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
+```
+
+Manually copy the generated certificates in the 1st VM to 2nd and 3rd VM.
+
+Copy the certificates for 2nd VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in 1st VM to `$HOME/var/certs` in 2nd VM.
+Copy the certificates for 3nd VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in 1st VM to `$HOME/var/certs` in 3nd VM.
+
+Start the second and the third node on two separate VMs:
+
+```sh
+./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
+
+./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
+```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster:
+
+```sh
+./bin/yugabyted configure data_placement --fault_tolerance=zone
+```
+
+This command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, the configure command configures the cluster to survive at least 1 availability zone failure. Otherwise, it outputs a warning message.
+
+The replication factor of the cluster defaults to 3.
+
+You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
+
+```sh
+./bin/yugabyted configure data_placement --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+```
+
+You can set the replication factor of the cluster manually using the `--rf` flag. For example:
+
+```sh
+./bin/yugabyted configure data_placement --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+```
+
+### Create a multi-region cluster (Insecure)
 
 To create a multi-region cluster, start the first yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
@@ -594,23 +957,43 @@ Start the second and the third nodes on two separate VMs as follows:
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster as follows:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=region
+./bin/yugabyted configure data_placement --fault_tolerance=region
 ```
 
 This command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more regions available in the cluster, the command configures the cluster to survive at least 1 region failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
-You can set the data placement constraint manually using the `--data_placement_constraint` flag, which takes the comma-separated value of `cloud.region.zone` as follows:
+You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone` as follows:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+./bin/yugabyted configure data_placement --fault_tolerance=region --constraint_value=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag as follows:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+./bin/yugabyted configure data_placement --fault_tolerance=region --constraint_value=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+```
+
+### Toggling Encryption-at-rest in a multi-zone or multi-region cluster
+
+{{< note title="Note" >}}
+
+openssl must be installed in the machine to enable encryption-at-rest.
+
+{{< /note >}}
+
+Create a cluster using desired deployment example given above.
+
+To enable encryption-at-rest in a deployed cluster, run the following command from any VM:
+```sh
+./bin/yugabyted configure encrypt_at_rest --enable
+```
+
+To disbale encryption-at-rest in a cluster with encryption-at-rest enabled, run the following command from any VM:
+```sh
+./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
 ## Upgrade a YugabyteDB cluster
