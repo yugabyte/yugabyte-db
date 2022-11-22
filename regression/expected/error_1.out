@@ -27,11 +27,15 @@ SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLA
  SELECT * FROM unknown;           |     21 | 42P01   | relation "unknown" does not exist
  SELECT 1/0;                      |     21 | 22012   | division by zero
  SELECT pg_stat_monitor_reset()   |      0 |         | 
+ do $$                           +|      0 |         | 
+ BEGIN                           +|        |         | 
+ RAISE WARNING 'warning message';+|        |         | 
+ END $$                           |        |         | 
  do $$                           +|     19 | 01000   | warning message
  BEGIN                           +|        |         | 
  RAISE WARNING 'warning message';+|        |         | 
  END $$;                          |        |         | 
-(5 rows)
+(6 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 

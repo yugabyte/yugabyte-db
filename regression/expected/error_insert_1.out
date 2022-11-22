@@ -19,10 +19,11 @@ Drop Table if exists Company;
 SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel;
                          query                         | elevel | sqlcode |                            message                            
 -------------------------------------------------------+--------+---------+---------------------------------------------------------------
+ Drop Table if exists Company                          |      0 |         | 
  INSERT  INTO Company(ID, Name) VALUES (1, 'Percona')  |      0 |         | 
  INSERT  INTO Company(ID, Name) VALUES (1, 'Percona'); |     21 | 23505   | duplicate key value violates unique constraint "company_pkey"
  SELECT pg_stat_monitor_reset()                        |      0 |         | 
-(3 rows)
+(4 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
