@@ -716,6 +716,7 @@ extern void YBCheckServerAccessIsAllowed();
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
 
 /*
  * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of

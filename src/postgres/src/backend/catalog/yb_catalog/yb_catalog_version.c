@@ -72,7 +72,7 @@ uint64_t YbGetMasterCatalogVersion()
 	}
 	ereport(FATAL,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Catalog version type was not set, cannot load system catalog.")));
+			 errmsg("catalog version type was not set, cannot load system catalog.")));
 	return version;
 }
 
@@ -391,21 +391,57 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	Datum           *values = (Datum *) palloc0(natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(natts * sizeof(bool));
 	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-	                             natts,
-	                             (uint64_t *) values,
-	                             nulls,
-	                             &syscols,
-	                             &has_data));
-
 	bool result = false;
-	if (has_data)
+
+	if (!YBIsDBCatalogVersionMode())
 	{
-		*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
-		result = true;
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+									 natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (has_data)
+		{
+			*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+			result = true;
+		}
 	}
+	else
+	{
+		/*
+		 * When prefetching is enabled we always load all the rows even though
+		 * we bind to the row matching given db_oid. This is a work around to
+		 * pick the row that matches db_oid. This work around should be removed
+		 * when prefetching is enhanced to support filtering.
+		 */
+		while (true) {
+			/* Fetch one row. */
+			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+										 natts,
+										 (uint64_t *) values,
+										 nulls,
+										 &syscols,
+										 &has_data));
+
+			if (!has_data)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATABASE_DROPPED),
+					 errmsg("catalog version for database %u was not found.", db_oid),
+					 errhint("Database might have been dropped by another user")));
+
+			uint32_t oid = (uint32_t) DatumGetInt32(values[oid_attnum - 1]);
+			if (oid == db_oid)
+			{
+				*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+				result = true;
+				break;
+			}
+ 		}
+	}
+
 	pfree(values);
 	pfree(nulls);
 	return result;

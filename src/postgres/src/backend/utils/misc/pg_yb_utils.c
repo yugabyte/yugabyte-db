@@ -3040,3 +3040,12 @@ void YBUpdateRowLockPolicyForSerializable(
 		*effectiveWaitPolicy = LockWaitError;
 	}
 }
+
+uint32_t YbGetNumberOfDatabases()
+{
+	Assert(YBIsDBCatalogVersionMode());
+	uint32_t num_databases = 0;
+	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
+	Assert(num_databases > 0);
+	return num_databases;
+}
