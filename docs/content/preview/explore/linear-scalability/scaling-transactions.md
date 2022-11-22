@@ -41,6 +41,8 @@ To view a table of per-node statistics for the cluster, navigate to the [tablet-
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_observe1.png)
 
+To view the latency and throughput on the cluster while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/).
+
 ![Latency and throughput with 3 nodes](/images/ce/simulation-graph.png)
 
 ## Add node and observe linear scale-out
