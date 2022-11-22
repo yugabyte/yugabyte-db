@@ -1,6 +1,6 @@
  services:
   - name: postgresService
-    fileName: /etc/systemd/system/postgres.service
+    fileName: "{{ .SystemdFileLocation }}"
     contents: |
       [Unit]
       Description=Postgres
@@ -8,15 +8,16 @@
       After=network-online.target
 
       [Service]
-      User=postgres
-      Group=postgres
+      User=yugabyte
+      Group=yugabyte
       Type=forking
       TimeoutSec=300
 
-      ExecStart={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-      -o "-k {{ installRoot }}/postgres/run/postgresql/" start
-      ExecStop={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-      -o "-k {{ installRoot }}/postgres/run/postgresql/" stop
+      ExecStart={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
+
+      ExecStop={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
 
       Restart=always
       RestartSec={{ yamlPath ".postgres.restartSeconds"}}
