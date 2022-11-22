@@ -79,6 +79,8 @@ public class BackupUtil {
 
   @Inject YBClientService ybService;
 
+  @Inject CustomerConfigService customerConfigService;
+
   public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
   public static final int EMR_MULTIPLE = 8;
@@ -426,6 +428,12 @@ public class BackupUtil {
             getCloudpathWithConfigSuffix(backupLocation, params.storageLocation);
       }
     }
+  }
+
+  public void validateBackupStorageConfig(Backup backup) {
+    CustomerConfig config =
+        customerConfigService.getOrBadRequest(backup.customerUUID, backup.storageConfigUUID);
+    validateStorageConfigOnBackup(config, backup);
   }
 
   public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
