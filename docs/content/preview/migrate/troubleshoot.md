@@ -15,7 +15,9 @@ This page documents the known issues and workarounds, and unsupported features w
 
 ## Known issues
 
-### [Issue #573](https://github.com/yugabyte/yb-voyager/issues/573): [MySQL] Unsigned decimal types are not exported properly.
+### Issue #573: [MySQL] Unsigned decimal types are not exported properly
+
+**GitHub link**: [Issue #573](https://github.com/yugabyte/yb-voyager/issues/573)
 
 **Description**: Unsigned decimal types lose their precision and have `UNSIGNED` exported along with them.
 
@@ -23,7 +25,7 @@ This page documents the known issues and workarounds, and unsupported features w
 
 **Example**
 
-Sample schema on the source MySQL database is as follows:
+An example schema on the source MySQL database is as follows:
 
 ```sql
 create table if not exists fixed_point_types(
@@ -34,7 +36,7 @@ create table if not exists fixed_point_types(
 );
 ```
 
-The exported schema is as follows:
+The exported schema example is as follows:
 
 ```sql
 CREATE TABLE fixed_point_types (
@@ -58,15 +60,17 @@ CREATE TABLE fixed_point_types (
 
 ---
 
-### [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188): [MySQL] Approaching MAX/MIN double precision values are not exported.
+### Issue #188: [MySQL] Approaching MAX/MIN double precision values are not exported
 
-**Description**: Exporting double precision values near max/min value results in an _out of range_ error.
+**GitHub link**: [Issue #188](https://github.com/yugabyte/yb-voyager/issues/188)
+
+**Description**: Exporting double precision values near MAX/MIN value results in an _out of range_ error.
 
 **Workaround**: All float style data types are exported to double precision value in YugabyteDB. You can manually edit post export, or by editing the `DATA_TYPE` directive in the ora2pg base configuration file before starting export.
 
 **Example**
 
-Sample schema on the source MySQL database is as follows:
+An example schema on the source MySQL database is as follows:
 
 ```sql
 CREATE TABLE floating_point_types(
@@ -77,7 +81,7 @@ CREATE TABLE floating_point_types(
 );
 ```
 
-The exported schema is as follows:
+The exported schema example is as follows:
 
 ```sql
 CREATE TABLE floating_point_types (
@@ -127,7 +131,101 @@ Suggested changes to the schema can be done using one of the following options:
 
 ---
 
-### [Issue 207](https://github.com/yugabyte/yb-voyager/issues/207): [Oracle] Some numeric types do not get exported
+### Issue #579: [MySQL] Functional/Expression indexes fail to migrate
+
+**GitHub link**: [Issue #579](https://github.com/yugabyte/yb-voyager/issues/579)
+
+**Description**: If your schema contains Functional/Expression indexes in MYSQL, the index creation fails with a syntax error during migration and doesn't get migrated.
+
+**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) or oblique quotes ("") to the exported schema files.
+
+**Example**
+
+An example schema on the source MySQL database is as follows:
+
+```sql
+CREATE INDEX exp_ind ON exp_index_test((year(`to_date`)));
+```
+
+The exported schema example is as follows:
+
+```sql
+CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(`to_date`))));
+```
+
+Suggested change to the schema is to remove the back-ticks as follows:
+
+```sql
+CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
+```
+
+---
+
+### Issue #320: [MySQL] Issue when exporting data from MySQL with table_name including quotes
+
+**GitHub link**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
+
+**Description**: When exporting the schema from MySQL which includes the table_name with quotes, it exports the table with the table_name converted to lowercase and without quotes, resulting in an error when exporting the data.
+
+**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming it in YugabyteDB.
+
+Example tables for source MySQL database is as follows:
+
+```sql
+show tables;
+```
+
+```output
++----------------------+
+| Tables_in_pk_missing |
++----------------------+
+| "test_data_COPY"     |
+| TEST_DATA            |
++----------------------+
+```
+
+The exported schema eaxmple is as follows:
+
+```sql
+CREATE TABLE test_data_copy (
+   id serial,
+   first_name varchar(50),
+   last_name varchar(50),
+   email varchar(50),
+   gender varchar(50),
+   ip_address varchar(20),
+   PRIMARY KEY (id)
+) ;
+```
+
+Error when exporting data is as follows:
+
+```output
+DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist at /usr/local/share/perl5/Ora2Pg.pm line 14247.
+DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist at /usr/local/share/perl5/Ora2Pg.pm line 14247.
+```
+
+Suggested workaround is as follows:
+
+1. Rename the table name with quotes to a name without quotes in MySQL database using the following command:
+
+    ```sql
+    Alter table `"test_data_COPY"` rename test_data_COPY2;
+    ```
+
+1. Export and import the data.
+
+1. Rename the table name in YugabyteDB to a quoted one using the following command:
+
+    ```sql
+    Alter table test_data_copy2 rename to "test_data_COPY";
+    ```
+
+---
+
+### Issue #207: [Oracle] Some numeric types do not get exported
+
+**GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
 
 **Description**: For cases where the precision is less than the scale in a numeric attribute, it fails to get imported to YugabyteDB.
 
@@ -135,7 +233,7 @@ Suggested changes to the schema can be done using one of the following options:
 
 **Example**
 
-Sample schema on the source Oracle database is as follows:
+An example schema on the source Oracle database is as follows:
 
 ```sql
 create table numeric_size(
@@ -151,7 +249,7 @@ create table numeric_size(
 );
 ```
 
-The exported schema is as follows:
+The exported schema example is as follows:
 
 ```sql
 CREATE TABLE numeric_size (
@@ -185,107 +283,47 @@ CREATE TABLE numeric_size (
 
 ---
 
-### [Isuue 584](https://github.com/yugabyte/yb-voyager/issues/584): [Oracle] RAW data fails to get imported in some cases
+### Issue #584: [Oracle] RAW data fails to get imported in some cases
 
-**Description**: In some cases, you may face _invalid hexadecimal error_ when attempting to migrate a (LONG) RAW attribute from an Oracle instance.
+**GitHub link**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
+
+**Description**: When attempting to migrate a (LONG) RAW attribute from an Oracle instance, you may face an _invalid hexadecimal error_.
 
 **Workaround**: None. A workaround is being explored currently.
 
 ---
 
-### [Issue 579](https://github.com/yugabyte/yb-voyager/issues/579): [MySQL] Functional/Expression indexes fail to migrate
+### Issue #602: [Oracle] Issue using a variation of `trunc` function with datetime column in Oracle and YugabyteDB
 
-**Description**: If your schema contains Functional/Expression indexes in MYSQL, the index creation fails with a syntax error during migration and doesn't get migrated.
+**GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
-**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) or oblique quotes (“”) to the exported schema files.
+**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, because the `date_trunc` function is used for such types of datetime columns. So, when you export such a schema using `trunc`, it exports `trunc` and fails during data import.
+
+**Workaround**: Manual intervention needed. You have to replace the function from `trunc` to `date_trunc` in the exported schema files.
 
 **Example**
 
-Sample schema on the source MySQL database is as follows:
+An example DDL on the source Oracle database is as follows:
 
 ```sql
-CREATE INDEX exp_ind ON exp_index_test((year(`to_date`)));
+ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = trunc(dtts)));
 ```
 
-The exported schema is as follows:
+Note that the DDL gets exported with `trunc` function and you have to replace it with `date_trunc` after export as follows:
 
 ```sql
-CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(`to_date`))));
-```
-
-Suggested change to the schema is to remove the back-ticks as follows:
-
-```sql
-CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
+ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day',dtts)));
 ```
 
 ---
 
-### [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320): [MySQL] Issue in Exporting the data from MySQL with table_name including quotes.
+### Issue #334: [MySQL, Oracle] Issue when importing with case-sensitive schema names
 
-**Description**: When exporting the schema from MySQL which includes the table_name with quotes, it exports the table with the table_name converted to lowercase and without quotes, resulting in an error when exporting the data.
+**GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
 
-**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming it in YugabyteDB.
+**Description**: When the source is either MySQL or Oracle, if you attempt to migrate the database using a case-sensitive schema name, the migration will fail with `no schema has been selected` or `schema already exists` error(s).
 
-Sample tables for source MySQL database is as follows:
-
-```sql
-show tables;
-```
-
-```output
-+----------------------+
-| Tables_in_pk_missing |
-+----------------------+
-| "test_data_COPY"     |
-| TEST_DATA            |
-+----------------------+
-```
-
-The exported schema is as follows:
-
-```sql
-CREATE TABLE test_data_copy (
-   id serial,
-   first_name varchar(50),
-   last_name varchar(50),
-   email varchar(50),
-   gender varchar(50),
-   ip_address varchar(20),
-   PRIMARY KEY (id)
-) ;
-```
-
-Error when exporting data is as follows:
-
-```output
-DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist at /usr/local/share/perl5/Ora2Pg.pm line 14247.
-DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist at /usr/local/share/perl5/Ora2Pg.pm line 14247.
-```
-
-Suggested workaround is as follows:
-
-1. Rename the table name with quotes to one without quotes in MySQL database using the following command:
-
-    ```sql
-    Alter table `"test_data_COPY"` rename test_data_COPY2;
-    ```
-
-1. Export and import the data.
-
-1. Rename the table name in YugabyteDB to a quoted one using the following command:
-
-    ```sql
-    Alter table test_data_copy2 rename to "test_data_COPY";
-    ```
-
----
-
-### [Issue 334](https://github.com/yugabyte/yb-voyager/issues/334): [MySQL, Oracle] Issue when importing with case-sensitive schema names.
-
-**Description**: When the source is either MySQL or Oracle, if the user attempts to migrate their database using a case-sensitive schema name, the migration will fail owing to “no schema has been selected” or “schema already exists” error(s).
-
-**Workaround**: As of now, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If needed, the user may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+**Workaround**: Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If necessary, you can alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
 
 **Example**
 
@@ -327,11 +365,13 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 ---
 
-### [Issue 578](https://github.com/yugabyte/yb-voyager/issues/578): [MySQL/Oracle] Partition key column not part of primary key columns
+### Issue #578: [MySQL/Oracle] Partition key column not part of primary key columns
+
+**GitHub link**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
 
 **Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
 
-**Workaround**: Add all Partition columns to Primary Key
+**Workaround**: Add all Partition columns to the Primary key columns
 
 **Example**
 
@@ -376,24 +416,11 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 
 ---
 
-### [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602): [Oracle] Issue using a variation of `trunc` function with datetime column in Oracle and YugabyteDB
+## Unsupported features
 
-**Description**: If you use the `trunc` function with a timestamp column in your Oracle schema, it is supported. But this variation is not supported in YugabytedB, because the `date_trunc` function is used in YugabyteDB for such types of datetime columns. So, when you export such a schema using `trunc`, it exports trunc and fails during data import.
+Currently, yb-voyager doesn't support the following features:
 
-**Workaround**: Manual intervention needed. You have to replace the function from `trunc` to `date_trunc` in the exported schema files.
-
-**Example**
-
-Sample DDL on the source Oracle database is as follows:
-
-```sql
-ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = trunc(dtts)));
-```
-
-Note that the DDL gets exported with `trunc` function and you have to replace it with `date_trunc` after export as follows:
-
-```sql
-ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day',dtts)));
-```
-
----
+| Feature | Description/Alternatives  | GitHub Issue |
+| :------ | :------------------------ | :----------- |
+| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
+| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
