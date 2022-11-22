@@ -26,7 +26,7 @@
 namespace yb {
 
 class Slice;
-class faststring;
+class WriteBuffer;
 
 //------------------------------------------ QL row ----------------------------------------
 // A QL row. It uses QLValue to store the column values.
@@ -67,7 +67,7 @@ class QLRow {
   //----------------------------- serializer / deserializer ---------------------------------
   // Note: QLRow's serialize / deserialize methods are private because we expect QL rows
   // to be serialized / deserialized as part of a row block. See QLRowBlock.
-  void Serialize(QLClient client, faststring* buffer) const;
+  void Serialize(QLClient client, WriteBuffer* buffer) const;
   Status Deserialize(QLClient client, Slice* data);
 
   std::shared_ptr<const Schema> schema_;
@@ -115,7 +115,8 @@ class QLRowBlock {
   std::string ToString() const;
 
   //----------------------------- serializer / deserializer ---------------------------------
-  void Serialize(QLClient client, faststring* buffer) const;
+  void Serialize(QLClient client, WriteBuffer* buffer) const;
+  std::string SerializeToString() const;
   Status Deserialize(QLClient client, Slice* data);
 
   //-------------------------- utility functions for rows data ------------------------------

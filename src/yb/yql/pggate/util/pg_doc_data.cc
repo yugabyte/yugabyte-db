@@ -23,7 +23,7 @@
 namespace yb {
 namespace pggate {
 
-Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
+Status WriteColumn(const QLValuePB& col_value, WriteBuffer *buffer) {
   // Write data header.
   bool has_data = true;
   PgWireDataHeader col_header;

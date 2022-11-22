@@ -363,7 +363,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      QLReadRequestResult* result) override;
+      QLReadRequestResult* result,
+      WriteBuffer* rows_data) override;
 
   Status CreatePagingStateForRead(
       const QLReadRequestPB& ql_read_request, const size_t row_count,
@@ -381,8 +382,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
-      PgsqlReadRequestResult* result,
-      size_t* num_rows_read) override;
+      PgsqlReadRequestResult* result) override;
 
   Status CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,

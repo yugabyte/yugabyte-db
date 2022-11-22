@@ -20,64 +20,64 @@
 namespace yb {
 namespace pggate {
 
-void PgWire::WriteBool(bool value, faststring *buffer) {
-  buffer->append(&value, sizeof(bool));
+void PgWire::WriteBool(bool value, WriteBuffer *buffer) {
+  buffer->Append(pointer_cast<const char*>(&value), sizeof(bool));
 }
 
-void PgWire::WriteInt8(int8_t value, faststring *buffer) {
-  buffer->append(&value, sizeof(int8_t));
+void PgWire::WriteInt8(int8_t value, WriteBuffer *buffer) {
+  buffer->Append(pointer_cast<const char*>(&value), sizeof(int8_t));
 }
 
-void PgWire::WriteUint8(uint8_t value, faststring *buffer) {
-  buffer->append(&value, sizeof(uint8_t));
+void PgWire::WriteUint8(uint8_t value, WriteBuffer *buffer) {
+  buffer->Append(pointer_cast<const char*>(&value), sizeof(uint8_t));
 }
 
-void PgWire::WriteUint16(uint16_t value, faststring *buffer) {
+void PgWire::WriteUint16(uint16_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store16, value, buffer);
 }
 
-void PgWire::WriteInt16(int16_t value, faststring *buffer) {
+void PgWire::WriteInt16(int16_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store16, static_cast<uint16>(value), buffer);
 }
 
-void PgWire::WriteUint32(uint32_t value, faststring *buffer) {
+void PgWire::WriteUint32(uint32_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store32, value, buffer);
 }
 
-void PgWire::WriteInt32(int32_t value, faststring *buffer) {
+void PgWire::WriteInt32(int32_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store32, static_cast<uint32>(value), buffer);
 }
 
-void PgWire::WriteUint64(uint64_t value, faststring *buffer) {
+void PgWire::WriteUint64(uint64_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store64, value, buffer);
 }
 
-void PgWire::WriteInt64(int64_t value, faststring *buffer) {
+void PgWire::WriteInt64(int64_t value, WriteBuffer *buffer) {
   WriteInt(NetworkByteOrder::Store64, static_cast<uint64>(value), buffer);
 }
 
-void PgWire::WriteFloat(float value, faststring *buffer) {
+void PgWire::WriteFloat(float value, WriteBuffer *buffer) {
   const uint32 int_value = *reinterpret_cast<const uint32*>(&value);
   WriteInt(NetworkByteOrder::Store32, int_value, buffer);
 }
 
-void PgWire::WriteDouble(double value, faststring *buffer) {
+void PgWire::WriteDouble(double value, WriteBuffer *buffer) {
   const uint64 int_value = *reinterpret_cast<const uint64*>(&value);
   WriteInt(NetworkByteOrder::Store64, int_value, buffer);
 }
 
-void PgWire::WriteText(const std::string& value, faststring *buffer) {
+void PgWire::WriteText(const std::string& value, WriteBuffer *buffer) {
   // Postgres expected text string to be null-terminated, so we have to add '\0' here.
   // Postgres will call strlen() without using the returning byte count.
   const uint64 length = value.size() + 1;
   WriteInt(NetworkByteOrder::Store64, length, buffer);
-  buffer->append(static_cast<const void *>(value.c_str()), length);
+  buffer->Append(value.c_str(), length);
 }
 
-void PgWire::WriteBinary(const std::string& value, faststring *buffer) {
+void PgWire::WriteBinary(const std::string& value, WriteBuffer *buffer) {
   const uint64 length = value.size();
   WriteInt(NetworkByteOrder::Store64, length, buffer);
-  buffer->append(value);
+  buffer->Append(value.c_str(), value.size());
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -98,7 +98,7 @@ void SubmitWrite(
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-      /* context */ nullptr, /* tablet= */ nullptr);
+      /* context */ nullptr, /* tablet= */ nullptr, /* rpc_context= */ nullptr);
   if (synchronizer) {
     query->set_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
@@ -1413,7 +1413,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-        nullptr /* context */, nullptr /* tablet */);
+        nullptr /* context */, nullptr /* tablet */, nullptr /* rpc_context */);
 
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();

@@ -108,6 +108,8 @@ using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
+using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
+using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
 
 enum class YBTableType;
 

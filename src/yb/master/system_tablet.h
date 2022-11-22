@@ -55,7 +55,8 @@ class SystemTablet : public tablet::AbstractTablet {
                              const ReadHybridTime& read_time,
                              const QLReadRequestPB& ql_read_request,
                              const TransactionMetadataPB& transaction_metadata,
-                             tablet::QLReadRequestResult* result) override;
+                             tablet::QLReadRequestResult* result,
+                             WriteBuffer* rows_data) override;
 
   Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                   const size_t row_count,
@@ -67,8 +68,7 @@ class SystemTablet : public tablet::AbstractTablet {
                                 const PgsqlReadRequestPB& pgsql_read_request,
                                 const TransactionMetadataPB& transaction_metadata,
                                 const SubTransactionMetadataPB& subtransaction_metadata,
-                                tablet::PgsqlReadRequestResult* result,
-                                size_t* num_rows_read) override {
+                                tablet::PgsqlReadRequestResult* result) override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 

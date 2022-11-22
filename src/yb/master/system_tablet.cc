@@ -59,10 +59,11 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          const ReadHybridTime& read_time,
                                          const QLReadRequestPB& ql_read_request,
                                          const TransactionMetadataPB& transaction_metadata,
-                                         tablet::QLReadRequestResult* result) {
+                                         tablet::QLReadRequestResult* result,
+                                         WriteBuffer* rows_data) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, TransactionOperationContext(), result);
+      deadline, read_time, ql_read_request, TransactionOperationContext(), result, rows_data);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

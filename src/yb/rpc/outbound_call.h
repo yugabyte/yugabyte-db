@@ -167,8 +167,14 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<Slice> GetSidecar(size_t idx) const;
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+
+  // Assign sidecar with specified index to out.
+  Status AssignSidecarTo(size_t idx, std::string* out) const;
+
+  // Transfer all sidecars to specified context, returning the first transferred sidecar index in
+  // the context.
+  size_t TransferSidecars(rpc::RpcContext* context);
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -244,7 +250,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void Serialize(ByteBlocks* output) override;
 
   // Sets thread pool to be used by `InvokeCallback` for callback execution.
   void SetCallbackThreadPool(ThreadPool* callback_thread_pool) {
@@ -335,8 +341,9 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual Result<Slice> GetSidecar(size_t idx) const;
-  virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+  // See appropriate comments in CallResponse.
+  virtual Status AssignSidecarTo(size_t idx, std::string* out) const;
+  virtual size_t TransferSidecars(rpc::RpcContext* dest);
 
   ConnectionId conn_id_;
   const std::string* hostname_;
