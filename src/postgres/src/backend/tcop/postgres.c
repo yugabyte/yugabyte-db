@@ -3706,6 +3706,8 @@ YbPreloadRelCacheHelper()
  */
 static void YBRefreshCache()
 {
+	Assert(OidIsValid(MyDatabaseId));
+
 	/*
 	 * Check that we are not already inside a transaction or we might end up
 	 * leaking cache references for any open relations (i.e. relations in-use by

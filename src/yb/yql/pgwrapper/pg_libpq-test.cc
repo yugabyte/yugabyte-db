@@ -3075,8 +3075,14 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
   ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
+  // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
   ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
-                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
+                                  "ON CONFLICT DO NOTHING"));
+
+  // Remember the number of pre-existing databases.
+  size_t num_initial_databases = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte)).size();
 
   LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
   cluster_->Shutdown();
@@ -3086,6 +3092,11 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->tablet_server(i)->mutable_flags()->push_back(
         "--TEST_enable_db_catalog_version_mode=true");
+    // Set --ysql_num_databases_reserved_in_db_catalog_version_mode to a large number
+    // that allows room for only one more database to be created.
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        Format("--ysql_num_databases_reserved_in_db_catalog_version_mode=$0",
+               tserver::TServerSharedData::kMaxNumDbCatalogVersions - num_initial_databases - 1));
   }
   ASSERT_OK(cluster_->Restart());
 
@@ -3187,7 +3198,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_STR_CONTAINS(status.ToString(), "Could not reconnect to database");
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", new_db_oid));
   ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 
   // Recreate the same database and table.
@@ -3215,12 +3227,19 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_STR_CONTAINS(status.ToString(), "pgsql error XX000");
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", new_db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
   conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kTestDatabase)));
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
+
+  // This create database will hit the limit.
+  status = conn_yugabyte.ExecuteFormat("CREATE DATABASE $0_2", kTestDatabase);
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "too many databases");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
