@@ -81,6 +81,7 @@ set(DOCDB_SRCS
         doc_pg_expr.cc
         doc_pgsql_scanspec.cc
         doc_ql_scanspec.cc
+        doc_read_context.cc
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
