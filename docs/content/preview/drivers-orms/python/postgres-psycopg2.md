@@ -202,7 +202,7 @@ Query returned: John, 35, Python
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-### Limitation
+### Limitations
 
 Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 
