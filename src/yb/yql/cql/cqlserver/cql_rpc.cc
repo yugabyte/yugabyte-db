@@ -195,11 +195,11 @@ Slice CQLInboundCall::method_name() const {
   return remote_method.method_name();
 }
 
-void CQLInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void CQLInboundCall::DoSerialize(rpc::ByteBlocks* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
-  output->push_back(std::move(response_msg_buf_));
+  output->emplace_back(std::move(response_msg_buf_));
 }
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,

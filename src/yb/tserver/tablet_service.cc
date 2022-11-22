@@ -109,6 +109,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
+#include "yb/util/write_buffer.h"
 
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
@@ -357,32 +358,9 @@ class WriteQueryCompletionCallback {
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
-      rows_data.clear();
-      rowblock->Serialize(ql_write_req.client(), &rows_data);
+      rowblock->Serialize(ql_write_req.client(), &context_->StartRpcSidecar());
       ql_write_resp->set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_->AddRpcSidecar(rows_data)));
-    }
-
-    if (!query_->pgsql_write_ops()->empty()) {
-      // Retrieve the resultset returned from the PGSQL write operations and return them as RPC
-      // sidecars.
-
-      size_t sidecars_size = 0;
-      for (const auto& pgsql_write_op : *query_->pgsql_write_ops()) {
-        sidecars_size += pgsql_write_op->result_buffer().size();
-      }
-
-      if (sidecars_size != 0) {
-        context_->ReserveSidecarSpace(sidecars_size);
-        for (const auto& pgsql_write_op : *query_->pgsql_write_ops()) {
-          auto* pgsql_write_resp = pgsql_write_op->response();
-          const faststring& result_buffer = pgsql_write_op->result_buffer();
-          if (!result_buffer.empty()) {
-            pgsql_write_resp->set_rows_data_sidecar(
-                narrow_cast<int32_t>(context_->AddRpcSidecar(result_buffer)));
-          }
-        }
-      }
+          narrow_cast<int32_t>(context_->CompleteRpcSidecar()));
     }
 
     if (include_trace_ && trace_) {
@@ -1273,7 +1251,7 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
 
   auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
-      tablet.tablet);
+      tablet.tablet, nullptr);
   auto* request = query->operation().AllocateRequest();
   metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
 
@@ -1803,19 +1781,23 @@ Status TabletServiceImpl::PerformWrite(
     }
   }
 
+  auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
+
   auto query = std::make_unique<tablet::WriteQuery>(
-      tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(), tablet.tablet, resp);
+      tablet.leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,
+      context_ptr.get(), resp);
   query->set_client_request(*req);
 
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
     LOG(INFO) << "Responding with a failure to " << req->DebugString();
     tablet.peer->WriteAsync(std::move(query));
-    return STATUS(LeaderHasNoLease, "TEST: Random failure");
+    auto status = STATUS(LeaderHasNoLease, "TEST: Random failure");
+    SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
+    return Status::OK();
   }
 
   query->set_callback(WriteQueryCompletionCallback(
-      tablet.peer, std::make_shared<RpcContext>(std::move(*context)), resp, query.get(),
-      server_->Clock(), req->include_trace()));
+      tablet.peer, context_ptr, resp, query.get(), server_->Clock(), req->include_trace()));
 
   query->AdjustYsqlQueryTransactionality(req->pgsql_write_batch_size());
 

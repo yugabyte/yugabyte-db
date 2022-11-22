@@ -34,6 +34,7 @@
 #include "yb/util/ev_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/write_buffer.h"
 
 namespace yb {
 namespace rpc {
@@ -139,12 +140,20 @@ class YBInboundCall : public InboundCall {
   Slice method_name() const override;
 
   // See RpcContext::AddRpcSidecar()
-  virtual size_t AddRpcSidecar(Slice car);
+  WriteBuffer& StartRpcSidecar();
+  virtual size_t CompleteRpcSidecar();
+  Status AssignSidecarTo(int idx, std::string* out);
+  size_t TransferSidecars(rpc::RpcContext* context);
+  size_t TakeSidecars(
+      WriteBuffer* sidecar_buffer, google::protobuf::RepeatedField<uint32_t>* offsets);
+  size_t TakeSidecars(
+      const RefCntBuffer& buffer,
+      const boost::container::small_vector_base<const uint8_t*>& sidecar_bounds);
 
   // See RpcContext::ResetRpcSidecars()
   void ResetRpcSidecars();
 
-  void ReserveSidecarSpace(size_t space);
+  Slice GetFirstSidecar() const;
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -174,7 +183,7 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(ByteBlocks* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -195,11 +204,11 @@ class YBInboundCall : public InboundCall {
   }
 
  protected:
+  ScopedTrackedConsumption consumption_;
+
   // Fields to store sidecars state. See rpc/rpc_sidecar.h for more info.
-  size_t num_sidecars_ = 0;
-  size_t filled_bytes_in_last_sidecar_buffer_ = 0;
-  size_t total_sidecars_size_ = 0;
-  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecar_buffers_;
+  simple_spinlock take_sidecar_mutex_;
+  WriteBuffer sidecar_buffer_;
   google::protobuf::RepeatedField<uint32_t> sidecar_offsets_;
 
   // Serialize and queue the response.
@@ -220,8 +229,6 @@ class YBInboundCall : public InboundCall {
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
-
-  ScopedTrackedConsumption consumption_;
 
   // Cache of result of YBInboundCall::ToString().
   mutable std::string cached_to_string_;

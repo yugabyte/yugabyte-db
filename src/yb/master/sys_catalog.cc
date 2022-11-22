@@ -674,7 +674,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
-      tablet, resp.get());
+      tablet, nullptr, resp.get());
   query->set_client_request(writer->req());
   query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 

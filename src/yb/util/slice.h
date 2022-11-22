@@ -149,6 +149,9 @@ class Slice {
     memcpy(buffer, begin_, size());
   }
 
+  void AppendTo(std::string* out) const;
+  void AssignTo(std::string* out) const;
+
   // Truncate the slice to "n" bytes
   void truncate(size_t n);
 

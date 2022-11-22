@@ -27,7 +27,7 @@ namespace yb {
 
 void SerializeValue(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
-    faststring* buffer) {
+    WriteBuffer* buffer) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   if (IsNull(pb)) {
     CQLEncodeLength(-1, buffer);
@@ -119,7 +119,7 @@ void SerializeValue(
     case MAP: {
       const QLMapValuePB& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
-      int32_t start_pos = CQLStartCollection(buffer);
+      auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(map.keys_size());
       CQLEncodeLength(length, buffer);
       const auto& keys_type = ql_type->params()[0];
@@ -133,7 +133,7 @@ void SerializeValue(
     }
     case SET: {
       const QLSeqValuePB& set = pb.set_value();
-      int32_t start_pos = CQLStartCollection(buffer);
+      auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(set.elems_size());
       CQLEncodeLength(length, buffer); // number of elements in collection
       const auto& elems_type = ql_type->param_type(0);
@@ -145,7 +145,7 @@ void SerializeValue(
     }
     case LIST: {
       const QLSeqValuePB& list = pb.list_value();
-      int32_t start_pos = CQLStartCollection(buffer);
+      auto start_pos = CQLStartCollection(buffer);
       int32_t length = static_cast<int32_t>(list.elems_size());
       CQLEncodeLength(length, buffer);
       const auto& elems_type = ql_type->param_type(0);
@@ -159,7 +159,7 @@ void SerializeValue(
     case USER_DEFINED_TYPE: {
       const QLMapValuePB& map = pb.map_value();
       DCHECK_EQ(map.keys_size(), map.values_size());
-      int32_t start_pos = CQLStartCollection(buffer);
+      auto start_pos = CQLStartCollection(buffer);
 
       // For every field the UDT has, we try to find a corresponding map entry. If found we
       // serialize the value, else null. Map keys should always be in ascending order.
@@ -183,7 +183,7 @@ void SerializeValue(
       switch (type->main()) {
         case MAP: {
           DCHECK_EQ(frozen.elems_size() % 2, 0);
-          int32_t start_pos = CQLStartCollection(buffer);
+          auto start_pos = CQLStartCollection(buffer);
           int32_t length = static_cast<int32_t>(frozen.elems_size() / 2);
           CQLEncodeLength(length, buffer);
           const auto& keys_type = type->params()[0];
@@ -197,7 +197,7 @@ void SerializeValue(
         }
         case SET: FALLTHROUGH_INTENDED;
         case LIST: {
-          int32_t start_pos = CQLStartCollection(buffer);
+          auto start_pos = CQLStartCollection(buffer);
           int32_t length = static_cast<int32_t>(frozen.elems_size());
           CQLEncodeLength(length, buffer); // number of elements in collection
           const auto& elems_type = type->param_type(0);
@@ -208,7 +208,7 @@ void SerializeValue(
           return;
         }
         case USER_DEFINED_TYPE: {
-          int32_t start_pos = CQLStartCollection(buffer);
+          auto start_pos = CQLStartCollection(buffer);
           for (int i = 0; i < frozen.elems_size(); i++) {
             SerializeValue(type->param_type(i), client, frozen.elems(i), buffer);
           }
@@ -225,7 +225,7 @@ void SerializeValue(
       const QLSeqValuePB& tuple = pb.tuple_value();
       size_t num_elems = tuple.elems_size();
       DCHECK_EQ(num_elems, ql_type->params().size());
-      int32_t start_pos = CQLStartCollection(buffer);
+      auto start_pos = CQLStartCollection(buffer);
       for (size_t i = 0; i < num_elems; i++) {
         SerializeValue(ql_type->param_type(i), client, tuple.elems(static_cast<int>(i)), buffer);
       }
