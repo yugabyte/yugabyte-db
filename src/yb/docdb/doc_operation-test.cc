@@ -324,7 +324,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(doc_db());
     const QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
-    faststring rows_data;
+    WriteBuffer rows_data(1024);
     QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
     DocReadContext doc_read_context(schema, 1);
@@ -334,7 +334,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
-    Slice data(rows_data.data(), rows_data.size());
+    auto data_str = rows_data.ToBuffer();
+    Slice data(data_str);
     EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
   }

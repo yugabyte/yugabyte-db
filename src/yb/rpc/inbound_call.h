@@ -157,7 +157,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual CoarseTimePoint GetClientDeadline() const = 0;
 
-  virtual void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
+  virtual void DoSerialize(ByteBlocks* output) = 0;
 
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.
@@ -206,7 +206,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   size_t DynamicMemoryUsage() const override;
 
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override final;
+  void Serialize(ByteBlocks* output) override final;
 
   const CallData& request_data() const { return request_data_; }
 

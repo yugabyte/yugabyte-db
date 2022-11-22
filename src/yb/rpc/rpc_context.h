@@ -56,12 +56,7 @@ class Message;
 namespace yb {
 
 class Trace;
-
-namespace util {
-
-class RefCntBuffer;
-
-}
+class WriteBuffer;
 
 namespace rpc {
 
@@ -274,21 +269,27 @@ class RpcContext {
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::Message& app_error_pb);
 
-  // Adds an RpcSidecar to the response. This is the preferred method for
-  // transferring large amounts of binary data, because this avoids additional
-  // copies made by serializing the protobuf.
-  //
-  // Assumes no changes to the sidecar's data are made after insertion.
-  //
-  // Returns the index of the sidecar.
-  size_t AddRpcSidecar(const Slice& car);
+  // Start new sidecar, returning WriteBuffer to fill sidecar to.
+  WriteBuffer& StartRpcSidecar();
+
+  // Complete started sidecar, returning sidecar index.
+  size_t CompleteRpcSidecar();
+
+  // Take sidecars from specified buffer, with specified offsets in this buffer.
+  // Returns index of the first taken sidecar.
+  size_t TakeSidecars(
+      WriteBuffer* sidecar_buffer, google::protobuf::RepeatedField<uint32_t>* offsets);
+
+  // Take sidecars from specified buffer, with specified bounds in this buffer.
+  // Returns index of the first taken sidecar.
+  size_t TakeSidecars(
+      const RefCntBuffer& buffer,
+      const boost::container::small_vector_base<const uint8_t*>& sidecar_bounds);
+
+  Slice GetFirstSidecar() const;
 
   // Removes all RpcSidecars.
   void ResetRpcSidecars();
-
-  // Like in STL reserve preallocates buffer, so adding new sidecars would not allocate memory
-  // up to space bytes.
-  void ReserveSidecarSpace(size_t space);
 
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;

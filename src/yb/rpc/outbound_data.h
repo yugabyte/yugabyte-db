@@ -51,7 +51,7 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
   virtual void Transferred(const Status& status, Connection* conn) = 0;
 
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
+  virtual void Serialize(ByteBlocks* output) = 0;
 
   virtual std::string ToString() const = 0;
 
@@ -79,8 +79,8 @@ class StringOutboundData : public OutboundData {
   void Transferred(const Status& status, Connection* conn) override {}
 
   // Serializes the data to be sent out via the RPC framework.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override {
-    output->push_back(buffer_);
+  void Serialize(ByteBlocks* output) override {
+    output->emplace_back(buffer_);
   }
 
   std::string ToString() const override { return name_; }
@@ -117,8 +117,8 @@ class SingleBufferOutboundData : public OutboundData {
     return false;
   }
 
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override {
-    output->push_back(std::move(buffer_));
+  void Serialize(ByteBlocks* output) override {
+    output->emplace_back(std::move(buffer_));
   }
 
   std::string ToString() const override {

@@ -992,7 +992,7 @@ class AuthSuccessResponse : public CQLResponse {
 class CQLServerEvent : public rpc::ServerEvent {
  public:
   explicit CQLServerEvent(std::unique_ptr<EventResponse> event_response);
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(rpc::ByteBlocks* output) const override;
   std::string ToString() const override;
   size_t ObjectSize() const { return sizeof(*this); }
   size_t DynamicMemoryUsage() const {
@@ -1012,7 +1012,7 @@ class CQLServerEventList : public rpc::ServerEventList {
  public:
   CQLServerEventList();
   void AddEvent(std::unique_ptr<CQLServerEvent> event);
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void Serialize(rpc::ByteBlocks* output) override;
   std::string ToString() const override;
 
   size_t ObjectSize() const override { return sizeof(CQLServerEventList); }

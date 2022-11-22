@@ -1463,7 +1463,8 @@ Status Tablet::HandleQLReadRequest(
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
-    QLReadRequestResult* result) {
+    QLReadRequestResult* result,
+    WriteBuffer* rows_data) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
@@ -1478,7 +1479,7 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        deadline, read_time, ql_read_request, *txn_op_ctx, result);
+        deadline, read_time, ql_read_request, *txn_op_ctx, result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
         metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1554,8 +1555,7 @@ Status Tablet::HandlePgsqlReadRequest(
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     const SubTransactionMetadataPB& subtransaction_metadata,
-    PgsqlReadRequestResult* result,
-    size_t* num_rows_read) {
+    PgsqlReadRequestResult* result) {
   TRACE(LogPrefix());
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
@@ -1571,7 +1571,7 @@ Status Tablet::HandlePgsqlReadRequest(
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
+      pgsql_read_request, table_info, *txn_op_ctx, result);
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);

@@ -28,7 +28,7 @@ class ServerEvent {
  public:
   virtual ~ServerEvent() {}
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const = 0;
+  virtual void Serialize(ByteBlocks* output) const = 0;
   virtual std::string ToString() const = 0;
 };
 
