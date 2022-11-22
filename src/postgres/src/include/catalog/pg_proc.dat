@@ -10394,4 +10394,12 @@
   proname => 'yb_pg_stat_get_backend_rss_mem_bytes', provolatile => 's',
   proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
   prosrc => 'yb_pg_stat_get_backend_rss_mem_bytes' },
+
+{ oid => '8048', descr => 'get TCMalloc, PG and PGgate usage for the current connection',
+  proname => 'yb_heap_stats', provolatile => 'v',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{int8,int8,int8,int8,int8,int8,int8}',
+  proargmodes => '{o,o,o,o,o,o,o}',
+  proargnames => '{total_heap_requested, total_heap_usage, total_heap_allocation, cached_free_memory, total_heap_released, PostgreSQL_memory_usage, PostgreSQL_storage_gateway_usage}',
+  prosrc => 'yb_heap_stats' },
 ]

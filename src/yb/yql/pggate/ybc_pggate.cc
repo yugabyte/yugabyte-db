@@ -244,13 +244,11 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  if (pgapi) {
 #ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
+    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
     *consumption = 0;
 #endif
-  }
   return YBCStatusOK();
 }
 
@@ -277,6 +275,19 @@ bool YBCTryMemRelease(int64_t bytes) {
     return true;
   }
   return false;
+}
+
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
+  memset(desc, 0x0, sizeof(YbTcmallocStats));
+#ifdef TCMALLOC_ENABLED
+  using mt = yb::MemTracker;
+  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
+  desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
+  desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  desc->pageheap_unmapped_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#endif
+  return YBCStatusOK();
 }
 
 //--------------------------------------------------------------------------------------------------
