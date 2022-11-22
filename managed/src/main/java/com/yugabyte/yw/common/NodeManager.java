@@ -112,6 +112,8 @@ public class NodeManager extends DevopsBase {
   public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+  public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
+  public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
@@ -2054,6 +2056,31 @@ public class NodeManager extends DevopsBase {
     tags.put("customer-uuid", customer.uuid.toString());
     tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    if (userIntent.providerType.equals(Common.CloudType.gcp)) {
+      // GCP does not allow special characters other than - and _
+      // Special characters being replaced here
+      // https://cloud.google.com/compute/docs/labeling-resources#requirements
+      if (nodeTaskParam.creatingUser != null) {
+        String email =
+            SPECIAL_CHARACTERS_PATTERN
+                .matcher(nodeTaskParam.creatingUser.getEmail())
+                .replaceAll("_");
+        tags.put("yb_user_email", email);
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        String url = SPECIAL_CHARACTERS_PATTERN.matcher(nodeTaskParam.platformUrl).replaceAll("_");
+        tags.put("yb_yba_url", url);
+      }
+
+    } else {
+      if (nodeTaskParam.creatingUser != null) {
+        tags.put("yb_user_email", nodeTaskParam.creatingUser.getEmail());
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        tags.put("yb_yba_url", nodeTaskParam.platformUrl);
+      }
+    }
   }
 
   private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
