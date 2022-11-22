@@ -219,7 +219,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
