@@ -83,6 +83,8 @@ bool YBCTryMemConsume(int64_t bytes);
 // Return true if MemTracker exists (inited by pggate); otherwise false.
 bool YBCTryMemRelease(int64_t bytes);
 
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------
