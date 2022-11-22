@@ -3368,7 +3368,12 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
 
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
   for (const auto& tid : table_ids) {
-    auto newstreams = FindCDCStreamsForTableToDeleteMetadata(tid);
+    std::vector<scoped_refptr<CDCStreamInfo>> newstreams;
+    {
+      LockGuard lock(mutex_);
+      cdcsdk_tables_to_stream_map_.erase(tid);
+      newstreams = FindCDCStreamsForTableToDeleteMetadata(tid);
+    }
     streams.insert(streams.end(), newstreams.begin(), newstreams.end());
   }
 
@@ -3422,7 +3427,6 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
 std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTableToDeleteMetadata(
     const TableId& table_id) const {
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
-  SharedLock lock(mutex_);
 
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
