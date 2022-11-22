@@ -181,6 +181,7 @@ public class Provider extends Model {
     return maskConfigNew(this.getUnmaskedConfig());
   }
 
+  // Get the decrypted config
   @JsonIgnore
   public Map<String, String> getUnmaskedConfig() {
     if (config == null) return new HashMap<>();

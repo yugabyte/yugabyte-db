@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
+
 import java.io.File;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -71,6 +73,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     try {
       // Add the security provider in case createSignedCertificate was never called.
       KeyPair newCertKeyPair = CertificateHelper.getKeyPairObject();
+      Boolean syncCertsToDB = username == CertificateHelper.DEFAULT_CLIENT;
 
       CertificateInfo certInfo = CertificateInfo.get(rootCA);
       if (certInfo.privateKey == null) {
@@ -111,7 +114,12 @@ public class CertificateSelfSigned extends CertificateProviderBase {
           CertificateHelper.getCertificateProperties(newCert));
 
       return CertificateHelper.dumpNewCertsToFile(
-          storagePath, certFileName, certKeyName, newCert, newCertKeyPair.getPrivate());
+          storagePath,
+          certFileName,
+          certKeyName,
+          newCert,
+          newCertKeyPair.getPrivate(),
+          syncCertsToDB);
 
     } catch (Exception e) {
       log.error(
@@ -131,6 +139,8 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     CertificateHelper.writeCertBundleToCertPath(
         Collections.singletonList(curCaCertificate), certPath);
     CertificateHelper.writeKeyFileContentToKeyPath(curKeyPair.getPrivate(), keyPath);
+    FileData.writeFileToDB(certPath);
+    FileData.writeFileToDB(keyPath);
     return new ImmutablePair<>(certPath, keyPath);
   }
 
