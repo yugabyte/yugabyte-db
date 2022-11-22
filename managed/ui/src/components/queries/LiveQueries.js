@@ -63,7 +63,7 @@ const dropdownColKeys = {
 };
 
 const LiveQueriesComponent = ({ location }) => {
-  const [type, setType] = useState('');
+  const [type, setType] = useState('YSQL');
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
@@ -95,16 +95,6 @@ const LiveQueriesComponent = ({ location }) => {
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    // Default to showing YSQL if YSQL tables are present
-    if (!type) {
-      if (ysqlQueries.length) {
-        setType('YSQL');
-      } else if (ycqlQueries.length) {
-        setType('YCQL');
-      }
-    }
-  }, [type, ycqlQueries, ysqlQueries]);
 
   const getTserverLink = (cell, row) => {
     const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
@@ -170,7 +160,6 @@ const LiveQueriesComponent = ({ location }) => {
     ? filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys)
     : filterBySearchTokens(ycqlQueries, searchTokens, dropdownColKeys);
 
-  const hasQueryData = !!(ysqlQueries.length || ycqlQueries.length);
   let failedQueries = null;
   if (isYSQL) {
     if (errors.ysql > 0) {
@@ -214,7 +203,6 @@ const LiveQueriesComponent = ({ location }) => {
                 btnClass="btn btn-default refresh-btn"
                 onClick={getLiveQueries}
               />
-              {hasQueryData && (
                 <div>
                   <div className="live-queries__dropdown-label">Show live queries</div>
                   <Dropdown id="queries-filter-dropdown" pullRight={true}>
@@ -232,7 +220,6 @@ const LiveQueriesComponent = ({ location }) => {
                     </Dropdown.Menu>
                   </Dropdown>
                 </div>
-              )}
             </div>
           </div>
         }
