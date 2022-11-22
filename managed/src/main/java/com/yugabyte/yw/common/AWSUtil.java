@@ -4,8 +4,12 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static org.mockito.ArgumentMatchers.nullable;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.amazonaws.ClientConfiguration;
+import com.amazonaws.ClientConfigurationFactory;
+import com.amazonaws.Protocol;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
@@ -54,11 +58,14 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 
 import io.ebean.annotation.EnumValue;
 
 import java.io.File;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
@@ -78,6 +85,8 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.CloudType;
+import org.yb.ybc.S3ProxySetting;
 
 @Singleton
 @Slf4j
@@ -227,12 +236,30 @@ public class AWSUtil implements CloudUtil {
     } else {
       s3ClientBuilder.withRegion(region);
     }
+    if (s3Data.proxySetting != null) {
+      ClientConfiguration cc = getClientConfiguration(s3Data.proxySetting);
+      s3ClientBuilder.withClientConfiguration(cc);
+    }
     try {
       return s3ClientBuilder.build();
     } catch (SdkClientException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
+  }
+
+  private static ClientConfiguration getClientConfiguration(ProxySetting proxySetting) {
+    ClientConfiguration cc = new ClientConfiguration();
+    cc.withProxyHost(proxySetting.proxy);
+    if (proxySetting.port > 0) {
+      cc.withProxyPort(proxySetting.port);
+    }
+    if (StringUtils.isNotBlank(proxySetting.username)
+        && StringUtils.isNotBlank(proxySetting.password)) {
+      cc.withProxyUsername(proxySetting.username);
+      cc.withProxyPassword(proxySetting.password);
+    }
+    return cc;
   }
 
   public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
@@ -340,6 +367,8 @@ public class AWSUtil implements CloudUtil {
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
+    CloudStoreSpec.Builder cloudStoreSpecBuilder =
+        CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
@@ -355,22 +384,37 @@ public class AWSUtil implements CloudUtil {
           splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
     }
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
-    return YbcBackupUtil.buildCloudStoreSpec(
-        bucket, cloudDir, previousCloudDir, s3CredsMap, Util.S3);
+    cloudStoreSpecBuilder
+        .setBucket(bucket)
+        .setPrevCloudDir(previousCloudDir)
+        .setCloudDir(cloudDir)
+        .putAllCreds(s3CredsMap);
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
+    }
+    return cloudStoreSpecBuilder.build();
   }
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CloudStoreSpec.Builder cloudStoreSpecBuilder =
+        CloudStoreSpec.newBuilder().setType(CloudType.S3);
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    cloudStoreSpecBuilder.setBucket(bucket).setPrevCloudDir("").putAllCreds(s3CredsMap);
     if (isDsm) {
       String location = BackupUtil.appendSlash(splitValues[1]);
-      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", s3CredsMap, Util.S3);
+      cloudStoreSpecBuilder.setCloudDir(location);
+    } else {
+      cloudStoreSpecBuilder.setCloudDir(cloudDir);
     }
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", s3CredsMap, Util.S3);
+    if (s3Data.proxySetting != null) {
+      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
+    }
+    return cloudStoreSpecBuilder.build();
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {
@@ -412,6 +456,21 @@ public class AWSUtil implements CloudUtil {
           INTERNAL_SERVER_ERROR,
           String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage()));
     }
+  }
+
+  private S3ProxySetting addYbcProxySettings(
+      CustomerConfigStorageS3Data.ProxySetting proxySettings) {
+    S3ProxySetting.Builder proxyBuilder = S3ProxySetting.newBuilder();
+    proxyBuilder.setProxyHost(proxySettings.proxy);
+    if (proxySettings.port > 0) {
+      proxyBuilder.setProxyPort(proxySettings.port);
+    }
+    if (StringUtils.isNotBlank(proxySettings.username)
+        && StringUtils.isNotBlank(proxySettings.password)) {
+      proxyBuilder.setProxyPassword(proxySettings.password);
+      proxyBuilder.setProxyUsername(proxySettings.username);
+    }
+    return proxyBuilder.build();
   }
 
   @Override
