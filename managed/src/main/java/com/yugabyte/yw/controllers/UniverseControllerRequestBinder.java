@@ -57,6 +57,7 @@ public class UniverseControllerRequestBinder {
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.platformUrl = request.host();
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
