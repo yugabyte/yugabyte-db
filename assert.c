@@ -278,10 +278,21 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 
 #endif
 
+
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
+#if PG_VERSION_NUM >= 160000
+
+	aclresult = object_aclcheck(NamespaceRelationId,namespaceId, GetUserId(),
+								ACL_USAGE);
+
+#else
+
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_USAGE);
+
+#endif
+
 	if (aclresult != ACLCHECK_OK)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
