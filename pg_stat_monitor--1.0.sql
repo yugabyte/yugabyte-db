@@ -178,7 +178,8 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT wal_fpi 			int8,
     OUT wal_bytes 			numeric,
     OUT comments 			TEXT,
-    OUT toplevel            BOOLEAN
+    OUT toplevel            BOOLEAN,
+	OUT	bucket_done			BOOLEAN
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'

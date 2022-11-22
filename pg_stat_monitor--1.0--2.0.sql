@@ -69,7 +69,8 @@ CREATE FUNCTION pg_stat_monitor_internal(
     OUT wal_fpi 			int8,
     OUT wal_bytes 			numeric,
     OUT comments 			TEXT,
-    OUT toplevel            BOOLEAN
+    OUT toplevel            BOOLEAN,
+	OUT bucket_done			BOOLEAN
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor_2_0'
@@ -124,7 +125,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	cpu_sys_time,
     wal_records,
     wal_fpi,
-    wal_bytes
+    wal_bytes,
+	bucket_done
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
 RETURN 0;
@@ -242,6 +244,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     wal_records,
     wal_fpi,
     wal_bytes,
+	bucket_done,
 
     plans_calls,
 	total_plan_time,

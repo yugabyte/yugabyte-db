@@ -36,7 +36,7 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "2.0.0-dev"
-#define PG_STAT_STATEMENTS_COLS         52	/* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         53	/* maximum of above */
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
 #define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
@@ -1613,15 +1613,12 @@ pg_stat_monitor(PG_FUNCTION_ARGS)
 static bool
 IsBucketValid(uint64 bucketid)
 {
-	struct tm	tm;
 	time_t		bucket_t,
 				current_t;
 	double		diff_t;
 	pgssSharedState *pgss = pgsm_get_ss();
 
-	memset(&tm, 0, sizeof(tm));
-	strptime(pgss->bucket_start_time[bucketid], "%Y-%m-%d %H:%M:%S", &tm);
-	bucket_t = mktime(&tm);
+	bucket_t = mktime(&pgss->bucket_start_time[bucketid]);
 
 	time(&current_t);
 	diff_t = difftime(current_t, bucket_t);
@@ -1674,7 +1671,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 51)
+	if (tupdesc->natts != 52)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1749,7 +1746,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		{
 			if (read_query(pgss_qbuf, tmp.info.parentid, parent_query_txt, 0) == 0)
 			{
-				int			rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
+				int rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
 
 				if (rc != 1)
 					snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
@@ -1892,7 +1889,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum(tmp.error.message);
 
 		/* bucket_start_time at column number 15 */
-		values[i++] = CStringGetDatum(pgss->bucket_start_time[entry->key.bucket_id]);
+		{
+			TimestampTz tm;
+			tm2timestamp((struct pg_tm*) &pgss->bucket_start_time[entry->key.bucket_id], 0, NULL, &tm);
+			values[i++] = TimestampGetDatum(tm);
+		}
 		if (tmp.calls.calls == 0)
 		{
 			/* Query of pg_stat_monitor itslef started from zero count */
@@ -2003,6 +2004,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				nulls[i++] = true;
 		}
 		values[i++] = BoolGetDatum(toplevel);
+		values[i++] = BoolGetDatum(pg_atomic_read_u64(&pgss->current_wbucket) != bucketid);
+
+		/* clean up and return the tuplestore */
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	/* clean up and return the tuplestore */
@@ -2086,13 +2090,16 @@ get_next_wbucket(pgssSharedState *pgss)
 
 		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
 		lt = localtime(&tv.tv_sec);
+		/*
+		 * Year is 1900 behind and month is 0 based, therefore we need to
+		 * adjust that.
+		 */
+		lt->tm_year += 1900;
+		lt->tm_mon += 1;
 
 		/* Allign the value in prev_bucket_sec to the bucket start time */
 		pg_atomic_exchange_u64(&pgss->prev_bucket_sec, (uint64)tv.tv_sec);
-
-		snprintf(pgss->bucket_start_time[new_bucket_id], sizeof(pgss->bucket_start_time[new_bucket_id]),
-			"%04d-%02d-%02d %02d:%02d:%02d", lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-
+		memcpy(&pgss->bucket_start_time[new_bucket_id], lt, sizeof(struct tm));
 		return new_bucket_id;
 	}
 
