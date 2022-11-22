@@ -5,24 +5,42 @@
 package cmd
 
 import (
-	//"bytes"
 	"fmt"
-	//"io/ioutil"
 	"os"
 	"strings"
-
-	//"log"
+	// "time"
 	"path/filepath"
-	"time"
 )
 
 // Component 1: Postgres
 type Postgres struct {
 	Name                string
 	SystemdFileLocation string
-	ConfFileLocation    []string
+	ConfFileLocation    string
+	templateFileName 		string
 	Version             string
+	MountPath						string
+	dataDir							string
+	PgCtl								string
+	LogFile							string
 }
+
+func NewPostgres(installRoot, version string) Postgres {
+	return Postgres{
+		"postgres",
+		SYSTEMD_DIR + "/postgres.service",
+		INSTALL_ROOT + "/postgres/conf",
+		"yba-installer-postgres.yml",
+		version,
+		INSTALL_ROOT + "/postgres/run/postgresql",
+		INSTALL_ROOT + "/data/postgres",
+		INSTALL_ROOT + "/postgres/bin/pg_ctl",
+		INSTALL_ROOT + "/data/logs/postgres.log"}
+}
+
+// var MountPath = INSTALL_ROOT + "/postgres/run/postgresql"
+// var pgDataDir = INSTALL_ROOT + "/data/postgres"
+// var pgConfDir = INSTALL_ROOT + "/postgres/conf"
 
 // Method of the Component
 // Interface are implemented by
@@ -35,12 +53,14 @@ func (pg Postgres) SetUpPrereqs() {
 
 func extractPostgresPackage() {
 
+	// TODO: Replace with tar package
 	command1 := "bash"
 	arg1 := []string{"-c", "tar -zvxf " + bundledPostgresName + " -C " +
 		INSTALL_ROOT}
 
 	ExecuteBashCommand(command1, arg1)
 
+	// TODO: I don't think we need this if we move data dirs to "INSTALL_ROOT/data/postgres"
 	// Retain data volumes if it doesn't exist.
 	if _, err := os.Stat(INSTALL_ROOT + "/postgres"); os.IsNotExist(err) {
 
@@ -62,16 +82,20 @@ func extractPostgresPackage() {
 }
 
 func (pg Postgres) Install() {
-	runInitDB()
+	pg.runInitDB()
+	// time.Sleep(5 * time.Second)
+	pg.setUpDataDir()
+	pg.modifyPostgresConf()
 	pg.Start()
-	// Enough time to create the Yugaware Database.
-	time.Sleep(5 * time.Second)
-	createYugawareDatabase()
+	pg.createYugawareDatabase()
 	if !hasSudoAccess() {
 		pg.CreateCronJob()
 	}
 }
 
+// TODO: This should generate the correct start string based on installation mode
+// and write it to the correct service file OR cron script.
+// Start starts the postgres process either via systemd or cron script.
 func (pg Postgres) Start() {
 
 	if hasSudoAccess() {
@@ -100,6 +124,7 @@ func (pg Postgres) Start() {
 	}
 }
 
+// Stop stops the postgres process either via systemd or cron script.
 func (pg Postgres) Stop() {
 
 	if hasSudoAccess() {
@@ -112,13 +137,12 @@ func (pg Postgres) Stop() {
 		// Delete the file used by the crontab bash script for monitoring.
 		os.RemoveAll(INSTALL_ROOT + "/postgres/testfile")
 
-		mountPath := INSTALL_ROOT + "/postgres/run/postgresql/"
 
 		command1 := "bash"
 		arg1 := []string{"-c",
-			INSTALL_ROOT + "/postgres/bin/pg_ctl -D " + INSTALL_ROOT + "/postgres/data " +
-				"-o \"-k " + mountPath + "\" " +
-				"-l " + INSTALL_ROOT + "/postgres/logfile stop"}
+			pg.PgCtl + " -D " + pg.ConfFileLocation +
+				" -o \"-k " + pg.MountPath + "\" " +
+				"-l " + INSTALL_ROOT + "/data/logs/postgres.log stop"}
 		ExecuteBashCommand(command1, arg1)
 	}
 
@@ -140,23 +164,25 @@ func (pg Postgres) Restart() {
 
 }
 
-func (pg Postgres) GetSystemdFile() string {
+func (pg Postgres) getSystemdFile() string {
 	return pg.SystemdFileLocation
 }
 
-func (pg Postgres) GetConfFile() []string {
+func (pg Postgres) getConfFile() string {
 	return pg.ConfFileLocation
 }
 
-// Per current cleanup.sh script.
-func (pg Postgres) Uninstall() {
+func (pg Postgres) getTemplateFile() string {
+	return pg.templateFileName
+}
 
-	mountPath := INSTALL_ROOT + "/postgres/run/postgresql/"
+// Uninstall drops the yugaware DB and removes Postgres binaries.
+func (pg Postgres) Uninstall(removeData bool) {
 
-	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h" + mountPath + " yugaware"
+	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h" + pg.MountPath + " yugaware"
 
 	command1 := "sudo"
-	arg1 := []string{"-u", "postgres", "bash", "-c", dropdbString}
+	arg1 := []string{"-u", "yugabyte", "bash", "-c", dropdbString}
 
 	if !hasSudoAccess() {
 
@@ -170,43 +196,29 @@ func (pg Postgres) Uninstall() {
 
 }
 
+// VersionInfo returns the postgres version.
 func (pg Postgres) VersionInfo() string {
 	return pg.Version
 }
 
-func runInitDB() {
+func (pg Postgres) runInitDB() {
 
-	os.Create(INSTALL_ROOT + "/postgres/logfile")
+	os.Create(INSTALL_ROOT + "/data/logs/postgres.log")
 
 	// Needed for socket acceptance in the non-root case.
-	os.MkdirAll(INSTALL_ROOT+"/postgres/run/postgresql", os.ModePerm)
+	CreateDir(pg.MountPath, os.ModePerm)
 
 	if hasSudoAccess() {
 
-		commandCheck := "bash"
-		argsCheck := []string{"-c", "id -u postgres"}
-		_, err := ExecuteBashCommand(commandCheck, argsCheck)
 
-		if err != nil {
-
-			commandUser := "useradd"
-			argUser := []string{"--no-create-home", "--shell", "/bin/false", "postgres"}
-			ExecuteBashCommand(commandUser, argUser)
-
-		} else {
-			LogDebug("User postgres already exists, skipping user creation.")
-		}
-
-		// Need to give the postgres user ownership of the entire postgres
+		// Need to give the yugabyte user ownership of the entire postgres
 		// directory.
-
-		ExecuteBashCommand("chown",
-			[]string{"-R", "postgres:postgres", INSTALL_ROOT + "/postgres/"})
+		Chown(INSTALL_ROOT + "/postgres/", "yugabyte", "yugabyte", true)
+		Chown(INSTALL_ROOT + "/data/logs/", "yugabyte", "yugabyte", true)
 
 		command3 := "sudo"
-		arg3 := []string{"-u", "postgres", "bash", "-c",
-			INSTALL_ROOT + "/postgres/bin/initdb -U " + "postgres -D " +
-				INSTALL_ROOT + "/postgres/data"}
+		arg3 := []string{"-u", "yugabyte", "bash", "-c",
+			INSTALL_ROOT + "/postgres/bin/initdb -U " + "yugabyte -D " + pg.ConfFileLocation}
 		ExecuteBashCommand(command3, arg3)
 
 	} else {
@@ -216,23 +228,52 @@ func runInitDB() {
 
 		command1 := "bash"
 		arg1 := []string{"-c",
-			INSTALL_ROOT + "/postgres/bin/initdb -U " + currentUser + " -D " +
-				INSTALL_ROOT + "/postgres/data"}
+			INSTALL_ROOT + "/postgres/bin/initdb -U " + currentUser + " -D " + pg.ConfFileLocation}
 		ExecuteBashCommand(command1, arg1)
 
 	}
 
 }
 
-func createYugawareDatabase() {
+// Set the data directory in postgresql.conf
+func (pg Postgres) modifyPostgresConf() {
+	// work to set data directory separate in postgresql.conf
+	pgConfPath := pg.ConfFileLocation + "/postgresql.conf"
+	confFile, err := os.OpenFile(pgConfPath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		LogError(fmt.Sprintf("Error: %s reading file %s", err.Error(), pgConfPath))
+	}
+	defer confFile.Close()
+	if _, err := confFile.WriteString(fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)); err != nil {
+		LogError(fmt.Sprintf("Error: %s writing to %s", err.Error(), pgConfPath))
+	}
 
-	mountPath := INSTALL_ROOT + "/postgres/run/postgresql"
+}
 
-	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h " + mountPath + " yugaware"
-	createdbString := INSTALL_ROOT + "/postgres/bin/createdb -h " + mountPath + " yugaware"
+// Move required files from initdb to the new data directory
+func (pg Postgres) setUpDataDir() {
+	if hasSudoAccess() {
+		// move init conf to data dir
+		ExecuteBashCommand("sudo", []string{"-u", "yugabyte", "mv", pg.ConfFileLocation, pg.dataDir})
+
+		// move conf files back to conf location
+		CreateDir(pg.ConfFileLocation, 0700)
+		Chown(pg.ConfFileLocation, "yugabyte", "yugabyte", false)
+		ExecuteBashCommand(
+			"sudo",
+			[]string{"-u", "yugabyte", "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
+							 pg.ConfFileLocation, ";"})
+
+	}
+}
+
+func (pg Postgres) createYugawareDatabase() {
+
+	dropdbString := INSTALL_ROOT + "/postgres/bin/dropdb -h " + pg.MountPath + " yugaware"
+	createdbString := INSTALL_ROOT + "/postgres/bin/createdb -h " + pg.MountPath + " yugaware"
 
 	command1 := "sudo"
-	arg1 := []string{"-u", "postgres", "bash", "-c", dropdbString}
+	arg1 := []string{"-u", "yugabyte", "bash", "-c", dropdbString}
 
 	if !hasSudoAccess() {
 
@@ -248,7 +289,7 @@ func createYugawareDatabase() {
 	}
 
 	command2 := "sudo"
-	arg2 := []string{"-u", "postgres", "bash", "-c", createdbString}
+	arg2 := []string{"-u", "yugabyte", "bash", "-c", createdbString}
 
 	if !hasSudoAccess() {
 
@@ -260,6 +301,7 @@ func createYugawareDatabase() {
 	ExecuteBashCommand(command2, arg2)
 }
 
+// TODO: replace with pg_ctl status
 // Status prints the status output specific to Postgres.
 func (pg Postgres) Status() {
 
@@ -302,13 +344,14 @@ func (pg Postgres) Status() {
 	}
 
 	outString := name + "\t" + pg.Version + "\t" + port +
-		"\t" + pg.ConfFileLocation[0] + "\t" +
+		"\t" + pg.ConfFileLocation + "\t" +
 		systemdLoc + "\t" + runningStatus + "\t"
 
 	fmt.Fprintln(statusOutput, outString)
 
 }
 
+// CreateCronJob sets up the cron script in the cron tab.
 func (pg Postgres) CreateCronJob() {
 	restartSeconds := getYamlPathData(".postgres.restartSeconds")
 	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + pg.Name + "NonRoot.sh"

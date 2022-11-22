@@ -1,10 +1,8 @@
   services:
   - name: prometheusConfig
-    fileName: {{ installRoot }}/prometheus/conf/prometheus.yml
+    fileName: '{{ .ConfFileLocation }}'
     contents: |
       # Copyright (c) YugaByte, Inc.
-
-      # This is a template for auto-generated file for prometheus configuration
 
       global:
         # By default, scrape targets every 15 seconds.
@@ -18,7 +16,8 @@
           monitor: 'swamper'
 
       rule_files:
-      - '{{ installRoot }}/prometheus/swamper_rules/yugaware.ad.*.yml'
+      - '{{ .DataDir }}/swamper_rules/yugaware.ad.*.yml'
+      - '{{ .DataDir }}/swamper_rules/yugaware.recording-rules.yml'
 
       # A list of scrape configurations.
       scrape_configs:
@@ -41,7 +40,7 @@
       - job_name: "node"
         file_sd_configs:
           - files:
-            - '{{ installRoot }}/prometheus/swamper_targets/node.*.json'
+            - '{{ .DataDir }}/swamper_targets/node.*.json'
         metric_relabel_configs:
         # Below relabels are required for smooth migration from node_exporter 0.13.0 to latest
         - source_labels: ["__name__"]
@@ -143,7 +142,7 @@
             |glog_[^_]+_messages|follower_lag_ms"
         file_sd_configs:
           - files:
-            - '{{ installRoot }}/prometheus/swamper_targets/yugabyte.*.json'
+            - '{{ .DataDir }}/swamper_targets/yugabyte.*.json'
         metric_relabel_configs:
         - source_labels: ["__name__"]
           regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
@@ -165,8 +164,9 @@
           regex: "(.*)"
           target_label: "saved_name"
           replacement: "$1"
+
   - name: prometheusService
-    fileName: /etc/systemd/system/prometheus.service
+    fileName: "{{ .SystemdFileLocation }}"
     contents: |
       [Unit]
       Description=Prometheus
@@ -174,14 +174,14 @@
       After=network-online.target
 
       [Service]
-      User=prometheus
-      Group=prometheus
+      User=yugabyte
+      Group=yugabyte
       Type=simple
       ExecStart=/usr/local/bin/prometheus \
-      --config.file {{ installRoot }}/prometheus/conf/prometheus.yml \
-      --storage.tsdb.path {{ installRoot }}/prometheus/storage \
-      --web.console.templates={{ installRoot }}/prometheus/consoles \
-      --web.console.libraries={{ installRoot }}/prometheus/console_libraries \
+      --config.file {{ .ConfFileLocation }} \
+      --storage.tsdb.path {{ .DataDir }}/storage \
+      --web.console.templates={{ .PromDir }}/consoles \
+      --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
       --web.enable-lifecycle \
       --web.listen-address=:{{ yamlPath ".prometheus.externalPort" }} \
@@ -191,7 +191,6 @@
 
       Restart=always
       RestartSec={{ yamlPath ".prometheus.restartSeconds"}}
-
 
       [Install]
       WantedBy=multi-user.target

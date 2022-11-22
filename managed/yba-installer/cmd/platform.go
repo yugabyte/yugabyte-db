@@ -5,7 +5,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -20,9 +19,19 @@ type Platform struct {
 	Name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
+	templateFileName		string
 	Version             string
 	CorsOrigin          string
-	UseOIDCSso          bool
+}
+
+func NewPlatform(installRoot, version string) Platform {
+	return Platform{
+		"yb-platform",
+		SYSTEMD_DIR + "/yb-platform.service",
+		installRoot + "/yb-platform/conf/yb-platform.conf",
+		"yba-installer-platform.yml",
+		version,
+		GenerateCORSOrigin()}
 }
 
 // Method of the Component
@@ -32,12 +41,12 @@ type Platform struct {
 
 func (plat Platform) Install() {
 
-	createNecessaryDirectories(plat.Version)
-	createDevopsAndYugawareDirectories(plat.Version)
-	untarDevopsAndYugawarePackages(plat.Version)
-	copyYugabyteReleaseFile(plat.Version)
-	copyYbcPackages(plat.Version)
-	renameAndCreateSymlinks(plat.Version)
+	plat.createNecessaryDirectories()
+	plat.createDevopsAndYugawareDirectories()
+	plat.untarDevopsAndYugawarePackages()
+	plat.copyYugabyteReleaseFile()
+	plat.copyYbcPackages()
+	plat.renameAndCreateSymlinks()
 	configureConfHTTPS()
 
 	//Create the platform.log file so that we can start platform as
@@ -53,45 +62,34 @@ func (plat Platform) Install() {
 	// be properly created as the Yugabyte User, under the Sudo method
 	// of installation.
 	if hasSudoAccess() {
-
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/yb-platform"})
-		swamperTargetsDir := []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/prometheus/swamper_targets"}
-		swamperRulesDir := []string{"yugabyte:yugabyte", "-R", INSTALL_ROOT + "/prometheus/swamper_rules"}
-		ExecuteBashCommand("chown", swamperTargetsDir)
-		ExecuteBashCommand("chown", swamperRulesDir)
-
+		Chown(INSTALL_ROOT, "yugabyte", "yugabyte", true)
 	}
 
-	// At the end of the installation, we rename .installStarted to .installCompleted, to signify that the
+	// At the end of the installation, we rename .installStarted to .installCompleted, to signify the
 	// install has finished succesfully.
 	MoveFileGolang(INSTALL_ROOT+"/.installStarted", INSTALL_ROOT+"/.installCompleted")
 
 }
 
-func createNecessaryDirectories(version string) {
+func (plat Platform) createNecessaryDirectories() {
 
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/releases/"+version, os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_targets", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/prometheus/swamper_rules", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/data", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/third-party", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/release", os.ModePerm)
-	os.MkdirAll(INSTALL_ROOT+"/yb-platform/ybc/releases", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/yb-platform", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/data/yb-platform/releases/"+plat.Version, os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/data/yb-platform/ybc/release", os.ModePerm)
+	os.MkdirAll(INSTALL_ROOT+"/data/yb-platform/ybc/releases", os.ModePerm)
 
 }
 
-func createDevopsAndYugawareDirectories(version string) {
+func (plat Platform) createDevopsAndYugawareDirectories() {
 
-	packageFolder := "yugabyte-" + version
-	os.MkdirAll(INSTALL_VERSION_DIR+"/packages/"+packageFolder+"/devops", os.ModePerm)
-	os.MkdirAll(INSTALL_VERSION_DIR+"/packages/"+packageFolder+"/yugaware", os.ModePerm)
+	os.MkdirAll(plat.getDevopsDir(), os.ModePerm)
+	os.MkdirAll(INSTALL_VERSION_DIR+"/packages/"+plat.getPackageFolder()+"/yugaware", os.ModePerm)
 
 }
 
-func untarDevopsAndYugawarePackages(version string) {
+func (plat Platform) untarDevopsAndYugawarePackages() {
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
+	packageFolderPath := plat.getPackageFolderPath()
 
 	files, err := ioutil.ReadDir(packageFolderPath)
 	if err != nil {
@@ -132,10 +130,9 @@ func untarDevopsAndYugawarePackages(version string) {
 
 }
 
-func copyYugabyteReleaseFile(version string) {
+func (plat Platform) copyYugabyteReleaseFile() {
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
+	packageFolderPath := plat.getPackageFolderPath()
 
 	files, err := ioutil.ReadDir(packageFolderPath)
 	if err != nil {
@@ -148,14 +145,14 @@ func copyYugabyteReleaseFile(version string) {
 			yugabyteTgzName := f.Name()
 			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
 			CopyFileGolang(yugabyteTgzPath,
-				INSTALL_ROOT+"/yb-platform/releases/"+version+"/"+yugabyteTgzName)
+				INSTALL_ROOT+"/data/yb-platform/releases/"+plat.Version+"/"+yugabyteTgzName)
 
 		}
 	}
 }
 
-func copyYbcPackages(version string) {
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/yugabyte-" + version
+func (plat Platform) copyYbcPackages() {
+	packageFolderPath := INSTALL_VERSION_DIR + "/packages/yugabyte-" + plat.Version
 	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
 
 	matches, err := filepath.Glob(ybcPattern)
@@ -168,38 +165,35 @@ func copyYbcPackages(version string) {
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
-		CopyFileGolang(f, INSTALL_ROOT+"/yb-platform/ybc/release/" + fileName)
+		CopyFileGolang(f, INSTALL_ROOT+"/data/yb-platform/ybc/release/" + fileName)
 	}
 
 }
-func renameAndCreateSymlinks(version string) {
 
-	packageFolder := "yugabyte-" + version
-	packageFolderPath := INSTALL_VERSION_DIR + "/packages/" + packageFolder
+func (plat Platform) renameAndCreateSymlinks() {
 
-	command1 := "ln"
-	path1a := packageFolderPath + "/yugaware"
+	packageFolderPath := plat.getPackageFolderPath()
 
-	path1b := INSTALL_ROOT + "/yb-platform/yugaware"
-	arg1 := []string{"-sf", path1a, path1b}
+	yugawarePackagePath := packageFolderPath + "/yugaware"
 
-	if _, err := os.Stat(path1b); err == nil {
-		pathBackup := packageFolderPath + "/yugaware_backup"
-		MoveFileGolang(path1b, pathBackup)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(command1, arg1)
-	}
+	yugawareSymlink := INSTALL_ROOT + "/yb-platform/yugaware"
 
-	command2 := "ln"
-	path2a := packageFolderPath + "/devops"
-	path2b := INSTALL_ROOT + "/yb-platform/devops"
-	arg2 := []string{"-sf", path2a, path2b}
+	devopsPackagePath := packageFolderPath + "/devops"
+	devopsSymlink := INSTALL_ROOT + "/yb-platform/devops"
 
-	if _, err := os.Stat(path2b); err == nil {
-		pathBackup := packageFolderPath + "/devops_backup"
-		MoveFileGolang(path2b, pathBackup)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(command2, arg2)
+	if hasSudoAccess() {
+		err := os.Symlink(yugawarePackagePath, yugawareSymlink)
+		if err != nil {
+			LogError(fmt.Sprintf("Error %s creating symlink %s to %s",
+			 				 	err.Error(), yugawareSymlink, yugawarePackagePath))
+		}
+		err = os.Symlink(devopsPackagePath, devopsSymlink)
+		if err != nil {
+			LogError(fmt.Sprintf("Error %s creating symlink %s to %s",
+								err.Error(), devopsSymlink, devopsPackagePath))
+		}
+	} else {
+		LogError("Symlinking not implemented for non-root.")
 	}
 
 }
@@ -208,17 +202,10 @@ func (plat Platform) Start() {
 
 	if hasSudoAccess() {
 
-		arg1 := []string{"daemon-reload"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
-
-		arg2 := []string{"enable", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg2)
-
-		arg3 := []string{"start", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg3)
-
-		arg4 := []string{"status", "yb-platform.service"}
-		ExecuteBashCommand(SYSTEMCTL, arg4)
+		ExecuteBashCommand(SYSTEMCTL, []string{"daemon-reload"})
+		ExecuteBashCommand(SYSTEMCTL, []string{"enable", filepath.Base(plat.SystemdFileLocation)})
+		ExecuteBashCommand(SYSTEMCTL, []string{"start", filepath.Base(plat.SystemdFileLocation)})
+		ExecuteBashCommand(SYSTEMCTL, []string{"status", filepath.Base(plat.SystemdFileLocation)})
 
 	} else {
 
@@ -285,16 +272,36 @@ func (plat Platform) Restart() {
 
 }
 
-func (plat Platform) GetSystemdFile() string {
+func (plat Platform) getSystemdFile() string {
 	return plat.SystemdFileLocation
 }
 
-func (plat Platform) GetConfFile() string {
+func (plat Platform) getConfFile() string {
 	return plat.ConfFileLocation
 }
 
+func (plat Platform) getTemplateFile() string {
+	return plat.templateFileName
+}
+
+func (plat Platform) getDevopsDir() string {
+	return plat.getPackageFolderPath() + "/devops"
+}
+
+func (plat Platform) getPackageFolder() string {
+	return "yugabyte-" + plat.Version
+}
+
+func (plat Platform) getPackageFolderPath() string {
+	return INSTALL_VERSION_DIR + "/packages/" + plat.getPackageFolder()
+}
+
+func (plat Platform) getBackupScript() string {
+	return plat.getDevopsDir() + "/bin/yb_platform_backup.sh"
+}
+
 // Per current cleanup.sh script.
-func (plat Platform) Uninstall() {
+func (plat Platform) Uninstall(removeData bool) {
 	plat.Stop()
 	RemoveAllExceptDataVolumes([]string{"platform"})
 }
@@ -369,12 +376,14 @@ func configureConfHTTPS() {
 		"-keystore-password " + keyStorePassword + " -cert-file myserver=cert.pem " +
 		"-key-file myserver=key.pem"})
 
-	ExecuteBashCommand("bash", []string{"-c", "cp " + "server.ks" + " " + INSTALL_ROOT + "/yb-platform/certs"})
+	ExecuteBashCommand("bash",
+		[]string{"-c", "cp " + "server.ks" + " " + INSTALL_ROOT + "/yb-platform/certs"})
 
 	if hasSudoAccess() {
 
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs"})
-		ExecuteBashCommand("chown", []string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs/server.ks"})
+		ExecuteBashCommand(CHOWN, []string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs"})
+		ExecuteBashCommand(CHOWN,
+			[]string{"yugabyte:yugabyte", INSTALL_ROOT + "/yb-platform/certs/server.ks"})
 
 	}
 }
