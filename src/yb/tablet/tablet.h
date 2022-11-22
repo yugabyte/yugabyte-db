@@ -301,7 +301,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
   Status GetIntents(
-      const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+      const TransactionId& id,
+      std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.

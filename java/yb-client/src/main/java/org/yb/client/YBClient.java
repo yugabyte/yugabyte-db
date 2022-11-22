@@ -1522,19 +1522,34 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of child tablets for a given parent tablet.
+   *
+   * @param table    the {@link YBTable} instance of the table
+   * @param streamId the DB stream ID to read from in the cdc_state table
+   * @param tableId  the UUID of the table to which the parent tablet belongs
+   * @param tabletId the UUID of the parent tablet
+   * @return an RPC response containing the list of child tablets
+   * @throws Exception
+   */
+  public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
+      YBTable table, String streamId, String tableId, String tabletId) throws Exception {
+    Deferred<GetTabletListToPollForCDCResponse> d = asyncClient
+      .getTabletListToPollForCdc(table, streamId, tableId, tabletId);
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the list of tablets by reading the entries in the cdc_state table for a given table and
    * DB stream ID.
    * @param table the {@link YBTable} instance of the table
    * @param streamId the DB stream ID to read from in the cdc_state table
-   * @param tableId the UUID of the table to get the tablet list for
-   * @return an RPC response containing the list of tablets to poll for a given table
+   * @param tableId the UUID of the table for which we need the tablets to poll for
+   * @return an RPC response containing the list of tablets to poll for
    * @throws Exception
    */
   public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
     YBTable table, String streamId, String tableId) throws Exception {
-    Deferred<GetTabletListToPollForCDCResponse> d = asyncClient
-      .getTabletListToPollForCdc(table, streamId, tableId);
-    return d.join(2*getDefaultAdminOperationTimeoutMs());
+    return getTabletListToPollForCdc(table, streamId, tableId, "");
   }
 
   /**

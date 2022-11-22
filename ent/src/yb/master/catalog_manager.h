@@ -467,7 +467,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Find CDC streams for a table to clean its metadata.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
-      const TableId& table_id) const;
+      const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override REQUIRES_SHARED(mutex_);
 
