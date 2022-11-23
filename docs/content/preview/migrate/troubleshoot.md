@@ -161,7 +161,7 @@ CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
 
 ---
 
-### Issue #320: [MySQL] Issue when exporting data from MySQL with table_name including quotes
+### Issue #320: [MySQL] Exporting data from MySQL when table names include quotes
 
 **GitHub link**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
 
