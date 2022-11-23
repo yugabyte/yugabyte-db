@@ -13,27 +13,12 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
-    <a href="../scaling-transactions/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-<!--
-  <li >
-    <a href="../scaling-transactions-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
--->
-</ul>
-
-This page demonstrates YugabyteDB's horizontal scale-out and scale-in capability. With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second). This tutorial shows how YugabyteDB can scale while running a read-write workload. Using the prepackaged [YB Simulation Base Demo application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a 3-node local cluster with a replication factor of 3, you add nodes while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+This tutorial demonstrates YugabyteDB's horizontal scale-out and scale-in capability. With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second). This tutorial shows how YugabyteDB can scale while running a read-write workload. Using the prepackaged [YB Simulation Base Demo application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a local three-node cluster with a replication factor of 3, you add nodes while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 {{% explore-setup-multi %}}
+
+You should have the setup ready with a running local three-node cluster and the YB Simulation Base Demo application running a read-write workload. Navigate to the application's UI at <http://localhost:8080/> to view the cluster's network diagram, Latency and Throughput charts for your workload.
 
 ## Observe IOPS per node
 
@@ -61,11 +46,9 @@ Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/
 
 The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
-<!-- ![Read and write IOPS with 4 nodes - Rebalancing in progress](/images/ce/transactions_newnode_adding_observe.png) -->
-
 ![Read and write IOPS with 4 nodes](/images/ce/add-node-ybtserver.png)
 
-You can notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the new node being added to the network diagram. You can also notice a slight spike and drop in the latency and throughput when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-graph.png)
 
@@ -80,19 +63,15 @@ $ ./bin/yugabyted stop \
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. The `Time since heartbeat` value for that node will keep increasing. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
 
-<!-- ![Read and write IOPS with 4th node dead](/images/ce/transactions_deleting_observe.png) -->
-
-<!-- ![Read and write IOPS with 4th node removed](/images/ce/transactions_deleted_observe.png) -->
-
 ![Read and write IOPS with 4th node dead](/images/ce/stop-node-ybtserver.png)
 
-When the node is stopped, you can notice a slight spike and drop in the latency and throughput, both of which resume immediately as follows:
+Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped. Note that it may take about 60s (1 minute) to display the updated network diagram. You can also notice a slight spike and drop in the latency and throughput, both of which resume immediately as follows:
 
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
-## Clean up (optional)
+## Clean up
 
-Optionally, to shut down the local cluster you created, do the following:
+To shut down the local cluster you created, do the following:
 
 ```sh
 ./bin/yugabyted destroy --base_dir=/tmp/ybd1
