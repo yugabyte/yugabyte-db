@@ -48,7 +48,10 @@ public class CertificateHelperTest extends FakeDBApplication {
   @Before
   public void setUp() {
     c = ModelFactory.testCustomer();
-    certPath = String.format("/tmp/" + getClass().getSimpleName() + "/certs/%s/", c.uuid);
+    certPath =
+        String.format(
+            "/tmp" + File.separator + getClass().getSimpleName() + File.separator + "certs/%s",
+            c.uuid);
     spyConf = spy(app.config());
     doReturn("/tmp/" + getClass().getSimpleName()).when(spyConf).getString("yb.storage.path");
     new File(certPath).mkdirs();

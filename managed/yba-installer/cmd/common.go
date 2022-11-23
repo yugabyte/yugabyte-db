@@ -92,7 +92,7 @@ func (com Common) Install() {
 	copyBits(com.Version)
 	//installPrerequisites()
 	createYugabyteUser()
-	GenerateTemplatedConfiguration()
+	GenerateTemplatedConfiguration(SERVICES)
 	com.extractPlatformSupportPackageAndYugabundle(com.Version)
 	com.renameThirdPartyDependencies()
 	setupJDK()
@@ -104,8 +104,11 @@ func copyBits(vers string) {
 
 	// We make the install directory only if it doesn't exist. In pre-flight checks,
 	// we look to see that the INSTALL_ROOT directory has free space and is writeable.
-
-	os.MkdirAll(INSTALL_ROOT, os.ModePerm)
+	dataDir := INSTALL_ROOT + "/data/logs"
+	err := os.MkdirAll(dataDir, os.ModePerm)
+	if err != nil && !os.IsExist(err) {
+		LogError(fmt.Sprintf("Making path %s failed, error %s", dataDir, err.Error()))
+	}
 
 	// .installStarted written at the beginning of Installations, and renamed to
 	// .installCompleted at the end of the install. That way, if an install fails midway,
@@ -145,6 +148,11 @@ func copyBits(vers string) {
 // Uninstall performs the uninstallation procedures common to
 // all services when executing a clean.
 func (com Common) Uninstall() {
+
+	// 1) Stop all running service processes
+	// 2) Delete service files (in root mode)/Stop cron/cleanup crontab in NonRoot
+	// 3) Delete service directories
+	// 4) Delete data dir in force mode (warn/ask for confirmation)
 
 	service0 := "yb-platform"
 	service1 := "prometheus"
@@ -196,6 +204,7 @@ func (com Common) Uninstall() {
 // RemoveAllExceptDataVolumes removes the install directory from the host's
 // operating system, except for data volumes specified in the input config
 // file.
+// TODO: Simplify: can probably just remove INSTALL_ROOT/service and leave INSTALL_ROOT/data intact
 func RemoveAllExceptDataVolumes(services []string) {
 
 	dataVolumesList := []string{}
@@ -256,7 +265,7 @@ func (com Common) Upgrade() {
 
 	RemoveAllExceptDataVolumes([]string{"yb-platform", "prometheus", "postgres"})
 	copyBits(com.Version)
-	GenerateTemplatedConfiguration()
+	GenerateTemplatedConfiguration(SERVICES)
 	com.extractPlatformSupportPackageAndYugabundle(com.Version)
 	com.renameThirdPartyDependencies()
 	setupJDK()
@@ -402,6 +411,7 @@ func (com Common) renameThirdPartyDependencies() {
 	}
 	LogDebug(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz successfully extracted.")
 	MoveFileGolang(INSTALL_VERSION_DIR+"/thirdparty", INSTALL_VERSION_DIR+"/third-party")
+	//TODO: There is an error here because INSTALL_ROOT + "/yb-platform/third-party" does not exist
 	ExecuteBashCommand("bash", []string{"-c",
 		"cp -R " + INSTALL_VERSION_DIR + "/third-party" + " " + INSTALL_ROOT + "/yb-platform/third-party"})
 }

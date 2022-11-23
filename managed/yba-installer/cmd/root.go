@@ -57,26 +57,14 @@ var ports = []string{"5432", "9000", "9090"}
 var statusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
 	tabwriter.Debug|tabwriter.AlignRight)
 
-// SYSTEMCTL command we use to start services as root.
-var SYSTEMCTL string = "systemctl"
-
-var postgres = Postgres{"Postgres",
-	"/etc/systemd/system/postgres.service",
-	[]string{INSTALL_ROOT + "/postgres/pgsql/data/pg_hba.conf",
-		INSTALL_ROOT + "/postgres/pgsql/data/postgresql.conf"},
-	"9.6"}
-
-var prometheus = Prometheus{"Prometheus",
-	"/etc/systemd/system/prometheus.service",
-	INSTALL_ROOT + "/prometheus/conf/prometheus.yml",
-	"2.39.0", false}
-
-var platform = Platform{"Platform",
-	"/etc/systemd/system/yb-platform.service",
-	INSTALL_ROOT + "/yb-platform/conf/yb-platform.conf",
-	version, corsOrigin, false}
+var postgres = NewPostgres(INSTALL_ROOT, "9.6")
+var prometheus = NewPrometheus(INSTALL_ROOT, "2.39.0", false)
+var platform = NewPlatform(INSTALL_ROOT, version)
 
 var common = Common{"common", version}
+
+// List of services required for YBA installation.
+var SERVICES = []component{postgres, prometheus, platform}
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",
@@ -134,26 +122,36 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-var cleanCmd = &cobra.Command{
-	Use:   "clean",
-	Short: "The clean command uninstalls your Yugabyte Anywhere instance.",
-	Long: `
-    The clean command performs a complete removal of your Yugabyte Anywhere
-    Instance by stopping all services, removing data directories, and dropping the
-    Yugabyte Anywhere database.`,
-	Run: func(cmd *cobra.Command, args []string) {
+func cleanCmd() *cobra.Command {
+	var removeData bool
+	clean := &cobra.Command{
+		Use:   "clean",
+		Short: "The clean command uninstalls your Yugabyte Anywhere instance.",
+		Long: `
+    	The clean command performs a complete removal of your Yugabyte Anywhere
+    	Instance by stopping all services and (optionally) removing data directories.`,
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
 
-		ValidateArgLength("clean", args, -1, 0)
+			// ValidateArgLength("clean", args, -1, 0)
 
-		common := Common{"common", version}
+			// TODO: Only clean up per service.
+			common := Common{"common", version}
 
-		steps[common.Name] = []functionPointer{
-			common.Uninstall}
+			steps[common.Name] = []functionPointer{
+				common.Uninstall}
 
-		order = []string{common.Name}
+			order = []string{common.Name}
 
-		loopAndExecute("clean")
-	},
+			loopAndExecute("clean")
+			for _, service := range SERVICES {
+				service.Uninstall(removeData)
+			}
+		},
+	}
+	clean.Flags().BoolVar(&removeData, "all", false, "also clean out data (default: false)")
+	return clean
+
 }
 
 func preflightCmd() *cobra.Command {
@@ -318,7 +316,7 @@ var paramsCmd = &cobra.Command{
 		value := args[1]
 
 		Params(key, value)
-		GenerateTemplatedConfiguration()
+		GenerateTemplatedConfiguration(SERVICES)
 
 		if !hasSudoAccess() {
 			prometheus.CreateCronJob()
@@ -359,7 +357,7 @@ var reConfigureCmd = &cobra.Command{
 
 		}
 
-		GenerateTemplatedConfiguration()
+		GenerateTemplatedConfiguration(SERVICES)
 
 		steps[postgres.Name] = []functionPointer{postgres.Stop, postgres.Start}
 
@@ -408,7 +406,7 @@ func createBackupCmd() *cobra.Command {
 			outputPath := args[0]
 
 			CreateBackupScript(outputPath, dataDir, excludePrometheus,
-				skipRestart, verbose)
+				skipRestart, verbose, platform)
 		},
 	}
 
@@ -443,7 +441,7 @@ func restoreBackupCmd() *cobra.Command {
 
 			inputPath := args[0]
 
-			RestoreBackupScript(inputPath, destination, skipRestart, verbose)
+			RestoreBackupScript(inputPath, destination, skipRestart, verbose, platform)
 		},
 	}
 
@@ -596,7 +594,7 @@ func loopAndExecute(action string) {
 }
 
 func init() {
-	rootCmd.AddCommand(cleanCmd, preflightCmd(), licenseCmd, versionCmd,
+	rootCmd.AddCommand(cleanCmd(), preflightCmd(), licenseCmd, versionCmd,
 		paramsCmd, reConfigureCmd, createBackupCmd(), restoreBackupCmd(), installCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 

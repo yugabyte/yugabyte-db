@@ -51,7 +51,7 @@ To start building your application, make sure you have met the [prerequisites](.
 
 Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
+The YugabyteDB Psycopg2 requires PostgreSQL version 12 or later (preferably 14).
 
 After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
@@ -194,6 +194,10 @@ Query returned: John, 35, Python
 ```
 
 If there is no output or you get an error, verify the parameters included in the connection string.
+
+### Limitations
+
+Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 
 ## Learn more
 

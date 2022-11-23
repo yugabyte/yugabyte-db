@@ -7604,16 +7604,16 @@ Status CatalogManager::ValidateNewSchemaWithCdc(const TableInfo& table_info,
     auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id);
     SCHECK(stream_entry, NotFound, Substitute("Missing stream $0:$1", universe_id, stream_id));
 
+    // If we are halted on a Schema update as a Consumer...
     auto& producer_schema_pb = stream_entry->producer_schema();
     if (producer_schema_pb.has_pending_schema()) {
-      // Compare the local Consumer schema to the Producer's schema.
+      // Compare our new schema to the Producer's pending schema.
       Schema producer_schema;
       RETURN_NOT_OK(SchemaFromPB(producer_schema_pb.pending_schema(), &producer_schema));
 
-      // This new schema update should either make the data source copy equivalent
-      // OR be a subset of the changes we need.
-      bool can_apply = consumer_schema.IsSubsetOf(producer_schema) ||
-                       producer_schema.IsSubsetOf(consumer_schema);
+      // This new schema should allow us to consume data for the Producer's next schema.
+      // If we instead diverge, we will be unable to consume any more of the Producer's data.
+      bool can_apply = consumer_schema.EquivalentForDataCopy(producer_schema);
       SCHECK(can_apply, IllegalState, Substitute(
              "New Schema not compatible with XCluster Producer Schema:\n new={$0}\n producer={$1}",
              consumer_schema.ToString(), producer_schema.ToString()));

@@ -87,7 +87,7 @@ To connect to your cluster, do the following:
     Enter your DB password:
     ```
 
-1. Enter the password for the admin user credentials that you saved when you created the cluster.\
+1. Enter the password for the admin user credentials that you saved when you created the cluster.
 
     The shell prompt appears and is ready to use.
 
@@ -123,4 +123,4 @@ Refer to [Before you begin](/preview/develop/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "../../quick-start-yugabytedb-managed/managed-quick-start-include.md" >}}
+{{< readfile "../../quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}

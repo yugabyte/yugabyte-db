@@ -349,7 +349,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	ybc_state->is_exec_done = false;
 
-	YbSetCatalogCacheVersion(ybc_state->handle, yb_catalog_cache_version);
+	YbSetCatalogCacheVersion(ybc_state->handle, YbGetCatalogCacheVersion());
 }
 
 /*
