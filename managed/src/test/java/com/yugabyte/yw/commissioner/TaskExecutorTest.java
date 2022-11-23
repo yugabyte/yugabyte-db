@@ -547,7 +547,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues()
             .stream()
-            .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
+            .filter(taskType -> TaskExecutor.isTaskRetryable(taskExecutor.getTaskClass(taskType)))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }
