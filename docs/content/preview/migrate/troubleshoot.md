@@ -207,7 +207,7 @@ DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist a
 
 Suggested workaround is as follows:
 
-1. Rename the table name with quotes to a name without quotes in MySQL database using the following command:
+1. Rename the table with the quotes using a name without quotes in MySQL database using the following command:
 
     ```sql
     Alter table `"test_data_COPY"` rename test_data_COPY2;
