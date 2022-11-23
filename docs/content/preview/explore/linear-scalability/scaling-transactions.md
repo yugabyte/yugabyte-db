@@ -20,7 +20,7 @@ This tutorial shows how YugabyteDB can scale seamlessly while running a read-wri
 
 {{% explore-setup-multi %}}
 
-You should have the setup ready with a running local three-node cluster and the YB Simulation Base Demo application running a read-write workload. Navigate to the application's UI at <http://localhost:8080/> to view the cluster's network diagram, Latency and Throughput charts for your workload.
+Follow the setup instructions to start a three-node cluster, connect the YB Simulation Base Demo application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
