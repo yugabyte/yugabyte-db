@@ -167,7 +167,7 @@ CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
 
 **Description**: When exporting a schema from MySQL that includes a table name that has quotes, the table is exported with the table name converted to lowercase and without the quotes, resulting in an error.
 
-**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming it in YugabyteDB.
+**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming the table in YugabyteDB.
 
 Example tables for source MySQL database is as follows:
 
