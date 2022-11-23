@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-This page documents the known issues and workarounds, and unsupported features when migrating data with YugabyteDB Voyager.
+This page documents known issues and workarounds, as well as unsupported features when migrating data with YugabyteDB Voyager.
 
 ## Known issues
 
