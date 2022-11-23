@@ -73,19 +73,19 @@ Examples requiring a single-node cluster can be run using the free [Sandbox](../
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
-Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
-
   {{% /tab %}}
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
 Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-To create a single region multi-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
+To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Be sure to set **Fault tolerance** to **Availability Zone Level**.
 
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 
 **Connect to your clusters**
 
@@ -232,7 +232,7 @@ YB Simulation Base Demo is a Java application that simulates workloads against Y
 
 For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
 
-### Install
+### Download
 
 YB Simulation Base Demo requires Java 11 or later installed on your computer.
 
@@ -242,7 +242,50 @@ Download the Simulation Base Demo JAR file (`yb-simu-base-app.jar`) using the fo
 wget https://github.com/yugabyte/yb-simulation-base-demo-app/releases/download/1.0/yb-simu-base-app.jar
 ```
 
-### Run
+### Use the application
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li >
+    <a href="#cloudworkload" class="nav-link active" id="cloud-tab" data-toggle="tab"
+       role="tab" aria-controls="cloud" aria-selected="true">
+      <i class="fas fa-cloud" aria-hidden="true"></i>
+      Use a cloud cluster
+    </a>
+  </li>
+  <li>
+    <a href="#localworkload" class="nav-link" id="local-tab" data-toggle="tab"
+       role="tab" aria-controls="local" aria-selected="false">
+      <i class="icon-shell" aria-hidden="true"></i>
+      Use a local cluster
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="cloudworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
+
+To start the application against a running YugabyteDB Managed cluster, use the following command:
+
+```sh
+java -Dnode=<host name> \
+    -Ddbname=<dbname> \
+    -Ddbuser=<dbuser> \
+    -Ddbpassword=<dbpassword> \
+    -Dssl=true \
+    -Dsslmode=verify-full \
+    -Dsslrootcert=<path-to-cluster-certificate> \
+    -jar ./yb-simu-base-app.jar
+```
+
+Replace the following:
+
+- `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+- `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
+- `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+- `<path-to-cluster-certificate>` with the path to the cluster root certificate on your computer.
+
+  </div>
+  <div id="localworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
 
 To start the application against a running local cluster, use the following command:
 
@@ -250,17 +293,20 @@ To start the application against a running local cluster, use the following comm
 java -jar ./yb-simu-base-app.jar
 ```
 
-By default, the application connects to the local cluster at 127.0.0.1.
+By default, the application connects to the local YugabyteDB cluster at 127.0.0.1.
 
 To connect to a different address or node, use the `-Dnode` flag to specify an IP address. For example:
 
 ```sh
-java -jar ./yb-simu-base-app.jar -Dnode=127.0.0.2
+java -Dnode=127.0.0.2 -jar ./yb-simu-base-app.jar
 ```
+
+  </div>
+</div>
 
 To view the application UI, navigate to <http://localhost:8080>.
 
-### Start a workload
+### Start a read and write workload
 
 To start a workload that performs read and write operations across all the nodes of the cluster, do the following:
 
