@@ -215,7 +215,7 @@ Suggested workaround is as follows:
 
 1. Export and import the data.
 
-1. Rename the table name in YugabyteDB to a quoted one using the following command:
+1. Rename the table in YugabyteDB to include the quotes using the following command:
 
     ```sql
     Alter table test_data_copy2 rename to "test_data_COPY";
