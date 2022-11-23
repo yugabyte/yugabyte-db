@@ -367,8 +367,8 @@ components:
                       replacement: "$1"
 
                 - job_name: "yugabyte"
-                tls_config:
-                  insecure_skip_verify: true
+                  tls_config:
+                    insecure_skip_verify: true
                   metrics_path: "/prometheus-metrics"
                   file_sd_configs:
                     - files:
