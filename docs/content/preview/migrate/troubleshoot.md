@@ -283,7 +283,7 @@ CREATE TABLE numeric_size (
 
 ---
 
-### Issue #584: [Oracle] RAW data fails to get imported in some cases
+### Issue #584: [Oracle] RAW data is not imported in some cases
 
 **GitHub link**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
 
