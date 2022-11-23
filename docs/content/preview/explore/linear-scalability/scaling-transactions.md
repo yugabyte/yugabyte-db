@@ -9,7 +9,7 @@ menu:
     name: Scaling transactions
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
-    weight: 200
+    weight: 201
 type: docs
 ---
 
