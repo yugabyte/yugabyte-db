@@ -7,24 +7,18 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: java-hibernate
-    weight: 550
+    weight: 100
 type: docs
 ---
 
-<ul class="nav yb-pills">
-  <li class="active">
-    <a href="../ysql-hibernate/" class="nav-link ">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>
   </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data YugabyteDB
-    </a>
-  </li>
-  <li >
+  <li>
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Spring Data JPA
@@ -38,12 +32,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM. It consists of the following:
-
-- The users of the e-commerce site, stored in the `users` table.
-- The `products` table, with a list of products the e-commerce site sells.
-- The orders placed by the users, populated in the `orders` table.
-- An order can consist of multiple line items, each of these are inserted in the `orderline` table.
+The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
 

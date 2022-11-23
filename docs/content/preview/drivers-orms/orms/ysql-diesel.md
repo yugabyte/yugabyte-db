@@ -7,7 +7,7 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: rust-diesel
-    weight: 950
+    weight: 210
 type: docs
 ---
 
@@ -22,12 +22,7 @@ type: docs
 
 </ul>
 
-The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/). The e-commerce database (ysql_diesel) includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/).
 
 The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
 

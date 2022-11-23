@@ -1,13 +1,13 @@
 ---
 title: Build a Python application that uses SQLAlchemy and YSQL
 headerTitle: Build a Python application
-linkTitle: SQL Alchemy
+linkTitle: SQLAlchemy
 description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
 menu:
   preview:
     parent: orm-tutorials
     identifier: python-sqlalchemy
-    weight: 553
+    weight: 150
 type: docs
 ---
 
@@ -15,7 +15,7 @@ type: docs
   <li >
     <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      SQL Alchemy ORM
+      SQLAlchemy ORM
     </a>
   </li>
   <li>
@@ -26,12 +26,7 @@ type: docs
   </li>
 </ul>
 
-This SQLAlchemy ORM example, running on Python, implements a basic REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/). The e-commerce database (`ysql-sqlalchemy`) includes the following tables:
-
-- `users`: the users of the e-commerce site
-- `products`: the products being sold
-- `orders`: the orders placed by the users
-- `orderline`: each line item of an order
+This SQLAlchemy ORM example, running on Python, implements a basic REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/).
 
 The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 

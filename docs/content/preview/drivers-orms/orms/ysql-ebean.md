@@ -7,43 +7,32 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: java-ebean
-    weight: 550
+    weight: 120
 type: docs
 ---
 
-<ul class="nav yb-pills">
-  <li >
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>
   </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data YugabyteDB
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-spring-data/" class="nav-link">
+  <li>
+    <a href="../ysql-spring-data/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Spring Data JPA
     </a>
   </li>
-   <li class="active">
-    <a href="../ysql-ebean/" class="nav-link ">
+   <li>
+    <a href="../ysql-ebean/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
 

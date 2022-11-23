@@ -24,8 +24,8 @@ The following projects can be used to implement Python applications using the Yu
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| SQLAlchemy | [Documentation](sqlalchemy/) | [Hello World](../../develop/build-apps/python/ysql-sqlalchemy) |
-| Django | [Documentation](django/) | [Hello World](../../develop/build-apps/python/ysql-django) |
+| SQLAlchemy | [Documentation](sqlalchemy/) | [Hello World](../orms/ysql-sqlalchemy/) |
+| Django | [Documentation](django/) | [Hello World](../orms/ysql-django/) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-psycopg2/) or [Use an ORM](django/).
 

@@ -26,8 +26,8 @@ The following projects can be used to implement Golang applications using the Yu
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------- |
-| GORM [Recommended] | [Documentation](gorm/) | [Hello World](../../develop/build-apps/go/ysql-gorm)|
-| GO-PG | [Documentation](pg/) | [Hello World](../../develop/build-apps/go/ysql-pg) |
+| GORM [Recommended] | [Documentation](gorm/) | [Hello World](../orms/ysql-gorm)|
+| GO-PG | [Documentation](pg/) | [Hello World](../orms/ysql-pg) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yb-pgx/) or [Use an ORM](gorm/).
 

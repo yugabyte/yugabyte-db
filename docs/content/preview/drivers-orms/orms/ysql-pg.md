@@ -7,7 +7,7 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: go-pgorm
-    weight: 552
+    weight: 130
 type: docs
 ---
 

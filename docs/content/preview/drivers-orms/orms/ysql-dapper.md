@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: csharp-dapper
     parent: orm-tutorials
-    weight: 556
+    weight: 200
 type: docs
 ---
 
@@ -26,12 +26,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM. It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
 The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
 

@@ -7,7 +7,7 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: nodejs-prisma
-    weight: 551
+    weight: 180
 type: docs
 ---
 
@@ -26,12 +26,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Prisma](https://prisma.io) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Prisma. It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the [Prisma](https://prisma.io) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Prisma.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/node/prisma) repository.
 

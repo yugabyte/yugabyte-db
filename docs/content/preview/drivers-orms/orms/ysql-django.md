@@ -7,7 +7,7 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: python-django
-    weight: 553
+    weight: 160
 type: docs
 ---
 
@@ -15,7 +15,7 @@ type: docs
   <li >
     <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      SQL Alchemy ORM
+      SQLAlchemy ORM
     </a>
   </li>
   <li>
@@ -26,38 +26,23 @@ type: docs
   </li>
 </ul>
 
-The following tutorial creates an e-commerce application running in Python, connects to a YugabyteDB cluster, and performs REST API calls to send requests and query the results.
+The following tutorial implements a REST API server using the [Django](https://www.djangoproject.com/) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-## Before you begin
+The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
 
-This tutorial assumes that you have satisfied the following prerequisites.
+## Prerequisites
 
-### YugabyteDB
+This tutorial assumes that you have:
 
-YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
-
-### Python
-
-[Python 3](https://www.python.org/downloads/) or later is installed.
-
-### Django
-
-[Django 2.2](https://www.djangoproject.com/download/) or later is installed.
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- [Python 3](https://www.python.org/downloads/) or later is installed.
+- [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
 ## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
-
-This repository has a Django ORM example that implements a basic REST API server. Database access in this application is managed through the Django ORM. The e-commerce database `ysql_django` includes the following tables:
-
-- `users` stores users of the e-commerce site.
-- `products` contains a list of products the e-commerce site sells.
-- `orders` contains orders placed by the users.
-- `orderline` stores multiple line items from an order.
-
-The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
 
 ## Set up the application
 

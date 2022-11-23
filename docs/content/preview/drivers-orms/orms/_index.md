@@ -13,4 +13,57 @@ type: indexpage
 showRightNav: true
 ---
 
-The following examples illustrate how you implement a REST API server using the ORMs
+The examples in this section illustrate how you can buil an application by implementing a REST API server using the ORMs of your choice with YugabyteDB.
+The source for the REST API based application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master) repository. The database access is managed using the ORM and includes the following tables:
+
+- `users` — the users of the e-commerce site
+- `products` — the products being sold
+- `orders` — the orders placed by the users
+- `orderline` — each line item of an order
+
+## Choose your language
+
+<ul class="nav yb-pills">
+
+  <li>
+    <a href="ysql-hibernate/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
+    </a>
+  </li>
+
+  <li>
+    <a href="ysql-pg/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
+    </a>
+  </li>
+
+  <li>
+    <a href="ysql-sqlalchemy/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
+    </a>
+  </li>
+
+  <li>
+    <a href="ysql-sequelize/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      NodeJS
+    </a>
+  </li>
+
+  <li>
+    <a href="ysql-entity-framework/" class="orange">
+      <i class="icon-csharp"></i>
+      C#
+    </a>
+  </li>
+
+  <li>
+    <a href="ysql-diesel/" class="orange">
+      <i class="fa-brands fa-rust"></i>
+      Rust
+    </a>
+  </li>
+</ul>

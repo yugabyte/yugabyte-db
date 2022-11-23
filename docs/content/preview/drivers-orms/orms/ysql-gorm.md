@@ -7,7 +7,7 @@ menu:
   preview:
     parent: orm-tutorials
     identifier: go-gorm
-    weight: 552
+    weight: 140
 type: docs
 ---
 
@@ -26,12 +26,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
-
-- `users` table — the users of the e-commerce site
-- `products` table — the products being sold
-- `orders` table — the orders placed by the users
-- `orderline` table — each line item of an order
+The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM.
 
 The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
 
