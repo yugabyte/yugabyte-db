@@ -19,7 +19,7 @@ The following tutorial shows a small [Java application](https://github.com/yugab
 
 ## Prerequisites
 
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
+- Java Development Kit (JDK) 1.8, or later, is installed. {{% jdk-setup %}}
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ### Clone the application from GitHub

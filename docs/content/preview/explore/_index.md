@@ -234,7 +234,7 @@ For more information about the workload application, refer to [YB Simulation Bas
 
 ### Download
 
-YB Simulation Base Demo requires Java 11 or later installed on your computer.
+YB Simulation Base Demo requires Java 11 or later installed on your computer. {{% jdk-setup %}}
 
 Download the Simulation Base Demo JAR file (`yb-simu-base-app.jar`) using the following command:
 
@@ -264,6 +264,8 @@ wget https://github.com/yugabyte/yb-simulation-base-demo-app/releases/download/1
 <div class="tab-content">
   <div id="cloudworkload" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cloud-tab">
 
+To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
+
 To start the application against a running YugabyteDB Managed cluster, use the following command:
 
 ```sh
@@ -281,8 +283,8 @@ Replace the following:
 
 - `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
-- `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
-- `<path-to-cluster-certificate>` with the path to the cluster root certificate on your computer.
+- `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
+- `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
   <div id="localworkload" class="tab-pane fade" role="tabpanel" aria-labelledby="local-tab">
@@ -306,7 +308,7 @@ java -Dnode=127.0.0.2 -jar ./yb-simu-base-app.jar
 
 To view the application UI, navigate to <http://localhost:8080>.
 
-### Start a read and write workload
+#### Start a read and write workload
 
 To start a workload that performs read and write operations across all the nodes of the cluster, do the following:
 
