@@ -113,14 +113,21 @@ create_postgres_backup() {
 
   if [[ "${verbose}" = true ]]; then
     backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -Fc -v --clean \
-      ${PLATFORM_DB_NAME} -f ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   else
     backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -Fc --clean \
-      ${PLATFORM_DB_NAME} -f ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   fi
   # Run pg_dump.
   echo "Creating Yugabyte Platform DB backup ${backup_path}..."
-  docker_aware_cmd "postgres" "${backup_cmd}"
+  if [[ "${yba_installer}" = true ]]; then
+    # -f flag does not work for docker based installs. Tries to dump inside postgres container but
+    # we need output on the host itself.
+    ybai_backup_cmd = "${backup_cmd} -f ${backup_path}"
+    docker_aware_cmd "postgres" "${ybai_backup_cmd}"
+  else
+    docker_aware_cmd "postgres" "${backup_cmd}" > "${backup_path}"
+  fi
   echo "Done"
 }
 
@@ -247,7 +254,7 @@ create_backup() {
   version_path=$(find ${data_dir} -wholename **/yugaware/conf/version_metadata.json)
 
   # At least keep some default as a worst case.
-  if [ ! -f ${version_path} ]; then
+  if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
     version_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
   fi
 
