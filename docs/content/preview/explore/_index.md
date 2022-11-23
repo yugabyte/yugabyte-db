@@ -79,7 +79,7 @@ If you haven't already created your sandbox cluster, log in to YugabyteDB Manage
 
 Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Be sure to set **Fault tolerance** to **Availability Zone Level**.
+To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
   {{% /tab %}}
 
