@@ -299,7 +299,7 @@ CREATE TABLE numeric_size (
 
 **Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, because the `date_trunc` function is used for such types of datetime columns. So, when you export such a schema using `trunc`, it exports `trunc` and fails during data import.
 
-**Workaround**: Manual intervention needed. You have to replace the function from `trunc` to `date_trunc` in the exported schema files.
+**Workaround**: Manual intervention needed. You have to replace `trunc` with `date_trunc` in the exported schema files.
 
 **Example**
 
