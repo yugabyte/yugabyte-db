@@ -249,7 +249,7 @@ create table numeric_size(
 );
 ```
 
-The exported schema example is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE numeric_size (
