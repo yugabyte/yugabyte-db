@@ -8325,6 +8325,31 @@ void CatalogManager::ProcessPendingNamespace(
     return;
   }
 
+  if (GetAtomicFlag(&FLAGS_create_pg_catalog_on_tserver) && ns->colocated()) {
+    // Before creating pg catalog tables on tservers parent tablet, we need to make sure the parent
+    // tablet is created.
+    scoped_refptr<TabletInfo> tablet;
+    {
+      LockGuard lock(mutex_);
+      if (colocated_db_tablets_map_.find(id) == colocated_db_tablets_map_.end()) {
+        LOG(WARNING) << "Parent tablet not found for colocated Pending Namespace: " << id;
+        return;
+      }
+      tablet = colocated_db_tablets_map_.find(id)->second;
+    }
+
+    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
+      LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
+                << "ms) on namespace creation for tablet" << tablet->tablet_id();
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
+      WARN_NOT_OK(
+          background_tasks_thread_pool_->SubmitFunc(
+              std::bind(&CatalogManager::ProcessPendingNamespace, this, id, template_tables, txn)),
+          "Could not submit ProcessPendingNamespaces to thread pool");
+      return;
+    }
+  }
+
   // Copy the system tables necessary to create this namespace.  This can be time-intensive.
   bool success = true;
   if (!template_tables.empty()) {
