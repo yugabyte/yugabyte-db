@@ -163,6 +163,23 @@
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
 
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-hibernate/"
+  to = "/preview/drivers-orms/orms/ysql-hibernate/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-ebean/"
+  to = "/preview/drivers-orms/orms/ysql-ebean/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-spring-data/"
+  to = "/preview/drivers-orms/orms/ysql-spring-data/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/:lang/:orm/"
+  to = "/preview/drivers-orms/orms/:orm/"
+  force = true
+
 # Build an app for aiopg, now in integrations
 
 [[redirects]]
