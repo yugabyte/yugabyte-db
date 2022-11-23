@@ -289,7 +289,7 @@ CREATE TABLE numeric_size (
 
 **Description**: When attempting to migrate a (LONG) RAW attribute from an Oracle instance, you may face an _invalid hexadecimal error_.
 
-**Workaround**: None. A workaround is being explored currently.
+**Workaround**: None. A workaround is currently being explored.
 
 ---
 
