@@ -36,6 +36,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/metrics.h"
+#include "yb/util/write_buffer.h"
 
 METRIC_DEFINE_counter(server, pg_response_cache_hits,
                       "PgClientService Response Cache Hits",
@@ -111,7 +112,8 @@ void FillResponse(PgPerformResponsePB* response,
   auto rows_data_it = value.rows_data.begin();
   for (auto& op : *response->mutable_responses()) {
     if (op.has_rows_data_sidecar()) {
-      op.set_rows_data_sidecar(narrow_cast<int>(context->AddRpcSidecar(rows_data_it->data)));
+      context->StartRpcSidecar().Append(rows_data_it->AsSlice());
+      op.set_rows_data_sidecar(narrow_cast<int>(context->CompleteRpcSidecar()));
     }
     ++rows_data_it;
   }

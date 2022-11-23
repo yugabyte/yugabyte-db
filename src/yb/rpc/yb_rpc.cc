@@ -355,6 +355,13 @@ Slice YBInboundCall::GetFirstSidecar() const {
   return Slice(sidecar_buffer_.FirstBlockData(), size);
 }
 
+RefCntSlice YBInboundCall::ExtractSidecar(size_t index) const {
+  auto next_index = narrow_cast<int>(index + 1);
+  size_t end = next_index < sidecar_offsets_.size()
+      ? sidecar_offsets_[next_index] : sidecar_buffer_.size();
+  return sidecar_buffer_.ExtractContinuousBlock(sidecar_offsets_[narrow_cast<int>(index)], end);
+}
+
 Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success) {
   auto body_size = response.SerializedSize();
 

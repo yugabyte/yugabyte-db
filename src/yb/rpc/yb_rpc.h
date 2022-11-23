@@ -155,6 +155,8 @@ class YBInboundCall : public InboundCall {
 
   Slice GetFirstSidecar() const;
 
+  RefCntSlice ExtractSidecar(size_t index) const;
+
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
   // that made the call.
