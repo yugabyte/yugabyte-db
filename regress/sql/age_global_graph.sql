@@ -1,11 +1,30 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 LOAD 'age';
 SET search_path TO ag_catalog;
 
 --
--- test delete_specific_GRAPH_global_contexts function 
+-- test delete_specific_GRAPH_global_contexts function
 --
 
--- create 3 graphs 
+-- create 3 graphs
 SELECT * FROM create_graph('age_global_graph_1');
 SELECT * FROM cypher('age_global_graph_1', $$ CREATE (v:vertex_from_graph_1) RETURN v  $$) AS (v agtype);
 
@@ -15,7 +34,7 @@ SELECT * FROM cypher('age_global_graph_2', $$ CREATE (v:vertex_from_graph_2) RET
 SELECT * FROM create_graph('age_global_graph_3');
 SELECT * FROM cypher('age_global_graph_3', $$ CREATE (v:vertex_from_graph_3) RETURN v  $$) AS (v agtype);
 
--- load contexts using the vertex_stats command 
+-- load contexts using the vertex_stats command
 SELECT * FROM cypher('age_global_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
 SELECT * FROM cypher('age_global_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
 SELECT * FROM cypher('age_global_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
@@ -38,12 +57,11 @@ SELECT * FROM cypher('age_global_graph_2', $$ RETURN delete_global_graphs('age_g
 SELECT * FROM cypher('age_global_graph_1', $$ RETURN delete_global_graphs('age_global_graph_1') $$) AS (result agtype);
 SELECT * FROM cypher('age_global_graph_3', $$ RETURN delete_global_graphs('age_global_graph_3') $$) AS (result agtype);
 
-    
 --
--- test delete_GRAPH_global_contexts function 
+-- test delete_GRAPH_global_contexts function
 --
 
--- load contexts again 
+-- load contexts again
 SELECT * FROM cypher('age_global_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
 SELECT * FROM cypher('age_global_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
 SELECT * FROM cypher('age_global_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
