@@ -207,7 +207,7 @@ DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist a
 
 Suggested workaround is as follows:
 
-1. Rename the table with the quotes using a name without quotes in MySQL database using the following command:
+1. In MySQL, rename the table using a name without quotes using the following command:
 
     ```sql
     Alter table `"test_data_COPY"` rename test_data_COPY2;
@@ -215,7 +215,7 @@ Suggested workaround is as follows:
 
 1. Export and import the data.
 
-1. Rename the table in YugabyteDB to include the quotes using the following command:
+1. In YugabyteDB, rename the table to include the quotes using the following command:
 
     ```sql
     Alter table test_data_copy2 rename to "test_data_COPY";
