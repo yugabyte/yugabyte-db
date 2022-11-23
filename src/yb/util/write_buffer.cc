@@ -129,26 +129,66 @@ void WriteBuffer::Flush(boost::container::small_vector_base<RefCntSlice>* output
   blocks_.clear();
 }
 
+template <class Block, class Callback>
+void EnumerateBlocks(
+    const boost::container::small_vector_base<Block>& blocks, size_t begin, size_t left,
+    const Callback& callback) {
+  size_t idx = 0;
+  while (begin > blocks[idx].size()) {
+    begin -= blocks[idx].size();
+    ++idx;
+  }
+  while (begin + left > blocks[idx].size()) {
+    size_t size = blocks[idx].size() - begin;
+    callback(blocks[idx].data() + begin, size, blocks[idx].buffer(), false);
+    begin = 0;
+    left -= size;
+    ++idx;
+  }
+  callback(blocks[idx].data() + begin, left, blocks[idx].buffer(), true);
+}
+
 void WriteBuffer::AssignTo(size_t begin, size_t end, std::string* out) const {
   out->clear();
   size_t left = end - begin;
   if (!left) {
     return;
   }
-  out->reserve(left);
-  size_t idx = 0;
-  while (begin > blocks_[idx].size()) {
-    begin -= blocks_[idx].size();
-    ++idx;
-  }
-  while (begin + left > blocks_[idx].size()) {
-    size_t size = blocks_[idx].size() - begin;
-    out->append(blocks_[idx].data() + begin, size);
-    begin = 0;
-    left -= size;
-    ++idx;
-  }
-  out->append(blocks_[idx].data() + begin, left);
+  EnumerateBlocks(
+      blocks_, begin, left, [out](const char* data, size_t size, const RefCntBuffer&, bool) {
+    out->append(data, size);
+  });
+}
+
+void WriteBuffer::CopyTo(size_t begin, size_t end, char* out) const {
+  EnumerateBlocks(blocks_, begin, end - begin,
+      [&out](const char* data, size_t size, const RefCntBuffer&, bool) {
+    memcpy(out, data, size);
+    out += size;
+  });
+}
+
+RefCntSlice WriteBuffer::ExtractContinuousBlock(size_t begin, size_t end) const {
+  RefCntSlice result;
+  char* out = nullptr;
+  size_t full_size = end - begin;
+  EnumerateBlocks(blocks_, begin, full_size,
+      [&result, &out, full_size](
+          const char* data, size_t size, const RefCntBuffer& buffer, bool last) {
+    if (!out) {
+      if (last) {
+        result = RefCntSlice(buffer, Slice(data, size));
+        return;
+      }
+      RefCntBuffer full_buffer(full_size);
+      out = full_buffer.data();
+      result = RefCntSlice(std::move(full_buffer));
+    }
+    memcpy(out, data, size);
+    out += size;
+  });
+
+  return result;
 }
 
 void WriteBuffer::AssignTo(std::string* out) const {

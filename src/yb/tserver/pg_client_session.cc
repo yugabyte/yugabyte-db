@@ -319,10 +319,10 @@ struct PerformData {
       StatusToPB(status, resp->mutable_status());
     }
     if (cache_setter) {
-      std::vector<PgResponseCache::RowsData> rows_data;
+      std::vector<RefCntSlice> rows_data;
       rows_data.reserve(ops.size());
       for (const auto& op : ops) {
-        rows_data.emplace_back(op->rows_data_holder(), op->rows_data());
+        rows_data.emplace_back(context.ExtractSidecar(op->sidecar_index()));
       }
       cache_setter(PgResponseCache::Response{PgPerformResponsePB(*resp), std::move(rows_data)},
                    IsFailure(!status.ok()));

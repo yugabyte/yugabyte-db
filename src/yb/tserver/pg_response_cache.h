@@ -43,22 +43,14 @@ class PgResponseCache {
   explicit PgResponseCache(MetricEntity* metric_entity);
   ~PgResponseCache();
 
-  struct RowsData {
-    RowsData(const RefCntBuffer& holder_, const Slice& data_)
-        : holder(holder_), data(data_) {}
-
-    RefCntBuffer holder;
-    Slice data;
-  };
-
   struct Response {
-    Response(PgPerformResponsePB&& response_, std::vector<RowsData>&& rows_data_)
+    Response(PgPerformResponsePB&& response_, std::vector<RefCntSlice>&& rows_data_)
         : response(std::move(response_)), rows_data(std::move(rows_data_)) {
       DCHECK_EQ(response.responses_size(), rows_data.size());
     }
 
     PgPerformResponsePB response;
-    std::vector<RowsData> rows_data;
+    std::vector<RefCntSlice> rows_data;
   };
 
   using Setter = std::function<void(Response&&, IsFailure)>;

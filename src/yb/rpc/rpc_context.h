@@ -288,6 +288,8 @@ class RpcContext {
 
   Slice GetFirstSidecar() const;
 
+  RefCntSlice ExtractSidecar(size_t index) const;
+
   // Removes all RpcSidecars.
   void ResetRpcSidecars();
 
