@@ -246,7 +246,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         if (cloudType != CloudType.kubernetes) {
           // Ansible Configure Task for copying xxhsum binaries from
           // third_party directory to the DB nodes.
-          installThirdPartyPackagesTask(params().universeUUID, universe)
+          installThirdPartyPackagesTask(universe)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         }
 
