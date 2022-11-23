@@ -317,7 +317,7 @@ ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day
 
 ---
 
-### Issue #334: [MySQL, Oracle] Issue when importing with case-sensitive schema names
+### Issue #334: [MySQL, Oracle] Importing case-sensitive schema names
 
 **GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
 
