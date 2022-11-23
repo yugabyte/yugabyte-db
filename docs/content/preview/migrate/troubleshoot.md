@@ -223,7 +223,7 @@ Suggested workaround is as follows:
 
 ---
 
-### Issue #207: [Oracle] Some numeric types do not get exported
+### Issue #207: [Oracle] Some numeric types are not exported
 
 **GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
 
