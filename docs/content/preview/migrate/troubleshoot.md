@@ -36,7 +36,7 @@ create table if not exists fixed_point_types(
 );
 ```
 
-The exported schema example is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE fixed_point_types (
@@ -81,7 +81,7 @@ CREATE TABLE floating_point_types(
 );
 ```
 
-The exported schema example is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE floating_point_types (
@@ -94,7 +94,7 @@ CREATE TABLE floating_point_types (
 
 Suggested changes to the schema can be done using one of the following options:
 
-1. Edit the `/etc/yb-voyager/base-ora2pg.conf` file before exporting schema, using the `DATA_TYPE` directive.
+- Edit the `/etc/yb-voyager/base-ora2pg.conf` file before exporting schema, using the `DATA_TYPE` directive.
 
     Default value: DATA_TYPE
 
@@ -118,7 +118,7 @@ Suggested changes to the schema can be done using one of the following options:
 
     Replace the mapping wherever needed, using valid YugabyteDB data types.
 
-1. Edit the exported schema files as follows:
+- Edit the exported schema files as follows:
 
     ```sql
     CREATE TABLE floating_point_types (
@@ -137,7 +137,7 @@ Suggested changes to the schema can be done using one of the following options:
 
 **Description**: If your schema contains Functional/Expression indexes in MYSQL, the index creation fails with a syntax error during migration and doesn't get migrated.
 
-**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) or oblique quotes ("") to the exported schema files.
+**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) or oblique quotes ("") from the exported schema files.
 
 **Example**
 
@@ -147,7 +147,7 @@ An example schema on the source MySQL database is as follows:
 CREATE INDEX exp_ind ON exp_index_test((year(`to_date`)));
 ```
 
-The exported schema example is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(`to_date`))));
