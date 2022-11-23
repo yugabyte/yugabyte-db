@@ -959,21 +959,23 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                                     " using --instance_type argument.")
 
     def _resize_instance(self, args, host_info):
-        logging.info("Stopping instance {}".format(args.search_pattern))
-        self.cloud.stop_instance(host_info)
-        logging.info('Instance {} is stopped'.format(args.search_pattern))
+        if args.instance_type != host_info['instance_type']:
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
 
-        try:
-            # Change instance type
-            self._change_instance_type(args, host_info)
-            logging.info('Instance {}\'s type changed to {}'
-                         .format(args.search_pattern, args.instance_type))
-        except Exception as e:
-            raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
-                                    .format(repr(e)))
-        finally:
-            self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
-            logging.info('Instance {} is started'.format(args.search_pattern))
+            logging.info('Instance {} is stopped'.format(args.search_pattern))
+
+            try:
+                # Change instance type
+                self._change_instance_type(args, host_info)
+                logging.info('Instance {}\'s type changed to {}'
+                             .format(args.search_pattern, args.instance_type))
+            except Exception as e:
+                raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
+                                        .format(repr(e)))
+            finally:
+                self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+                logging.info('Instance {} is started'.format(args.search_pattern))
 
         # Make sure we are using the updated cgroup value if instance type is changing.
         self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)

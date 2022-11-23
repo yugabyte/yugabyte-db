@@ -45,4 +45,9 @@ public class ChangeInstanceType extends NodeTaskBase {
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
         .processErrors();
   }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
 }
