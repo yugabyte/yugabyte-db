@@ -160,7 +160,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
       if (!extraAZs.isEmpty()) {
         overrideErrorsSet.add(
             String.format(
-                "AZ overrides have following AZs: %s. But no DB pods scheduled in these AZs."
+                "AZ overrides have following AZs: %s. But no DB pods assigned to these AZs."
                     + "These overrides are not validated.",
                 extraAZs));
       }

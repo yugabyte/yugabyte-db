@@ -50,8 +50,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
+#include "yb/docdb/pgsql_ybctid.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/rpc/rpc_controller.h"
@@ -238,9 +238,10 @@ Status SetRangePartitionBounds(const Schema& schema,
     key_upper_bound->clear();
     return Status::OK();
   }
-  auto upper_bound_key = docdb::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
+  auto upper_bound_key =
+      docdb::PgsqlYbctid(std::move(range_components_end)).Encode().ToStringBuffer();
   if (request->is_forward_scan()) {
-    SetPartitionKey(docdb::DocKey(std::move(range_components)).Encode().AsSlice(), request);
+    SetPartitionKey(docdb::PgsqlYbctid(std::move(range_components)).Encode().AsSlice(), request);
     *key_upper_bound = std::move(upper_bound_key);
   } else {
     // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
@@ -351,7 +352,7 @@ Result<std::string> GetRangePartitionKey(
       "Cannot get range partition key for hash partitioned table");
 
   auto range_components = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
-  return docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+  return docdb::PgsqlYbctid(std::move(range_components)).Encode().ToStringBuffer();
 }
 
 template<class Req>
@@ -371,7 +372,7 @@ Status InitWritePartitionKey(
   const auto& ybctid = request->ybctid_column_value().value();
   if (schema.num_hash_key_columns() > 0) {
     if (!IsNull(ybctid)) {
-      const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+      const uint16 hash_code = VERIFY_RESULT(docdb::PgsqlYbctid::DecodeHash(ybctid.binary_value()));
       request->set_hash_code(hash_code);
       SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
       return Status::OK();
@@ -442,7 +443,7 @@ void YBOperation::ResetTablet() {
   tablet_.reset();
 }
 
-void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
+void YBOperation::ResetTable(YBTablePtr new_table) {
   table_.reset();
   table_ = new_table;
   // tablet_ can no longer be valid.
@@ -585,15 +586,15 @@ static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& ta
   return op;
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewInsert(const YBTablePtr& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_INSERT);
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewUpdate(const YBTablePtr& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_UPDATE);
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewDelete(const YBTablePtr& table) {
   return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_DELETE);
 }
 
@@ -851,13 +852,14 @@ Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
 // YBPgsql Operators
 //--------------------------------------------------------------------------------------------------
 
-YBPgsqlOp::YBPgsqlOp(const shared_ptr<YBTable>& table, std::string* partition_key)
-      : YBOperation(table), response_(new PgsqlResponsePB()),
-        partition_key_(partition_key ? std::move(*partition_key) : std::string()) {
+YBPgsqlOp::YBPgsqlOp(
+    const shared_ptr<YBTable>& table, std::string* partition_key, rpc::RpcContext* rpc_context)
+    : YBOperation(table), response_(new PgsqlResponsePB()),
+      partition_key_(partition_key ? std::move(*partition_key) : std::string()),
+      rpc_context_(*rpc_context) {
 }
 
-YBPgsqlOp::~YBPgsqlOp() {
-}
+YBPgsqlOp::~YBPgsqlOp() = default;
 
 bool YBPgsqlOp::succeeded() const {
   return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
@@ -879,8 +881,10 @@ std::string ResponseSuffix(const PgsqlResponsePB& response) {
 //--------------------------------------------------------------------------------------------------
 // YBPgsqlWriteOp
 
-YBPgsqlWriteOp::YBPgsqlWriteOp(const shared_ptr<YBTable>& table, PgsqlWriteRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr), request_(request) {
+YBPgsqlWriteOp::YBPgsqlWriteOp(
+    const shared_ptr<YBTable>& table, rpc::RpcContext* rpc_context, PgsqlWriteRequestPB* request)
+    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, rpc_context),
+      request_(request) {
   if (!request) {
     request_holder_ = std::make_unique<PgsqlWriteRequestPB>();
     request_ = request_holder_.get();
@@ -889,10 +893,13 @@ YBPgsqlWriteOp::YBPgsqlWriteOp(const shared_ptr<YBTable>& table, PgsqlWriteReque
 
 YBPgsqlWriteOp::~YBPgsqlWriteOp() {}
 
-static std::unique_ptr<YBPgsqlWriteOp> NewYBPgsqlWriteOp(
+namespace {
+
+YBPgsqlWriteOpPtr NewYBPgsqlWriteOp(
     const shared_ptr<YBTable>& table,
+    rpc::RpcContext* context,
     PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
-  auto op = std::make_unique<YBPgsqlWriteOp>(table);
+  auto op = std::make_shared<YBPgsqlWriteOp>(table, context);
   PgsqlWriteRequestPB *req = op->mutable_request();
   req->set_stmt_type(stmt_type);
   req->set_client(YQL_CLIENT_PGSQL);
@@ -903,21 +910,18 @@ static std::unique_ptr<YBPgsqlWriteOp> NewYBPgsqlWriteOp(
   return op;
 }
 
-std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
-  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_INSERT);
+} // namespace
+
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewInsert(const YBTablePtr& table, rpc::RpcContext* context) {
+  return NewYBPgsqlWriteOp(table, context, PgsqlWriteRequestPB::PGSQL_INSERT);
 }
 
-std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
-  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_UPDATE);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewUpdate(const YBTablePtr& table, rpc::RpcContext* context) {
+  return NewYBPgsqlWriteOp(table, context, PgsqlWriteRequestPB::PGSQL_UPDATE);
 }
 
-std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
-  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_DELETE);
-}
-
-std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
-    const std::shared_ptr<YBTable>& table) {
-  return NewYBPgsqlWriteOp(table, PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewDelete(const YBTablePtr& table, rpc::RpcContext* context) {
+  return NewYBPgsqlWriteOp(table, context, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
@@ -943,8 +947,9 @@ Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
 //--------------------------------------------------------------------------------------------------
 // YBPgsqlReadOp
 
-YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table, PgsqlReadRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr),
+YBPgsqlReadOp::YBPgsqlReadOp(
+    const shared_ptr<YBTable>& table, rpc::RpcContext* rpc_context, PgsqlReadRequestPB* request)
+    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, rpc_context),
       request_(request),
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
   if (!request) {
@@ -953,19 +958,9 @@ YBPgsqlReadOp::YBPgsqlReadOp(const shared_ptr<YBTable>& table, PgsqlReadRequestP
   }
 }
 
-std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
-  std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
-  PgsqlReadRequestPB *req = op->mutable_request();
-  req->set_client(YQL_CLIENT_PGSQL);
-  req->set_table_id(table->id());
-  req->set_schema_version(table->schema().version());
-  req->set_stmt_id(op->GetQueryId());
-
-  return op;
-}
-
-std::unique_ptr<YBPgsqlReadOp> YBPgsqlReadOp::NewSample(const shared_ptr<YBTable>& table) {
-  std::unique_ptr<YBPgsqlReadOp> op(new YBPgsqlReadOp(table));
+YBPgsqlReadOpPtr YBPgsqlReadOp::NewSelect(
+    const shared_ptr<YBTable>& table, rpc::RpcContext* context) {
+  auto op = std::make_shared<YBPgsqlReadOp>(table, context);
   PgsqlReadRequestPB *req = op->mutable_request();
   req->set_client(YQL_CLIENT_PGSQL);
   req->set_table_id(table->id());
@@ -1023,7 +1018,7 @@ Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
 // YBNoOp
 ////////////////////////////////////////////////////////////
 
-YBNoOp::YBNoOp(const std::shared_ptr<YBTable>& table)
+YBNoOp::YBNoOp(const YBTablePtr& table)
   : table_(table) {
 }
 

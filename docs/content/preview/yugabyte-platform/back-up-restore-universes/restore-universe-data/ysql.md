@@ -40,14 +40,14 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
 
-3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br>
 
-    ![Restore backup](/images/yp/restore-entire-backup.png)<br><br><br>
+    ![Restore backup](/images/yp/restore-entire-backup.png)<br>
 
 4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
-    <br/><br/>
-    ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)<br><br><br>
+    
+    ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)<br>
 
     - Select the name of the universe to which you want to restore the backup.
 

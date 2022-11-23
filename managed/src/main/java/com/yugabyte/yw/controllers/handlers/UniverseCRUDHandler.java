@@ -563,15 +563,16 @@ public class UniverseCRUDHandler {
             && Util.compareYbVersions(
                     primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
                 < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot install universe with DB version lower than "
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
                   + Util.YBC_COMPATIBLE_DB_VERSION);
         }
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+          universe.save();
           // TODO(bhavin192): remove the flag once the new naming style
           // is stable enough.
           if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
@@ -615,9 +616,14 @@ public class UniverseCRUDHandler {
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
+        if (Universe.shouldEnableHttpsUI(
+            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+          universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
+        }
       }
 
       universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      universe.save();
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
       if (cloudEnabled) {
@@ -626,6 +632,7 @@ public class UniverseCRUDHandler {
         AvailabilityZone zone = provider.regions.get(0).zones.get(0);
         if (zone.secondarySubnet != null) {
           universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
+          universe.save();
         }
       }
 
@@ -633,6 +640,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.USE_CUSTOM_IMAGE,
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
+      universe.save();
 
       Ebean.commitTransaction();
 

@@ -27,7 +27,7 @@ Generic</a>
 
 </ul>
 
-YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
+<br>YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 - Provide the value in the **Nodes** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br><br>
+- In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
 
   ![img](/images/yb-platform/kubernetes-config5.png)
 

@@ -163,7 +163,6 @@ public class Region extends Model {
       details = new RegionDetails();
     }
     details.arch = arch;
-    save();
   }
 
   @ApiModelProperty(required = false)

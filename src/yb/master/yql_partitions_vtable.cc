@@ -29,13 +29,14 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 
-DEFINE_bool(use_cache_for_partitions_vtable, true,
+DEFINE_UNKNOWN_bool(use_cache_for_partitions_vtable, true,
             "Whether we should use caching for system.partitions table.");
 
-DEFINE_bool(generate_partitions_vtable_on_changes, true,
+DEFINE_UNKNOWN_bool(generate_partitions_vtable_on_changes, true,
             "Whether we should generate the system.partitions vtable whenever relevant partition "
             "changes occur.");
 

@@ -386,6 +386,33 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.mutable_schema();
   }
 
+  std::string pb_transaction_id() const {
+    if (!pb.has_transaction()) {
+      return {};
+    }
+    return pb.transaction().transaction_id();
+  }
+
+  bool has_ysql_ddl_txn_verifier_state() const {
+    return pb.ysql_ddl_txn_verifier_state_size() > 0;
+  }
+
+  auto ysql_ddl_txn_verifier_state() const {
+    // Currently DDL with savepoints is disabled, so this repeated field can have only 1 element.
+    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state(0);
+  }
+
+  bool is_being_deleted_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_drop_table_op();
+  }
+
+  bool is_being_created_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };

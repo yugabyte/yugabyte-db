@@ -115,7 +115,6 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbindpasswd=\"\"adminPasswd\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
                 "\"host all all 0.0.0.0/0 trust\"");
-    LOG.info("ASDF");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlags(
         Collections.emptyMap(),
@@ -156,7 +155,6 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbindpasswd=\"\"YSQL_LDAP_BIND_PWD_ENV\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
                 "\"host all all 0.0.0.0/0 trust\"");
-    LOG.info("ASDF");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlagsAndEnv(
         Collections.emptyMap(),
@@ -206,7 +204,6 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbindpasswd=\"\"YSQL_LDAP_BIND_PWD_ENV\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
                 "\"host all all 0.0.0.0/0 trust\"");
-    LOG.info("ASDF");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlags(
         Collections.emptyMap(),

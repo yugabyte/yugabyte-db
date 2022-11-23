@@ -48,7 +48,7 @@ You prepare the host as follows:
 
 - For a Docker-based installation, YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
-  Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
+  Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
 
 - For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
@@ -60,7 +60,7 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
   `https://downloads.yugabyte.com`
   `https://download.docker.com`
 
-- Ensuring that Docker Engine version 19.03.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+- Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 - Ensuring that the following ports are open on the YugabyteDB Anywhere host:
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Anywhere UI
@@ -91,16 +91,14 @@ Generally, the process involves the following:
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
-![img](/images/yp/docker-pull.png)<br><br>
+![img](/images/yp/docker-pull.png)<br>
 
 
 
 You need to perform the following steps:
 
-1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file.
-
-   To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
-
+1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+   
    ```sh
    docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
    
@@ -120,28 +118,26 @@ You need to perform the following steps:
    
    ```properties
    image:
-	commonRegistry: ""
+   commonRegistry: ""
     	repository: **quay.io/yugabyte/yugaware**
-   ```
-
- 	tag: **{{ version.build }}**
- 	pullPolicy: IfNotPresent
- 	pullSecret: yugabyte-k8s-pull-secret
- 	thirdparty-deps:
- 		registry: quay.io
- 		tag: **latest**
- 		name: **yugabyte/thirdparty-deps** 
- 	prometheus:
- 		registry: ""
- 		tag:  **{{ version.prometheus }}**
- 		name: **prom/prometheus**
- 	nginx:
- 		registry: ""
- 		tag: **{{ version.nginx }}**
- 		name: nginx
+    	tag: **{{ version.build }}**
+   pullPolicy: IfNotPresent
+   pullSecret: yugabyte-k8s-pull-secret
+   thirdparty-deps:
+   	registry: quay.io
+   	tag: **latest**
+   	name: **yugabyte/thirdparty-deps** 
+   prometheus:
+   	registry: ""
+   	tag:  **{{ version.prometheus }}**
+   	name: **prom/prometheus**
+   nginx:
+   	registry: ""
+   	tag: **{{ version.nginx }}**
+   	name: nginx
    ```
    
-2. Pull images to your Docker Desktop, as follows:
+1. Pull images to your Docker Desktop, as follows:
 
    ```sh
    docker pull quay.io/yugabyte/yugaware:{{ version.build }}
@@ -311,7 +307,7 @@ You need to perform the following steps:
    ```
    ![img](/images/yp/docker-image.png)
    
-7. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
+1. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
 
    ```properties
    image:

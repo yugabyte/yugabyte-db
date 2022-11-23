@@ -1262,13 +1262,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
   }
 
-  static Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
-    if (connection.ok()) {
-      RETURN_NOT_OK((*connection).Execute(query));
-    }
-    return connection;
-  }
-
   static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }
@@ -1924,6 +1917,22 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPref
   constexpr int kReads = 3;
 
   Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest) {
+  constexpr size_t kValueSize = 32_MB;
+  constexpr int kKey = 42;
+  const std::string kValue = RandomHumanReadableString(kValueSize);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, '$1')", kKey, kValue));
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(conn.FetchValue<std::string>(
+      Format("SELECT md5(b) FROM t WHERE a = $0", kKey)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {

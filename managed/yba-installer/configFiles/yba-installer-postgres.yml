@@ -1,23 +1,26 @@
  services:
+  - name: postgresService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=Postgres
+      Wants=network-online.target
+      After=network-online.target
 
-      - name: postgresService
-        fileName: /etc/systemd/system/postgres.service
-        contents: |
-          [Unit]
-          Description=Postgres
-          Wants=network-online.target
-          After=network-online.target
+      [Service]
+      User=yugabyte
+      Group=yugabyte
+      Type=forking
+      TimeoutSec=300
 
-          [Service]
-          User=postgres
-          Group=postgres
-          Type=oneshot
-          RemainAfterExit=yes
+      ExecStart={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
 
-          ExecStart={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-          -o "-k {{ installRoot }}/postgres/run/postgresql/" start
-          ExecStop={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-          -o "-k {{ installRoot }}/postgres/run/postgresql/" stop
+      ExecStop={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
 
-          [Install]
-          WantedBy=multi-user.target
+      Restart=always
+      RestartSec={{ yamlPath ".postgres.restartSeconds"}}
+
+      [Install]
+      WantedBy=multi-user.target

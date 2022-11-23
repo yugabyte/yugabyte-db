@@ -54,9 +54,10 @@
 
 using std::string;
 
-DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
-             "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
-DEFINE_int32(pggate_num_connections_to_server, 1,
+DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
+    "Timeout for YSQL's yb-client read/write "
+    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
+DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
 DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
@@ -70,12 +71,14 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DEFINE_bool(ysql_enable_reindex, false,
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
+DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
-DEFINE_bool(ysql_disable_server_file_access, false,
+DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "If true, disables read, write, and execute of local server files. "
             "File access can be re-enabled if set to false.");
 
@@ -241,14 +244,21 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  if (pgapi) {
 #ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
+    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
     *consumption = 0;
 #endif
-  }
   return YBCStatusOK();
+}
+
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+    return YBCStatusOK();
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -267,6 +277,19 @@ bool YBCTryMemRelease(int64_t bytes) {
   return false;
 }
 
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
+  memset(desc, 0x0, sizeof(YbTcmallocStats));
+#ifdef TCMALLOC_ENABLED
+  using mt = yb::MemTracker;
+  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
+  desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
+  desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  desc->pageheap_unmapped_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#endif
+  return YBCStatusOK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
@@ -276,8 +299,10 @@ YBCStatus YBCPgConnectDatabase(const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(database_name));
 }
 
-YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated) {
-  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated));
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
+                                   bool *legacy_colocated_database) {
+  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated,
+                                                legacy_colocated_database));
 }
 
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
@@ -733,6 +758,10 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
+}
+
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
 YBCStatus YBCPgBackfillIndex(
@@ -1278,7 +1307,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
   };
   return &accessor;
 }
@@ -1386,8 +1417,8 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching() {
-  pgapi->StartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
 }
 
 void YBCStopSysTablePrefetching() {

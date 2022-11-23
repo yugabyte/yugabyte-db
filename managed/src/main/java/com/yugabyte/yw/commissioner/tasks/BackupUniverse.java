@@ -124,7 +124,7 @@ public class BackupUniverse extends UniverseTaskBase {
       if (cloudType != CloudType.kubernetes) {
         // Ansible Configure Task for copying xxhsum binaries from
         // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(taskParams().universeUUID, universe)
+        installThirdPartyPackagesTask(universe)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
       }
 

@@ -72,10 +72,7 @@ public interface StorageUtil {
 
   // Suffice for Azure and NFS, because backup location should have exact match with backup prefix.
   public default void checkStoragePrefixValidity(String configLocation, String backupLocation) {
-    String backupIdentifier = BackupUtil.getBackupIdentifier(backupLocation, false);
-    String generatedLocation =
-        BackupUtil.getCloudpathWithConfigSuffix(configLocation, backupIdentifier);
-    if (!StringUtils.equals(generatedLocation, backupLocation)) {
+    if (!StringUtils.startsWith(backupLocation, configLocation)) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED,
           String.format(

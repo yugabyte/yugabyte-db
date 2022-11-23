@@ -24,6 +24,7 @@ class CompactionFeed;
 class DB;
 class Env;
 class MemTable;
+class Iterator;
 class Statistics;
 class UserFrontiers;
 class WriteBatch;

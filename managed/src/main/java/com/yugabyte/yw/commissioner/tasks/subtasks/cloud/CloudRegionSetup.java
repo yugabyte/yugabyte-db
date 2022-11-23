@@ -98,7 +98,12 @@ public class CloudRegionSetup extends CloudTaskBase {
 
       } else {
         try {
+          // explicitly overriding arch name to maintain equivalent type of architecture.
+          if (arch.equals("arm64")) {
+            arch = Architecture.aarch64.name();
+          }
           region.setArchitecture(Architecture.valueOf(arch));
+          region.update();
         } catch (IllegalArgumentException e) {
           log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
         }

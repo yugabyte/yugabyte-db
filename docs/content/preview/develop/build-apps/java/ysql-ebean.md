@@ -11,29 +11,29 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav yb-pills">
   <li >
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Hibernate
+      Hibernate ORM
     </a>
   </li>
   <li >
     <a href="../ysql-sdyb/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data YugabyteDB
+      Spring Data YugabyteDB
     </a>
   </li>
   <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA
+      Spring Data JPA
     </a>
   </li>
-   <li>
-    <a href="../ysql-ebean/" class="nav-link active">
+   <li class="active">
+    <a href="../ysql-ebean/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebean
+      Ebean ORM
     </a>
   </li>
 </ul>
@@ -45,7 +45,7 @@ The following tutorial implements a REST API server using the Java [Ebean](https
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
 
 ## Prerequisites
 

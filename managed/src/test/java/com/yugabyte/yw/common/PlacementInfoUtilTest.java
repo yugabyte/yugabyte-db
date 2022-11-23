@@ -1270,8 +1270,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put("KUBE_DOMAIN", "test");
     az1.updateConfig(config);
+    az1.save();
     az2.updateConfig(config);
+    az2.save();
     az3.updateConfig(config);
+    az3.save();
     Map<UUID, String> expectedDomains = new HashMap<>();
     expectedDomains.put(az1.uuid, "test");
     expectedDomains.put(az2.uuid, "test");
@@ -1430,12 +1433,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
     config.put("KUBECONFIG", "az1");
     az1.updateConfig(config);
+    az1.save();
     expectedConfigs.put(az1.uuid, az1.getUnmaskedConfig());
     config.put("KUBECONFIG", "az2");
     az2.updateConfig(config);
+    az2.save();
     expectedConfigs.put(az2.uuid, az2.getUnmaskedConfig());
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
+    az3.save();
     expectedConfigs.put(az3.uuid, az3.getUnmaskedConfig());
 
     PlacementInfo pi = new PlacementInfo();
@@ -1591,16 +1597,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     config.put("KUBECONFIG", "az1");
     config.put("KUBENAMESPACE", "ns-1");
     az1.updateConfig(config);
+    az1.save();
     expectedConfigs.put("ns-1", "az1");
 
     config.put("KUBECONFIG", "az2");
     config.put("KUBENAMESPACE", "ns-2");
     az2.updateConfig(config);
+    az2.save();
     expectedConfigs.put("ns-2", "az2");
 
     config.remove("KUBENAMESPACE");
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
+    az3.save();
     expectedConfigs.put(String.format("%s-%s", nodePrefix, az3.code), "az3");
 
     PlacementInfo pi = new PlacementInfo();
@@ -1769,6 +1778,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     int idx = 1;
     for (AvailabilityZone az : azs) {
       az.updateConfig(ImmutableMap.of("KUBECONFIG", "az-" + idx));
+      az.save();
       PlacementInfoUtil.addPlacementZone(az.uuid, pi);
 
       NodeDetails node = ApiUtils.getDummyNodeDetails(idx);

@@ -8,13 +8,14 @@ menu:
   preview:
     identifier: csharp-drivers
     parent: drivers-orms
-    weight: 580
+    weight: 560
 type: indexpage
+showRightNav: true
 ---
 
-The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
-
 ## Supported projects
+
+The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :-------------------- | :--------------------------- |
@@ -29,7 +30,7 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/csharp/postgres-npgsql-reference/) pages.
 
-### Prerequisites
+## Prerequisites
 
 To develop C# applications for YugabyteDB, you need the following:
 

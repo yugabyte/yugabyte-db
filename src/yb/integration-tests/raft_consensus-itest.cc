@@ -95,14 +95,15 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int32(num_client_threads, 8,
+DEFINE_UNKNOWN_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_int32(client_inserts_per_thread, 50,
+DEFINE_UNKNOWN_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_int32(client_num_batches_per_thread, 5,
+DEFINE_UNKNOWN_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -216,7 +217,9 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
     QLRowBlock result(schema);
-    Slice data = ASSERT_RESULT(rpc.GetSidecar(0));
+    std::string data_str;
+    ASSERT_OK(rpc.AssignSidecarTo(0, &data_str));
+    Slice data(data_str);
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }

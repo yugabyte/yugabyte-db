@@ -39,6 +39,8 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
@@ -57,7 +59,7 @@ DECLARE_bool(ysql_disable_index_backfill);
 
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
-DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
+DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
               "Scan deadline is calculated by adding client timeout to the time when the request "
               "was received. It defines the moment in time when client has definitely timed out "
               "and if the request is yet in processing after the deadline, it can be canceled. "
@@ -66,7 +68,7 @@ DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
               "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
               "delays.");
 
-DEFINE_bool(pgsql_consistent_transactional_paging, true,
+DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
             "Whether to enforce consistency of data returned for second page and beyond for YSQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
@@ -76,12 +78,12 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+DEFINE_UNKNOWN_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
-DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, false,
             "Whether to enable packed row for colocated tables.");
 
-DEFINE_uint64(
+DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
@@ -91,6 +93,11 @@ DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
 
 namespace yb {
 namespace docdb {
+
+bool ShouldYsqlPackRow(bool is_colocated) {
+  return FLAGS_ysql_enable_packed_row &&
+         (!is_colocated || FLAGS_ysql_enable_packed_row_for_colocated_table);
+}
 
 namespace {
 
@@ -183,11 +190,6 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
-}
-
-bool DisablePackedRowIfColocatedTable(const Schema& schema) {
-  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
-         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -324,6 +326,12 @@ class ExpressionHelper {
   std::vector<QLExprResult> results_;
   size_t next_result_idx_ = 0;
 };
+
+void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
+  char encoded_rows[sizeof(uint64_t)];
+  NetworkByteOrder::Store64(encoded_rows, result_rows);
+  CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
+}
 
 } // namespace
 
@@ -496,8 +504,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
 
   auto scope_exit = ScopeExit([this] {
-    if (!result_buffer_.empty()) {
-      NetworkByteOrder::Store64(result_buffer_.data(), result_rows_);
+    if (write_buffer_) {
+      WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
+      response_->set_rows_data_sidecar(narrow_cast<int32_t>(rpc_context_->CompleteRpcSidecar()));
     }
   });
 
@@ -578,8 +587,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row &&
-      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
+  if (ShouldYsqlPackRow(doc_read_context_->schema.is_colocated())) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -684,8 +692,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
-    if (FLAGS_ysql_enable_packed_row &&
-        !DisablePackedRowIfColocatedTable(schema) &&
+    if (ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
@@ -847,9 +854,11 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
 }
 
 Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
-  if (result_buffer_.empty()) {
+  if (write_buffer_ == nullptr && rpc_context_) {
     // Reserve space for num rows.
-    pggate::PgWire::WriteInt64(0, &result_buffer_);
+    write_buffer_ = &rpc_context_->StartRpcSidecar();
+    row_num_pos_ = write_buffer_->Position();
+    pggate::PgWire::WriteInt64(0, write_buffer_);
   }
   ++result_rows_;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
@@ -868,7 +877,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       } else {
         RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer()));
       }
-      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
+      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), write_buffer_));
     }
   }
   return Status::OK();
@@ -954,13 +963,14 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
                                            bool is_explicit_request_read_time,
                                            const DocReadContext& doc_read_context,
                                            const DocReadContext* index_doc_read_context,
-                                           faststring *result_buffer,
+                                           WriteBuffer *result_buffer,
                                            HybridTime *restart_read_ht) {
   size_t fetched_rows = 0;
+  auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.
   pggate::PgWire::WriteInt64(0, result_buffer);
-  auto se = ScopeExit([&fetched_rows, result_buffer] {
-    NetworkByteOrder::Store64(result_buffer->data(), fetched_rows);
+  auto se = ScopeExit([&fetched_rows, num_rows_pos, result_buffer] {
+    WriteNumRows(fetched_rows, num_rows_pos, result_buffer);
   });
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
@@ -991,7 +1001,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   *has_paging_state = false;
@@ -1110,7 +1120,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
                                                  const DocReadContext *index_doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   // Retrieve target table schema from the context, as well as the pointer to optional index schema
@@ -1303,7 +1313,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const DocReadContext& doc_read_context,
-                                                      faststring *result_buffer,
+                                                      WriteBuffer *result_buffer,
                                                       HybridTime *restart_read_ht) {
   const auto& schema = doc_read_context.schema;
   Schema projection;
@@ -1399,7 +1409,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
 }
 
 Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+                                             WriteBuffer *result_buffer) {
   QLExprResult result;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
@@ -1432,7 +1442,7 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
 }
 
 Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+                                             WriteBuffer *result_buffer) {
   int column_count = request_.targets().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));

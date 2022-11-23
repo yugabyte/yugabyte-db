@@ -130,6 +130,7 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  async_util.cc
   flags/auto_flags.cc
   flags/auto_flags_util.cc
   async_task_util.cc
@@ -257,9 +258,9 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  write_buffer.cc
   yb_partition.cc
   zlib.cc
-  async_util.cc
   )
 
 set(UTIL_LIBS

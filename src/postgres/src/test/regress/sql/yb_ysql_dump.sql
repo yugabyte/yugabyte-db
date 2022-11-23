@@ -107,6 +107,26 @@ CREATE TABLE tr1 (a int, b text, c float, PRIMARY KEY (a ASC)) SPLIT AT VALUES (
 -- Range-partitioned table with multi-column key
 CREATE TABLE tr2 (a int, b text, c float, PRIMARY KEY (a DESC, b ASC, c DESC)) SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
 
+-- Range-partitoned table with a long CREATE TABLE statement
+CREATE TABLE pre_split_range (
+    id int NOT NULL,
+    customer_id int NOT NULL,
+    company_name character varying(40) NOT NULL,
+    contact_name character varying(30),
+    contact_title character varying(30),
+    address character varying(60),
+    city character varying(15),
+    region character varying(15),
+    postal_code character varying(10),
+    country character varying(15),
+    phone character varying(24),
+    fax character varying(24),
+    more_col1 text,
+    more_col2 text,
+    more_col3 text,
+    PRIMARY KEY (customer_id ASC)
+) SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
+
 ------------------------------------
 -- Indexes
 

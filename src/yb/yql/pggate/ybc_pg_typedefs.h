@@ -343,6 +343,8 @@ typedef struct PgGFlagsAccessor {
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
+  const bool*     ysql_ddl_rollback_enabled;
+  const bool*     ysql_enable_read_request_caching;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -390,6 +392,35 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID,
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
+
+typedef struct YbTserverCatalogVersion {
+  uint32_t db_oid;
+  uint64_t current_version;
+  int shm_index;
+} YbTserverCatalogVersion;
+
+// Used to map a database OID to its catalog version info fetched from the local tserver.
+typedef struct YbTserverCatalogInfoData {
+  uint32_t num_databases;
+  YbTserverCatalogVersion* versions;
+} YbTserverCatalogInfoData;
+
+typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
+
+// source:
+// https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
+typedef struct YbTcmallocStats {
+  // "generic.total_physical_bytes"
+  int64_t total_physical_bytes;
+  // "generic.heap_size"
+  int64_t heap_size_bytes;
+  // "generic.current_allocated_bytes"
+  int64_t current_allocated_bytes;
+  // "tcmalloc.pageheap_free_bytes"
+  int64_t pageheap_free_bytes;
+  // "tcmalloc.pageheap_unmapped_bytes"
+  int64_t pageheap_unmapped_bytes;
+} YbTcmallocStats;
 
 #ifdef __cplusplus
 }  // extern "C"

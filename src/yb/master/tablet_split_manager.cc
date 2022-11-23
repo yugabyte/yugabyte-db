@@ -41,21 +41,21 @@
 
 using std::vector;
 
-DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
+DEFINE_UNKNOWN_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
              "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
              "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
              "tablet splitting method, which checks for the time since last run, is run once per "
              "loop.");
-DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022")
+DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_uint64(outstanding_tablet_split_limit, 1,
+DEFINE_UNKNOWN_uint64(outstanding_tablet_split_limit, 1,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
-DEFINE_uint64(outstanding_tablet_split_limit_per_tserver, 1,
+DEFINE_UNKNOWN_uint64(outstanding_tablet_split_limit_per_tserver, 1,
               "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
               "if this value is set to 0.");
 
@@ -65,19 +65,19 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
 
-DEFINE_uint64(tablet_split_limit_per_table, 256,
+DEFINE_UNKNOWN_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
 
-DEFINE_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
+DEFINE_UNKNOWN_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
               "Seconds between checks for whether to split a table with TTL. Checks are disabled "
               "if this value is set to 0.");
 
-DEFINE_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
+DEFINE_UNKNOWN_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
               "Seconds between checks for whether to split a tablet whose key range is too small "
               "to be split. Checks are disabled if this value is set to 0.");
 
-DEFINE_bool(sort_automatic_tablet_splitting_candidates, true,
+DEFINE_UNKNOWN_bool(sort_automatic_tablet_splitting_candidates, true,
             "Whether we should sort candidates for new automatic tablet splits, so the largest "
             "candidates are picked first.");
 

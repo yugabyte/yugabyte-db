@@ -37,7 +37,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,6 +91,10 @@ public class GFlagsUtil {
   public static final String CERT_NODE_FILENAME = "cert_node_filename";
   public static final String CERTS_DIR = "certs_dir";
   public static final String CERTS_FOR_CLIENT_DIR = "certs_for_client_dir";
+  public static final String WEBSERVER_REDIRECT_HTTP_TO_HTTPS = "webserver_redirect_http_to_https";
+  public static final String WEBSERVER_CERTIFICATE_FILE = "webserver_certificate_file";
+  public static final String WEBSERVER_PRIVATE_KEY_FILE = "webserver_private_key_file";
+  public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String TSERVER_DIR = "/tserver";
@@ -433,6 +436,19 @@ public class GFlagsUtil {
     if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put(CERTS_FOR_CLIENT_DIR, certsForClientDir);
     }
+
+    boolean httpsEnabledUI =
+        universe.getConfig().getOrDefault(Universe.HTTPS_ENABLED_UI, "false").equals("true");
+    if (httpsEnabledUI) {
+      gflags.put(
+          WEBSERVER_CERTIFICATE_FILE,
+          String.format("%s/node.%s.crt", certsDir, node.cloudInfo.private_ip));
+      gflags.put(
+          WEBSERVER_PRIVATE_KEY_FILE,
+          String.format("%s/node.%s.key", certsDir, node.cloudInfo.private_ip));
+      gflags.put(WEBSERVER_CA_CERTIFICATE_FILE, String.format("%s/ca.crt", certsDir));
+      gflags.put(WEBSERVER_REDIRECT_HTTP_TO_HTTPS, "true");
+    }
     return gflags;
   }
 
@@ -727,5 +743,14 @@ public class GFlagsUtil {
         return (userIntent, s) -> setter.accept(userIntent, Boolean.valueOf(s));
       }
     };
+  }
+
+  public static Set<String> getDeletedGFlags(
+      Map<String, String> currentGFlags, Map<String, String> updatedGFlags) {
+    return currentGFlags
+        .keySet()
+        .stream()
+        .filter(flag -> !updatedGFlags.containsKey(flag))
+        .collect(Collectors.toSet());
   }
 }

@@ -14,9 +14,14 @@
 #pragma once
 
 #include <bitset>
+
 #include "yb/util/slice.h"
+#include "yb/util/write_buffer.h"
 
 namespace yb {
+
+class WriteBuffer;
+
 namespace pggate {
 
 // This class represent how YugaByte sends data over the wire. See also file
@@ -53,29 +58,29 @@ class PgWire {
   //------------------------------------------------------------------------------------------------
   // Write Numeric Data
   template<typename num_type>
-  static void WriteInt(void (*writer)(void *, num_type), num_type value, faststring *buffer) {
+  static void WriteInt(void (*writer)(void *, num_type), num_type value, WriteBuffer *buffer) {
     num_type bytes;
     writer(&bytes, value);
-    buffer->append(&bytes, sizeof(num_type));
+    buffer->Append(pointer_cast<const char*>(&bytes), sizeof(num_type));
   }
 
-  static void WriteBool(bool value, faststring *buffer);
-  static void WriteInt8(int8_t value, faststring *buffer);
-  static void WriteUint8(uint8_t value, faststring *buffer);
-  static void WriteUint16(uint16_t value, faststring *buffer);
-  static void WriteInt16(int16_t value, faststring *buffer);
-  static void WriteUint32(uint32_t value, faststring *buffer);
-  static void WriteInt32(int32_t value, faststring *buffer);
-  static void WriteUint64(uint64_t value, faststring *buffer);
-  static void WriteInt64(int64_t value, faststring *buffer);
-  static void WriteFloat(float value, faststring *buffer);
-  static void WriteDouble(double value, faststring *buffer);
+  static void WriteBool(bool value, WriteBuffer *buffer);
+  static void WriteInt8(int8_t value, WriteBuffer *buffer);
+  static void WriteUint8(uint8_t value, WriteBuffer *buffer);
+  static void WriteUint16(uint16_t value, WriteBuffer *buffer);
+  static void WriteInt16(int16_t value, WriteBuffer *buffer);
+  static void WriteUint32(uint32_t value, WriteBuffer *buffer);
+  static void WriteInt32(int32_t value, WriteBuffer *buffer);
+  static void WriteUint64(uint64_t value, WriteBuffer *buffer);
+  static void WriteInt64(int64_t value, WriteBuffer *buffer);
+  static void WriteFloat(float value, WriteBuffer *buffer);
+  static void WriteDouble(double value, WriteBuffer *buffer);
 
   // Write Text Data
-  static void WriteText(const std::string& value, faststring *buffer);
+  static void WriteText(const std::string& value, WriteBuffer *buffer);
 
   // Write Text Data
-  static void WriteBinary(const std::string& value, faststring *buffer);
+  static void WriteBinary(const std::string& value, WriteBuffer *buffer);
 };
 
 // Just in case we change the serialization format. Different versions of DocDB and Postgres

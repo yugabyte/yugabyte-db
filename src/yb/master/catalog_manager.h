@@ -348,11 +348,29 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                     AlterTableResponsePB* resp,
                     rpc::RpcContext* rpc);
 
+  Status UpdateSysCatalogWithNewSchema(
+    const scoped_refptr<TableInfo>& table,
+    const std::vector<DdlLogEntry>& ddl_log_entries,
+    const std::string& new_namespace_id,
+    const std::string& new_table_name,
+    AlterTableResponsePB* resp);
+
   // Get the information about an in-progress alter operation.
   Status IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                           IsAlterTableDoneResponsePB* resp);
 
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
+
+  void ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
+                                   const TransactionMetadata& txn);
+
+  Status YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
+                                const std::string& txn_id_pb,
+                                bool txn_rpc_success);
+
+  Status YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
+                                    const std::string& txn_id_pb,
+                                    bool success);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -582,6 +600,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
 
   TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
+
+  XClusterSafeTimeService* TEST_xcluster_safe_time_service() override {
+    return xcluster_safe_time_service_.get();
+  }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -989,7 +1011,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
+      const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
 
   Status GetXClusterEstimatedDataLoss(
       const GetXClusterEstimatedDataLossRequestPB* req,
@@ -1302,6 +1324,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   Status SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                const AlterTableRequestPB* req = nullptr);
+
+  Status SendAlterTableRequestInternal(const scoped_refptr<TableInfo>& table,
+                                       const TransactionId& txn_id);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.

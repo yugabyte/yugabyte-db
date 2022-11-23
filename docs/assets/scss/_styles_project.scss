@@ -7,7 +7,7 @@
 @import "./_contribute_list.scss";
 @import "./_admonition.scss";
 @import "./_code_block.scss";
-@import "./_release_notes.scss";
+@import "./_yb_pills.scss";
 @import "./_yb_tabs.scss";
 @import "./_tables.scss";
 @import "./_search.scss";
@@ -71,8 +71,13 @@
         color: $yb-font-blue;
         line-height: 18px;
 
+        &.disabled {
+          color: #4e5f6d;
+        }
+
         &:hover {
-          color: #21313c;
+          text-decoration: underline;
+          text-underline-offset: 3px;
         }
       }
 
@@ -308,6 +313,10 @@
         -webkit-line-clamp: 3;
         position: relative;
         z-index: 2;
+
+        code {
+          overflow: hidden;
+        }
 
         @media only screen and (min-width: 768px) and (max-width: 1024px) {
           max-height: 84px;

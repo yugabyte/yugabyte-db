@@ -9,16 +9,8 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.InstanceType;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Date;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.UUID;
-import java.io.IOException;
-import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -29,6 +21,7 @@ class InstanceComponent implements SupportBundleComponent {
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
+  public static final String sourceNodeFiles = "master/instance;tserver/instance";
 
   @Inject
   InstanceComponent(
@@ -43,47 +36,34 @@ class InstanceComponent implements SupportBundleComponent {
   }
 
   @Override
-  public void downloadComponent(Customer customer, Universe universe, Path bundlePath)
-      throws IOException {
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
-
-    String destDir = bundlePath.toString() + "/" + "instance";
-    Path destPath = Paths.get(destDir);
-    Files.createDirectories(destPath);
-
-    // Downloads the /mnt/d0/master/instance and /mnt/d0/tserver/instance from each node in the
-    // universe into the bundle path
-    for (NodeDetails node : nodes) {
-      // Get source file path prefix
-      String mountPath =
-          supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
-      String nodeHomeDir = mountPath + "/yb-data";
-
-      // Get target file path
-      String nodeName = node.getNodeName();
-      Path nodeTargetFile = Paths.get(destDir, nodeName + ".tar.gz");
-
-      log.debug(
-          "Gathering instance file for node: {}, source path: {}, target path: {}",
-          nodeName,
-          nodeHomeDir,
-          nodeTargetFile.toString());
-
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer,
-              universe,
-              node,
-              nodeHomeDir,
-              "master/instance;tserver/instance",
-              nodeTargetFile);
-    }
+  public void downloadComponent(
+      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+    // Downloads the /mnt/d0/master/consensus-meta and /mnt/d0/tserver/consensus-meta from each node
+    // in the universe into the bundle path
+    // Get source file path prefix
+    String mountPath =
+        supportBundleUtil.getDataDirPath(universe, node, nodeUniverseManager, config);
+    String nodeHomeDir = mountPath + "/yb-data";
+    supportBundleUtil.downloadNodeLevelComponent(
+        universeInfoHandler,
+        customer,
+        universe,
+        bundlePath,
+        node,
+        nodeHomeDir,
+        sourceNodeFiles,
+        this.getClass().getSimpleName());
   }
 
   @Override
   public void downloadComponentBetweenDates(
-      Customer customer, Universe universe, Path bundlePath, Date startDate, Date endDate)
-      throws IOException, ParseException {
-    this.downloadComponent(customer, universe, bundlePath);
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      Date startDate,
+      Date endDate,
+      NodeDetails node)
+      throws Exception {
+    this.downloadComponent(customer, universe, bundlePath, node);
   }
 }
