@@ -147,7 +147,7 @@ SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical:
       )#");
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   {
     IntentIterator iter(
@@ -233,7 +233,7 @@ SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical:
       )#");
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
-  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   {
     IntentIterator iter(
@@ -384,7 +384,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema& schema = kSchemaForIteratorTests;
   const auto txn_context =
       TransactionOperationContext(TransactionId::GenerateRandom(), &txn_status_manager);
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   // No committed intents as of HT 2000.
   {

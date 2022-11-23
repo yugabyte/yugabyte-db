@@ -20,13 +20,9 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/transaction_status_cache.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/endian.h"
-
-#include "yb/rocksdb/db.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
