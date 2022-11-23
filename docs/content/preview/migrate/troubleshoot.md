@@ -184,7 +184,7 @@ show tables;
 +----------------------+
 ```
 
-The exported schema eaxmple is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE test_data_copy (
