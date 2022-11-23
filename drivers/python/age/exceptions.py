@@ -52,7 +52,7 @@ class NoCursor(Exception):
     def __repr__(self) :
         return 'No Cursor'
 
-class SqlExcutionError(Exception):
+class SqlExecutionError(Exception):
     def __init__(self, msg, cause):
         self.msg = msg
         self.cause = cause
