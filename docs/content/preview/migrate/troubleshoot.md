@@ -297,7 +297,7 @@ CREATE TABLE numeric_size (
 
 **GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
-**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, because the `date_trunc` function is used for such types of datetime columns. So, when you export such a schema using `trunc`, it exports `trunc` and fails during data import.
+**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, where the `date_trunc` function is used for these types of datetime columns. When you export such a schema using `trunc`, the data import fails.
 
 **Workaround**: Manual intervention needed. You have to replace `trunc` with `date_trunc` in the exported schema files.
 
