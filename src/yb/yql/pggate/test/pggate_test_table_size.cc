@@ -34,7 +34,9 @@ namespace pggate {
 class PggateTestTableSize : public PggateTest {
 };
 
-TEST_F(PggateTestTableSize, YB_DISABLE_TEST_IN_TSAN(TestSimpleTable)) {
+// TODO: enable this test after https://github.com/yugabyte/yugabyte-db/issues/15107 is fixed,
+//       but it should be kept disabled for TSAN: YB_DISABLE_TEST_IN_TSAN(TestSimpleTable)
+TEST_F(PggateTestTableSize, YB_DISABLE_TEST(TestSimpleTable)) {
   CHECK_OK(Init("SimpleTable"));
 
   const char *kTabname = "basic_table";
@@ -156,7 +158,8 @@ TEST_F(PggateTestTableSize, YB_DISABLE_TEST_IN_TSAN(TestSimpleTable)) {
   EXPECT_EQ(num_missing_tablets, 0) << "Unexpected missing tablets";
 }
 
-TEST_F(PggateTestTableSize, TestMissingTablets) {
+// TODO: enable this test after https://github.com/yugabyte/yugabyte-db/issues/15107 is fixed.
+TEST_F(PggateTestTableSize, YB_DISABLE_TEST(TestMissingTablets)) {
   CHECK_OK(Init("MissingTablet"));
 
   const char *kTabname = "missing_tablet_table";
