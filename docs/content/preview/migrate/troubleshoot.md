@@ -423,4 +423,4 @@ Currently, yb-voyager doesn't support the following features:
 | Feature | Description/Alternatives  | GitHub Issue |
 | :------ | :------------------------ | :----------- |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
-| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
+| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>Use another mechanism to load the attributes.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
