@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-This page documents the known issues and workarounds, and unsupported features when migrating data with YugabyteDB Voyager.
+This page documents known issues and workarounds, as well as unsupported features when migrating data with YugabyteDB Voyager.
 
 ## Known issues
 
@@ -161,13 +161,13 @@ CREATE INDEX exp_ind ON exp_index_test ((extract(year from date(to_date))));
 
 ---
 
-### Issue #320: [MySQL] Issue when exporting data from MySQL with table_name including quotes
+### Issue #320: [MySQL] Exporting data from MySQL when table names include quotes
 
 **GitHub link**: [Issue #320](https://github.com/yugabyte/yb-voyager/issues/320)
 
-**Description**: When exporting the schema from MySQL which includes the table_name with quotes, it exports the table with the table_name converted to lowercase and without quotes, resulting in an error when exporting the data.
+**Description**: When exporting a schema from MySQL that includes a table name that has quotes, the table is exported with the table name converted to lowercase and without the quotes, resulting in an error.
 
-**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming it in YugabyteDB.
+**Workaround**: Manual intervention needed. You have to rename the table in MySQL and then export and import the data followed by renaming the table in YugabyteDB.
 
 Example tables for source MySQL database is as follows:
 
@@ -184,7 +184,7 @@ show tables;
 +----------------------+
 ```
 
-The exported schema eaxmple is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE test_data_copy (
@@ -207,7 +207,7 @@ DBD::mysql::st execute failed: Table 'pk_missing.test_data_COPY' doesn't exist a
 
 Suggested workaround is as follows:
 
-1. Rename the table name with quotes to a name without quotes in MySQL database using the following command:
+1. Rename the table with the quotes using a name without quotes in MySQL database using the following command:
 
     ```sql
     Alter table `"test_data_COPY"` rename test_data_COPY2;
@@ -215,7 +215,7 @@ Suggested workaround is as follows:
 
 1. Export and import the data.
 
-1. Rename the table name in YugabyteDB to a quoted one using the following command:
+1. Rename the table in YugabyteDB to include the quotes using the following command:
 
     ```sql
     Alter table test_data_copy2 rename to "test_data_COPY";
@@ -223,13 +223,13 @@ Suggested workaround is as follows:
 
 ---
 
-### Issue #207: [Oracle] Some numeric types do not get exported
+### Issue #207: [Oracle] Some numeric types are not exported
 
 **GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
 
 **Description**: For cases where the precision is less than the scale in a numeric attribute, it fails to get imported to YugabyteDB.
 
-**Workaround**: Manually remove the explicit precision and scale values from the exported numeric or decimal attributes. PostgreSQL or YugabyteDB does not allow setting the precision less than the scale explicitly.
+**Workaround**: Manually remove the explicit precision and scale values from the exported numeric or decimal attributes. PostgreSQL and YugabyteDB do not allow setting the precision less than the scale explicitly.
 
 **Example**
 
@@ -249,7 +249,7 @@ create table numeric_size(
 );
 ```
 
-The exported schema example is as follows:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE numeric_size (
@@ -283,23 +283,23 @@ CREATE TABLE numeric_size (
 
 ---
 
-### Issue #584: [Oracle] RAW data fails to get imported in some cases
+### Issue #584: [Oracle] RAW data is not imported in some cases
 
 **GitHub link**: [Issue #584](https://github.com/yugabyte/yb-voyager/issues/584)
 
 **Description**: When attempting to migrate a (LONG) RAW attribute from an Oracle instance, you may face an _invalid hexadecimal error_.
 
-**Workaround**: None. A workaround is being explored currently.
+**Workaround**: None. A workaround is currently being explored.
 
 ---
 
-### Issue #602: [Oracle] Issue using a variation of `trunc` function with datetime column in Oracle and YugabyteDB
+### Issue #602: [Oracle] Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
 
 **GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
-**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, because the `date_trunc` function is used for such types of datetime columns. So, when you export such a schema using `trunc`, it exports `trunc` and fails during data import.
+**Description**: You can use the `trunc` function with a timestamp column in your Oracle schema, but this variation is not supported in YugabytedB, where the `date_trunc` function is used for these types of datetime columns. When you export such a schema using `trunc`, the data import fails.
 
-**Workaround**: Manual intervention needed. You have to replace the function from `trunc` to `date_trunc` in the exported schema files.
+**Workaround**: Manual intervention needed. You have to replace `trunc` with `date_trunc` in the exported schema files.
 
 **Example**
 
@@ -317,7 +317,7 @@ ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day
 
 ---
 
-### Issue #334: [MySQL, Oracle] Issue when importing with case-sensitive schema names
+### Issue #334: [MySQL, Oracle] Importing case-sensitive schema names
 
 **GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
 
@@ -423,4 +423,4 @@ Currently, yb-voyager doesn't support the following features:
 | Feature | Description/Alternatives  | GitHub Issue |
 | :------ | :------------------------ | :----------- |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
-| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
+| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>Use another mechanism to load the attributes.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
