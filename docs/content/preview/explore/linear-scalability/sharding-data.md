@@ -11,6 +11,8 @@ menu:
     parent: explore-scalability
     weight: 210
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <!--
@@ -62,9 +64,9 @@ With consistent hash sharding, there are many more shards than the number of nod
 
 **A potential downside** of hash sharding is that performing range queries could be inefficient. Examples of range queries are finding rows greater than a lower bound or less than an upper bound (as opposed to point lookups).
 
-#### Hash sharding example
+#### Syntax example
 
-**In YSQL**, create a table with hash sharding:
+In [YSQL](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key), to create a table with hash sharding, you specify `HASH` for the primary key. For example:
 
 ```sql
 CREATE TABLE customers (
@@ -83,7 +85,7 @@ CREATE TABLE customers (
 );
 ```
 
-**In YCQL**, you can only create tables with hash sharding, so an explicit syntax for setting hash sharding is not necessary.
+In [YCQL](../../../api/ycql/ddl_create_table/), you can only create tables with hash sharding, so an explicit syntax for setting hash sharding is not necessary:
 
 ```sql
 CREATE TABLE items (
@@ -111,9 +113,9 @@ This type of sharding allows efficiently querying a range of rows by the primary
 
     Nodes hosting hot spots are overloaded relative to others. You can mitigate this to some extent with active load balancing, but this does not always work well in practice: by the time hot shards are redistributed across nodes, the workload may have changed and introduced new hot spots.
 
-#### Range sharding example
+#### Syntax example
 
-**In YSQL**, create a table with range sharding:
+In [YSQL](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key), to create a table with range sharding, use the `ASC` or `DESC` keywords. For example:
 
 ```sql
 CREATE TABLE order_details (
@@ -132,7 +134,7 @@ CREATE TABLE order_details (
 
 ## Try it out
 
-In this tutorial, you'll explore automatic sharding inside YugabyteDB. First, you'll create some tables to understand how automatic sharding works. Then, you'll insert entries one by one, and examine how the data gets distributed across the various nodes.
+This example shows how automatic sharding works in YugabyteDB. First, you create some tables to understand how automatic sharding works. Then, you insert entries one by one, and examine how the data gets distributed across the various nodes.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
@@ -170,7 +172,7 @@ To create a cluster, do the following:
     ```
 
 {{< warning title="Warning" >}}
-Setting `memstore_size` to such a low value is not recommended in production, and is only being used here to illustrate the point by forcing flushes to happen more quickly.
+Setting `memstore_size` to such a low value is not recommended in production, and is only used here to illustrate the point by forcing flushes to happen more quickly.
 {{< /warning >}}
 
 ### Create a table
