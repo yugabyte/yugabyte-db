@@ -229,7 +229,7 @@ Suggested workaround is as follows:
 
 **Description**: For cases where the precision is less than the scale in a numeric attribute, it fails to get imported to YugabyteDB.
 
-**Workaround**: Manually remove the explicit precision and scale values from the exported numeric or decimal attributes. PostgreSQL or YugabyteDB does not allow setting the precision less than the scale explicitly.
+**Workaround**: Manually remove the explicit precision and scale values from the exported numeric or decimal attributes. PostgreSQL and YugabyteDB do not allow setting the precision less than the scale explicitly.
 
 **Example**
 
