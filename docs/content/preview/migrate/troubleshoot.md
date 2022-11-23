@@ -293,7 +293,7 @@ CREATE TABLE numeric_size (
 
 ---
 
-### Issue #602: [Oracle] Issue using a variation of `trunc` function with datetime column in Oracle and YugabyteDB
+### Issue #602: [Oracle] Using a variation of `trunc` with datetime columns in Oracle and YugabyteDB
 
 **GitHub link**: [Issue #602](https://github.com/yugabyte/yb-voyager/issues/602)
 
