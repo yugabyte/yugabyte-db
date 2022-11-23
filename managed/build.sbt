@@ -417,7 +417,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b7"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b8"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.33-SNAPSHOT"
 
 libraryDependencies ++= Seq(
