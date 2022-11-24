@@ -20,8 +20,6 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import {
-  MetricName,
-  MetricTraceName,
   XClusterConfigAction,
   REPLICATION_LAG_ALERT_NAME,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
@@ -35,8 +33,8 @@ import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  parseFloatIfDefined,
-  getXClusterConfigTableType
+  getXClusterConfigTableType,
+  getLatestMaxNodeLag
 } from '../ReplicationUtils';
 import { AddTableModal } from './addTable/AddTableModal';
 import { EditConfigModal } from './EditConfigModal';
@@ -61,9 +59,6 @@ interface Props {
     replicationUUID: string;
   };
 }
-
-const COMMITTED_LAG_METRIC_TRACE_NAME =
-  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
 
 export function ReplicationDetails({
   params: { uuid: currentUniverseUUID, replicationUUID: xClusterConfigUUID }
@@ -275,12 +270,8 @@ export function ReplicationDetails({
     );
     for (const tableLagQuery of tableLagQueries) {
       if (tableLagQuery.isSuccess) {
-        const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
-        const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-        const trace = metric.data.find((trace) => (trace.name = traceAlias));
-        const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-
-        if (latestLag === undefined || latestLag > maxAcceptableLag) {
+        const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
+        if (maxNodeLag === undefined || maxNodeLag > maxAcceptableLag) {
           numTablesAboveLagThreshold += 1;
         }
       }

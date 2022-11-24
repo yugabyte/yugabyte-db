@@ -20,15 +20,18 @@ import {
 import { api } from '../../redesign/helpers/api';
 import { assertUnreachableCase } from '../../utils/ErrorUtils';
 
-import { XClusterConfig, XClusterTable, XClusterTableDetails } from './XClusterTypes';
+import {
+  Metrics,
+  MetricTrace,
+  XClusterConfig,
+  XClusterTable,
+  XClusterTableDetails
+} from './XClusterTypes';
 import { Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
-
-const COMMITTED_LAG_METRIC_TRACE_NAME =
-  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
 
 // TODO: Rename, refactor and pull into separate file
 export const MaxAcceptableLag = ({
@@ -123,12 +126,9 @@ export const CurrentReplicationLag = ({
     )
   );
 
-  const metric = universeLagQuery.data.tserver_async_replication_lag_micros;
-  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-  const trace = metric.data.find((trace) => (trace.name = traceAlias));
-  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-  const formattedLag = formatLagMetric(latestLag);
-  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
+  const maxNodeLag = getLatestMaxNodeLag(universeLagQuery.data);
+  const formattedLag = formatLagMetric(maxNodeLag);
+  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
   return (
     <span
@@ -198,12 +198,10 @@ export const CurrentTableReplicationLag = ({
       (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
     )
   );
-  const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
-  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-  const trace = metric.data.find((trace) => trace.name === traceAlias);
-  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-  const formattedLag = formatLagMetric(latestLag);
-  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
+
+  const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
+  const formattedLag = formatLagMetric(maxNodeLag);
+  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
   return (
     <span
@@ -215,6 +213,51 @@ export const CurrentTableReplicationLag = ({
       {formattedLag}
     </span>
   );
+};
+
+export const getLatestMaxNodeLag = (metric: Metrics<'tserver_async_replication_lag_micros'>) => {
+  const lagMetric = metric.tserver_async_replication_lag_micros;
+  const traceAlias =
+    lagMetric.layout.yaxis.alias[
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+    ];
+  const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
+  const latestLags = traces.reduce((latestLags: number[], trace) => {
+    const latestLag = parseFloatIfDefined(trace.y[trace.y.length - 1]);
+    if (latestLag !== undefined) {
+      latestLags.push(latestLag);
+    }
+    return latestLags;
+  }, []);
+  return latestLags.length ? Math.max(...latestLags) : undefined;
+};
+
+export const getMaxNodeLagMetric = (
+  metric: Metrics<'tserver_async_replication_lag_micros'>
+): MetricTrace | undefined => {
+  const lagMetric = metric.tserver_async_replication_lag_micros;
+  const traceAlias =
+    lagMetric.layout.yaxis.alias[
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+    ];
+  const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
+  if (!traces.length) {
+    return undefined;
+  }
+
+  // Take the maximum y at every x across all nodes.
+  const maxY = new Array<number>(traces[0].y.length).fill(0);
+  traces.forEach((trace) => {
+    trace.y.forEach((y: string | number, idx: number) => {
+      maxY[idx] = Math.max(maxY[idx], parseFloatIfDefined(y) ?? 0);
+    });
+  });
+
+  return {
+    ...traces[0],
+    name: `Max ${traceAlias}`,
+    y: maxY
+  };
 };
 
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
