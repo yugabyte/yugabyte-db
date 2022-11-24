@@ -96,7 +96,9 @@ public enum PlatformMetrics {
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
   UNIVERSE_SSH_KEY_EXPIRY_DAY(
       "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),
-  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS);
+  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS),
+  UNIVERSE_PRIVATE_ACCESS_KEY_STATUS(
+      "Flag, indicating that private access key's permission is unchanged", Unit.STATUS);
 
   private final String help;
   private final Unit unit;
