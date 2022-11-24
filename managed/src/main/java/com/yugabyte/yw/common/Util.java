@@ -13,6 +13,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -807,5 +808,20 @@ public class Util {
         }
       }
     }
+  }
+
+  public static boolean isKubernetesBasedUniverse(Universe universe) {
+    boolean isKubernetesUniverse =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes);
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      isKubernetesUniverse =
+          isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
+    }
+    return isKubernetesUniverse;
   }
 }
