@@ -245,7 +245,7 @@ public class EncryptionInTransitUtil {
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt,
       boolean rootAndClientRootCASame) {
-    return enableNodeToNodeEncrypt || (rootAndClientRootCASame && enableClientToNodeEncrypt);
+    return enableNodeToNodeEncrypt;
   }
 
   public static boolean isClientRootCARequired(
@@ -289,6 +289,6 @@ public class EncryptionInTransitUtil {
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt,
       boolean rootAndClientRootCASame) {
-    return !rootAndClientRootCASame && enableClientToNodeEncrypt;
+    return enableClientToNodeEncrypt;
   }
 }

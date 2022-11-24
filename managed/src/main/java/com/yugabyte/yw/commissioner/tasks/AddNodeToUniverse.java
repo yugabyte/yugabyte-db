@@ -123,7 +123,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                                 ? taskParams().rootCA
                                 : null,
                             EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-                                ? taskParams().clientRootCA
+                                ? taskParams().getClientRootCA()
                                 : null);
                     if (preflightStatus != null) {
                       throw new RuntimeException(

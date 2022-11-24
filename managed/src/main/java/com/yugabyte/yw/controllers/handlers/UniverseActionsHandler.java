@@ -234,24 +234,24 @@ public class UniverseActionsHandler {
       // Setting the ClientRootCA to the already existing clientRootCA as we do not
       // support root certificate rotation through ToggleTLS.
       // There is a check for different new and existing root cert already.
-      taskParams.clientRootCA = universeDetails.clientRootCA;
-      if (taskParams.clientRootCA == null) {
+      taskParams.setClientRootCA(universeDetails.getClientRootCA());
+      if (taskParams.getClientRootCA() == null) {
         if (requestParams.clientRootCA == null) {
           if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
             // Setting ClientRootCA to RootCA incase rootAndClientRootCA is true
-            taskParams.clientRootCA = taskParams.rootCA;
+            taskParams.setClientRootCA(taskParams.rootCA);
           } else {
             // create self signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
-            taskParams.clientRootCA =
+            taskParams.setClientRootCA(
                 CertificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid);
+                    customer.uuid));
           }
         } else {
           // Set the ClientRootCA to the user provided ClientRootCA if it exists
-          taskParams.clientRootCA = requestParams.clientRootCA;
+          taskParams.setClientRootCA(requestParams.clientRootCA);
         }
       }
 
@@ -259,7 +259,7 @@ public class UniverseActionsHandler {
       // This is necessary to set to ensure backward compatibity as existing parts of
       // codebase uses rootCA for Client to Node Encryption
       if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
-        taskParams.rootCA = taskParams.clientRootCA;
+        taskParams.rootCA = taskParams.getClientRootCA();
       }
 
       // If client encryption is enabled, generate the client cert file for each node.
@@ -268,7 +268,9 @@ public class UniverseActionsHandler {
         if (cert.certType == CertConfigType.SelfSigned
             || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              runtimeConfigFactory.staticApplicationConf(), customer.uuid, taskParams.clientRootCA);
+              runtimeConfigFactory.staticApplicationConf(),
+              customer.uuid,
+              taskParams.getClientRootCA());
         }
       }
     }

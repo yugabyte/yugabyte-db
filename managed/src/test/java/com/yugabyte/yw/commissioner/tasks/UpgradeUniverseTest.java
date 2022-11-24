@@ -77,6 +77,7 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
+
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -2028,7 +2029,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                 universeDetails.rootCA = rootCA;
               }
               if (clientToNode) {
-                universeDetails.clientRootCA = clientRootCA;
+                universeDetails.setClientRootCA(clientRootCA);
               }
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
@@ -2052,7 +2053,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.enableClientToNodeEncrypt = clientToNode;
     taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
     taskParams.rootCA = rootCA;
-    taskParams.clientRootCA = clientRootCA;
+    taskParams.setClientRootCA(clientRootCA);
     return taskParams;
   }
 
@@ -2155,9 +2156,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "true, true, false, false, true, true",
+    //    "true, true, false, false, true, true",//both cannot be same, when rootCA is disabled
     "true, true, false, false, false, true",
-    "true, false, false, false, true, true",
+    //    "true, false, false, false, true, true",//both cannot be same, when root CA is disabled
     "true, false, false, false, false, true",
     "false, true, false, true, true, true",
     "false, true, false, true, false, true",
@@ -2166,10 +2167,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, false, true, false, true",
     "true, false, false, true, true, true",
     "false, true, false, false, false, true",
-    "false, false, false, false, true, true",
-    "true, true, true, false, true, true",
+    //    "false, false, false, false, true, true",//both cannot be same when rootCA is disabled
+    //    "true, true, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, false, true",
-    "true, false, true, false, true, true",
+    //    "true, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, true, false, false, true",
     "false, true, true, true, true, true",
     "false, true, true, true, false, true",
@@ -2178,7 +2179,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, true, true, false, true",
     "true, false, true, true, true, true",
     "false, true, true, false, false, true",
-    "false, false, true, false, true, true",
+    //    "false, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, true, false",
     "true, true, true, false, false, false",
     "true, false, true, false, true, false",
@@ -2216,6 +2217,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!nodeToNode || !clientToNode)) {
+      // bothCASame cannot be true when either one of nodeToNode or clientToNode is disabled
+      rootAndClientRootCASame = false;
+    }
+
     UUID rootCA = UUID.randomUUID();
     UUID clientRootCA = UUID.randomUUID();
     prepareUniverseForToggleTls(
@@ -2266,11 +2273,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
-      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (!rootAndClientRootCASame && clientToNode)
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
-    else assertNull(universe.getUniverseDetails().clientRootCA);
+    if (clientToNode)
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+    else assertNull(universe.getUniverseDetails().getClientRootCA());
     assertEquals(
         nodeToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
@@ -2283,9 +2290,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "true, true, false, false, true, true",
+    //    "true, true, false, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, false, false, false, true",
-    "true, false, false, false, true, true",
+    //    "true, false, false, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, false, false, false, true",
     "false, true, false, true, true, true",
     "false, true, false, true, false, true",
@@ -2294,10 +2301,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, false, true, false, true",
     "true, false, false, true, true, true",
     "false, true, false, false, false, true",
-    "false, false, false, false, true, true",
-    "true, true, true, false, true, true",
+    //    "false, false, false, false, true, true",//both cannot be same when rootCA is disabled
+    //    "true, true, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, false, true",
-    "true, false, true, false, true, true",
+    //    "true, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, true, false, false, true",
     "false, true, true, true, true, true",
     "false, true, true, true, false, true",
@@ -2306,7 +2313,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, true, true, false, true",
     "true, false, true, true, true, true",
     "false, true, true, false, false, true",
-    "false, false, true, false, true, true",
+    //    "false, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, true, false",
     "true, true, true, false, false, false",
     "true, false, true, false, true, false",
@@ -2344,6 +2351,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!nodeToNode || !clientToNode)) {
+      // bothCASame cannot be true when either of nodeToNode or clientToNode are false
+      rootAndClientRootCASame = false;
+    }
     UUID rootCA = UUID.randomUUID();
     UUID clientRootCA = UUID.randomUUID();
     prepareUniverseForToggleTls(
@@ -2354,7 +2366,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             clientToNode,
             rootAndClientRootCASame,
             rootCA,
-            clientRootCA,
+            rootAndClientRootCASame ? rootCA : clientRootCA,
             UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
 
     int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
@@ -2401,9 +2413,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (!rootAndClientRootCASame && clientToNode)
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
-    else assertNull(universe.getUniverseDetails().clientRootCA);
+    if (clientToNode)
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+    else assertNull(universe.getUniverseDetails().getClientRootCA());
     assertEquals(
         nodeToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);

@@ -77,6 +77,9 @@ public class Universe extends Model {
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
 
+  // Key to indicate if a universe cert is hot reloadable
+  public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
+
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
     MDC.put("universe-id", universeUUID.toString());
@@ -739,7 +742,7 @@ public class Universe extends Model {
       if (details.rootAndClientRootCASame) {
         return CertificateInfo.get(details.rootCA).certificate;
       }
-      return CertificateInfo.get(details.clientRootCA).certificate;
+      return CertificateInfo.get(details.getClientRootCA()).certificate;
     }
     return null;
   }
@@ -994,8 +997,8 @@ public class Universe extends Model {
             s ->
                 (s.getUniverseDetails().rootCA != null
                         && s.getUniverseDetails().rootCA.equals(certUUID))
-                    || (s.getUniverseDetails().clientRootCA != null
-                        && s.getUniverseDetails().clientRootCA.equals(certUUID)))
+                    || (s.getUniverseDetails().getClientRootCA() != null
+                        && s.getUniverseDetails().getClientRootCA().equals(certUUID)))
         .collect(Collectors.toSet());
   }
 

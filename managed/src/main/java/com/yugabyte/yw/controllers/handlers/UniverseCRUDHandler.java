@@ -344,22 +344,22 @@ public class UniverseCRUDHandler {
     }
 
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
-      if (taskParams.clientRootCA == null) {
+      if (taskParams.getClientRootCA() == null) {
         if (taskParams.rootCA != null && taskParams.rootAndClientRootCASame) {
           // Setting ClientRootCA to RootCA in case rootAndClientRootCA is true
-          taskParams.clientRootCA = taskParams.rootCA;
+          taskParams.setClientRootCA(taskParams.rootCA);
         } else {
           // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
-          taskParams.clientRootCA =
+          taskParams.setClientRootCA(
               CertificateHelper.createClientRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
-                  customer.uuid);
+                  customer.uuid));
         }
       }
 
-      cert = CertificateInfo.get(taskParams.clientRootCA);
+      cert = CertificateInfo.get(taskParams.getClientRootCA());
       if (cert.certType == CertConfigType.CustomCertHostPath) {
         if (!taskParams
             .getPrimaryCluster()
@@ -383,17 +383,17 @@ public class UniverseCRUDHandler {
               INTERNAL_SERVER_ERROR,
               String.format(
                   "Error while dumping certs from Vault for certificate: %s",
-                  taskParams.clientRootCA));
+                  taskParams.getClientRootCA()));
         }
       }
 
-      checkValidRootCA(taskParams.clientRootCA);
+      checkValidRootCA(taskParams.getClientRootCA());
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.
       // This is necessary to set to ensure backward compatibility as existing parts of
       // codebase (kubernetes) uses rootCA for Client to Node Encryption
       if (taskParams.rootCA == null && taskParams.rootAndClientRootCASame) {
-        taskParams.rootCA = taskParams.clientRootCA;
+        taskParams.rootCA = taskParams.getClientRootCA();
       }
 
       // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
@@ -623,7 +623,11 @@ public class UniverseCRUDHandler {
         }
       }
 
-      universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      // other configs enabled by default
+      universe.updateConfig(
+          ImmutableMap.of(
+              Universe.TAKE_BACKUPS, "true",
+              Universe.KEY_CERT_HOT_RELOADABLE, "true"));
       universe.save();
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
@@ -1536,11 +1540,6 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
-    if (taskParams.rootAndClientRootCASame == null) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST, "rootAndClientRootCASame cannot be null.");
-    }
-
     boolean nodeToNodeChange =
         taskParams.enableNodeToNodeEncrypt != null
             && taskParams.enableNodeToNodeEncrypt != userIntent.enableNodeToNodeEncrypt;
@@ -1551,13 +1550,16 @@ public class UniverseCRUDHandler {
 
     boolean rootCaChange =
         taskParams.rootCA != null && !taskParams.rootCA.equals(universeDetails.rootCA);
+    boolean rootAndClientRootCASameToggled =
+        (taskParams.rootAndClientRootCASame != universeDetails.rootAndClientRootCASame);
     boolean clientRootCaChange =
         !taskParams.rootAndClientRootCASame
-            && taskParams.clientRootCA != null
-            && !taskParams.clientRootCA.equals(universeDetails.clientRootCA);
+            && taskParams.getClientRootCA() != null
+            && !taskParams.getClientRootCA().equals(universeDetails.getClientRootCA());
     boolean certsRotate =
         rootCaChange
             || clientRootCaChange
+            || rootAndClientRootCASameToggled
             || taskParams.createNewRootCA
             || taskParams.createNewClientRootCA
             || taskParams.selfSignedServerCertRotate
@@ -1566,7 +1568,7 @@ public class UniverseCRUDHandler {
     if (tlsToggle && certsRotate) {
       if (((rootCaChange || taskParams.createNewRootCA) && universeDetails.rootCA != null)
           || ((clientRootCaChange || taskParams.createNewClientRootCA)
-              && universeDetails.clientRootCA != null)) {
+              && universeDetails.getClientRootCA() != null)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Cannot enable/disable TLS along with cert rotation. Perform them individually.");
@@ -1624,10 +1626,10 @@ public class UniverseCRUDHandler {
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
       tlsToggleParams.rootCA =
           isRootCA ? (!taskParams.createNewRootCA ? taskParams.rootCA : null) : null;
-      tlsToggleParams.clientRootCA =
+      tlsToggleParams.setClientRootCA(
           isClientRootCA
-              ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
-              : null;
+              ? (!taskParams.createNewClientRootCA ? taskParams.getClientRootCA() : null)
+              : null);
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
@@ -1651,11 +1653,11 @@ public class UniverseCRUDHandler {
     }
 
     if (isClientRootCA && taskParams.createNewClientRootCA) {
-      taskParams.clientRootCA =
+      taskParams.setClientRootCA(
           CertificateHelper.createClientRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
-              customer.uuid);
+              customer.uuid));
     }
     // taskParams has the same subset of overridable fields as CertsRotateParams.
     // taskParams is already merged with universe details.

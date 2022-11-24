@@ -79,7 +79,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         } else if (rootCert.certType == CertConfigType.SelfSigned) {
           SubTaskGroupType certRotate = RotatingCert;
           taskParams().rootCA = universeDetails.rootCA;
-          taskParams().clientRootCA = universeDetails.clientRootCA;
+          taskParams().setClientRootCA(universeDetails.getClientRootCA());
           createCertUpdateTasks(
               masterNodeList,
               tserverNodeList,
