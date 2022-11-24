@@ -37,7 +37,7 @@ There are a number of different serialization formats for JSON data, one of the 
 
 The YCQL API supports the [JSONB data type](../../../api/ycql/type_jsonb/) to parse, store, and query JSON documents natively. This data type is similar in query language syntax and functionality to the one supported by PostgreSQL. JSONB serialization allows for easy search and retrieval of attributes inside the document. This is achieved by storing all the JSON attributes in a sorted order, which allows for efficient binary search of keys. Similarly, arrays are stored such that random access for a particular array index into the serialized JSON document is possible. In addition, [DocDB](../../../architecture/docdb/persistence/), YugabyteDB's underlying storage engine, is document-oriented, which makes storing JSON data simpler than would otherwise be possible.
 
-Take the example of an ecommerce application for an online bookstore. The database for such a bookstore needs to store details of various books, some of which may have custom attributes. The following example shows a JSON document that captures the details of a particular book, Macbeth by William Shakespeare.
+Consider the example of an ecommerce application for an online bookstore. The database for such a bookstore needs to store details of various books, some of which may have custom attributes. The following example shows a JSON document that captures the details of a particular book, Macbeth by William Shakespeare.
 
 ```json
 {
@@ -123,7 +123,7 @@ ycqlsh> SELECT * FROM store.books;
 
 ```
 
-The following query retrieves just the ID and name for all the books.
+The following query retrieves just the ID and name for all the books:
 
 ```cql
 ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
