@@ -179,7 +179,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     if (!universeDetails.rootAndClientRootCASame) {
       // Create the task to delete clientRootCerts.
       DeleteCertificate clientRootCertDeletiontask =
-          createDeleteCertificateTask(params().customerUUID, universeDetails.clientRootCA);
+          createDeleteCertificateTask(params().customerUUID, universeDetails.getClientRootCA());
       // Add it to the task list.
       if (clientRootCertDeletiontask != null) {
         subTaskGroup.addSubTask(clientRootCertDeletiontask);

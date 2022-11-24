@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.utils.Version;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -197,23 +199,36 @@ public class CertsRotate extends UpgradeTaskBase {
       boolean ybcInstalled) {
 
     if (isCertReloadable(universe)) {
-      // cert rotate can be performed
+      // cert reload can be performed
       log.info("adding cert rotate via reload task ...");
       createCertReloadTask(nodes, universe.universeUUID, userTaskUUID);
 
     } else {
-      // Do a rolling restart
+      // Do a restart to rotate certificate
       log.info("adding a cert rotate via restart task ...");
       createRestartTasks(nodes, upgradeOption, ybcInstalled);
+
+      // Restart is scheduled to happen, so 'client cert dir' gflag will be added
+      // So configure cert reloading on universe, if not already
+      if (!isCertReloadConfigured(universe)) {
+        createCertReloadConfigTask(universe);
+        log.info("cert reload configuration task scheduled for this universe");
+      }
     }
   }
 
   private boolean isCertReloadable(Universe universe) {
-    if (!Boolean.parseBoolean(
-        this.runtimeConfigFactory
-            .globalRuntimeConf()
-            .getString("yb.features.cert_reload.enabled"))) {
-      log.debug("hot cert reload disabled in reference.conf");
+    boolean featureFlagEnabled = isCertReloadFeatureEnabled();
+    boolean universeConfigured = isCertReloadConfigured(universe);
+    log.debug(
+        "cert reloadable => feature flag [{}], universe configured [{}]",
+        featureFlagEnabled,
+        universeConfigured);
+    if (!featureFlagEnabled || !universeConfigured) {
+      log.info(
+          "hot cert reload cannot be performed. Feature flag [{}], universe configured [{}]",
+          featureFlagEnabled,
+          universeConfigured);
       return false;
     }
     List<String> supportedVersions =
@@ -226,6 +241,19 @@ public class CertsRotate extends UpgradeTaskBase {
         .stream()
         .map(Version::new)
         .anyMatch(supportedVersion -> (supportedVersion.compareTo(ybSoftwareVersion) == 0));
+  }
+
+  private boolean isCertReloadFeatureEnabled() {
+    return Boolean.parseBoolean(
+        this.runtimeConfigFactory.globalRuntimeConf().getString("yb.features.cert_reload.enabled"));
+  }
+
+  private boolean isCertReloadConfigured(Universe universe) {
+    // universe should have been configured for performing 'hot cert reload'
+    return Boolean.parseBoolean(
+        universe
+            .getConfig()
+            .getOrDefault(Universe.KEY_CERT_HOT_RELOADABLE, Boolean.FALSE.toString()));
   }
 
   protected void createCertReloadTask(
@@ -242,5 +270,25 @@ public class CertsRotate extends UpgradeTaskBase {
 
     createNonRestartUpgradeTaskFlow(
         taskCreator, nodesPair, DEFAULT_CONTEXT, taskParams().ybcInstalled);
+  }
+
+  protected void createCertReloadConfigTask(Universe universe) {
+    if (isCertReloadConfigured(universe)) {
+      log.debug("Cert reload is already configured");
+      return;
+    }
+
+    UpdateUniverseConfig task = createTask(UpdateUniverseConfig.class);
+    UpdateUniverseConfig.Params params = new UpdateUniverseConfig.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.configs =
+        Collections.singletonMap(Universe.KEY_CERT_HOT_RELOADABLE, Boolean.TRUE.toString());
+    task.initialize(params);
+
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UpdateUniverseConfig", executor);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

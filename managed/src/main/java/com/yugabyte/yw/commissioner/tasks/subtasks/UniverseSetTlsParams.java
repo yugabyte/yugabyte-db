@@ -63,13 +63,17 @@ public class UniverseSetTlsParams extends UniverseTaskBase {
 
             universeDetails.allowInsecure = taskParams().allowInsecure;
             universeDetails.rootCA = null;
-            universeDetails.clientRootCA = null;
+            universeDetails.setClientRootCA(null);
             universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
             if (EncryptionInTransitUtil.isRootCARequired(taskParams())) {
               universeDetails.rootCA = taskParams().rootCA;
             }
             if (EncryptionInTransitUtil.isClientRootCARequired(taskParams())) {
-              universeDetails.clientRootCA = taskParams().clientRootCA;
+              UUID clientRootCA =
+                  taskParams().rootAndClientRootCASame
+                      ? taskParams().rootCA
+                      : taskParams().clientRootCA;
+              universeDetails.setClientRootCA(clientRootCA);
             }
             universe.setUniverseDetails(universeDetails);
           };

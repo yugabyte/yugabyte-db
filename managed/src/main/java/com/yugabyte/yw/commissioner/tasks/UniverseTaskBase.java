@@ -2947,7 +2947,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
     preflightTaskParams.rootCA = rootCA;
-    preflightTaskParams.clientRootCA = clientRootCA;
+    preflightTaskParams.setClientRootCA(clientRootCA);
     UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
         preflightTaskParams.communicationPorts, currentNode);
     preflightTaskParams.extraDependencies.installNodeExporter =

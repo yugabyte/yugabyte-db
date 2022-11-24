@@ -100,6 +100,8 @@ public enum TaskType {
 
   NodeCertReloadTask(com.yugabyte.yw.commissioner.tasks.subtasks.NodeCertReloadTask.class),
 
+  UpdateUniverseConfig(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig.class),
+
   VMImageUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.VMImageUpgrade.class),
 
   SystemdUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.SystemdUpgrade.class),
