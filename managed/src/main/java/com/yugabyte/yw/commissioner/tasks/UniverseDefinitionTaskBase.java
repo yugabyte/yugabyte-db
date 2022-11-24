@@ -161,12 +161,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Cluster cluster = taskParams.getPrimaryCluster();
       if (cluster != null) {
         universeDetails.rootCA = null;
-        universeDetails.clientRootCA = null;
+        universeDetails.setClientRootCA(null);
         if (EncryptionInTransitUtil.isRootCARequired(taskParams)) {
           universeDetails.rootCA = taskParams.rootCA;
         }
         if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
-          universeDetails.clientRootCA = taskParams.clientRootCA;
+          universeDetails.setClientRootCA(taskParams.getClientRootCA());
         }
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
@@ -724,7 +724,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.allowInsecure = universe.getUniverseDetails().allowInsecure;
       params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
       params.rootCA = universe.getUniverseDetails().rootCA;
-      params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+      params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
 
       // Development testing variable.
@@ -1107,7 +1107,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.allowInsecure = taskParams().allowInsecure;
       params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
       params.rootCA = taskParams().rootCA;
-      params.clientRootCA = taskParams().clientRootCA;
+      params.setClientRootCA(taskParams().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
       paramsCustomizer.accept(params);
@@ -1305,7 +1305,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.setClientRootCA(taskParams().getClientRootCA());
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.rootCARotationType = rootCARotationType;
     params.clientRootCARotationType = clientRootCARotationType;
@@ -1400,7 +1400,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
     params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.clientRootCA = taskParams().getClientRootCA();
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     return params;
   }
@@ -1564,7 +1564,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               cluster,
               currentNode,
               rootCARequired ? taskParams().rootCA : null,
-              clientRootCARequired ? taskParams().clientRootCA : null);
+              clientRootCARequired ? taskParams().getClientRootCA() : null);
       if (preflightStatus != null) {
         failedNodes.put(currentNode.nodeName, preflightStatus);
       }
@@ -2178,7 +2178,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UUID custUUID = Customer.get(universe.customerId).uuid;
     params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
     params.rootCA = universe.getUniverseDetails().rootCA;
-    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
 
     // Add testing flag.

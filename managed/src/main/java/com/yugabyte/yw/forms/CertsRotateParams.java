@@ -32,8 +32,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
     RootCert
   }
 
-  // if null, existing value will be used
-  public Boolean rootAndClientRootCASame = null;
   // If true, rotates server cert of rootCA
   public boolean selfSignedServerCertRotate = false;
   // If true, rotates server cert of clientRootCA
@@ -62,18 +60,18 @@ public class CertsRotateParams extends UpgradeTaskParams {
     // Update rootCA, clientRootCA and rootAndClientRootCASame to their desired final state.
     // Decide what kind of upgrade needs to be done on rootCA and clientRootCA.
 
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    UUID currentRootCA = universe.getUniverseDetails().rootCA;
-    UUID currentClientRootCA = universe.getUniverseDetails().clientRootCA;
-    boolean currentRootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    UUID currentRootCA = universeDetails.rootCA;
+    UUID currentClientRootCA = universeDetails.clientRootCA;
+    boolean currentRootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
     }
 
     // Make sure rootCA and clientRootCA respects the rootAndClientRootCASame property
-    if (rootAndClientRootCASame != null
-        && rootAndClientRootCASame
+    if (rootAndClientRootCASame
         && rootCA != null
         && clientRootCA != null
         && !rootCA.equals(clientRootCA)) {
@@ -82,9 +80,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
           "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
 
-    // rootAndClientRootCASame is optional in request, if not present follow the existing flag
-    if (rootAndClientRootCASame == null) {
-      rootAndClientRootCASame = currentRootAndClientRootCASame;
+    if (rootAndClientRootCASame && !userIntent.enableClientToNodeEncrypt) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "'Client to Node' encryption should be enabled before setting "
+              + "rootAndClientRootCASame as true.");
     }
 
     boolean isRootCARequired =
@@ -278,7 +278,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "clientRootCA not applicable for Kubernetes certificate rotation.");
     }
 
-    if (rootAndClientRootCASame != null && !rootAndClientRootCASame) {
+    if (!rootAndClientRootCASame) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "rootAndClientRootCASame cannot be false for Kubernetes universes.");
     }

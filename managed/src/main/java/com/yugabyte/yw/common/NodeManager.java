@@ -555,7 +555,7 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add("--certs_client_dir");
       subcommandStrings.add(CertificateHelper.getCertsForClientDir(ybHomeDir));
 
-      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
+      CertificateInfo clientRootCert = CertificateInfo.get(taskParam.getClientRootCA());
       if (clientRootCert == null) {
         throw new RuntimeException("No valid clientRootCA found for " + taskParam.universeUUID);
       }
@@ -580,7 +580,7 @@ public class NodeManager extends DevopsBase {
               }
               CertificateHelper.createServerCertificate(
                   config,
-                  taskParam.clientRootCA,
+                  taskParam.getClientRootCA(),
                   tempStorageDirectory.toString(),
                   commonName,
                   null,
@@ -1828,8 +1828,8 @@ public class NodeManager extends DevopsBase {
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
 
           boolean rootAndClientAreTheSame =
-              nodeTaskParam.clientRootCA == null
-                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.clientRootCA);
+              nodeTaskParam.getClientRootCA() == null
+                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.getClientRootCA());
           appendCertPathsToCheck(
               commandArgs,
               nodeTaskParam.rootCA,
@@ -1837,7 +1837,7 @@ public class NodeManager extends DevopsBase {
               rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
 
           if (!rootAndClientAreTheSame) {
-            appendCertPathsToCheck(commandArgs, nodeTaskParam.clientRootCA, true, false);
+            appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
           }
 
           Config config = runtimeConfigFactory.forUniverse(universe);
