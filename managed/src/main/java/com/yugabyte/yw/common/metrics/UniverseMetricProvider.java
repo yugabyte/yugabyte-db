@@ -19,6 +19,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -49,6 +51,8 @@ public class UniverseMetricProvider implements MetricsProvider {
   @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
   @Inject MetricService metricService;
+
+  @Inject AccessManager accessManager;
 
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
@@ -118,6 +122,16 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
+          if (!Util.isKubernetesBasedUniverse(universe)) {
+            boolean validPermission =
+                accessManager.checkAccessKeyPermissionsValidity(universe, allAccessKeys);
+            universeGroup.metric(
+                createUniverseMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_PRIVATE_ACCESS_KEY_STATUS,
+                    statusValue(validPermission)));
+          }
 
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
