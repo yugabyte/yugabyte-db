@@ -288,8 +288,13 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
-- **Read Replicas** - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
 - **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
+- **Read replicas**
+  - The replication factor for a read replica region can't be changed after creation.
+  - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
+  - Read replicas currently need to use the same instance type as the Primary cluster.
+  - Because the free storage allowance for read replicas is calculated by month, if a read replica is deleted before the end of the current month the billing may be incorrect.
+  - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
 
 ### Known issues in Cloud Shell
 
