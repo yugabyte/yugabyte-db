@@ -43,7 +43,7 @@ You can set up xCluster replication as follows:
 
 1. Select the target universe.
 
-   Note that the paused universes are not included in the selection list.
+   Note that paused universes are not included in the selection list.
 
 1. Click **Next: Select Tables**.
 
@@ -51,7 +51,7 @@ You can set up xCluster replication as follows:
 
    ![Create Replication](/images/yp/asynch-replication-333.png)
 
-   Note that even though index tables are not displayed in the YugabyteDB Anywhere UI, the replication is automatically restarted for them if it is restarted for the main table. If a new index table is created after the replication has been set up, this index table is automatically included in the replication configuration.
+   Note that even though index tables are not displayed in the YugabyteDB  Anywhere UI, the replication is automatically set up for them if it is  set up for their main table. If a new index table is created after the replication has been set up, it is not added to the replication configuration automatically. To add the new index table to the replication configuration, you need to restart the  replication for the main table.
 
    See [About the table selection](#about-the-table-selection) for additional information.
 
@@ -166,7 +166,6 @@ The current implementation of xCluster replication in YugabyteDB Anywhere has th
 - The chosen storage configuration for bootstrapping must be accessible from both universes.
 - Active-active bidirectional replication is not supported because the backup or restore would wipe out the existing data. This means that bootstrapping can be done only if an xCluster configuration with reverse direction for a table does not exist. It is recommended to set up replication from your active universe to the passive target, and then set up replication for the target to the source universe. To restart a replication with bootstrap, the reverse replication must be deleted.
 - The tables with the same name (`database.schema_name.table_name` for YSQL and `keyspace.table_name` for YCQL) and schema must exist on both universes before xCluster replication can be set up.
-- An xCluster configuration can contain only YSQL or YCQL tables.
 - If you are setting up the replication for YSQL with bootstrapping enabled, you must select all the tables in one database.
 - You cannot use the YugabyteDB Anywhere UI to create two separate replication configurations for YSQL, each containing a subset of the database tables.
 - The xCluster replication creation process (bootstrapping) is not aborted if the source universe is running out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Therefore, you must ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
