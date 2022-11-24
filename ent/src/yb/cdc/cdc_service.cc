@@ -1259,13 +1259,13 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
     std::map<TabletId, TabletId> child_to_parent_mapping;
 
     for (const auto& tablet : tablets) {
-      tablet_id_to_tablet_locations_map[tablet.tablet_id()] = std::move(tablet);
       active_or_hidden_tablets.insert(tablet.tablet_id());
       if (tablet.has_split_parent_tablet_id() && !tablet.split_parent_tablet_id().empty()) {
         const auto& parent_tablet_id = tablet.split_parent_tablet_id();
         parent_tablets.insert(parent_tablet_id);
         child_to_parent_mapping.insert({tablet.tablet_id(), parent_tablet_id});
       }
+      tablet_id_to_tablet_locations_map[tablet.tablet_id()] = tablet;
     }
 
     std::vector<std::pair<TabletId, OpId>> tablet_checkpoint_pairs;
@@ -1293,10 +1293,10 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
     for (const auto& cur_tablet : tablets) {
       if (cur_tablet.has_split_parent_tablet_id() &&
           cur_tablet.split_parent_tablet_id() == req->tablet_id()) {
-        tablet_id_to_tablet_locations_map[cur_tablet.tablet_id()] = std::move(cur_tablet);
         child_tablet_ids.push_back(cur_tablet.tablet_id());
+        tablet_id_to_tablet_locations_map[cur_tablet.tablet_id()] = cur_tablet;
       } else if (cur_tablet.tablet_id() == req->tablet_id()) {
-        tablet_id_to_tablet_locations_map[cur_tablet.tablet_id()] = std::move(cur_tablet);
+        tablet_id_to_tablet_locations_map[cur_tablet.tablet_id()] = cur_tablet;
       }
     }
 
@@ -1309,6 +1309,9 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
       const OpId& checkpoint = *result;
       if (checkpoint == OpId()) {
+        LOG(WARNING)
+            << "The checkpoint of child tablet: " << child_tablet_id << ", is: " << checkpoint
+            << ", which means we have still not reported the tablet split error on the parent.";
         // If the checkpoint on the child tablet is 0.0, that means the split error has not been
         // reported to the client yet. Hence we only return the current tablet details, and not the
         // child tablet details.
@@ -3604,6 +3607,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
   auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
+    LOG(WARNING) << "Did not find any row in the cdc state table for tablet: "
+                 << producer_tablet.tablet_id << ", stream " << producer_tablet.stream_id;
     return OpId(0, 0);
   }
 
