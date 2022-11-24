@@ -43,6 +43,7 @@ import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { BackupThrottleParameters } from './BackupThrottleParameters';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -216,8 +217,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
   const featureFlags = useSelector((reduxState: any) => reduxState.featureFlags);
 
-  const YBCEnabled = featureFlags.test.enableYbc || featureFlags.released.enableYbc;
-
+  const YBCEnabled = (featureFlags.test.enableYbc || featureFlags.released.enableYbc) && isYbcEnabledUniverse(currentUniverse.data.universeDetails);
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
   const [cancelBackupDetails, setCancelBackupDetails] = useState<IBackup | null>(null);
 
