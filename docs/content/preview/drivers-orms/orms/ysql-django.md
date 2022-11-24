@@ -34,7 +34,7 @@ The source for the above application can be found in the `python/django` directo
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
 - [Python 3](https://www.python.org/downloads/) or later is installed.
 - [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
@@ -67,7 +67,7 @@ DATABASES = {
 SECRET_KEY = 'YOUR-SECRET-KEY'
 ```
 
-- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local [YugabyteDB](#yugabytedb) cluster, run the following shell command:
+- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local YugabyteDB cluster, run the following shell command:
 
 ```sh
 bin/ysqlsh -c "CREATE DATABASE ysql_django"

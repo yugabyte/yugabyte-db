@@ -32,17 +32,17 @@ The following tutorial creates a basic Go application that connects to a Yugabyt
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, download, install, and start YugabyteDB by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, download, install, and start YugabyteDB by following the steps in [Quick start](../../../quick-start/). Alternatively, you can use [YugabyteDB Managed](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
 ### SSL/TLS configuration
 
-You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about configuring SSL/TLS for your YugabyteDB cluster. YugabyteDB Managed requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
+You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../secure/tls-encryption/client-to-server/) to learn about configuring SSL/TLS for your YugabyteDB cluster. YugabyteDB Managed requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
 
 #### CA certificate
 
-Use the  [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) generated above as part of the SSL/TLS configuration of your cluster.
+Use the  [CA certficate](../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) generated above as part of the SSL/TLS configuration of your cluster.
 
 In case of a YugabyteDB Managed cluster, to download the CA certificate for your cluster in YugabyteDB Managed, do the following:
 

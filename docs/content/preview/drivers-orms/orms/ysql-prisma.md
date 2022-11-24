@@ -38,7 +38,7 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites).
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../quick-start/).
 
 ## Clone the orm-examples repository
 
@@ -58,7 +58,7 @@ $ npm install
 
 ## Create database
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using the following command:
 
 ```sh
 $ ./bin/ysqlsh
@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Managed cluster, do the following:
 
-1. Download your [cluster certificate](../../cloud-add-ip/#download-your-cluster-certificate).
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 
@@ -305,6 +305,7 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
+
 ### Use Prisma Studio
 
 Start Prisma Studio using the following command:

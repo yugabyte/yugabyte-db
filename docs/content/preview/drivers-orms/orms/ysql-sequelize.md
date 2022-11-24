@@ -34,7 +34,7 @@ The application source is in the [repository](https://github.com/yugabyte/orm-ex
 
 This tutorial assumes that you have installed:
 
-- YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+- YugabyteDB and created a cluster. Refer to [Quick Start](../../../quick-start/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
 ## Clone the orm-examples repository

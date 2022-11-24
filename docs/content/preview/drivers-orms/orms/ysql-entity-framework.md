@@ -34,7 +34,7 @@ The source for the above application can be found in the [Using ORMs with Yugaby
 
 The tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/) to have YugabyteDB up and running in minutes.
 
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 

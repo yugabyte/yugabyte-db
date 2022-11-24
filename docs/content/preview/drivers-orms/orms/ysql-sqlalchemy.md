@@ -36,7 +36,7 @@ To configure and run this application, make sure that you've completed these pre
 
 ### YugabyteDB
 
-YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
 
 ### Python
 
@@ -47,7 +47,7 @@ Python 3 is installed
 Python packages (dependencies) are installed
 
 - [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
-- [psycopg2 (`psycopg2-binary`)](http://initd.org/psycopg/)
+- [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/)
 - [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
 
 To quickly install these three packages, run the following command.

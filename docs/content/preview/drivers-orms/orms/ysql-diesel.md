@@ -30,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -65,7 +65,7 @@ DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 
 The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using:
 
 ```sh
 $ ./bin/ysqlsh
