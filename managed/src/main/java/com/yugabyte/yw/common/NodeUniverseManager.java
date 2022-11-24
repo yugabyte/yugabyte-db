@@ -202,7 +202,7 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
     if (cluster.userIntent.isYSQLAuthEnabled()) {
-      bashCommand.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
+      bashCommand.add("$(dirname \"$(ls -t /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
