@@ -1159,6 +1159,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       } break;
       case RowMessage::INSERT: {
         if (validate_third_column) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 3);
+          ASSERT_EQ(record.row_message().old_tuple_size(), 3);
           AssertKeyValue(
               record, expected_records.key, expected_records.value, true, expected_records.value2);
         } else {
@@ -1169,9 +1171,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       } break;
       case RowMessage::UPDATE: {
         if (validate_third_column) {
+          ASSERT_EQ(record.row_message().new_tuple_size(), 3);
           AssertKeyValue(
               record, expected_records.key, expected_records.value, true, expected_records.value2);
           if (validate_old_tuple) {
+            ASSERT_EQ(record.row_message().old_tuple_size(), 3);
             AssertBeforeImageKeyValue(
                 record, expected_before_image_records.key, expected_before_image_records.value,
                 true, expected_before_image_records.value2);
@@ -1190,6 +1194,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
         if (validate_old_tuple) {
           if (validate_third_column) {
+            ASSERT_EQ(record.row_message().old_tuple_size(), 3);
+            ASSERT_EQ(record.row_message().new_tuple_size(), 3);
             AssertBeforeImageKeyValue(
                 record, expected_before_image_records.key, expected_before_image_records.value,
                 true, expected_before_image_records.value2);
@@ -2825,34 +2831,24 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 4"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 1"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 4"));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {2, 2, 6, 0, 0, 0};
+  const uint32_t expected_count[] = {2, 2, 5, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecordWithThreeColumns expected_records[] = {
       {0, 0, 0}, {1, 2, INT_MAX},  {1, 3, INT_MAX}, {0, 0, INT_MAX}, {1, 4, INT_MAX},
-      {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {1, 99, 66},     {4, 99, 66}};
+      {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {4, 99, 66}};
   ExpectedRecordWithThreeColumns expected_before_image_records[] = {
-      {},
-      {},
-      {1, 2, INT_MAX},
-      {},
-      {1, 3, INT_MAX},
-      {},
-      {1, 4, INT_MAX},
-      {4, 5, 6},
-      {1, 99, INT_MAX},
-      {4, 99, 6}};
+      {}, {}, {1, 2, INT_MAX}, {}, {1, 3, INT_MAX}, {}, {1, 4, INT_MAX}, {4, 5, 6}, {4, 99, 6}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    if (i < 5) {
+    if (i <= 6) {
       CheckRecordWithThreeColumns(
           record, expected_records[i], count, true, expected_before_image_records[i]);
     } else {
@@ -3221,6 +3217,52 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumn)) {
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
     CheckRecord(record, expected_records[i], count, num_cols);
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+// Insert 3 rows, update 2 of them.
+// Expected records: (DDL, 3 INSERT, 2 UPDATE).
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBeforeImage)) {
+  uint32_t num_cols = 3;
+  map<std::string, uint32_t> col_val_map;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto tablets = ASSERT_RESULT(SetUpClusterMultiColumnUsecase(num_cols));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1 /* start */, 4 /* end */, &test_cluster_, num_cols));
+
+  col_val_map.insert(pair<std::string, uint32_t>("col2", 9));
+  col_val_map.insert(pair<std::string, uint32_t>("col3", 10));
+  ASSERT_OK(UpdateRows(1 /* key */, col_val_map, &test_cluster_));
+  ASSERT_OK(UpdateRows(2 /* key */, col_val_map, &test_cluster_));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {1, 3, 2, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecordWithThreeColumns expected_records[] = {{0, 0, 0}, {1, 2, 3},  {2, 3, 4},
+                                                       {3, 4, 5}, {1, 9, 10}, {2, 9, 10}};
+
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {1, 2, 3}, {2, 3, 4}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  for (uint32_t i = 0; i < record_size; ++i) {
+    LOG(INFO) << change_resp.cdc_sdk_proto_records(i).DebugString();
+  }
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+    CheckRecordWithThreeColumns(
+        record, expected_records[i], count, true, expected_before_image_records[i], true);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
   CheckCount(expected_count, count);
