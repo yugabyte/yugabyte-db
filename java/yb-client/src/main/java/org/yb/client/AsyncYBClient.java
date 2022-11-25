@@ -421,13 +421,15 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
                                                            String nameSpaceName,
                                                            String format,
-                                                           String checkpointType) {
+                                                           String checkpointType,
+                                                           String recordType) {
     checkIsClosed();
     CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
       table.getTableId(),
       nameSpaceName,
       format,
-      checkpointType);
+      checkpointType,
+      recordType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
         new Callback<Object, Object>() {
