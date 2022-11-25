@@ -206,6 +206,8 @@ message RaftGroupReplicaSuperBlockPB {
   // Minimum checkpoint op id for cdcsdk streams. This value is used to retain intents
   // with op id larger than this one.
   optional OpIdPB cdc_sdk_min_checkpoint_op_id = 33;
+
+  optional fixed64 cdc_sdk_safe_time = 34;
 }
 
 message FilePB {
