@@ -102,11 +102,11 @@ Status DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) 
       deadline_,
       read_time_);
   if (!sub_doc_key.empty()) {
-    iter_key_.Reset(sub_doc_key);
+    row_key_ = sub_doc_key;
   } else {
     DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
+    row_key_ = iter_key_;
   }
-  row_key_ = iter_key_;
   row_hash_key_ = row_key_;
   VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << row_key_;
   db_iter_->Seek(row_key_);
