@@ -1373,8 +1373,16 @@ public class YBClient implements AutoCloseable {
                                                   String nameSpaceName,
                                                   String format,
                                                   String checkpointType) throws Exception {
+    return createCDCStream(table, nameSpaceName, format, checkpointType, "");
+  }
+
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType,
+                                                  String recordType) throws Exception {
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
-      nameSpaceName, format, checkpointType);
+      nameSpaceName, format, checkpointType, recordType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
