@@ -701,6 +701,7 @@ RaftGroupMetadata::RaftGroupMetadata(
       colocated_(data.colocated),
       cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()),
       cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()),
+      cdc_sdk_safe_time_(HybridTime::kInvalid),
       log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
@@ -773,6 +774,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
+    cdc_sdk_safe_time_ = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
@@ -907,6 +909,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
+  pb.set_cdc_sdk_safe_time(cdc_sdk_safe_time_.ToUint64());
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
