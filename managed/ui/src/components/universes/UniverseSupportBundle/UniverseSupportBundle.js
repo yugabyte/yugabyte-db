@@ -19,6 +19,7 @@ import {
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundle.scss';
 import {filterTypes} from "../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider";
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 
 const stepsObj = {
@@ -40,6 +41,8 @@ export const UniverseSupportBundle = (props) => {
   const [steps, setSteps] = useState(stepsObj.firstStep);
   const defaultOptions = updateOptions(filterTypes[0].value, [true, true, true, true, true, true, true, true, true], () =>{});
   const [payload, setPayload] = useState(defaultOptions);
+
+  const isK8sUniverse = isKubernetesUniverse(props.currentUniverse);
 
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
@@ -149,6 +152,7 @@ export const UniverseSupportBundle = (props) => {
                 setPayload(defaultOptions)
               }
             }}
+            isK8sUniverse={isK8sUniverse}
           />
         )}
         {steps === stepsObj.thirdStep && (
