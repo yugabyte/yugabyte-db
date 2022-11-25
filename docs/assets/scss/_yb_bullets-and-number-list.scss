@@ -12,7 +12,7 @@
 .td-content {
   > {
     &,
-    :not(.resources):not(.three-box-row) {
+    :not(.component-box):not(.resources):not(.three-box-row) {
       ul:not(.navbar-nav):not(.tabs-name):not(.nav) {
         margin: 1.5rem 0;
         list-style: none;

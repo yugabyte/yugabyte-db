@@ -1,24 +1,54 @@
 /******* Container Styling **********/
+.left-menu-scrolling .td-main {
+  .td-sidebar:not(.close-bar) {
+    left: 300px;
+  }
+
+  aside.td-sidebar .left-sidebar-wrap {
+    transition: none !important;
+  }
+}
+
 .td-main {
   border-top: 1px solid #e9eef2;
   background: #fff;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  position: relative;
+  padding-left: 300px;
+  transition: padding-left 500ms ease-in-out;
+
+  #dragbar {
+    background-color: #b2ccdd00;
+    height: 100%;
+    width: 10px;
+    cursor: e-resize;
+    position: absolute;
+    left: 300px;
+    top: 0;
+    margin-left: -10px;
+
+    @media (max-width: 1420px) {
+      display: none;
+    }
+  }
 
   .td-sidebar:not(.close-bar) {
-    padding: 0 0 0 11px !important;
-    background: rgba(247, 250, 252, 0.5);
     transition: none;
     border-right: 1px solid #e9eef2;
     max-width: 300px;
-    margin-left: -15px;
+    margin-left: -300px;
+    min-width: 300px;
+    z-index: 99;
   }
 
   .content-parent {
-    max-width: calc(100% - 280px);
-    width: 100%;
     justify-content: center;
+    width: calc(100% - 300px);
+    max-width: 1080px;
+    margin-left: auto;
+    margin-right: auto;
+    min-width: 1080px;
+    transition: all 1200ms linear;
 
     @-moz-document url-prefix() {
       max-width: calc(100% - 270px);
@@ -35,14 +65,6 @@
       max-width: 100%;
       display: flex;
       min-height: 100vh;
-
-      @media (max-width: 1380px) {
-        width: 95%;
-      }
-
-      @media (max-width: 767px) {
-        width: 100%;
-      }
     }
   }
 
@@ -54,6 +76,7 @@
 
 .td-outer {
   position: relative;
+  padding: 0;
 }
 
 @media (min-width: 1200px) {
@@ -70,9 +93,7 @@
     .td-sidebar:not(.close-bar) {
       width: 300px;
       margin-right: 0;
-      padding: 0 0 0 11px !important;
       flex: none;
-      max-width: none !important;
 
       @media (max-width: 1380px) {
         width: 280px;
@@ -140,6 +161,22 @@
   }
 }
 
+@media (max-width: 1380px) {
+  .td-main {
+    justify-content: space-between;
+    padding-left: 0;
+
+    .td-sidebar:not(.close-bar) {
+      margin-left: 0;
+      min-width: 11px;
+    }
+
+    .content-parent {
+      min-width: 1px;
+    }
+  }
+}
+
 @media (max-width: 1199px) {
   .td-main {
     .content-parent {
@@ -173,12 +210,20 @@
   .td-main {
     flex-flow: column;
 
+    .td-sidebar:not(.close-bar) {
+      width: 100%;
+      max-width: 100%;
+      border-right: 0 solid;
+      padding: 0 !important;
+    }
+
     .content-parent {
       width: 100%;
       max-width: 100%;
       margin: 0;
-      padding: 0 0;
+      padding: 0 15px;
       justify-content: flex-start;
+      overflow: hidden;
 
       .content-child {
         padding-left: 0;

@@ -11,6 +11,7 @@
       <div class="td-main">
         <aside class="td-sidebar d-print-none">
           {{ partial "sidebar.html" . }}
+            <div id="dragbar"></div>
         </aside>
         <div class="row flex-xl-nowrap {{- if (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
           <div class="content-child">

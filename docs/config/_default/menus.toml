@@ -172,7 +172,7 @@
   name = "Join our community"
   weight = 1
   identifier = "join-our-community"
-  pre = "<i class='fa fa-hands-helping'></i>"
+  pre = "<i class='icon-join'></i>"
   post = "<i></i>"
   [leftbottom.params]
     classes = "arrow-menu"
@@ -181,7 +181,7 @@
   name = "Slack"
   weight = 1
   parent = "join-our-community"
-  pre = "<i class='fab fa-slack'></i>"
+  pre = "<i class='icon-slack'></i>"
   url = "https://communityinviter.com/apps/yugabyte-db/register"
   post = "<i></i>"
   [leftbottom.params]
@@ -191,7 +191,7 @@
   name = "GitHub"
   weight = 2
   parent = "join-our-community"
-  pre = "<i class='fab fa-github'></i>"
+  pre = "<i class='icon-github'></i>"
   url = "https://github.com/yugabyte/yugabyte-db"
   [leftbottom.params]
     newTab = true
@@ -200,7 +200,7 @@
   name = "University"
   weight = 3
   parent = "join-our-community"
-  pre = "<i class='fa fa-university'></i>"
+  pre = "<i class='icon-university'></i>"
   url = "https://university.yugabyte.com/"
   [leftbottom.params]
     newTab = true
@@ -209,7 +209,7 @@
   name = "Yugabyte Friday Tech Talks"
   weight = 4
   parent = "join-our-community"
-  pre = "<i class='fa fa-phone-volume'></i>"
+  pre = "<i class='icon-yftt'></i>"
   url = "https://www.yugabyte.com/yftt/"
   [leftbottom.params]
     newTab = true
@@ -218,7 +218,7 @@
   name = "Forum"
   weight = 5
   parent = "join-our-community"
-  pre = "<i class='fa fa-comment-alt'></i>"
+  pre = "<i class='icon-forum'></i>"
   url = "https://forum.yugabyte.com/"
   [leftbottom.params]
     newTab = true
@@ -226,7 +226,7 @@
 [[leftbottom]]
   name = "Contact Support"
   weight = 2
-  pre = "<i class='fa fa-headset'></i>"
+  pre = "<i class='icon-support'></i>"
   url = "https://support.yugabyte.com/hc/en-us"
   [leftbottom.params]
     newTab = true

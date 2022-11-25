@@ -1,6 +1,6 @@
 footer {
   position: relative !important;
-  width: calc(100% + 30px);
+  width: 100%;
   padding: 40px 0 30px;
   font-size: 13px;
   line-height: 1.3 !important;
@@ -8,6 +8,7 @@ footer {
   background: $YB_DARK_BLUE !important;
   text-align: center;
   min-height: inherit;
+  z-index: 9;
 
   .container {
     max-width: 1170px;

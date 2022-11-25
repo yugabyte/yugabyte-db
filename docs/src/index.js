@@ -120,11 +120,22 @@ function activeLeftNav() {
 }
 
 $(document).ready(() => {
-  let searchValue = '';
   $('ul.nav.yb-pills li').each(function () {
-    $(this).append(`<span class="tooltip">${$(this).find('a').text().trim()}</span>`);
+    const innertext = $(this).find('a').text().trim();
+    if (innertext.length >= 29 && ($(this).find('a').find('i').length > 0 || $(this).find('a').find('img').length > 0)) {
+      $(this).append(`<span class="tooltip">${innertext}</span>`);
+    } else if (innertext.length >= 35 && ($(this).find('a').find('i').length === 0 && $(this).find('a').find('img').length === 0)) {
+      $(this).append(`<span class="tooltip">${innertext}</span>`);
+    }
   });
 
+  if ($('.component-box').length > 0) {
+    $('.component-box li p a').each(function () {
+      $(this).parents('li').addClass('linked-box');
+    });
+  }
+
+  let searchValue = '';
   ((document) => {
     const $codes = document.querySelectorAll('pre');
     const containerChanges = container => {
@@ -250,7 +261,14 @@ $(document).ready(() => {
   // For Section nav.
   $(document).on('click', 'li.submenu.section a, li.submenu.section i', (event) => {
     if (typeof event.target.href === 'undefined' || event.target.href === '') {
-      $(event.currentTarget).parent('li.submenu.section').toggleClass('open');
+      $(event.currentTarget).parent('li').siblings('.open').removeClass('open');
+      if ($(event.currentTarget).parent('li.submenu').hasClass('open')) {
+        $(event.currentTarget).parent('li.submenu.section').removeClass('open');
+        console.log(111);
+      } else {
+        console.log(222);
+        $(event.currentTarget).parent('li.submenu.section').addClass('open');
+      }
     }
   });
 
@@ -286,13 +304,26 @@ $(document).ready(() => {
 
   // Expand / collapse left navigation on click.
   $('.side-nav-collapse-toggle-2').on('click', () => {
-    $('aside.td-sidebar').toggleClass('close-bar');
-    if ($('aside.td-sidebar').hasClass('close-bar')) {
-      const rbw = $('aside.td-sidebar').width();
-      const mainW = $('.td-main main').width();
-      $('.td-main main').css('min-width', mainW + rbw);
+    $('aside.td-sidebar').toggleClass('stick-bar');
+    if ($('aside.td-sidebar').hasClass('stick-bar')) {
+      $('.left-sidebar-wrap-inner').animate({
+        width: '0px',
+        opacity: '0',
+      });
+      $('aside.td-sidebar').animate({
+        'min-width': '0px',
+        width: '160px',
+      });
     } else {
-      $('.td-main main').removeAttr('style');
+      $('.left-sidebar-wrap-inner').animate({
+        width: '100%',
+        left: '0',
+        opacity: '1',
+      });
+      $('aside.td-sidebar').animate({
+        'min-width': '300px',
+        width: '300px',
+      });
     }
   });
 
