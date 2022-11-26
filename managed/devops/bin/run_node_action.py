@@ -63,9 +63,9 @@ def handle_run_command(args, client):
         kwargs['output_only'] = True
         if args.skip_cmd_logging:
             kwargs['skip_cmd_logging'] = True
-    output = client.run_command(args.command, **kwargs)
+    output = client.exec_command(args.command, **kwargs)
     print('Command output:')
-    print(output.stdout)
+    print(output)
 
 
 def add_run_script_subparser(subparsers, command, parent):
@@ -105,9 +105,9 @@ def download_logs_ssh(args, client):
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
 
     rm_cmd = ['rm', tar_file_name]
-    client.run_command(cmd)
+    client.exec_command(cmd)
     client.fetch_file(tar_file_name, args.target_local_file)
-    client.run_command(rm_cmd)
+    client.exec_command(rm_cmd)
 
 
 def download_logs_k8s(args, client):
@@ -163,7 +163,7 @@ def download_file_node(args, client):
     if check_file_exists_output:
         rm_cmd = ['rm', tar_file_name]
         client.fetch_file(tar_file_name, args.target_local_file)
-        client.run_command(rm_cmd)
+        client.exec_command(rm_cmd)
 
 
 def download_file_k8s(args, client):
@@ -186,7 +186,7 @@ def download_file_k8s(args, client):
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
     if check_file_exists_output:
         client.get_file(tar_file_name, args.target_local_file)
-        client.run_command(['rm', tar_file_name])
+        client.exec_command(['rm', tar_file_name])
 
 
 def handle_download_file(args, client):
@@ -222,7 +222,7 @@ def handle_upload_file(args, client):
     logging.info("args here {}".format(args))
     target_path = Path(args.target_file)
     cmd = ['mkdir', '-p', str(target_path.parent.absolute())]
-    client.run_command(cmd)
+    client.exec_command(cmd)
 
     if args.node_type == 'ssh' or args.node_type == 'rpc':
         upload_file_ssh(args, client)
@@ -230,7 +230,7 @@ def handle_upload_file(args, client):
         upload_file_k8s(args, client)
 
     chmod_cmd = ['chmod', args.permissions, args.target_file]
-    client.run_command(chmod_cmd)
+    client.exec_command(chmod_cmd)
 
 
 node_types = {
