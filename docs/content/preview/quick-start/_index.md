@@ -6,6 +6,8 @@ headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /quick-start/
+  - /preview/quick-start/create-local-cluster/
+  - /preview/quick-start/install/
 layout: single
 type: docs
 body_class: yb-page-style
