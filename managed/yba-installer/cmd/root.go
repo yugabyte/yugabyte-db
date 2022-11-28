@@ -585,6 +585,15 @@ func init() {
 	viper.AddConfigPath(".")
 	viper.ReadInConfig()
 
+	// Set a default keyStorePassword, so we can ensure reconfiguration will work.
+	//
+	// TODO: reconfig should probably fully use any new keyStorePassword in case the
+	// user wants to reconfigure the password - today this is not supported AFAIK.
+	if viper.GetString("platform.keyStorePassword") == "" {
+		LogInfo("keystore password not set in config. Generating one")
+		viper.Set("platform.keyStorePassword", "password")
+	}
+
 	// Currently only the log message with an info level severity or above are
 	// logged (warn, error, fatal, panic).
 	// Change the log level to debug for more verbose logging output.
