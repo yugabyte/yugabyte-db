@@ -199,10 +199,15 @@ boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
     bool external_transaction) {
   switch (last_known_status) {
     case TransactionStatus::ABORTED: {
-      if (!external_transaction || last_known_status_hybrid_time >= time) {
-        return TransactionStatus::ABORTED;
+      if (external_transaction) {
+        // If this is an xcluster/external transaction, it is possible that a transaction with
+        // ABORTED state may later be committed. This can happen when the txn status table is
+        // lagging behind the user table, and the consumer coordinator hasn't yet recieved a CREATED
+        // or COMMITTED record for an intent already present in intents db. To account for this
+        // situation, always re-resolve intents that have state ABORTED.
+        return boost::none;
       }
-      return boost::none;
+      return TransactionStatus::ABORTED;
     }
     case TransactionStatus::COMMITTED:
       return last_known_status_hybrid_time > time
