@@ -116,6 +116,7 @@ set(MASTER_SRCS
   ts_manager.cc
   util/yql_vtable_helpers.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_consumer_metrics.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   yql_auth_roles_vtable.cc

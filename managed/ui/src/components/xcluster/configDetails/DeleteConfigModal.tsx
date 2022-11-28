@@ -16,16 +16,19 @@ import { XClusterConfig } from '../XClusterTypes';
 import styles from './DeleteConfigModal.module.scss';
 
 interface DeleteConfigModalProps {
-  sourceUniverseUUID: string;
-  targetUniverseUUID: string;
+  sourceUniverseUUID: string | undefined;
+  targetUniverseUUID: string | undefined;
   xClusterConfig: XClusterConfig;
   onHide: () => void;
   visible: boolean;
+
+  redirectUrl?: string;
 }
 
 export const DeleteConfigModal = ({
   sourceUniverseUUID,
   targetUniverseUUID,
+  redirectUrl,
   xClusterConfig,
   onHide,
   visible
@@ -40,8 +43,9 @@ export const DeleteConfigModal = ({
     {
       onSuccess: (response) => {
         onHide();
-        // Redirect to the universe's xCluster configurations page
-        browserHistory.push(`/universes/${sourceUniverseUUID}/replication`);
+        if (redirectUrl) {
+          browserHistory.push(redirectUrl);
+        }
 
         fetchTaskUntilItCompletes(
           response.data.taskUUID,
@@ -60,8 +64,12 @@ export const DeleteConfigModal = ({
             // This xCluster config will be removed from the sourceXClusterConfigs for the source universe and
             // from the targetXClusterConfigs for the target universe.
             // Invalidate queries for the participating universes.
-            queryClient.invalidateQueries(['universe', sourceUniverseUUID], { exact: true });
-            queryClient.invalidateQueries(['universe', targetUniverseUUID], { exact: true });
+            if (sourceUniverseUUID) {
+              queryClient.invalidateQueries(['universe', sourceUniverseUUID], { exact: true });
+            }
+            if (targetUniverseUUID) {
+              queryClient.invalidateQueries(['universe', targetUniverseUUID], { exact: true });
+            }
           },
           () => {
             // Invalidate the cached data for current xCluster config. The xCluster config status should change to

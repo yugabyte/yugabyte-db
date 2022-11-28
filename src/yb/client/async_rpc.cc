@@ -125,6 +125,12 @@ bool IsTracingEnabled() {
 
 namespace {
 
+const char* const kRead = "Read";
+const char* const kWrite = "Write";
+const char* const kRedis = "Redis";
+const char* const kYCQL = "YCQL";
+const char* const kYSQL = "YSQL";
+
 bool LocalTabletServerOnly(const InFlightOps& ops) {
   const auto op_type = ops.front().yb_op->type();
   return ((op_type == YBOperation::Type::REDIS_READ || op_type == YBOperation::Type::REDIS_WRITE) &&
@@ -137,6 +143,19 @@ void FillRequestIds(const RetryableRequestId request_id,
   for (auto& op : *ops) {
     op.yb_op->set_request_id(request_id);
     op.yb_op->set_min_running_request_id(min_running_request_id);
+  }
+}
+
+void DoCheckResponseCount(
+    const char* op, const char* name, int found, int expected, Status* status) {
+  if (found == expected) {
+    return;
+  }
+  auto msg = Format(". $0 $1 requests sent, $2 responses received", expected, name, found);
+  if (status->ok()) {
+    *status = STATUS_FORMAT(IllegalState, "$0 response count mismatch$1", op, msg);
+  } else {
+    *status = status->CloneAndAppend(msg);
   }
 }
 
@@ -453,7 +472,10 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   if (!CommonResponseCheck(status)) {
     return;
   }
-  SwapResponses();
+  auto swap_status = SwapResponses();
+  if (!swap_status.ok()) {
+    Failed(swap_status);
+  }
 }
 
 
@@ -499,6 +521,30 @@ void FillOps(
     HandleExtraFields(concrete_op, req);
     VLOG(4) << ++idx << ") encoded row: " << op.yb_op->ToString();
   }
+}
+
+Status AsyncRpc::CheckResponseCount(const char* op, const char* name, int found, int expected) {
+  if (found >= expected) {
+    batcher_->AddOpCountMismatchError();
+    return STATUS_FORMAT(
+        IllegalState, "Too many $0 responses: $1", expected);
+  }
+
+  return Status::OK();
+}
+
+Status AsyncRpc::CheckResponseCount(
+    const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
+    int pgsql_found, int pgsql_expected) {
+  Status result;
+  DoCheckResponseCount(op, kRedis, redis_found, redis_expected, &result);
+  DoCheckResponseCount(op, kYCQL, ql_found, ql_expected, &result);
+  DoCheckResponseCount(op, kYSQL, pgsql_found, pgsql_expected, &result);
+  if (!result.ok()) {
+    LOG(DFATAL) << result;
+    batcher_->AddOpCountMismatchError();
+  }
+  return result;
 }
 
 template <class Repeated>
@@ -581,10 +627,12 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void WriteRpc::SwapResponses() {
+Status WriteRpc::SwapResponses() {
   int redis_idx = 0;
   int ql_idx = 0;
   int pgsql_idx = 0;
+
+  int64_t pgsql_upcall_sidecar_offset = -1;
 
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
@@ -611,9 +659,9 @@ void WriteRpc::SwapResponses() {
         ql_op->mutable_response()->Swap(resp_.mutable_ql_response_batch(ql_idx));
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(
-              retrier().controller().GetSidecar(ql_response.rows_data_sidecar()));
-          ql_op->mutable_rows_data()->assign(rows_data.cdata(), rows_data.size());
+          // TODO avoid copying sidecar here.
+          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
+              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
         }
         ql_idx++;
         break;
@@ -628,9 +676,15 @@ void WriteRpc::SwapResponses() {
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          auto holder = CHECK_RESULT(
-              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlWriteOp*>(yb_op)->SetRowsData(holder.first, holder.second);
+          if (pgsql_upcall_sidecar_offset == -1) {
+            // Transfer all sidecars from downcall to upcall. Remembering index of the first
+            // sidecar in upcall. So we could convert downcall sidecar index to upcall index
+            // using simple addition.
+            pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
+                &pgsql_op->rpc_context());
+          }
+          pgsql_op->SetSidecarIndex(
+              pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
         }
         pgsql_idx++;
         break;
@@ -643,22 +697,9 @@ void WriteRpc::SwapResponses() {
     }
   }
 
-  if (redis_idx != resp_.redis_response_batch().size() ||
-      ql_idx != resp_.ql_response_batch().size() ||
-      pgsql_idx != resp_.pgsql_response_batch().size()) {
-    LOG(ERROR) << Substitute("Write response count mismatch: "
-                             "$0 Redis requests sent, $1 responses received. "
-                             "$2 Apache CQL requests sent, $3 responses received. "
-                             "$4 PostgreSQL requests sent, $5 responses received.",
-                             redis_idx, resp_.redis_response_batch().size(),
-                             ql_idx, resp_.ql_response_batch().size(),
-                             pgsql_idx, resp_.pgsql_response_batch().size());
-    auto status = STATUS(IllegalState, "Write response count mismatch");
-    LOG(ERROR) << status << ", request: " << req_.ShortDebugString()
-               << ", response: " << resp_.ShortDebugString();
-    batcher_->AddOpCountMismatchError();
-    Failed(status);
-  }
+  return CheckResponseCount(
+      kWrite, redis_idx, resp_.redis_response_batch().size(), ql_idx,
+      resp_.ql_response_batch().size(), pgsql_idx, resp_.pgsql_response_batch().size());
 }
 
 void WriteRpc::NotifyBatcher(const Status& status) {
@@ -721,20 +762,20 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void ReadRpc::SwapResponses() {
+Status ReadRpc::SwapResponses() {
   int redis_idx = 0;
   int ql_idx = 0;
   int pgsql_idx = 0;
   bool used_read_time_set = false;
+
+  int64_t pgsql_upcall_sidecar_offset = -1;
+
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   for (auto& op : ops_) {
     YBOperation* yb_op = op.yb_op.get();
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_READ: {
-        if (redis_idx >= resp_.redis_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
-        }
+        RETURN_NOT_OK(CheckResponseCount(kRead, kRedis, redis_idx, resp_.redis_batch().size()));
         // Restore Redis read request PB and extract response.
         auto* redis_op = down_cast<YBRedisReadOp*>(yb_op);
         redis_op->mutable_response()->Swap(resp_.mutable_redis_batch(redis_idx));
@@ -742,27 +783,21 @@ void ReadRpc::SwapResponses() {
         break;
       }
       case YBOperation::Type::QL_READ: {
-        if (ql_idx >= resp_.ql_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
-        }
+        RETURN_NOT_OK(CheckResponseCount(kRead, kYCQL, ql_idx, resp_.ql_batch().size()));
         // Restore QL read request PB and extract response.
         auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
         ql_op->mutable_response()->Swap(resp_.mutable_ql_batch(ql_idx));
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
-          Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
-              ql_response.rows_data_sidecar()));
-          ql_op->mutable_rows_data()->assign(rows_data.cdata(), rows_data.size());
+          // TODO avoid copying sidecar here.
+          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
+              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
         }
         ql_idx++;
         break;
       }
       case YBOperation::Type::PGSQL_READ: {
-        if (pgsql_idx >= resp_.pgsql_batch().size()) {
-          batcher_->AddOpCountMismatchError();
-          return;
-        }
+        RETURN_NOT_OK(CheckResponseCount(kRead, kYSQL, pgsql_idx, resp_.pgsql_batch().size()));
         // Restore PGSQL read request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlReadOp*>(yb_op);
         if (!used_read_time_set && resp_.has_used_read_time()) {
@@ -773,9 +808,12 @@ void ReadRpc::SwapResponses() {
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
-          auto holder = CHECK_RESULT(
-              retrier().controller().GetSidecarHolder(pgsql_response.rows_data_sidecar()));
-          down_cast<YBPgsqlReadOp*>(yb_op)->SetRowsData(holder.first, holder.second);
+          if (pgsql_upcall_sidecar_offset == -1) {
+            pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
+                &pgsql_op->rpc_context());
+          }
+          pgsql_op->SetSidecarIndex(
+              pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
         }
         pgsql_idx++;
         break;
@@ -788,20 +826,9 @@ void ReadRpc::SwapResponses() {
     }
   }
 
-  if (redis_idx != resp_.redis_batch().size() ||
-      ql_idx != resp_.ql_batch().size() ||
-      pgsql_idx != resp_.pgsql_batch().size()) {
-    LOG(ERROR) << Substitute("Read response count mismatch: "
-                             "$0 Redis requests sent, $1 responses received. "
-                             "$2 QL requests sent, $3 responses received. "
-                             "$4 QL requests sent, $5 responses received.",
-                             redis_idx, resp_.redis_batch().size(),
-                             ql_idx, resp_.ql_batch().size(),
-                             pgsql_idx, resp_.pgsql_batch().size());
-    batcher_->AddOpCountMismatchError();
-    Failed(STATUS(IllegalState, "Read response count mismatch"));
-  }
-
+  return CheckResponseCount(
+      kRead, redis_idx, resp_.redis_batch().size(), ql_idx,
+      resp_.ql_batch().size(), pgsql_idx, resp_.pgsql_batch().size());
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {

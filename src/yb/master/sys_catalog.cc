@@ -148,7 +148,12 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 namespace yb {
 namespace master {
 
+namespace {
+
 constexpr int32_t kDefaultMasterBlockCacheSizePercentage = 25;
+const std::string kLogPrefix = "system tablet: ";
+
+}
 
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
@@ -159,7 +164,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
-          BuildTableSchema(), kSysCatalogSchemaVersion)),
+          kLogPrefix, BuildTableSchema(), kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
@@ -332,6 +337,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   DCHECK_EQ(1, partitions.size());
 
   auto table_info = std::make_shared<tablet::TableInfo>(
+      consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
@@ -674,7 +680,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
-      tablet, resp.get());
+      tablet, nullptr, resp.get());
   query->set_client_request(writer->req());
   query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 

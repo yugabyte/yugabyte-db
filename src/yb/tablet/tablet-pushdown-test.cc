@@ -103,13 +103,14 @@ class TabletPushdownTest : public YBTabletTest {
     QLReadRequestResult result;
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, &req);
+    WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        CoarseTimePoint::max() /* deadline */, read_time, req, transaction, &result));
+        CoarseTimePoint::max() /* deadline */, read_time, req, transaction, &result, &rows_data));
 
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
         << "Error: " << result.response.error_message();
 
-    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data);
+    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
     std::vector<std::string> results;
     for (const auto& row : row_block->rows()) {
       results.push_back(row.ToString());

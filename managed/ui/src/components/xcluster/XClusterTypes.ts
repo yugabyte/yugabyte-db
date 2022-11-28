@@ -5,7 +5,7 @@ import {
   DROPDOWN_DIVIDER,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  ReplicationStatus,
+  XClusterConfigStatus,
   XClusterTableEligibility,
   XClusterTableStatus
 } from './constants';
@@ -22,11 +22,11 @@ export interface XClusterConfig {
   modifyTime: string;
   name: string;
   paused: boolean;
-  sourceUniverseUUID: string;
-  status: ReplicationStatus;
+  sourceUniverseUUID?: string;
+  status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
   tables: string[];
-  targetUniverseUUID: string;
+  targetUniverseUUID?: string;
   uuid: string;
 }
 

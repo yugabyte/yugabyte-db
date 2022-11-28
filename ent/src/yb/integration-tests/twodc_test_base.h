@@ -35,6 +35,7 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 namespace yb {
 
@@ -79,6 +80,8 @@ class TwoDCTestBase : public YBTest {
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
+    FLAGS_xcluster_safe_time_update_interval_secs = 1;
+    safe_time_propagation_timeout_ = MonoDelta::FromSeconds(30);
   }
 
   Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
@@ -164,13 +167,10 @@ class TwoDCTestBase : public YBTest {
   Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
-      YBClient* consumer_client, const std::string& producer_uuid,
+  // Wait for SetupUniverseReplication to complete. resp will contain the errors if any.
+  Status WaitForSetupUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client, const std::string& universe_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
-
-  Status IsSetupUniverseReplicationDone(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const std::string& universe_id, master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
   Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
@@ -185,6 +185,8 @@ class TwoDCTestBase : public YBTest {
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
   Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
+
+  Status WaitForValidSafeTimeOnAllTServers(const NamespaceId& namespace_id);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -235,6 +237,7 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+  MonoDelta safe_time_propagation_timeout_;
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this

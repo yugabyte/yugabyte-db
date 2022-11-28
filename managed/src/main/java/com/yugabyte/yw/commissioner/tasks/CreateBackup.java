@@ -19,10 +19,8 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -73,7 +71,6 @@ public class CreateBackup extends UniverseTaskBase {
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
@@ -99,13 +96,6 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
-
-        if (cloudType != CloudType.kubernetes) {
-          // Ansible Configure Task for copying xxhsum binaries from
-          // third_party directory to the DB nodes.
-          installThirdPartyPackagesTask(params().universeUUID, universe)
-              .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
-        }
 
         if (universe.isYbcEnabled()
             && !universe

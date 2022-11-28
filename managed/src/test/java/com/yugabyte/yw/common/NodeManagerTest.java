@@ -90,6 +90,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -133,6 +134,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @InjectMocks NodeManager nodeManager;
 
   @Mock Config mockConfig;
+
+  @Mock NodeAgentClient nodeAgentClient;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
@@ -505,6 +508,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(nodeAgentClient.maybeGetNodeAgentClient(any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 

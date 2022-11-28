@@ -181,6 +181,14 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Custom boot script to execute on the instance.")
         self.parser.add_argument("--boot_script_token", required=False,
                                  help="Custom boot script token in /etc/yb-boot-script-complete")
+        self.parser.add_argument("--node_agent_ip", required=False,
+                                 help="Node agent server ip")
+        self.parser.add_argument("--node_agent_port", required=False,
+                                 help="Node agent server port")
+        self.parser.add_argument("--node_agent_cert_path", required=False,
+                                 help="Node agent cert path")
+        self.parser.add_argument("--node_agent_auth_token", required=False,
+                                 help="Node agent auth token")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -229,6 +237,15 @@ class AbstractInstancesMethod(AbstractMethod):
             updated_args["ssh_user"] = self.get_ssh_user()
         else:
             updated_args["ssh_user"] = self.SSH_USER
+
+        if args.node_agent_ip:
+            updated_args["node_agent_ip"] = args.node_agent_ip
+        if args.node_agent_port:
+            updated_args["node_agent_port"] = args.node_agent_port
+        if args.node_agent_cert_path:
+            updated_args["node_agent_cert_path"] = args.node_agent_cert_path
+        if args.node_agent_auth_token:
+            updated_args["node_agent_auth_token"] = args.node_agent_auth_token
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)

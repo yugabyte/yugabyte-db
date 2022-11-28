@@ -21,14 +21,16 @@ namespace tablet {
 
 struct QLReadRequestResult {
   QLResponsePB response;
-  faststring rows_data;
   HybridTime restart_read_ht;
 };
 
 struct PgsqlReadRequestResult {
+  explicit PgsqlReadRequestResult(WriteBuffer* rows_data_) : rows_data(rows_data_) {}
+
   PgsqlResponsePB response;
-  faststring rows_data;
   HybridTime restart_read_ht;
+  size_t num_rows_read;
+  WriteBuffer* rows_data;
 };
 
 } // namespace tablet

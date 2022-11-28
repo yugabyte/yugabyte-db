@@ -72,6 +72,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
@@ -116,6 +117,12 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(use_node_to_node_encryption);
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(allow_insecure_connections);
+DECLARE_string(certs_dir);
+DECLARE_string(certs_for_cdc_dir);
+DECLARE_bool(TEST_fail_setup_system_universe_replication);
 
 namespace yb {
 
@@ -466,6 +473,59 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     return stream_resp.streams(0).stream_id();
   }
 
+  YB_STRONGLY_TYPED_BOOL(EnableTLSEncryption);
+  Status TestSetupUniverseReplication(EnableTLSEncryption enable_tls_encryption) {
+    if (enable_tls_encryption) {
+      FLAGS_use_node_to_node_encryption = true;
+      FLAGS_use_client_to_server_encryption = true;
+      FLAGS_allow_insecure_connections = false;
+      FLAGS_certs_dir = GetCertsDir();
+      FLAGS_certs_for_cdc_dir = JoinPathSegments(FLAGS_certs_dir, "xCluster");
+      // TwoDCTestBase::SetupUniverseReplication will copying the certs to the sub directories.
+    }
+
+    auto tables = VERIFY_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+    producer_tables.reserve(tables.size() / 2);
+    consumer_tables.reserve(tables.size() / 2);
+    // tables contains both producer and consumer universe tables (alternately).
+    for (size_t i = 0; i < tables.size(); i++) {
+      if (i % 2 == 0) {
+        producer_tables.push_back(tables[i]);
+      } else {
+        consumer_tables.push_back(tables[i]);
+      }
+    }
+    RETURN_NOT_OK(SetupUniverseReplication(producer_tables));
+
+    // Verify that universe was setup on consumer.
+    master::GetUniverseReplicationResponsePB resp;
+    RETURN_NOT_OK(VerifyUniverseReplication(&resp));
+    CHECK_EQ(resp.entry().producer_id(), kUniverseId);
+    CHECK_EQ(resp.entry().tables_size(), producer_tables.size());
+    for (uint32_t i = 0; i < producer_tables.size(); i++) {
+      CHECK_EQ(resp.entry().tables(i), producer_tables[i]->id());
+    }
+
+    // Verify that CDC streams were created on producer for all tables.
+    for (size_t i = 0; i < producer_tables.size(); i++) {
+      master::ListCDCStreamsResponsePB stream_resp;
+      RETURN_NOT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
+      CHECK_EQ(stream_resp.streams_size(), 1);
+      CHECK_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
+    }
+
+    for (size_t i = 0; i < producer_tables.size(); i++) {
+      WriteWorkload(0, 5, producer_client(), producer_tables[i]->name());
+      RETURN_NOT_OK(VerifyWrittenRecords(producer_tables[i]->name(), consumer_tables[i]->name()));
+    }
+
+    RETURN_NOT_OK(DeleteUniverseReplication());
+    return Status::OK();
+  }
+
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -474,39 +534,16 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTest,
-    ::testing::Values(TwoDCTestParams(true /* transactional_table */),
-                      TwoDCTestParams(false /* transactional_table */)));
+    ::testing::Values(
+        TwoDCTestParams(true /* transactional_table */),
+        TwoDCTestParams(false /* transactional_table */)));
 
 TEST_P(TwoDCTest, SetupUniverseReplication) {
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
+}
 
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  // tables contains both producer and consumer universe tables (alternately).
-  // Pick out just the producer tables from the list.
-  producer_tables.reserve(tables.size() / 2);
-  for (size_t i = 0; i < tables.size(); i += 2) {
-    producer_tables.push_back(tables[i]);
-  }
-  ASSERT_OK(SetupUniverseReplication(producer_tables));
-
-  // Verify that universe was setup on consumer.
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
-  ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
-  for (uint32_t i = 0; i < producer_tables.size(); i++) {
-    ASSERT_EQ(resp.entry().tables(i), producer_tables[i]->id());
-  }
-
-  // Verify that CDC streams were created on producer for all tables.
-  for (size_t i = 0; i < producer_tables.size(); i++) {
-    master::ListCDCStreamsResponsePB stream_resp;
-    ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
-    ASSERT_EQ(stream_resp.streams_size(), 1);
-    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_tables[i]->id());
-  }
-
-  ASSERT_OK(DeleteUniverseReplication());
+TEST_P(TwoDCTest, SetupUniverseReplicationWithTLSEncryption) {
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
 }
 
 TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
@@ -1408,6 +1445,17 @@ INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTestTransactionalOnly,
     ::testing::Values(TwoDCTestParams(true /* transactional_table */)));
 
+TEST_P(TwoDCTestTransactionalOnly, SetupUniverseReplicationWithTLSEncryption) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  ASSERT_OK(TestSetupUniverseReplication(EnableTLSEncryption::kTrue));
+}
+
+TEST_P(TwoDCTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  FLAGS_TEST_fail_setup_system_universe_replication = true;
+  ASSERT_NOK(TestSetupUniverseReplication(EnableTLSEncryption::kFalse));
+}
+
 TEST_P(TwoDCTestTransactionalOnly, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
@@ -1510,11 +1558,14 @@ TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
                                       kUniverseId, &resp));
+
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());
   auto txn_id = txn.second->id();
   ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
   FLAGS_TEST_disable_apply_committed_transactions = false;
   ASSERT_OK(WaitForTransactionCleanedUp(consumer_client(), txn_id));
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -1531,6 +1582,10 @@ TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
   auto consumer_table = tables[1];
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                      kUniverseId, &resp));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
   auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
   WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
   ASSERT_OK(txn.second->CommitFuture().get());

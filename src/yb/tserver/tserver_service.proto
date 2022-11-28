@@ -166,6 +166,7 @@ message GetTransactionStatusRequestPB {
   optional bytes tablet_id = 1;
   repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
+  optional fixed64 external_hybrid_time = 4;
 }
 
 message GetTransactionStatusResponsePB {

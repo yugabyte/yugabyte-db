@@ -7,6 +7,8 @@ package cmd
 import (
 	"net"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 // Actions that require root for us to execute are not possible under a non-root
@@ -85,7 +87,7 @@ func PreflightRoot() {
 	checkPythonInstalled()
 
 	// Only required in a non-root install that is systemd managed.
-	if serviceManagementMode == "systemd" {
+	if viper.GetString("serviceManagementMode") == "systemd" {
 
 		checkUserLevelSystemdCapable()
 
