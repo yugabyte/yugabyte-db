@@ -14,8 +14,8 @@ type: docs
 
 **New Features**
 
-- Support for multi-region clusters with geo-partitioning. Geo-partitioning allows you to move data closer to users to achieve lower latency and higher performance, and meet data residency requirements to comply with regulations such as GDPR. To use geo-partitioning, create a cluster using the new Partition by Region deployment. Tablespaces are automatically placed in each region. Using the tablespaces, you can then place partitioned table data in different regions based on a partition column.
-- Support for read replicas. Use read replicas to lower latencies for read requests from remote regions.
+- Support for multi-region clusters with [geo-partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/) using the new [Partition by Region](../cloud-basics/create-clusters-topology/#partition-by-region) deployment. Geo-partitioning allows you to move data closer to users to achieve lower latency and higher performance, and meet data residency requirements to comply with regulations such as GDPR.
+- Support for [read replicas](../cloud-basics/create-clusters-topology/#read-replicas). Use read replicas to lower latencies for read requests from remote regions.
 
 ### November 15, 2022
 
