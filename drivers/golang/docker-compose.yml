@@ -1,0 +1,10 @@
+version: "3.3"
+services:
+  db:
+    image: apache/age
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=agens
+      - POSTGRES_DB=postgres
+    ports:
+      - 5432:5432
