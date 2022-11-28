@@ -444,10 +444,12 @@ class AwsCloud(AbstractCloud):
         # If we are configuring second NIC, ensure that this only happens for a
         # centOS AMI right now.
         if args.cloud_subnet_secondary:
+            supported_os = ['centos', 'almalinux']
             ec2 = boto3.resource('ec2', args.region)
             image = ec2.Image(args.machine_image)
-            if 'centos' not in image.name.lower():
-                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+            if not any(os_type in image.name.lower() for os_type in supported_os):
+                raise YBOpsRuntimeError(
+                    "Second NIC can only be configured for CentOS/Alma right now")
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
@@ -478,7 +480,7 @@ class AwsCloud(AbstractCloud):
 
     def reboot_instance(self, host_info, ssh_ports):
         boto3.client('ec2', region_name=host_info['region']).reboot_instances(
-          InstanceIds=[host_info["id"]]
+            InstanceIds=[host_info["id"]]
         )
         self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
 
