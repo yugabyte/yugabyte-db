@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -61,13 +62,14 @@ import play.mvc.Result;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
+  // All these fields must be kept the same from the old authConfig (if it has)
+  public static final List<String> awsKmsNonEditableFields =
+      AwsKmsAuthConfigField.getNonEditableFields();
+  // Below AWS fields can be editable. If no new field is specified, use the same old one.
+  public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
+
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
-
-  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
-  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
-  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
-  public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
 
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
@@ -179,10 +181,16 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
     switch (keyProvider) {
       case AWS:
-        if (formData.get(AWS_REGION_FIELDNAME) != null
-            && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
-          throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+        for (String field : awsKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, String.format("AWS KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
         }
+        LOG.debug("Verified that all the fields in the AWS KMS request are editable");
         break;
       case SMARTKEY:
         // NO checks required
@@ -250,17 +258,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     switch (keyProvider) {
       case AWS:
-        formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
-        if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
-            && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-          formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+        // Make a copy of the original authConfig object and edit the editable fields.
+        ObjectNode updatedFormData = authConfig.deepCopy();
+        for (String fieldName : awsKmsEditableFields) {
+          if (formData.has(fieldName)) {
+            updatedFormData.set(fieldName, formData.get(fieldName));
+          }
         }
-        if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
-            && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
-          formData.set(
-              AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
-        }
-        break;
+        LOG.debug("Added all required AWS KMS fields to the formData to be edited");
+        return updatedFormData;
       case SMARTKEY:
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
             && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {

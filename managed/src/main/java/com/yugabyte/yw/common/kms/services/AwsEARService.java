@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.algorithms.AwsAlgorithm;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.util.UUID;
 
@@ -52,7 +53,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
 
   private String getCMKId(UUID configUUID) {
     final ObjectNode authConfig = getAuthConfig(configUUID);
-    final JsonNode cmkNode = authConfig.get("cmk_id");
+    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
     return cmkNode == null ? null : cmkNode.asText();
   }
 
@@ -64,20 +65,22 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
   @Override
   protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode config) {
     // Skip creating a CMK for the KMS Configuration if the user inputted one
-    if (config.get("cmk_id") != null) return config;
+    if (config.get(AwsKmsAuthConfigField.CMK_ID.fieldName) != null) return config;
     final String description =
         String.format("Yugabyte Master Key for KMS Configuration %s", configUUID.toString());
     ObjectNode result = null;
     try {
       final String inputtedCMKPolicy =
-          config.get("cmk_policy") == null ? null : config.get("cmk_policy").asText();
+          config.get(AwsKmsAuthConfigField.CMK_POLICY.fieldName) == null
+              ? null
+              : config.get(AwsKmsAuthConfigField.CMK_POLICY.fieldName).asText();
       final String cmkId =
           AwsEARServiceUtil.createCMK(configUUID, description, inputtedCMKPolicy)
               .getKeyMetadata()
               .getKeyId();
       if (cmkId != null) {
-        config.remove("cmk_policy");
-        config.put("cmk_id", cmkId);
+        config.remove(AwsKmsAuthConfigField.CMK_POLICY.fieldName);
+        config.put(AwsKmsAuthConfigField.CMK_ID.fieldName, cmkId);
       }
       result = config;
     } catch (Exception e) {
