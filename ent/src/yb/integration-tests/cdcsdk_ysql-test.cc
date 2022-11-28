@@ -2974,7 +2974,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   auto count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
-
   ASSERT_EQ(count_before_compaction, count_after_compaction);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -3009,9 +3008,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageExpiration)) {
   ASSERT_FALSE(set_resp2.has_error());
 
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-  // ASSERT_OK(TriggerCompaction(tablets[0].tablet_id()));
   count_after_compaction = CountEntriesInDocDB(peers, table.table_id());
-  ASSERT_EQ(count_after_compaction, 2);
+  ASSERT_GE(count_after_compaction, 1);
 }
 
 // Insert one row, update the inserted row twice and verify before image.
@@ -3316,6 +3314,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBefor
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 3, 2, 0, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 5, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecordWithThreeColumns expected_records[] = {{0, 0, 0}, {1, 2, 3},  {2, 3, 4},
@@ -3336,7 +3335,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumnBefor
         record, expected_records[i], count, true, expected_before_image_records[i], true);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
 }
 
 // To test upadtes corresponding to a row packed into one CDC record. This verifies the generated
@@ -5568,9 +5572,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
   change_req.set_stream_id(create_resp.stream_id());
   change_req.set_tablet_id(tablets[0].tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(
-      change_resp_1.checkpoint().op_id().index());
+      0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(
-      change_resp_1.checkpoint().op_id().term());
+      0);
   change_req.set_serve_as_proxy(true);
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
