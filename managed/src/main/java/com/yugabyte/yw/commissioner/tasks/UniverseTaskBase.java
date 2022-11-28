@@ -2542,25 +2542,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (jsonNode.isArray()) {
       jsonNode = jsonNode.get(0);
     }
-    long matchCount =
+    Map<String, JsonNode> properties =
         Streams.stream(jsonNode.fields())
-            .filter(
-                e -> {
-                  String expectedTagValue = expectedTags.get(e.getKey());
-                  if (expectedTagValue == null) {
-                    return false;
-                  }
-                  log.info(
-                      "Node: {}, Key: {}, Value: {}, Expected: {}",
-                      taskParams.nodeName,
-                      e.getKey(),
-                      e.getValue(),
-                      expectedTagValue);
-                  return expectedTagValue.equals(e.getValue().asText());
-                })
-            .limit(expectedTags.size())
-            .count();
-    return Optional.of(matchCount == expectedTags.size());
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+    int unmatchedCount = 0;
+    for (Map.Entry<String, String> entry : expectedTags.entrySet()) {
+      JsonNode node = properties.get(entry.getKey());
+      if (node == null || node.isNull()) {
+        continue;
+      }
+      String value = node.asText();
+      log.info(
+          "Node: {}, Key: {}, Value: {}, Expected: {}",
+          taskParams.nodeName,
+          entry.getKey(),
+          value,
+          entry.getValue());
+      if (!entry.getValue().equals(value)) {
+        unmatchedCount++;
+      }
+    }
+    // Old nodes don't have tags. So, unmatched count is 0.
+    // New nodes must have unmatched count = 0.
+    return Optional.of(unmatchedCount == 0);
   }
 
   // Perform preflight checks on the given node.
