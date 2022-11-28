@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ import play.mvc.Http;
 public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Request request, Class<T> paramType) {
+      Http.Context ctx, Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -48,6 +49,8 @@ public class UniverseControllerRequestBinder {
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
+      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.platformUrl = request.host();
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(

@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
@@ -59,6 +61,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.libs.Json;
+import play.mvc.Http;
 
 @Slf4j
 public class CommonUtils {
@@ -676,5 +679,10 @@ public class CommonUtils {
     }
 
     return ImmutableMultiset.copyOf(x).equals(ImmutableMultiset.copyOf(y));
+  }
+
+  /** Get the user sending the API request from the HTTP context. */
+  public static Users getUserFromContext(Http.Context ctx) {
+    return ((UserWithFeatures) ctx.args.get("user")).getUser();
   }
 }

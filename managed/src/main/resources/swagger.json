@@ -1337,6 +1337,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -1427,6 +1430,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
@@ -1492,7 +1498,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "storageConfigUUID", "universeUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -1658,6 +1664,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -1751,6 +1760,9 @@
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -1861,7 +1873,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "storageConfigUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "storageConfigUUID" ],
       "type" : "object"
     },
     "BulkImportParams" : {
@@ -1874,6 +1886,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
@@ -1919,6 +1934,9 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "platformUrl" : {
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -1971,7 +1989,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "s3Bucket" ],
+      "required" : [ "creatingUser", "platformUrl", "s3Bucket" ],
       "type" : "object"
     },
     "BundleDetails" : {
@@ -2140,6 +2158,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -2200,6 +2221,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -2288,7 +2312,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clientRootCA", "clusters", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clientRootCA", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "rootAndClientRootCASame", "rootCA", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -3106,6 +3130,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -3172,6 +3199,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -3260,7 +3290,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "kubernetesUpgradeSupported", "masterGFlags", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "HashicorpVaultConfigParams" : {
@@ -3874,6 +3904,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
@@ -3972,6 +4005,9 @@
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -4082,7 +4118,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "storageConfigUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "storageConfigUUID" ],
       "type" : "object"
     },
     "NodeActionFormData" : {
@@ -4962,6 +4998,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -5025,6 +5064,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -5107,7 +5149,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "forceResizeNode", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestoreBackupParams" : {
@@ -5135,6 +5177,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "customerUUID" : {
           "description" : "Customer UUID",
@@ -5204,6 +5249,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
@@ -5250,7 +5298,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "universeUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "universeUUID" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -5552,6 +5600,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -5612,6 +5663,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -5697,7 +5751,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "SupportBundle" : {
@@ -5797,6 +5851,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -5857,6 +5914,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -5939,7 +5999,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -5951,6 +6011,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
@@ -5987,6 +6050,9 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "platformUrl" : {
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6033,7 +6099,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "tableDetails", "tableType", "tableUUID" ],
       "type" : "object"
     },
     "TableDetails" : {
@@ -6181,6 +6247,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -6244,6 +6313,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -6326,7 +6398,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "forceAll", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TlsToggleParams" : {
@@ -6358,6 +6430,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
@@ -6426,6 +6501,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
@@ -6507,7 +6585,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "clientRootCA", "clusters", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "allowInsecure", "clientRootCA", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TriggerHealthCheckResult" : {
@@ -6557,6 +6635,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
@@ -6615,6 +6696,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -6688,7 +6772,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -6720,6 +6804,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
@@ -6779,6 +6866,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
@@ -6848,7 +6938,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -6880,6 +6970,9 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
         },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
@@ -6939,6 +7032,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
           "format" : "uuid",
@@ -7008,7 +7104,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl" ],
       "type" : "object"
     },
     "UniverseDetailSubset" : {
@@ -7187,6 +7283,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -7247,6 +7346,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -7329,7 +7431,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "UserIntent" : {
@@ -7670,6 +7772,9 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
         "currentClusterType" : {
           "enum" : [ "PRIMARY", "ASYNC" ],
           "type" : "string"
@@ -7739,6 +7844,9 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "platformUrl" : {
+          "type" : "string"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID only if this task is a retry",
@@ -7824,7 +7932,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "VolumeDetails" : {

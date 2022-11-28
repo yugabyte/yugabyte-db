@@ -77,6 +77,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -104,6 +105,8 @@ public class NodeManager extends DevopsBase {
   static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
   static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
+  public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
+  public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
 
   @Inject ReleaseManager releaseManager;
 
@@ -2038,6 +2041,31 @@ public class NodeManager extends DevopsBase {
     tags.put("customer-uuid", customer.uuid.toString());
     tags.put("universe-uuid", universe.universeUUID.toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    if (userIntent.providerType.equals(Common.CloudType.gcp)) {
+      // GCP does not allow special characters other than - and _
+      // Special characters being replaced here
+      // https://cloud.google.com/compute/docs/labeling-resources#requirements
+      if (nodeTaskParam.creatingUser != null) {
+        String email =
+            SPECIAL_CHARACTERS_PATTERN
+                .matcher(nodeTaskParam.creatingUser.getEmail())
+                .replaceAll("_");
+        tags.put("yb_user_email", email);
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        String url = SPECIAL_CHARACTERS_PATTERN.matcher(nodeTaskParam.platformUrl).replaceAll("_");
+        tags.put("yb_yba_url", url);
+      }
+
+    } else {
+      if (nodeTaskParam.creatingUser != null) {
+        tags.put("yb_user_email", nodeTaskParam.creatingUser.getEmail());
+      }
+      if (nodeTaskParam.platformUrl != null) {
+        tags.put("yb_yba_url", nodeTaskParam.platformUrl);
+      }
+    }
   }
 
   private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {

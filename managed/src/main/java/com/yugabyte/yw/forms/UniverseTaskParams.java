@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -187,4 +188,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public static boolean isFirstTryForTask(UniverseTaskParams params) {
     return params.firstTry && params.previousTaskUUID == null;
   }
+  // The user that created the task
+  public Users creatingUser;
+
+  public String platformUrl;
 }
