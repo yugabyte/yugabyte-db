@@ -23,7 +23,7 @@
 
 using namespace std::literals;
 
-DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_int64(external_transaction_rpc_timeout_ms);
 
 namespace yb {
 
@@ -40,7 +40,6 @@ ExternalTransaction::~ExternalTransaction() {
 
 void ExternalTransaction::Create(const ExternalTransactionMetadata& metadata,
                                  CreateCallback create_callback) {
-  LOG(INFO) << "Create for " << metadata.transaction_id;
   tserver::UpdateTransactionRequestPB req;
   req.set_tablet_id(metadata.status_tablet);
   req.set_propagated_hybrid_time(transaction_manager_->Now().ToUint64());
@@ -76,7 +75,6 @@ void ExternalTransaction::CreateDone(const Status& status,
 
 void ExternalTransaction::Commit(const ExternalTransactionMetadata& metadata,
                                  CommitCallback commit_callback) {
-  LOG(INFO) << "Commit for " << metadata.transaction_id;
   tserver::UpdateTransactionRequestPB req;
   req.set_tablet_id(metadata.status_tablet);
   req.set_propagated_hybrid_time(transaction_manager_->Now().ToUint64());
@@ -114,7 +112,8 @@ void ExternalTransaction::CommitDone(const Status& status,
 }
 
 CoarseTimePoint ExternalTransaction::TransactionRpcDeadline() {
-  return CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_transaction_rpc_timeout_ms);
+  return CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
+      FLAGS_external_transaction_rpc_timeout_ms);
 }
 
 } // namespace client
