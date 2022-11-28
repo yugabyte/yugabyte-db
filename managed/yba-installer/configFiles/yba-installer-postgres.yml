@@ -20,7 +20,7 @@
       -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
 
       Restart=always
-      RestartSec={{ yamlPath ".postgres.restartSeconds"}}
+      RestartSec={{ yamlPath "postgres.restartSeconds"}}
 
       [Install]
       WantedBy=multi-user.target
