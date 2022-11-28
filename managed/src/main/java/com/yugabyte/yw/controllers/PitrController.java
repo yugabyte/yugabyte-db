@@ -74,6 +74,10 @@ public class PitrController extends AuthenticatedController {
 
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot enable PITR when the universe is in paused state");
+    }
     CreatePitrConfigParams taskParams = parseJsonAndValidate(CreatePitrConfigParams.class);
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
@@ -135,36 +139,47 @@ public class PitrController extends AuthenticatedController {
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
 
-    try {
-      client = ybClientService.getClient(masterHostPorts, certificate);
-      scheduleResp = client.listSnapshotSchedules(null);
-      scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-    } catch (Exception ex) {
-      log.error(ex.getMessage());
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterHostPorts);
-    }
-
-    for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
-      PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
-      if (pitrConfig == null) {
-        continue;
+    if (universe.getUniverseDetails().universePaused) {
+      pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
+      long currentTimeMillis = System.currentTimeMillis();
+      pitrConfigList
+          .stream()
+          .forEach(
+              p -> {
+                p.setState(State.UNKNOWN);
+                p.setMinRecoverTimeInMillis(currentTimeMillis);
+                p.setMaxRecoverTimeInMillis(currentTimeMillis);
+              });
+    } else {
+      try {
+        client = ybClientService.getClient(masterHostPorts, certificate);
+        scheduleResp = client.listSnapshotSchedules(null);
+        scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+      } catch (Exception ex) {
+        log.error(ex.getMessage());
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
+      } finally {
+        ybClientService.closeClient(client, masterHostPorts);
       }
 
-      boolean pitrStatus =
-          BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
-      long currentTimeMillis = System.currentTimeMillis();
-      long minTimeInMillis =
-          Math.max(
-              currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
-              pitrConfig.getCreateTime().getTime());
-      pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
-      pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
-      pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
-      pitrConfigList.add(pitrConfig);
+      for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
+        PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
+        if (pitrConfig == null) {
+          continue;
+        }
+        boolean pitrStatus =
+            BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
+        long currentTimeMillis = System.currentTimeMillis();
+        long minTimeInMillis =
+            Math.max(
+                currentTimeMillis - pitrConfig.getRetentionPeriod() * 1000L,
+                pitrConfig.getCreateTime().getTime());
+        pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
+        pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
+        pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
+        pitrConfigList.add(pitrConfig);
+      }
     }
-
     return PlatformResults.withData(pitrConfigList);
   }
 
@@ -182,6 +197,10 @@ public class PitrController extends AuthenticatedController {
   public Result restore(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in paused state");
+    }
 
     RestoreSnapshotScheduleParams taskParams =
         parseJsonAndValidate(RestoreSnapshotScheduleParams.class);
@@ -241,6 +260,10 @@ public class PitrController extends AuthenticatedController {
 
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot delete PITR config when the universe is in paused state");
+    }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
 
     DeleteSnapshotScheduleResponse resp = null;
@@ -249,8 +272,6 @@ public class PitrController extends AuthenticatedController {
     String certificate = universe.getCertificateNodetoNode();
 
     try {
-      log.info("Running on masterHostPorts={}.", masterHostPorts);
-
       client = ybClientService.getClient(masterHostPorts, certificate);
       ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {

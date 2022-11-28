@@ -166,6 +166,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
                   nodePrefix={sourceUniverse.universeDetails.nodePrefix}
                   queryEnabled={isActiveTab}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+                  xClusterConfigStatus={xClusterConfig.status}
                 />
               </span>
             )}

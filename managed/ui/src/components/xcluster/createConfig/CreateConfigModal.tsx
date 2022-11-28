@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
+import axios, { AxiosError } from 'axios';
 
 import {
   createXClusterReplication,
@@ -163,12 +164,12 @@ export const CreateConfigModal = ({
           queryClient.invalidateQueries(['universe', sourceUniverseUUID], { exact: true });
         });
       },
-      onError: (err: any) => {
-        toast.error(
-          err.response.data.error instanceof String
-            ? err.response.data.error
-            : JSON.stringify(err.response.data.error)
-        );
+      onError: (error: Error | AxiosError) => {
+        if (axios.isAxiosError(error)) {
+          toast.error(error.response?.data?.error?.message ?? error.message);
+        } else {
+          toast.error(error.message);
+        }
       }
     }
   );

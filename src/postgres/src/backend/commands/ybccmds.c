@@ -65,6 +65,9 @@
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
+/* Yugabyte includes */
+#include "catalog/pg_yb_tablegroup.h"
+
 /* Utility function to calculate column sorting options */
 static void
 ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_nulls_first)
@@ -577,12 +580,17 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
-		if (strcmp(def->defname, "colocated") == 0)
+		/*
+		 * A check in parse_utilcmd.c makes sure only one of these two options
+		 * can be specified.
+		 */
+		if (strcmp(def->defname, "colocated") == 0 ||
+			strcmp(def->defname, "colocation") == 0)
 		{
 			if (OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
+						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
 
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
@@ -590,7 +598,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			else if (colocated_relopt)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set colocated true on a non-colocated"
+						 errmsg("cannot set colocation true on a non-colocated"
 								" database")));
 			/* The following break is fine because there should only be one
 			 * colocated reloption at this point due to checks in
@@ -608,6 +616,43 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated table")));
+
+	/*
+	 * Lazily create an underlying tablegroup in a colocated database if needed.
+	 */
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	{
+		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+		/* Default tablegroup doesn't exist, so create it. */
+		if (!OidIsValid(tablegroupId))
+		{
+			/*
+			 * Regardless of the current user, let postgres be the owner of the
+			 * default tablegroup in a colocated database.
+			 */
+			RoleSpec *spec = makeNode(RoleSpec);
+			spec->roletype = ROLESPEC_CSTRING;
+			spec->rolename = pstrdup("postgres");
+
+			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+			tablegroup_stmt->tablegroupname = DEFAULT_TABLEGROUP_NAME;
+			tablegroup_stmt->implicit = true;
+			tablegroup_stmt->owner = spec;
+			tablegroupId = CreateTableGroup(tablegroup_stmt);
+			stmt->tablegroupname = pstrdup(DEFAULT_TABLEGROUP_NAME);
+		}
+		/* Record dependency between the table and default tablegroup. */
+		ObjectAddress myself, default_tablegroup;
+		myself.classId = RelationRelationId;
+		myself.objectId = relationId;
+		myself.objectSubId = 0;
+
+		default_tablegroup.classId = YbTablegroupRelationId;
+		default_tablegroup.objectId = tablegroupId;
+		default_tablegroup.objectSubId = 0;
+
+		recordDependencyOn(&myself, &default_tablegroup, DEPENDENCY_NORMAL);
+	}
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,

@@ -51,6 +51,7 @@ class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
 class SubDocKey;
+class TransactionStatusCache;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 

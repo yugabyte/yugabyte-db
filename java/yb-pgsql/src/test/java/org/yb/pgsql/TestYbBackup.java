@@ -1420,9 +1420,11 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  private void testMaterializedViewsHelper(boolean matviewOnMatview) throws Exception {
+  private void testMaterializedViewsHelper(boolean matviewOnMatview, String dbName)
+      throws Exception {
     String backupDir = null;
-    try (Statement stmt = connection.createStatement()) {
+    try (Connection connection = getConnectionBuilder().withDatabase(dbName).connect();
+         Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_tbl");
       stmt.execute("CREATE TABLE test_tbl (t int)");
       stmt.execute("CREATE MATERIALIZED VIEW test_mv AS SELECT * FROM test_tbl");
@@ -1436,7 +1438,7 @@ public class TestYbBackup extends BasePgSQLTest {
       }
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte");
+          "--keyspace", String.format("ysql.%s", dbName));
       backupDir = new JSONObject(output).getString("snapshot_url");
     }
 
@@ -1453,12 +1455,21 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testRefreshedMaterializedViewsBackup() throws Exception {
-    testMaterializedViewsHelper(false);
+    testMaterializedViewsHelper(false, "yugabyte");
   }
 
   @Test
   public void testRefreshedMaterializedViewsOnMaterializedViewsBackup() throws Exception {
-    testMaterializedViewsHelper(true);
+    testMaterializedViewsHelper(true, "yugabyte");
+  }
+
+  @Test
+  public void testColocatedMateralizedViewBackup() throws Exception {
+    String dbName = "colocated_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(String.format("CREATE DATABASE %s COLOCATED=true", dbName));
+    }
+    testMaterializedViewsHelper(false, dbName);
   }
 
   @Test

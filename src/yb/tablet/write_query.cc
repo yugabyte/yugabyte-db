@@ -119,12 +119,14 @@ WriteQuery::WriteQuery(
     CoarseTimePoint deadline,
     WriteQueryContext* context,
     TabletPtr tablet,
+    rpc::RpcContext* rpc_context,
     tserver::WriteResponsePB* response,
     docdb::OperationKind kind)
     : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
+      rpc_context_(rpc_context),
       response_(response),
       kind_(kind),
       start_time_(CoarseMonoClock::Now()),
@@ -385,7 +387,8 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
     auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
         req,
         rpc::SharedField(table_info, table_info->doc_read_context.get()),
-        txn_op_ctx);
+        txn_op_ctx,
+        rpc_context_);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }

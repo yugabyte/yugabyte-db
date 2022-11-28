@@ -1981,6 +1981,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean ybcBackup) {
     ObjectMapper mapper = new ObjectMapper();
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
+    Universe universe = Universe.getOrBadRequest(backupRequestParams.universeUUID);
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+
+    if (cloudType != CloudType.kubernetes) {
+      // Ansible Configure Task for copying xxhsum binaries from
+      // third_party directory to the DB nodes.
+      installThirdPartyPackagesTask(universe)
+          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
+    }
 
     if (backupRequestParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
@@ -2044,6 +2053,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
+    }
+
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+
+    if (cloudType != CloudType.kubernetes) {
+      // Ansible Configure Task for copying xxhsum binaries from
+      // third_party directory to the DB nodes.
+      installThirdPartyPackagesTask(universe)
+          .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
     }
 
     if (isYbc) {
@@ -2250,10 +2269,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Creates a task to install xxhash on the DB nodes from third-party packages.
    *
-   * @param universeUUID universe on which xxhash need to be upgraded
    * @param universe universe on which xxhash needs to be installed
    */
-  public SubTaskGroup installThirdPartyPackagesTask(UUID universeUUID, Universe universe) {
+  public SubTaskGroup installThirdPartyPackagesTask(Universe universe) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for nodes",
@@ -2271,7 +2289,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               ServerType.TSERVER,
               UpgradeTaskParams.UpgradeTaskType.ThirdPartyPackages,
               UpgradeTaskParams.UpgradeTaskSubType.InstallThirdPartyPackages);
-      params.universeUUID = universeUUID;
+      params.universeUUID = universe.getUniverseUUID();
       params.installThirdPartyPackages = true;
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);

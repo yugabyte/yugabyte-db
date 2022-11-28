@@ -1,6 +1,6 @@
  services:
   - name: postgresService
-    fileName: /etc/systemd/system/postgres.service
+    fileName: "{{ .SystemdFileLocation }}"
     contents: |
       [Unit]
       Description=Postgres
@@ -8,18 +8,16 @@
       After=network-online.target
 
       [Service]
-      User=postgres
-      Group=postgres
+      User=yugabyte
+      Group=yugabyte
       Type=forking
+      TimeoutSec=300
 
-      # no timeout in starting up - if crash recovery is needed it can take quite some time, and
-      # we don't want systemd to kill the process in that case
-      TimeoutSec=infinity
+      ExecStart={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
 
-      ExecStart={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-      -o "-k {{ installRoot }}/postgres/run/postgresql/" start
-      ExecStop={{ installRoot }}/postgres/bin/pg_ctl -D {{ installRoot }}/postgres/data \
-      -o "-k {{ installRoot }}/postgres/run/postgresql/" stop
+      ExecStop={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
 
       Restart=always
       RestartSec={{ yamlPath ".postgres.restartSeconds"}}

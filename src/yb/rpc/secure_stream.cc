@@ -707,7 +707,7 @@ class SecureRefiner : public StreamRefiner {
 };
 
 Status SecureRefiner::Send(OutboundDataPtr data) {
-  boost::container::small_vector<RefCntBuffer, 10> queue;
+  boost::container::small_vector<RefCntSlice, 10> queue;
   data->Serialize(&queue);
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());

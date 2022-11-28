@@ -77,6 +77,17 @@ export const ConfigTableSelect = ({
   );
 
   if (
+    xClusterConfig.sourceUniverseUUID === undefined ||
+    xClusterConfig.targetUniverseUUID === undefined
+  ) {
+    const errorMessage =
+      xClusterConfig.sourceUniverseUUID === undefined
+        ? 'The source universe is deleted.'
+        : 'The target universe is deleted.';
+    return <YBErrorIndicator customErrorMessage={errorMessage} />;
+  }
+
+  if (
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
@@ -185,6 +196,7 @@ export const ConfigTableSelect = ({
     }
   };
 
+  const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
@@ -211,7 +223,7 @@ export const ConfigTableSelect = ({
               tables={row.xClusterTables}
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={configTableType}
-              sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
+              sourceUniverseUUID={sourceUniverseUUID}
               sourceUniverseNodePrefix={sourceUniverseNodePrefix}
               handleTableSelect={handleTableSelect}
               handleAllTableSelect={handleAllTableSelect}

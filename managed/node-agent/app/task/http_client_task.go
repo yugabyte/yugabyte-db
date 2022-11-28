@@ -62,6 +62,7 @@ func (handler *AgentRegistrationHandler) Handle(ctx context.Context) (any, error
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.RegisterResponseSuccess{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -98,6 +99,7 @@ func (handler *AgentUnregistrationHandler) Handle(ctx context.Context) (any, err
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.ResponseMessage{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -134,6 +136,7 @@ func (handler *GetInstanceTypeHandler) Handle(ctx context.Context) (any, error) 
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.NodeInstanceType{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -172,6 +175,7 @@ func (handler *ValidateNodeInstanceHandler) Handle(ctx context.Context) (any, er
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &map[string]model.NodeInstanceValidationResponse{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -210,6 +214,7 @@ func (handler *PostNodeInstanceHandler) Handle(ctx context.Context) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &map[string]model.NodeInstanceResponse{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -243,6 +248,7 @@ func (handler *GetProvidersHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &[]model.Provider{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -275,6 +281,7 @@ func (handler *GetProviderHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.Provider{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -307,6 +314,7 @@ func (handler *GetAccessKeysHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	accessKeys := []model.AccessKey{}
 	_, err = UnmarshalResponse(&accessKeys, res)
 	if err != nil {
@@ -347,6 +355,7 @@ func (handler *GetSessionInfoHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.SessionInfo{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -380,6 +389,7 @@ func (handler *GetUserHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.User{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -416,6 +426,7 @@ func (handler *GetInstanceTypesHandler) Handle(ctx context.Context) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &[]model.NodeInstanceType{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -447,6 +458,7 @@ func (handler *GetAgentStateHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	var state string
 	handler.result = &state
 	return UnmarshalResponse(handler.result, res)
@@ -485,6 +497,7 @@ func (handler *PutAgentStateHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.NodeAgent{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -520,6 +533,7 @@ func (handler *PutAgentHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.NodeAgent{}
 	return UnmarshalResponse(handler.result, res)
 }
@@ -541,6 +555,7 @@ func (handler *GetVersionHandler) Handle(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	handler.result = &model.VersionRequest{}
 	return UnmarshalResponse(handler.result, res)
 }

@@ -59,7 +59,6 @@
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64_t yb_catalog_cache_version;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
@@ -74,7 +73,17 @@ extern uint64_t yb_catalog_cache_version;
  */
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
-extern void YBResetCatalogVersion();
+extern uint64_t YbGetCatalogCacheVersion();
+
+extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+
+extern void YbResetCatalogCacheVersion();
+
+extern uint64_t YbGetLastKnownCatalogCacheVersion();
+
+extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+
+extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
     ZONE_LOCAL,
@@ -184,7 +193,12 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YbIsDatabaseColocated(Oid dbid);
+/*
+ * Return whether a database with oid dbid is a colocated database.
+ * legacy_colocated_database is one output parameter. Its value indicates
+ * whether database with oid dbid is a legacy colocated database.
+ */
+extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
  * Check if a relation has row triggers that may reference the old row.

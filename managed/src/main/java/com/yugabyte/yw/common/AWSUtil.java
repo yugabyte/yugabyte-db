@@ -185,9 +185,13 @@ public class AWSUtil implements CloudUtil {
   }
 
   public static String getClientRegion(String fallbackRegion) {
-    return StringUtils.isBlank(new DefaultAwsRegionProviderChain().getRegion())
-        ? fallbackRegion
-        : new DefaultAwsRegionProviderChain().getRegion();
+    String region = "";
+    try {
+      region = new DefaultAwsRegionProviderChain().getRegion();
+    } catch (SdkClientException e) {
+      log.info("No region found in Default region chain.");
+    }
+    return StringUtils.isBlank(region) ? fallbackRegion : region;
   }
 
   public static AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)

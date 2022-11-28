@@ -211,4 +211,39 @@ struct RefCntPrefixHash {
   }
 };
 
+class RefCntSlice {
+ public:
+  RefCntSlice() = default;
+
+  explicit RefCntSlice(RefCntBuffer holder)
+      : holder_(std::move(holder)), slice_(holder_.AsSlice()) {}
+
+  RefCntSlice(RefCntBuffer holder, const Slice& slice)
+      : holder_(std::move(holder)), slice_(slice) {}
+
+  explicit operator bool() const {
+    return static_cast<bool>(holder_);
+  }
+
+  Slice AsSlice() const {
+    return slice_;
+  }
+
+  size_t size() const {
+    return slice_.size();
+  }
+
+  const uint8_t* udata() const {
+    return slice_.data();
+  }
+
+  const char* data() const {
+    return slice_.cdata();
+  }
+
+ private:
+  RefCntBuffer holder_;
+  Slice slice_;
+};
+
 } // namespace yb

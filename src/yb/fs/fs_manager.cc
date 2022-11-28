@@ -85,6 +85,9 @@ DEFINE_test_flag(bool, simulate_fs_create_failure, false,
                  "Simulate failure during initial creation of fs during the first time "
                  "process creation.");
 
+DEFINE_test_flag(bool, simulate_fs_create_with_empty_uuid, false,
+                 "Simulate empty uuid during opening filesystem root.");
+
 METRIC_DEFINE_entity(drive);
 
 METRIC_DEFINE_counter(drive, drive_fault,
@@ -352,6 +355,10 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
     }
     if (!metadata_) {
       metadata_.reset(pb.release());
+      if (metadata_->uuid().empty() || FLAGS_TEST_simulate_fs_create_with_empty_uuid) {
+        LOG(ERROR) << "FSManager contains empty UUID at the startup";
+        return STATUS(Corruption, "Empty UUID from filesystem root", root);
+      }
     } else if (pb->uuid() != metadata_->uuid()) {
       return STATUS(Corruption, Substitute(
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",

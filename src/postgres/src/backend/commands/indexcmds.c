@@ -704,10 +704,13 @@ DefineIndex(Oid relationId,
 				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 	/*
+	 * Skip the check in a colocated database because any user can create tables
+	 * in an implicit tablegroup.
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
 	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
 	 */
-	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	if (!MyDatabaseColocated &&
+		OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 	{
 		AclResult  aclresult;
 
@@ -1694,7 +1697,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid)
+						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									 errmsg("cannot create a hash partitioned"
