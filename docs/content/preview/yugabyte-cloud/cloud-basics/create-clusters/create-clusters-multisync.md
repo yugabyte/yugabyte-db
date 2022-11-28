@@ -2,7 +2,7 @@
 title: Replicate across regions
 linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Deploy region-level fault tolerant clusters
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
@@ -74,17 +74,17 @@ Set **Data distribution** to **Replicate across regions**.
 
 ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-**Regions**: For each of the 3 regions, set the following options:
+**Regions**: For each region, choose the following:
 
-- [Region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
-- The VPC in which to deploy the nodes. Only VPCs using the selected cloud provider are listed. If you are deploying on AWS, you choose a separate VPC for each region. If you are deploying on GCP, all regions are deployed in the same VPC. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 
 **Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to handle all reads and writes.
 
 **Node size**: Enter the number of virtual CPUs per node and the disk size per node (in GB). You must choose the regions before you can set the node size.
 
-Multi-Region clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
@@ -116,8 +116,7 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 ## Next steps
 
-- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
 - [Build an application](../../../../develop/build-apps/)
-- [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)
+- [Scale clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters)
