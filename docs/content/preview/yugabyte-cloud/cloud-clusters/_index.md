@@ -35,7 +35,7 @@ Paused clusters are not billed for instance vCPU capacity. Disk and backup stora
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="configure-clusters/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Scale clusters</div>
       </div>
       <div class="body">
@@ -47,7 +47,7 @@ Paused clusters are not billed for instance vCPU capacity. Disk and backup stora
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="managed-read-replica/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
         <div class="title">Read replicas</div>
       </div>
       <div class="body">
