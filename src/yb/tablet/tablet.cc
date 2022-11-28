@@ -1258,8 +1258,7 @@ Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    const rocksdb::UserFrontiers* frontiers,
-    bool external_transaction) {
+    const rocksdb::UserFrontiers* frontiers) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
@@ -1267,7 +1266,6 @@ Status Tablet::WriteTransactionalBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
-    metadata.external_transaction = external_transaction;
     auto add_result = transaction_participant()->Add(metadata);
     if (!add_result.ok()) {
       return add_result.status();
@@ -1312,32 +1310,35 @@ Status Tablet::WriteTransactionalBatch(
 
 namespace {
 
-std::vector<docdb::LWKeyValueWriteBatchPB*> SplitWriteBatchByTransaction(
+std::vector<std::pair<docdb::LWKeyValueWriteBatchPB*, HybridTime>>
+SplitExternalBatchIntoTransactionBatches(
     const docdb::LWKeyValueWriteBatchPB& put_batch, ThreadSafeArena* arena) {
-  std::map<Slice, docdb::LWKeyValueWriteBatchPB*> map;
+  std::map<std::pair<Slice, HybridTime>, docdb::LWKeyValueWriteBatchPB*> map;
   for (const auto& write_pair : put_batch.write_pairs()) {
     if (!write_pair.has_transaction()) {
       continue;
     }
     // The write pair has transaction metadata, so it should be part of the transaction write batch.
     auto transaction_id = write_pair.transaction().transaction_id();
-    auto& write_batch_ref = map[transaction_id];
+    auto external_hybrid_time = HybridTime(write_pair.external_hybrid_time());
+    auto& write_batch_ref = map[{transaction_id, external_hybrid_time}];
     if (!write_batch_ref) {
       write_batch_ref = arena->NewArenaObject<docdb::LWKeyValueWriteBatchPB>();
     }
     auto* write_batch = write_batch_ref;
     if (!write_batch->has_transaction()) {
-      *write_batch->mutable_transaction() = write_pair.transaction();
+      auto* transaction = write_batch->mutable_transaction();
+      *transaction = write_pair.transaction();
+      transaction->set_external_transaction(true);
     }
     auto *new_write_pair = write_batch->add_write_pairs();
     new_write_pair->ref_key(write_pair.key());
     new_write_pair->ref_value(write_pair.value());
-    new_write_pair->set_external_hybrid_time(write_pair.external_hybrid_time());
   }
-  std::vector<docdb::LWKeyValueWriteBatchPB*> result;
+  std::vector<std::pair<docdb::LWKeyValueWriteBatchPB*, HybridTime>> result;
   result.reserve(map.size());
   for (auto& entry : map) {
-    result.push_back(entry.second);
+    result.push_back({entry.second, entry.first.second});
   }
   return result;
 }
@@ -1368,16 +1369,22 @@ Status Tablet::ApplyKeyValueRowOperations(
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
       if (!metadata_->is_under_twodc_replication()) {
+        // The first time the consumer tablet sees an external write batch, set
+        // is_under_twodc_replication to true.
         RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
       }
       ThreadSafeArena arena;
-      auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch, &arena);
-      for (const auto& write_batch : batches_by_transaction) {
-        RETURN_NOT_OK(WriteTransactionalBatch(
-            batch_idx, *write_batch, hybrid_time, frontiers, true /* external_transaction */));
+      auto batches_by_transaction = SplitExternalBatchIntoTransactionBatches(put_batch, &arena);
+      for (const auto& batch_with_hybrid_time : batches_by_transaction) {
+        const auto& write_batch = batch_with_hybrid_time.first;
+        const auto& external_hybrid_time = batch_with_hybrid_time.second;
+        WARN_NOT_OK(WriteTransactionalBatch(
+            batch_idx, *write_batch, external_hybrid_time, frontiers),
+            "Could not write transactional batch");
       }
       return Status::OK();
     }
+
     rocksdb::WriteBatch intents_write_batch;
     auto* intents_write_batch_ptr = !put_batch.enable_replicate_transaction_status_table() ?
         &intents_write_batch : nullptr;
