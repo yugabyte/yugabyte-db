@@ -64,6 +64,7 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -75,6 +76,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Configuration;
 import play.Environment;
+import io.prometheus.client.CollectorRegistry;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -86,6 +88,7 @@ public class Module extends AbstractModule {
 
   private final Environment environment;
   private final Configuration config;
+  private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Configuration config) {
     this.environment = environment;
@@ -109,6 +112,12 @@ public class Module extends AbstractModule {
     // TODO: Other scopes
 
     install(new CloudModules());
+    CollectorRegistry.defaultRegistry.clear();
+    try {
+      DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
+    } catch (Exception domainValidatorException) {
+      log.info("Skipping Initialization of domain validator for dev env's");
+    }
 
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
