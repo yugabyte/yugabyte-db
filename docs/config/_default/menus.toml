@@ -34,10 +34,9 @@
 ########## Secondary header menu
 
 [[main]]
-  name = "Documentation"
+  name = "Products"
   weight = 1
-  identifier = "documentation"
-  url = "/"
+  identifier = "products"
 
 [[main]]
   name = "Docs Home"
@@ -161,7 +160,6 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "releases"
-  identifier = "ybmanaged-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [main.params]
     excludeVersion = true
@@ -173,7 +171,6 @@
   weight = 1
   identifier = "join-our-community"
   pre = "<i class='icon-join'></i>"
-  post = "<i></i>"
   [leftbottom.params]
     classes = "arrow-menu"
 
@@ -183,7 +180,6 @@
   parent = "join-our-community"
   pre = "<i class='icon-slack'></i>"
   url = "https://communityinviter.com/apps/yugabyte-db/register"
-  post = "<i></i>"
   [leftbottom.params]
     newTab = true
 
@@ -322,30 +318,6 @@
   weight = 13
   identifier = "contribute"
   url = "/preview/contribute/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  [preview.params]
-    classes = "arrow-menu"
-    showSection = true
-
-[[preview]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/preview/yugabyte-platform/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
   [preview.params]
     showSection = true
 
@@ -573,30 +545,6 @@
   [stable.params]
     showSection = true
 
-[[stable]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  [stable.params]
-    classes = "arrow-menu"
-    showSection = true
-
-[[stable]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/stable/yugabyte-platform/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
-  [stable.params]
-    showSection = true
-
 ########## Menus (in stable) for YB Anywhere section
 
 [[stable_yugabyte-platform]]
@@ -734,30 +682,6 @@
   weight = 13
   identifier = "contribute"
   url = "/preview/contribute/"
-  ["v2.12".params]
-    showSection = true
-
-[["v2.12"]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  ["v2.12".params]
-    classes = "arrow-menu"
-    showSection = true
-
-[["v2.12"]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/v2.12/yugabyte-platform/"
-  ["v2.12".params]
-    showSection = true
-
-[["v2.12"]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
   ["v2.12".params]
     showSection = true
 
@@ -904,30 +828,6 @@
   ["v2.8".params]
     showSection = true
 
-[["v2.8"]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  ["v2.8".params]
-    classes = "arrow-menu"
-    showSection = true
-
-[["v2.8"]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/v2.8/yugabyte-platform/overview/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
-  ["v2.8".params]
-    showSection = true
-
 ########## Menus (in v2.8) for YB Anywhere section
 
 [["v2.8_yugabyte-platform"]]
@@ -1045,30 +945,6 @@
   weight = 13
   identifier = "contribute"
   url = "/preview/contribute/"
-  ["v2.6".params]
-    showSection = true
-
-[["v2.6"]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  ["v2.6".params]
-    classes = "arrow-menu"
-    showSection = true
-
-[["v2.6"]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/v2.6/yugabyte-platform/overview/"
-  ["v2.6".params]
-    showSection = true
-
-[["v2.6"]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
   ["v2.6".params]
     showSection = true
 
