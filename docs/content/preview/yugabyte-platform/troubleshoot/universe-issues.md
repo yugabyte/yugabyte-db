@@ -403,3 +403,31 @@ For more information, see the following:
 
 - [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
 - [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
+
+## Collect core dumps in Kubernetes environments
+
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps). 
+
+The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect within a Kubernetes pod or node by executing the following command:
+
+```sh
+cat /proc/sys/kernel/core_pattern
+```
+
+The value of `core_pattern` can be a literal path or it can contain a pipe symbol:
+
+- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command: 
+
+  ```sh
+  kubectl exec -it -n <namespace> <pod_name> -c yb-cleanup -- ls -lht /var/yugabyte/cores
+  ```
+
+  In the preceding command, the `yb-cleanup` container of the node is used because the primary YB-Master or YB-TServer container may be in a crash loop.
+
+  To copy a specific core dump file at this location, use the following kubectl `cp` command:
+
+  ```sh
+  kubectl cp -n <namespace> -c yb-cleanup <yb_pod_name>:/var/yugabyte/cores/core.2334 /tmp/core.2334
+  ```
+
+- If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. In this case, it is your responsibility to identify the location to which these files are written and retrieve them.

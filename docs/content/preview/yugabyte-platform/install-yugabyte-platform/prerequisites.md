@@ -50,7 +50,9 @@ You prepare the host as follows:
 
   Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
 
-- For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+- For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+
+  In addition, you need to ensure that core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](#specify-ulimit-and-remember-the-location-of-core-dumps). 
 
 ### Airgapped hosts
 
@@ -69,7 +71,31 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
 - Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte license agreement. Contact Yugabyte Support for more information.
 
-### Pull and push YugabyteDB Docker images to private container registry
+### Kubernetes-based installations
+
+A Kubernetes-based installation of YugabyteDB Anywhere requires you to address concerns related to security and core dump collection.
+
+#### Specify ulimit and remember the location of core dumps
+
+The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.
+
+You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps). 
+
+To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core(5)](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming of core dump files).
+
+To inspect the value of the sysctl within a Kubernetes pod or node, execute the following:
+
+```sh
+cat /proc/sys/kernel/core_pattern
+```
+
+If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
+
+If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis. 
+
+Note that both ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod. 
+
+#### Pull and push YugabyteDB Docker images to private container registry
 
 Due to security concerns, some Kubernetes environments use internal container registries such as  Harbor and Nexus. In this type of setup, YugabyteDB deployment must be able to pull images from and push images to a private registry.
 
