@@ -3,8 +3,26 @@
 <p align="center">
      <img src="https://age.apache.org/age-manual/master/_static/logo.png" width="30%" height="30%">
 </p>
+<br>
+
+<h3 align="center">
+    <a href="https://age.apache.org/age-manual/master/_static/logo.png" target="_blank">
+        <img src="https://age.apache.org/age-manual/master/_static/logo.png"" height="25" height="30% alt="Apache AGE">
+    </a>
+    <a href="https://age.apache.org/age-manual/master/_static/logo.png" target="_blank">
+    </a>
+     is the leading multi-model graph database </h3>
+     
+</h3>
+
+<h3 align="center">Graph Processing & Analytics for Relational Databases</h3>
 
 <br>
+
+
+</br>
+
+
 
 <p align="center">                                                                                                    
   <a href="https://github.com/apache/age/blob/master/LICENSE">
