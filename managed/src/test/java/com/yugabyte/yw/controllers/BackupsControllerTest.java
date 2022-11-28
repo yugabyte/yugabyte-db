@@ -443,6 +443,24 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateBackupWithUniverseDisabled() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    ObjectNode bodyJson = Json.newObject();
+    Map<String, String> config = defaultUniverse.getConfig();
+    config.put(Universe.TAKE_BACKUPS, "false");
+    defaultUniverse.updateConfig(config);
+    defaultUniverse.update();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Taking backups on the universe is disabled");
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
   public void testCreateBackupWithoutTimeUnit() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
     UUID fakeTaskUUID = UUID.randomUUID();
