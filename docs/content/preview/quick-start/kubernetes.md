@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Quick start
 headerTitle: Quick start
-linkTitle: Quick start
+linkTitle: Kubernetes
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
