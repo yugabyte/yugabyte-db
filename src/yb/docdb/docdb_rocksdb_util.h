@@ -40,6 +40,14 @@ void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 
+struct SeekStats {
+  int next = 0;
+  int seek = 0;
+};
+
+// Seek forward using Next call.
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key);
+
 // When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
 // this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
 // enough, does not perform a seek.

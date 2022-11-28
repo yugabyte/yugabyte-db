@@ -323,7 +323,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     incremental_backup_frequency: Yup.number().test({
       message: 'Incremental backup interval must be less than full backup',
       test: function (value) {
-        if (!isScheduledBackup) return true;
+        if (!isScheduledBackup || !this.parent.is_incremental_backup_enabled || this.parent.use_cron_expression) return true;
+        
         return (
           value *
             MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <

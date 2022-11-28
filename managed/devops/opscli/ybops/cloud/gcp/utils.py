@@ -113,13 +113,21 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
+
+            if req.status_code != requests.codes.ok:
+                logging.warning("Request {} returned http error code {}".format(
+                    url, req.status_code))
+                return None
+
+            return req.content.decode('utf-8')
+
         except requests.exceptions.ConnectionError as e:
+            logging.warning("Request {} had a connection error {}".format(url, str(e)))
             return None
 
     @staticmethod
     def project():
-        return GcpMetadata._query_endpoint("/project/project-id")
+        return GcpMetadata._query_endpoint("project/project-id")
 
     @staticmethod
     def host_project():

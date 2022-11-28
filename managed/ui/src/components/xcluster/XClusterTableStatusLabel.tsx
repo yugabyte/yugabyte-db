@@ -2,16 +2,11 @@ import React from 'react';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
-import {
-  MetricName,
-  MetricTraceName,
-  REPLICATION_LAG_ALERT_NAME,
-  XClusterTableStatus
-} from './constants';
+import { REPLICATION_LAG_ALERT_NAME, XClusterTableStatus } from './constants';
 import { assertUnreachableCase } from '../../utils/ErrorUtils';
 import { queryLagMetricsForTable } from '../../actions/xClusterReplication';
 import { getAlertConfigurations } from '../../actions/universe';
-import { parseFloatIfDefined } from './ReplicationUtils';
+import { getLatestMaxNodeLag } from './ReplicationUtils';
 import { YBLoadingCircleIcon } from '../common/indicators';
 
 import styles from './XClusterTableStatusLabel.module.scss';
@@ -65,8 +60,6 @@ const BOOTSTRAPPING_LABEL = (
     <i className="fa fa-spinner fa-spin" />
   </span>
 );
-const COMMITTED_LAG_METRIC_TRACE_NAME =
-  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
 
 export const XClusterTableStatusLabel = ({
   status,
@@ -104,11 +97,8 @@ export const XClusterTableStatusLabel = ({
           (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
         )
       );
-      const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
-      const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-      const trace = metric.data.find((trace) => trace.name === traceAlias);
-      const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-      return latestLag === undefined || latestLag > maxAcceptableLag
+      const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
+      return maxNodeLag === undefined || maxNodeLag > maxAcceptableLag
         ? WARNING_LABEL
         : OPERATIONAL_LABEL;
     case XClusterTableStatus.WARNING:

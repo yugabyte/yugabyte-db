@@ -7,13 +7,13 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"text/tabwriter"
 
 	pre "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var INSTALL_ROOT = GetInstallRoot()
@@ -29,14 +29,6 @@ var steps = make(map[string][]functionPointer)
 var order []string
 
 var version = GetVersion()
-
-var serviceManagementMode = getYamlPathData(".serviceManagementMode")
-
-var logLevel = getYamlPathData(".logLevel")
-
-var bringOwnPostgres, errPostgres = strconv.ParseBool(getYamlPathData(".postgres.bringOwn"))
-
-var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
 
 var goBinaryName = "yba-ctl"
 
@@ -57,26 +49,14 @@ var ports = []string{"5432", "9000", "9090"}
 var statusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
 	tabwriter.Debug|tabwriter.AlignRight)
 
-// SYSTEMCTL command we use to start services as root.
-var SYSTEMCTL string = "systemctl"
-
-var postgres = Postgres{"Postgres",
-	"/etc/systemd/system/postgres.service",
-	[]string{INSTALL_ROOT + "/postgres/pgsql/data/pg_hba.conf",
-		INSTALL_ROOT + "/postgres/pgsql/data/postgresql.conf"},
-	"9.6"}
-
-var prometheus = Prometheus{"Prometheus",
-	"/etc/systemd/system/prometheus.service",
-	INSTALL_ROOT + "/prometheus/conf/prometheus.yml",
-	"2.39.0", false}
-
-var platform = Platform{"Platform",
-	"/etc/systemd/system/yb-platform.service",
-	INSTALL_ROOT + "/yb-platform/conf/yb-platform.conf",
-	version, corsOrigin, false}
+var postgres = NewPostgres(INSTALL_ROOT, "9.6")
+var prometheus = NewPrometheus(INSTALL_ROOT, "2.39.0", false)
+var platform = NewPlatform(INSTALL_ROOT, version)
 
 var common = Common{"common", version}
+
+// List of services required for YBA installation.
+var SERVICES = []component{postgres, prometheus, platform}
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",
@@ -134,26 +114,36 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-var cleanCmd = &cobra.Command{
-	Use:   "clean",
-	Short: "The clean command uninstalls your Yugabyte Anywhere instance.",
-	Long: `
-    The clean command performs a complete removal of your Yugabyte Anywhere
-    Instance by stopping all services, removing data directories, and dropping the
-    Yugabyte Anywhere database.`,
-	Run: func(cmd *cobra.Command, args []string) {
+func cleanCmd() *cobra.Command {
+	var removeData bool
+	clean := &cobra.Command{
+		Use:   "clean",
+		Short: "The clean command uninstalls your Yugabyte Anywhere instance.",
+		Long: `
+    	The clean command performs a complete removal of your Yugabyte Anywhere
+    	Instance by stopping all services and (optionally) removing data directories.`,
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
 
-		ValidateArgLength("clean", args, -1, 0)
+			// ValidateArgLength("clean", args, -1, 0)
 
-		common := Common{"common", version}
+			// TODO: Only clean up per service.
+			common := Common{"common", version}
 
-		steps[common.Name] = []functionPointer{
-			common.Uninstall}
+			steps[common.Name] = []functionPointer{
+				common.Uninstall}
 
-		order = []string{common.Name}
+			order = []string{common.Name}
 
-		loopAndExecute("clean")
-	},
+			loopAndExecute("clean")
+			for _, service := range SERVICES {
+				service.Uninstall(removeData)
+			}
+		},
+	}
+	clean.Flags().BoolVar(&removeData, "all", false, "also clean out data (default: false)")
+	return clean
+
 }
 
 func preflightCmd() *cobra.Command {
@@ -318,7 +308,7 @@ var paramsCmd = &cobra.Command{
 		value := args[1]
 
 		Params(key, value)
-		GenerateTemplatedConfiguration()
+		GenerateTemplatedConfiguration(SERVICES)
 
 		if !hasSudoAccess() {
 			prometheus.CreateCronJob()
@@ -359,7 +349,7 @@ var reConfigureCmd = &cobra.Command{
 
 		}
 
-		GenerateTemplatedConfiguration()
+		GenerateTemplatedConfiguration(SERVICES)
 
 		steps[postgres.Name] = []functionPointer{postgres.Stop, postgres.Start}
 
@@ -369,10 +359,8 @@ var reConfigureCmd = &cobra.Command{
 
 		order = []string{platform.Name, prometheus.Name}
 
-		if !bringOwnPostgres {
-
+		if !viper.GetBool("postgres.bringOwn") {
 			order = []string{platform.Name, postgres.Name, prometheus.Name}
-
 		}
 
 		loopAndExecute("reconfigure")
@@ -408,7 +396,7 @@ func createBackupCmd() *cobra.Command {
 			outputPath := args[0]
 
 			CreateBackupScript(outputPath, dataDir, excludePrometheus,
-				skipRestart, verbose)
+				skipRestart, verbose, platform)
 		},
 	}
 
@@ -443,7 +431,7 @@ func restoreBackupCmd() *cobra.Command {
 
 			inputPath := args[0]
 
-			RestoreBackupScript(inputPath, destination, skipRestart, verbose)
+			RestoreBackupScript(inputPath, destination, skipRestart, verbose, platform)
 		},
 	}
 
@@ -471,15 +459,7 @@ func installCmd() *cobra.Command {
 
 			ValidateArgLength("install", args, -1, 0)
 
-			if errPostgres != nil {
-				LogError("Please set postgres.BringOwn to either true or false before installation.")
-			}
-
-			if errPython != nil {
-				LogError("Please set python.BringOwn to either true or false before installation!.")
-			}
-
-			if bringOwnPostgres {
+			if viper.GetBool("postgres.bringOwn") {
 
 				if !ValidateUserPostgres("yba-installer-input.yml") {
 					LogError("User Postgres not correctly configured! " +
@@ -488,7 +468,7 @@ func installCmd() *cobra.Command {
 
 			}
 
-			if bringOwnPython {
+			if viper.GetBool("python.bringOwn") {
 
 				if !ValidateUserPython("yba-installer-input.yml") {
 
@@ -514,7 +494,7 @@ func installCmd() *cobra.Command {
 			order = []string{common.Name, prometheus.Name,
 				platform.Name}
 
-			if !bringOwnPostgres {
+			if !viper.GetBool("postgres.bringOwn") {
 
 				order = []string{common.Name, prometheus.Name,
 					postgres.Name, platform.Name}
@@ -567,7 +547,7 @@ var upgradeCmd = &cobra.Command{
 
 		order = []string{common.Name, prometheus.Name, platform.Name}
 
-		if !bringOwnPostgres {
+		if !viper.GetBool("postgres.bringOwn") {
 
 			order = []string{common.Name, prometheus.Name,
 				postgres.Name, platform.Name}
@@ -596,9 +576,14 @@ func loopAndExecute(action string) {
 }
 
 func init() {
-	rootCmd.AddCommand(cleanCmd, preflightCmd(), licenseCmd, versionCmd,
+	rootCmd.AddCommand(cleanCmd(), preflightCmd(), licenseCmd, versionCmd,
 		paramsCmd, reConfigureCmd, createBackupCmd(), restoreBackupCmd(), installCmd(),
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
+
+	// Use Viper to read in the config file
+	viper.SetConfigFile("yba-installer-input.yml")
+	viper.AddConfigPath(".")
+	viper.ReadInConfig()
 
 	// Currently only the log message with an info level severity or above are
 	// logged (warn, error, fatal, panic).
@@ -607,25 +592,24 @@ func init() {
 		ForceColors:   true,
 		DisableColors: false,
 	})
-
-	if logLevel == "TraceLevel" {
+	switch viper.GetString("logLevel") {
+	case "TraceLevel":
 		log.SetLevel(log.TraceLevel)
-	} else if logLevel == "DebugLevel" {
+	case "DebugLevel":
 		log.SetLevel(log.DebugLevel)
-	} else if logLevel == "InfoLevel" {
+	case "InfoLevel":
 		log.SetLevel(log.InfoLevel)
-	} else if logLevel == "WarnLevel" {
+	case "WarnLevel":
 		log.SetLevel(log.WarnLevel)
-	} else if logLevel == "ErrorLevel" {
+	case "ErrorLevel":
 		log.SetLevel(log.ErrorLevel)
-	} else if logLevel == "FatalLevel" {
+	case "FatalLevel":
 		log.SetLevel(log.FatalLevel)
-	} else if logLevel == "PanicLevel" {
+	case "PanicLevel":
 		log.SetLevel(log.PanicLevel)
-	} else {
+	default:
 		LogError("Invalid Logging Level specified in yba-installer-input.yml!")
 	}
-
 	log.SetOutput(os.Stdout)
 }
 

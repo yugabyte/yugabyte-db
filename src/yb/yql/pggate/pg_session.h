@@ -50,6 +50,8 @@ namespace pggate {
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
+YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
+YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
 class PgTxnManager;
 class PgSession;
@@ -207,28 +209,40 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgIsolationLevel GetIsolationLevel();
 
   // Run (apply + flush) list of given operations to read and write database content.
+  template<class OpPtr>
   struct TableOperation {
-    const PgsqlOpPtr* operation = nullptr;
+    const OpPtr* operation = nullptr;
     const PgTableDesc* table = nullptr;
+
+    bool IsEmpty() const {
+      return *this == TableOperation();
+    }
+
+    friend bool operator==(const TableOperation&, const TableOperation&) = default;
   };
 
-  using OperationGenerator = LWFunction<TableOperation()>;
+  using OperationGenerator = LWFunction<TableOperation<PgsqlOpPtr>()>;
+  using ReadOperationGenerator = LWFunction<TableOperation<PgsqlReadOpPtr>()>;
 
   template<class... Args>
   Result<PerformFuture> RunAsync(
       const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
       Args&&... args) {
     const auto generator = [ops, end = ops + ops_count, &table]() mutable {
-        return ops != end
-            ? TableOperation { .operation = ops++, .table = &table }
-            : TableOperation();
+        using TO = TableOperation<PgsqlOpPtr>;
+        return ops != end ? TO{.operation = ops++, .table = &table} : TO();
     };
     return RunAsync(make_lw_function(generator), std::forward<Args>(args)...);
   }
 
   Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, uint64_t* read_time,
-      bool force_non_bufferable);
+      const OperationGenerator& generator, uint64_t* in_txn_limit,
+      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
+  Result<PerformFuture> RunAsync(
+      const ReadOperationGenerator& generator, uint64_t* in_txn_limit,
+      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
+  Result<PerformFuture> RunAsyncCacheable(
+      const ReadOperationGenerator& generator, uint64_t* in_txn_limit, std::string&& cache_key);
 
   // Smart driver functions.
   // -------------
@@ -314,18 +328,27 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
-  Result<PerformFuture> FlushOperations(
-      BufferableOperations ops, bool transactional);
+  Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(BufferableOperations ops,
-                                UseCatalogSession use_catalog_session,
-                                bool ensure_read_time_set_for_current_txn_serial_no = false);
+  struct PerformOptions {
+    UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
+    EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
+    std::string cache_key = std::string();
+  };
 
-  void ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
-                                   bool force_set_read_time_for_current_txn_serial_no,
-                                   tserver::PgPerformOptionsPB* options);
+  Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
+
+  void ProcessPerformOnTxnSerialNo(
+      uint64_t txn_serial_no,
+      EnsureReadTimeIsSet force_set_read_time_for_current_txn_serial_no,
+      tserver::PgPerformOptionsPB* options);
+
+  template<class Generator>
+  Result<PerformFuture> DoRunAsync(
+      const Generator& generator, uint64_t* in_txn_limit,
+      ForceNonBufferable force_non_bufferable, std::string&& cache_key);
 
   struct TxnSerialNoPerformInfo {
     TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}

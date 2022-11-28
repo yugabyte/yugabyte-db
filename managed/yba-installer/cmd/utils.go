@@ -9,15 +9,27 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
+
+// Bash Command Constants
+// SYSTEMCTL linux command
+const SYSTEMCTL string = "systemctl"
+// LN linux command
+const LN string = "ln"
+// CHOWN linux command
+const CHOWN string = "chown"
+// SYSTEMD_DIR Systemd service file directory
+const SYSTEMD_DIR string = "/etc/systemd/system"
 
 func ExecuteBashCommand(command string, args []string) (o string, e error) {
 
@@ -61,6 +73,15 @@ func Contains(s []string, str string) bool {
 		}
 	}
 	return false
+}
+
+// Chown changes ownership of dir to user:group, recursively (optional).
+func Chown(dir, user, group string, recursive bool) {
+	args := []string{fmt.Sprintf("%s:%s", user, group), dir}
+	if recursive {
+		args = append([]string{"-R"}, args...)
+	}
+	ExecuteBashCommand(CHOWN, args)
 }
 
 func YumInstall(args []string) {
@@ -148,9 +169,11 @@ func GetInstallVersionDir() string {
 }
 
 func GetCurrentUser() string {
-	currentUser, _ := ExecuteBashCommand("bash", []string{"-c", "whoami"})
-	currentUser = strings.ReplaceAll(strings.TrimSuffix(currentUser, "\n"), " ", "")
-	return currentUser
+	user, err := user.Current()
+	if err != nil {
+		LogError(fmt.Sprintf("Error %s getting current user", err.Error()))
+	}
+	return user.Username
 }
 
 func GenerateRandomBytes(n int) ([]byte, error) {
@@ -215,6 +238,14 @@ func CopyFileGolang(src string, dst string) {
 	}
 
 	LogDebug("Copy from " + src + " to " + dst + " executed successfully.")
+}
+
+// CreateDir creates a directory according to the given permissions, logging an error if necessary.
+func CreateDir(dir string, perm os.FileMode) {
+	err := os.MkdirAll(dir, perm)
+	if err != nil && !os.IsExist(err) {
+		LogError(fmt.Sprintf("Error creating %s. Failed with %s", dir, err.Error()))
+	}
 }
 
 func MoveFileGolang(src string, dst string) {
@@ -291,6 +322,7 @@ func SetUpSudoWhiteList() {
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0777); err != nil {
+		LogError(fmt.Sprintf("Error creating %s. Failed with %s", p, err.Error()))
 		return nil, err
 	}
 	return os.Create(p)

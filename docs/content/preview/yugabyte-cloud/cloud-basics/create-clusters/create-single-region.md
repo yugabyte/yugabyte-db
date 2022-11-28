@@ -2,7 +2,7 @@
 title: Create a single-region cluster
 linkTitle: Single region
 description: Deploy dedicated single-region clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Deploy availability zone- and node-level fault tolerant clusters
 aliases:
   - /preview/deploy/yugabyte-cloud/create-clusters/
   - /preview/yugabyte-cloud/create-clusters/
@@ -22,7 +22,7 @@ Single-region dedicated clusters support multi-node and highly available deploym
 
 Single-region dedicated clusters include the following features:
 
-- Multi node [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3 clusters with availability zone and node level fault tolerance.
+- Multi node clusters with [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3, and availability zone- and node-level fault tolerance.
 - No limit on cluster size - choose any cluster size based on your use case.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
@@ -121,8 +121,7 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 ## Next steps
 
-- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
 - [Build an application](../../../../develop/build-apps/)
-- [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)
+- [Scale clusters](../../../cloud-clusters/configure-clusters/#single-region-clusters)

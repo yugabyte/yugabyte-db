@@ -73,6 +73,8 @@ const YBCPgCallbacks* YBCGetPgCallbacks();
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
 
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption);
+
 // Call root MemTacker to consume the consumption bytes.
 // Return true if MemTracker exists (inited by pggate); otherwise false.
 bool YBCTryMemConsume(int64_t bytes);
@@ -80,6 +82,8 @@ bool YBCTryMemConsume(int64_t bytes);
 // Call root MemTacker to release the release bytes.
 // Return true if MemTracker exists (inited by pggate); otherwise false.
 bool YBCTryMemRelease(int64_t bytes);
+
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -612,7 +616,7 @@ void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-void YBCStartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
 
 void YBCStopSysTablePrefetching();
 

@@ -244,14 +244,21 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  if (pgapi) {
 #ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
+    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
     *consumption = 0;
 #endif
-  }
   return YBCStatusOK();
+}
+
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+    return YBCStatusOK();
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -268,6 +275,19 @@ bool YBCTryMemRelease(int64_t bytes) {
     return true;
   }
   return false;
+}
+
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
+  memset(desc, 0x0, sizeof(YbTcmallocStats));
+#ifdef TCMALLOC_ENABLED
+  using mt = yb::MemTracker;
+  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
+  desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
+  desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  desc->pageheap_unmapped_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#endif
+  return YBCStatusOK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1288,7 +1308,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
   };
   return &accessor;
 }
@@ -1396,8 +1417,8 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching() {
-  pgapi->StartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
 }
 
 void YBCStopSysTablePrefetching() {

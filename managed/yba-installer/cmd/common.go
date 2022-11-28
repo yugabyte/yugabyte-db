@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
@@ -92,7 +91,7 @@ func (com Common) Install() {
 	copyBits(com.Version)
 	//installPrerequisites()
 	createYugabyteUser()
-	GenerateTemplatedConfiguration()
+	GenerateTemplatedConfiguration(SERVICES)
 	com.extractPlatformSupportPackageAndYugabundle(com.Version)
 	com.renameThirdPartyDependencies()
 	setupJDK()
@@ -104,8 +103,11 @@ func copyBits(vers string) {
 
 	// We make the install directory only if it doesn't exist. In pre-flight checks,
 	// we look to see that the INSTALL_ROOT directory has free space and is writeable.
-
-	os.MkdirAll(INSTALL_ROOT, os.ModePerm)
+	dataDir := INSTALL_ROOT + "/data/logs"
+	err := os.MkdirAll(dataDir, os.ModePerm)
+	if err != nil && !os.IsExist(err) {
+		LogError(fmt.Sprintf("Making path %s failed, error %s", dataDir, err.Error()))
+	}
 
 	// .installStarted written at the beginning of Installations, and renamed to
 	// .installCompleted at the end of the install. That way, if an install fails midway,
@@ -145,6 +147,11 @@ func copyBits(vers string) {
 // Uninstall performs the uninstallation procedures common to
 // all services when executing a clean.
 func (com Common) Uninstall() {
+
+	// 1) Stop all running service processes
+	// 2) Delete service files (in root mode)/Stop cron/cleanup crontab in NonRoot
+	// 3) Delete service directories
+	// 4) Delete data dir in force mode (warn/ask for confirmation)
 
 	service0 := "yb-platform"
 	service1 := "prometheus"
@@ -196,53 +203,43 @@ func (com Common) Uninstall() {
 // RemoveAllExceptDataVolumes removes the install directory from the host's
 // operating system, except for data volumes specified in the input config
 // file.
+// TODO: Simplify: can probably just remove INSTALL_ROOT/service and leave INSTALL_ROOT/data intact
 func RemoveAllExceptDataVolumes(services []string) {
-
-	dataVolumesList := []string{}
-
-	for _, service := range services {
-		dataVolumes := getYamlPathData(".dataVolumes." + service)
-		dataVolumesList = append(dataVolumesList, service+": "+dataVolumes)
-	}
-
-	LogDebug("All directories will be deleted except the following: " +
-		strings.Join(dataVolumesList, "|") + ".")
 	//In case more base dirs get added in the future.
 	rootDirs := []string{INSTALL_ROOT}
 	for _, dir := range rootDirs {
 		// Only remove all except data volumes if the base directories exist.
 		if _, err := os.Stat(dir); err == nil {
 			for _, service := range services {
-
 				baseDir := dir + "/" + service
 				splitBaseDir := strings.Split(baseDir, "/")
 				baseDirOneUp := strings.Join(splitBaseDir[0:len(splitBaseDir)-1], "/")
-				dataVolumes := getYamlPathData(".dataVolumes." + service)
-				if strings.ReplaceAll(strings.TrimSuffix(dataVolumes, "\n"), " ", "") != "" {
-					splitDataVolumes := strings.Split(dataVolumes, ",")
-					for _, volume := range splitDataVolumes {
-						volume = strings.ReplaceAll(volume, " ", "")
-						volume = baseDir + "/" + volume
-						if _, err := os.Stat(volume); err == nil {
-							if strings.Contains(volume, baseDir) {
-								volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
-								MoveFileGolang(volume, volumeMoved)
-							}
-						}
-					}
-				}
-				os.RemoveAll(baseDir)
-				os.MkdirAll(baseDir, os.ModePerm)
-				if strings.ReplaceAll(strings.TrimSuffix(dataVolumes, "\n"), " ", "") != "" {
-					splitDataVolumes := strings.Split(dataVolumes, ",")
-					for _, volume := range splitDataVolumes {
-						volume = strings.ReplaceAll(volume, " ", "")
-						volume = baseDir + "/" + volume
+
+				configPath := fmt.Sprintf("dataVolumes.%s", service)
+				volumes := viper.GetStringSlice(configPath)
+
+				// Move the data volumes we are saving
+				for _, volume := range volumes {
+					volume = baseDir + "/" + volume
+					if _, err := os.Stat(volume); err == nil {
 						if strings.Contains(volume, baseDir) {
 							volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
-							if _, err := os.Stat(volumeMoved); err == nil {
-								MoveFileGolang(volumeMoved, volume)
-							}
+							MoveFileGolang(volume, volumeMoved)
+						}
+					}
+
+				}
+				// Remove Directories
+				os.RemoveAll(baseDir)
+				os.MkdirAll(baseDir, os.ModePerm)
+
+				// Replace our volumes-to-save
+				for _, volume := range volumes {
+					volume = baseDir + "/" + volume
+					if strings.Contains(volume, baseDir) {
+						volumeMoved := strings.ReplaceAll(volume, baseDir, baseDirOneUp)
+						if _, err := os.Stat(volumeMoved); err == nil {
+							MoveFileGolang(volumeMoved, volume)
 						}
 					}
 				}
@@ -256,7 +253,7 @@ func (com Common) Upgrade() {
 
 	RemoveAllExceptDataVolumes([]string{"yb-platform", "prometheus", "postgres"})
 	copyBits(com.Version)
-	GenerateTemplatedConfiguration()
+	GenerateTemplatedConfiguration(SERVICES)
 	com.extractPlatformSupportPackageAndYugabundle(com.Version)
 	com.renameThirdPartyDependencies()
 	setupJDK()
@@ -265,12 +262,6 @@ func (com Common) Upgrade() {
 }
 
 func installPrerequisites() {
-	var bringOwnPython, errPython = strconv.ParseBool(getYamlPathData(".python.bringOwn"))
-
-	if errPython != nil {
-		LogError("Please set python.BringOwn to either true or false.")
-	}
-
 	if hasSudoAccess() {
 
 		//Check if a Python3 install already exists that is symlinked to
@@ -285,7 +276,7 @@ func installPrerequisites() {
 
 		if !re.MatchString(outputTrimmed) {
 
-			if !bringOwnPython {
+			if !viper.GetBool("python.bringOwn") {
 				InstallOS([]string{"python3"})
 			}
 
@@ -402,6 +393,7 @@ func (com Common) renameThirdPartyDependencies() {
 	}
 	LogDebug(INSTALL_VERSION_DIR + "/packages/thirdparty-deps.tar.gz successfully extracted.")
 	MoveFileGolang(INSTALL_VERSION_DIR+"/thirdparty", INSTALL_VERSION_DIR+"/third-party")
+	//TODO: There is an error here because INSTALL_ROOT + "/yb-platform/third-party" does not exist
 	ExecuteBashCommand("bash", []string{"-c",
 		"cp -R " + INSTALL_VERSION_DIR + "/third-party" + " " + INSTALL_ROOT + "/yb-platform/third-party"})
 }

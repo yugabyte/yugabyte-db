@@ -593,7 +593,7 @@ class PgApiImpl {
 
   Result<client::TabletServersInfo> ListTabletServers();
 
-  void StartSysTablePrefetching();
+  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
   void StopSysTablePrefetching();
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
 

@@ -16,12 +16,12 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 
-#include "yb/util/faststring.h"
-
 namespace yb {
+
+class WriteBuffer;
 
 void SerializeValue(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
-    faststring* buffer);
+    WriteBuffer* buffer);
 
 }  // namespace yb

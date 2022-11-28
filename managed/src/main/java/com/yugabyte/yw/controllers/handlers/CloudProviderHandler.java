@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -93,6 +94,8 @@ public class CloudProviderHandler {
               + "{\"instanceTypeCode\": \"large\", \"numCores\": 16, \"memSizeGB\": 15},"
               + "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
 
+  private static final String STORAGE_PATH = "yb.storage.path";
+
   @Inject private Commissioner commissioner;
   @Inject private ConfigHelper configHelper;
   @Inject private AccessManager accessManager;
@@ -113,6 +116,12 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
 
+    // Clear the key files in the DB.
+    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
+    // We would delete only the files for k8s provider
+    // others are already taken care off during access key deletion.
+    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
+
     // TODO: move this to task framework
     for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
       if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
@@ -122,6 +131,7 @@ public class CloudProviderHandler {
           provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
       accessKey.delete();
     }
+
     NodeInstance.deleteByProvider(provider.uuid);
     InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
     provider.delete();

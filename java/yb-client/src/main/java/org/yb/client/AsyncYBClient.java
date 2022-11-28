@@ -421,13 +421,15 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
                                                            String nameSpaceName,
                                                            String format,
-                                                           String checkpointType) {
+                                                           String checkpointType,
+                                                           String recordType) {
     checkIsClosed();
     CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
       table.getTableId(),
       nameSpaceName,
       format,
-      checkpointType);
+      checkpointType,
+      recordType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
         new Callback<Object, Object>() {
@@ -508,10 +510,11 @@ public class AsyncYBClient implements AutoCloseable {
 
   public Deferred<GetTabletListToPollForCDCResponse> getTabletListToPollForCdc(YBTable table,
                                                                                String streamId,
-                                                                               String tableId) {
+                                                                               String tableId,
+                                                                               String tabletId) {
     checkIsClosed();
     GetTabletListToPollForCDCRequest rpc = new GetTabletListToPollForCDCRequest(table, streamId,
-      tableId);
+      tableId, tabletId);
     Deferred<GetTabletListToPollForCDCResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);

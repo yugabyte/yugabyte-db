@@ -1567,6 +1567,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -1646,7 +1649,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -1921,6 +1924,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2048,7 +2054,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "BootstarpBackupParams" : {
@@ -2154,6 +2160,9 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2218,7 +2227,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "s3Bucket", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "BundleDetails" : {
@@ -2462,6 +2471,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -2570,7 +2582,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "rootAndClientRootCASame", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2993,6 +3005,9 @@
           "description" : "Node exporter user",
           "type" : "string"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3040,7 +3055,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "CreateTablespaceParams" : {
@@ -3760,6 +3775,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -3868,7 +3886,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -4345,6 +4363,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4450,7 +4471,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
+      "required" : [ "azOverrides", "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeOverrides", "upgradeOption" ],
       "type" : "object"
     },
     "LogData" : {
@@ -4911,6 +4932,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -5038,7 +5062,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NodeActionFormData" : {
@@ -6186,6 +6210,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6288,7 +6315,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestartBootstrapParams" : {
@@ -6407,6 +6434,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6509,7 +6539,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "RestoreBackupParams" : {
@@ -6623,6 +6653,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "prefixUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -6687,7 +6720,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -6752,6 +6785,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6804,7 +6840,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -7198,6 +7234,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7306,7 +7345,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "upgradeSystemCatalog", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "SupportBundle" : {
@@ -7481,6 +7520,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -7583,7 +7625,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TableDefinitionTaskParams" : {
@@ -7640,6 +7682,9 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "platformUrl" : {
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -7700,7 +7745,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
+      "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tableDetails", "tableType", "tableUUID" ],
       "type" : "object"
     },
     "TableDetails" : {
@@ -7932,6 +7977,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8034,7 +8082,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TlsToggleParams" : {
@@ -8148,6 +8196,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8250,7 +8301,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "allowInsecure", "clientRootCA", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "allowInsecure", "clientRootCA", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "rootAndClientRootCASame", "rootCA", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "TriggerHealthCheckResult" : {
@@ -8373,6 +8424,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8474,7 +8528,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParams" : {
@@ -8579,6 +8633,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8677,7 +8734,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDefinitionTaskParamsResp" : {
@@ -8782,6 +8839,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -8880,7 +8940,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
+      "required" : [ "clusters", "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
     "UniverseDetailSubset" : {
@@ -9154,6 +9214,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9256,7 +9319,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "UserIntent" : {
@@ -9705,6 +9768,9 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "platformUrl" : {
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -9810,7 +9876,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
+      "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
     "ValidationResult" : {

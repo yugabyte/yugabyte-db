@@ -39,6 +39,8 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
@@ -325,6 +327,12 @@ class ExpressionHelper {
   size_t next_result_idx_ = 0;
 };
 
+void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
+  char encoded_rows[sizeof(uint64_t)];
+  NetworkByteOrder::Store64(encoded_rows, result_rows);
+  CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
+}
+
 } // namespace
 
 class PgsqlWriteOperation::RowPackContext {
@@ -496,8 +504,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
 
   auto scope_exit = ScopeExit([this] {
-    if (!result_buffer_.empty()) {
-      NetworkByteOrder::Store64(result_buffer_.data(), result_rows_);
+    if (write_buffer_) {
+      WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
+      response_->set_rows_data_sidecar(narrow_cast<int32_t>(rpc_context_->CompleteRpcSidecar()));
     }
   });
 
@@ -845,9 +854,11 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
 }
 
 Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
-  if (result_buffer_.empty()) {
+  if (write_buffer_ == nullptr && rpc_context_) {
     // Reserve space for num rows.
-    pggate::PgWire::WriteInt64(0, &result_buffer_);
+    write_buffer_ = &rpc_context_->StartRpcSidecar();
+    row_num_pos_ = write_buffer_->Position();
+    pggate::PgWire::WriteInt64(0, write_buffer_);
   }
   ++result_rows_;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
@@ -866,7 +877,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       } else {
         RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer()));
       }
-      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
+      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), write_buffer_));
     }
   }
   return Status::OK();
@@ -952,13 +963,14 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
                                            bool is_explicit_request_read_time,
                                            const DocReadContext& doc_read_context,
                                            const DocReadContext* index_doc_read_context,
-                                           faststring *result_buffer,
+                                           WriteBuffer *result_buffer,
                                            HybridTime *restart_read_ht) {
   size_t fetched_rows = 0;
+  auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.
   pggate::PgWire::WriteInt64(0, result_buffer);
-  auto se = ScopeExit([&fetched_rows, result_buffer] {
-    NetworkByteOrder::Store64(result_buffer->data(), fetched_rows);
+  auto se = ScopeExit([&fetched_rows, num_rows_pos, result_buffer] {
+    WriteNumRows(fetched_rows, num_rows_pos, result_buffer);
   });
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
@@ -989,7 +1001,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   *has_paging_state = false;
@@ -1108,7 +1120,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
                                                  const DocReadContext *index_doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   // Retrieve target table schema from the context, as well as the pointer to optional index schema
@@ -1301,7 +1313,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const DocReadContext& doc_read_context,
-                                                      faststring *result_buffer,
+                                                      WriteBuffer *result_buffer,
                                                       HybridTime *restart_read_ht) {
   const auto& schema = doc_read_context.schema;
   Schema projection;
@@ -1397,7 +1409,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
 }
 
 Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+                                             WriteBuffer *result_buffer) {
   QLExprResult result;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
@@ -1430,7 +1442,7 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
 }
 
 Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+                                             WriteBuffer *result_buffer) {
   int column_count = request_.targets().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));

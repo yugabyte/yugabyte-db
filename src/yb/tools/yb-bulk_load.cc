@@ -329,7 +329,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(
-      req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
+      req, std::make_shared<docdb::DocReadContext>("BULK LOAD: ", schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{

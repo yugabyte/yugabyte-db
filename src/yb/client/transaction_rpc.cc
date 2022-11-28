@@ -139,9 +139,15 @@ class TransactionRpc : public TransactionRpcBase {
 void PrepareRequest(...) {}
 
 void PrepareRequest(tserver::UpdateTransactionRequestPB* req) {
-  if (req->state().status() == TransactionStatus::CREATED) {
+  // If this is an external transaction, the transaction id should already be set so don't create
+  // a new one.
+  const auto& state = req->state();
+  if (!state.has_external_hybrid_time() &&
+      state.status() == TransactionStatus::CREATED) {
     auto id = TransactionId::GenerateRandom();
     req->mutable_state()->set_transaction_id(id.data(), id.size());
+  } else {
+    DCHECK(state.has_transaction_id());
   }
 }
 

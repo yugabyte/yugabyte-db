@@ -130,6 +130,18 @@ public class AppInit {
         alertConfigurationService.createDefaultConfigs(customer);
       }
 
+      boolean ywFileDataSynced =
+          Boolean.valueOf(
+              configHelper
+                  .getConfig(ConfigHelper.ConfigType.FileDataSync)
+                  .getOrDefault("synced", "false")
+                  .toString());
+
+      if (!ywFileDataSynced) {
+        String storagePath = appConfig.getString("yb.storage.path");
+        configHelper.syncFileData(storagePath, false);
+      }
+
       if (mode.equals("PLATFORM")) {
         String devopsHome = appConfig.getString("yb.devops.home");
         String storagePath = appConfig.getString("yb.storage.path");

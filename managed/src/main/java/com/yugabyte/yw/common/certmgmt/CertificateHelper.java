@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.certmgmt;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.inject.Inject;
 import com.google.common.base.Strings;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -12,6 +13,8 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
+
 import io.ebean.annotation.EnumValue;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -75,6 +78,7 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.flywaydb.play.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 /** Helper class for Certificates */
@@ -96,6 +100,7 @@ public class CertificateHelper {
   public static final String CLIENT_KEY = "yugabytedb.key";
 
   public static final String SIGNATURE_ALGO = "SHA256withRSA";
+  public static final String STORAGE_PATH = "yb.storage.path";
 
   private static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   private static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
@@ -117,7 +122,7 @@ public class CertificateHelper {
   public static String getClientCertPath(Config config, UUID customerUUID, UUID clientRootCA) {
     return String.format(
         CertificateHelper.CERT_PATH,
-        config.getString("yb.storage.path"),
+        config.getString(STORAGE_PATH),
         customerUUID.toString(),
         clientRootCA.toString());
   }
@@ -161,7 +166,7 @@ public class CertificateHelper {
     LOG.info("Creating root certificate for {}", nodePrefix);
 
     try {
-      String storagePath = config.getString("yb.storage.path");
+      String storagePath = config.getString(STORAGE_PATH);
       CertConfigType certType = CertConfigType.SelfSigned;
       String certLabel = generateUniqueRootCALabel(nodePrefix, certType);
 
@@ -212,7 +217,8 @@ public class CertificateHelper {
       String certFileName,
       String certKeyName,
       X509Certificate clientCert,
-      PrivateKey pKey)
+      PrivateKey pKey,
+      Boolean syncCertsToDB)
       throws IOException {
     CertificateDetails certificateDetails = new CertificateDetails();
 
@@ -220,6 +226,7 @@ public class CertificateHelper {
       // get file path write it there
       String clientCertPath = String.format("%s/%s", storagePath, certFileName);
       String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
+
       writeCertFileContentToCertPath(clientCert, clientCertPath);
       writeKeyFileContentToKeyPath(pKey, clientKeyPath);
       LOG.info(
@@ -227,6 +234,18 @@ public class CertificateHelper {
           clientCert.getSubjectDN().toString(),
           clientCertPath);
 
+      if (syncCertsToDB) {
+        /**
+         * We generate certs for two scenarios. 1. Node<->Node Encryption 2. Client<->Node
+         * Encryption For the first case, we generate the certs which are specific to node & are
+         * copied over to the node(platform doesn't store the same). For the second case, platform
+         * generate those certs with DEFAULT_CLIENT, i.e, yugabyte, that we need to store
+         * corresponding to that certificate. Therefore, we are storing only the later certs in the
+         * DB.
+         */
+        FileData.writeFileToDB(clientCertPath);
+        FileData.writeFileToDB(clientKeyPath);
+      }
     } else {
       // storagePath is null, converting it to string and returning it.
       certificateDetails.crt = getAsPemString(clientCert);

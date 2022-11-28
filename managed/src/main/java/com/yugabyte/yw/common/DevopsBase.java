@@ -12,7 +12,6 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
@@ -39,6 +38,12 @@ public abstract class DevopsBase {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject play.Configuration appConfig;
+
+  @Inject NodeAgentClient nodeAgentClient;
+
+  protected NodeAgentClient getNodeAgentClient() {
+    return nodeAgentClient;
+  }
 
   protected JsonNode parseShellResponse(ShellResponse response, String command) {
     if (response.code == 0) {

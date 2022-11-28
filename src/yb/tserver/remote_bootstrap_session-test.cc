@@ -166,7 +166,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
-        tablet_ptr, &resp);
+        tablet_ptr, nullptr, &resp);
     query->set_client_request(req);
     query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
     tablet_peer_->WriteAsync(std::move(query));

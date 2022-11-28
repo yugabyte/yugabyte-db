@@ -7,6 +7,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -15,6 +16,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.collections.MapUtils;
@@ -202,7 +204,7 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
     if (cluster.userIntent.isYSQLAuthEnabled()) {
-      bashCommand.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
+      bashCommand.add("$(dirname \"$(ls -t /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
@@ -297,15 +299,22 @@ public class NodeUniverseManager extends DevopsBase {
     } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-      commandArgs.add("ssh");
-      commandArgs.add("--port");
-      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
-      commandArgs.add("--ip");
-      commandArgs.add(node.cloudInfo.private_ip);
-      commandArgs.add("--key");
-      commandArgs.add(getAccessKey(node, universe));
-      if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
-        commandArgs.add("--ssh2_enabled");
+      Optional<NodeAgent> optional =
+          getNodeAgentClient().maybeGetNodeAgentClient(node.cloudInfo.private_ip);
+      if (optional.isPresent()) {
+        commandArgs.add("rpc");
+        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
+      } else {
+        commandArgs.add("ssh");
+        commandArgs.add("--port");
+        commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+        commandArgs.add("--ip");
+        commandArgs.add(node.cloudInfo.private_ip);
+        commandArgs.add("--key");
+        commandArgs.add(getAccessKey(node, universe));
+        if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+          commandArgs.add("--ssh2_enabled");
+        }
       }
     } else {
       throw new RuntimeException("Cloud type unknown");

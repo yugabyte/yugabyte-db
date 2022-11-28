@@ -11,13 +11,14 @@
   }
 
   &.paused {
-    color: $YB_WARNING_COLOR;;
+    color: $YB_WARNING_COLOR;
   }
 
   &.inProgress {
     color: $YB_VIOLET_TEXT;
   }
 
+  &.deleted,
   &.deletionFailed,
   &.failed {
     color: $YB_FAIL_COLOR;
