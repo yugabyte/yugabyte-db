@@ -10,6 +10,18 @@ type: docs
 
 ## Releases
 
+### November 28, 2022
+
+**New Features**
+
+- Support for multi-region clusters with [geo-partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/) using the new [Partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployment. Geo-partitioning allows you to move data closer to users to achieve lower latency and higher performance, and meet data residency requirements to comply with regulations such as GDPR.
+- Support for [read replicas](../cloud-basics/create-clusters-topology/#read-replicas). Use read replicas to lower latencies for read requests from remote regions.
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.3 New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Stable release updated to version 2.14.4 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
 ### November 15, 2022
 
 **New Features**
