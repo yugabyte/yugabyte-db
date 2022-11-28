@@ -1,5 +1,5 @@
 {{ if or .Site.Params.gcs_engine_id .Site.Params.algolia_docsearch -}}
-<i class="fas fa-search search-icon"></i>
+<i class="search-icon"></i>
 <input type="search" name="q" class="form-control td-search-input" placeholder="Search YugabyteDB Docs" aria-label="Search YugabyteDB Docs" autocomplete="off">
 {{ else if .Site.Params.offlineSearch -}}
 {{ $offlineSearchIndex := resources.Get "json/offline-search-index.json" | resources.ExecuteAsTemplate "offline-search-index.json" . -}}

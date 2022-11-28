@@ -33,58 +33,53 @@
       {{ end}}
 
       <span class="navbar-logo">{{ with resources.Get "icons/logo.svg" }}{{ ( . | minify).Content | safeHTML }}{{ end }}</span>
-      <span class="font-weight-bold">{{ .Site.Title }}</span>
 
       {{ if .Site.Params.yb.navbar_logo.url }}
         </a>
       {{ end}}
     {{ end}}
+
+    <div class="navbar-nav search-container-wrap">
+			<form action="/search" method="GET" id="search-form">
+				{{ partial "search-input.html" . }}
+			</form>
+		</div>
+
     <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
-      <ul class="navbar-nav mt-2 mt-lg-0">
+      <ul class="navbar-nav right-nav">
         {{ range .Site.Menus.top_nav }}
-          <li class="nav-item mr-4 mb-2 mb-lg-0">
-            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
+          <li class="nav-item">
+            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}"{{ if .URL }} href="{{ .URL }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+              <span>{{ .Name }}</span>
+              {{ .Post }}
+            </a>
           </li>
         {{ end }}
       </ul>
 
-      <div class="activity-timeline">
-        <div class="switcher"></div>
-        <script>
-          !function(){let b=document.querySelector("html"),a=function(f){let c=`${f}=`,g=decodeURIComponent(document.cookie),d=g.split(";"),h=d.length,a="",b=0,e="";for(;b<h;){for(a=d[b];a.charAt(0);)if(" "===a.charAt(0))a=a.substring(1);else break;if(0===a.indexOf(c)){e=a.substring(c.length,a.length);break}b+=1}return e}("yb_docs_theme_color");if(b&&a){let d=b.getAttribute("data-theme"),c=document.querySelector(".switcher");d!==a&&(b.setAttribute("data-theme",a),c&&"orange"===a&&c.classList.toggle("change"))}}()
-        </script>
-      </div>
 	  	<div class="mobile-search desktop-hide fas fa-search search-icon"></div>
       <div class="mobile-menu desktop-hide"></div>
     </div>
   </div>
 
   <div class="page-header sticky container-fluid">
-    <button id="controls-header-menu" class="header-menu-mobile hidden-md-up" type="button">
-      <span class="header-menu-text">Documentation</span>
-    </button>
-
     <ul class="header-menu ds-flex hide-mobile" id="header-menu-list">
       {{ range .Site.Menus.main.ByWeight }}
         {{ $anchorLink = "" }}
-        {{ if eq .URL "/" }}
-          {{ $anchorLink = "/" }}
-        {{ else }}
-          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
-            {{ $anchorLink = .URL }}
+        {{ if ne .URL "" }}
+          {{ if eq .URL "/" }}
+            {{ $anchorLink = "/" }}
           {{ else }}
-            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+            {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+              {{ $anchorLink = .URL }}
+            {{ else }}
+              {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+            {{ end }}
           {{ end }}
         {{ end }}
 
         <li class="header-link{{- if eq $activeMenu .URL }} active{{- end }}{{ if .HasChildren }} dropdown{{- end }}">
           <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
-            {{ if .Pre }}
-              {{ $menuIcon := printf "icons/nav-bar/%s.svg" .Pre }}
-              {{ with resources.Get $menuIcon }}
-                {{ ( . | minify).Content | safeHTML }}
-              {{ end }}
-            {{ end }}
             <span class="header-menu-text">{{ .Name }}</span>
           </a>
 
@@ -94,11 +89,6 @@
         </li>
       {{ end }}
     </ul>
-    <div class="navbar-nav d-none d-lg-block search-container-wrap">
-			<form action="/search" method="GET" id="search-form">
-				{{ partial "search-input.html" . }}
-			</form>
-		</div>
   </div>
 </nav>
 
@@ -118,12 +108,20 @@
         {{ end }}
       {{ end }}
 
-      <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
-        <a{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
-
-        {{ if .HasChildren }}
-          {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir ) }}
-        {{ end }}
+      <li>
+        <a {{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+          {{ if .Params.imageUrl }}
+            <div class="icon">
+              <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" width="24" height="24">
+            </div>
+          {{ end }}
+          <div class="title">
+            <span>{{ .Name }}</span>
+            {{ if .Params.description }}
+              <span class="desc">{{ .Params.description }}</span>
+            {{ end }}
+          </div>
+        </a>
       </li>
     {{ end }}
   </ul>

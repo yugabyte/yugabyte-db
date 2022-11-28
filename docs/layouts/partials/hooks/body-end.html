@@ -73,74 +73,68 @@
 </script>
 {{ else }}
 <script>
-  function dragMenu() {
-    var i = 0;
-    var marginContainer = 0;
-    var mouseMoveX = 0;
-    var maxwithis = 0;
-    var sidebarWidth = 0;
-    var maxWidthLimit = $(window).width() - (1080 + 50);
-
-    $('#dragbar:not(.unmoveable)').mousedown(function (e) {
-      e.preventDefault();
-      $('#mousestatus').html("mousedown" + i++);
-
-      sidebarWidth = $('.td-sidebar').outerWidth();
-      $(document).mousemove(function (e) {
-        $('body').addClass('left-menu-scrolling');
-        marginContainer = parseInt($('.content-parent').css('margin-left').replace("px", ""));
-        mouseMoveX = e.pageX + 2;
-        if (mouseMoveX <= 300) {
-          mouseMoveX = 300;
-        }
-        var limitMargin = (marginContainer) + sidebarWidth;
-        $('#position').html(mouseMoveX + ', ' + e.pageY);
-        $('.td-sidebar').css({"position": "fixed", "width": mouseMoveX, "max-width": limitMargin});
-        if (mouseMoveX >= limitMargin) {
-          $('#dragbar').css("left", limitMargin);
-        } else if (mouseMoveX <= 300) {
-          $('#dragbar').css("left", "300px");
-        } else {
-          $('#dragbar').css("left", mouseMoveX);
-        }
-      })
-      // console.log("leaving mouseDown");
-    });
-    $(document).mouseup(function (e) {
-      if ($("body").hasClass("left-menu-scrolling")) {
-        $('body').removeClass('left-menu-scrolling');
-        $(document).unbind('mousemove');
-        if (mouseMoveX >= maxWidthLimit) {
-          mouseMoveX = maxWidthLimit;
-        }
-        $('.td-main').css("padding-left", mouseMoveX);
-        console.log(mouseMoveX, maxwithis);
-        $('#dragbar').css("left", mouseMoveX);
-        $('.td-sidebar').css({"max-width": mouseMoveX, "margin-left": (mouseMoveX * -1), "left": mouseMoveX});
-        $('.content-parent').css({"left": mouseMoveX});
-        setTimeout(function () {
-          $(window).scrollTop($(window).scrollTop() + 1);
-        }, 500);
-        setTimeout(function () {
-          window.onscroll = function (e) {
-            $(".td-sidebar").css("left", "initial");
-            $(".td-sidebar").css({"position": "sticky"})
-          }
-        }, 2000);
-      }
-    });
-  }
-
   $(document).ready(function () {
     if ($(window).width() > 1420) {
-      dragMenu();
+      var i = 0;
+      var marginContainer = 0;
+      var mouseMoveX = 0;
+      var maxwithis = 0;
+      var sidebarWidth = 0;
+      var maxWidthLimit = $(window).width() - (1080 + 50);
+
+      $('#dragbar:not(.unmoveable)').mousedown(function (e) {
+        e.preventDefault();
+        $('#mousestatus').html("mousedown" + i++);
+
+        sidebarWidth = $('.td-sidebar').outerWidth();
+        $(document).mousemove(function (e) {
+          $('body').addClass('left-menu-scrolling');
+          marginContainer = parseInt($('.content-parent').css('margin-left').replace("px", ""));
+          mouseMoveX = e.pageX + 2;
+          if (mouseMoveX <= 300) {
+            mouseMoveX = 300;
+          }
+          var limitMargin = (marginContainer) + sidebarWidth;
+          $('#position').html(mouseMoveX + ', ' + e.pageY);
+          $('.td-sidebar').css({"position": "fixed", "width": mouseMoveX, "max-width": limitMargin});
+          if (mouseMoveX >= limitMargin) {
+            $('#dragbar').css("left", limitMargin);
+          } else if (mouseMoveX <= 300) {
+            $('#dragbar').css("left", "300px");
+          } else {
+            $('#dragbar').css("left", mouseMoveX);
+          }
+        })
+        // console.log("leaving mouseDown");
+      });
+      $(document).mouseup(function (e) {
+        if ($("body").hasClass("left-menu-scrolling")) {
+          $('body').removeClass('left-menu-scrolling');
+          $(document).unbind('mousemove');
+          if (mouseMoveX >= maxWidthLimit) {
+            mouseMoveX = maxWidthLimit;
+          }
+          $('.td-main').css("padding-left", mouseMoveX);
+          console.log(mouseMoveX, maxwithis);
+          $('#dragbar').css("left", mouseMoveX);
+          $('.td-sidebar').css({"max-width": mouseMoveX, "margin-left": (mouseMoveX * -1), "left": mouseMoveX});
+          $('.content-parent').css({"left": mouseMoveX});
+          setTimeout(function () {
+            $(window).scrollTop($(window).scrollTop() + 1);
+          }, 500);
+          setTimeout(function () {
+            window.onscroll = function (e) {
+              $(".td-sidebar").css("left", "initial");
+              $(".td-sidebar").css({"position": "sticky"})
+            }
+          }, 2000);
+        }
+      });
     }
   });
   $(window).resize(function () {
-    location.reload();
+    // location.reload();
   });
-
-
 </script>
 <script src="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js"></script>
 <script>

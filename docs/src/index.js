@@ -45,6 +45,9 @@ function yugabyteResizeHeaderMenu() {
     $('.page-header').toggleClass('open-search');
     $('.page-header,.mobile-menu').removeClass('open');
     $('.mobile-search').toggleClass('open');
+    if ($('.page-header .search-container-wrap').length === 0) {
+      $('.page-header').append('<div class="navbar-nav search-container-wrap">' + $('.search-container-wrap').html() + '</div>');
+    }
   });
 
   if ($(window).width() < 768) {
@@ -234,7 +237,7 @@ $(document).ready(() => {
   $(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
 
   // Theme color switcher
-  document.querySelector('.switcher').onclick = function () {
+  /* document.querySelector('.switcher').onclick = function () {
     const htmlAttr = document.querySelector('html');
     const currentMode = htmlAttr.getAttribute('data-theme');
     const expiryDate = 3600 * 1000 * 24 * 365;
@@ -247,7 +250,7 @@ $(document).ready(() => {
       htmlAttr.setAttribute('data-theme', 'orange');
       document.cookie = `yb_docs_theme_color=orange; expires=${expiryDate}; path=/`;
     }
-  };
+  }; */
 
   // For Section nav.
   $(document).on('click', '.docs-menu', () => {

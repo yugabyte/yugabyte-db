@@ -1,35 +1,25 @@
 ########## Top header menu
 
-# [[top_nav]]
-#   name = "Register for DSS 2022"
-#   weight = 1
-#   url = "https://distributedsql.org/"
-#   [top_nav.params]
-#     newTab = true
-#     classes = "gradient-link"
-
 [[top_nav]]
-  name = "Join us on"
+  name = "Star us on Github"
   weight = 1
-  url = "https://communityinviter.com/apps/yugabyte-db/register"
-  post = "<img id='slack-logo' width='80' height='30' src='/images/slack-logo-full.svg' alt='YugabyteDB Community Slack' />"
+  url = "https://github.com/yugabyte/yugabyte-db"
+  post = "<img width='24' height='24' src='/icons/github.svg' alt='YugabyteDB Github' />"
   [top_nav.params]
     newTab = true
 
 [[top_nav]]
-  name = "Star us on"
+  name = "Join us on Slack"
   weight = 2
-  url = "https://github.com/yugabyte/yugabyte-db"
-  post = "<i class='fab fa-github'></i>"
+  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  post = "<img width='24' height='24' src='/icons/slack.svg' alt='YugabyteDB Community Slack' />"
   [top_nav.params]
     newTab = true
 
 [[top_nav]]
   name = "Start Now"
   weight = 3
-  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
-  [top_nav.params]
-    newTab = true
+  identifier = "start_now"
 
 ########## Secondary header menu
 
@@ -39,104 +29,49 @@
   identifier = "products"
 
 [[main]]
-  name = "Docs Home"
-  weight = 1
-  url = "/preview/"
-  parent = "documentation"
+  name = "YugabyteDB"
+  weight = 2
+  parent = "products"
+  url = "/"
   [main.params]
-    excludeVersion = true
-
-[[main]]
-  name = "Quick Start"
-  weight = 3
-  url = "/preview/quick-start-yugabytedb-managed/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
-
-[[main]]
-  name = "Explore"
-  weight = 4
-  url = "/explore/"
-  parent = "documentation"
-
-[[main]]
-  name = "Develop"
-  weight = 5
-  url = "/develop/"
-  parent = "documentation"
-
-[[main]]
-  name = "Migrate"
-  weight = 6
-  url = "/migrate/"
-  parent = "documentation"
-
-[[main]]
-  name = "Secure"
-  weight = 7
-  url = "/secure/"
-  parent = "documentation"
-
-[[main]]
-  name = "Launch and Manage"
-  weight = 8
-  url = "/launch-and-manage/"
-  parent = "documentation"
-
-[[main]]
-  name = "Benchmark"
-  weight = 9
-  url = "/benchmark/"
-  parent = "documentation"
-
-[[main]]
-  name = "Reference"
-  weight = 12
-  url = "/architecture/"
-  parent = "documentation"
-
-[[main]]
-  name = "Contribute"
-  weight = 13
-  url = "/preview/contribute/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
-
-[[main]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
+    description = "The open source distributed SQL database"
+    imageUrl = "/icons/database.svg"
 
 [[main]]
   name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
+  weight = 3
+  parent = "products"
   url = "/yugabyte-platform/"
+  [main.params]
+    description = "Self-managed cloud DBaaS"
+    imageUrl = "/icons/server.svg"
 
 [[main]]
   name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
+  weight = 4
+  parent = "products"
   url = "/preview/yugabyte-cloud/"
   [main.params]
+    description = "Fully managed cloud DBaaS"
     excludeVersion = true
-
-[[main]]
-  name = "FAQ"
-  weight = 3
-  url = "/preview/faq/general/"
-  [main.params]
-    excludeVersion = true
+    imageUrl = "/icons/cloud.svg"
 
 [[main]]
   name = "Integrations"
-  weight = 4
+  weight = 2
   url = "/preview/integrations/apache-kafka/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "API"
+  weight = 3
+  url = "/api/"
+
+[[main]]
+  name = "FAQ"
+  weight = 4
+  url = "/preview/faq/general/"
   [main.params]
     excludeVersion = true
 
@@ -144,25 +79,26 @@
   name = "Releases"
   weight = 5
   identifier = "releases"
-  url = "/preview/releases/"
-  [main.params]
-    excludeVersion = true
 
 [[main]]
   name = "YugabyteDB"
   weight = 1
+  identifier = "yugabytedb-releases"
   parent = "releases"
   url = "/preview/releases/"
   [main.params]
     excludeVersion = true
+    imageUrl = "/icons/database.svg"
 
 [[main]]
   name = "YugabyteDB Managed"
   weight = 2
+  identifier = "yugabytedb-managed-releases"
   parent = "releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [main.params]
     excludeVersion = true
+    imageUrl = "/icons/cloud.svg"
 
 ########## Bottom menu for left navigation
 
