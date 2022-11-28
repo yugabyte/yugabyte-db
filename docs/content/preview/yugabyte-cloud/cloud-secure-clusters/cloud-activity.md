@@ -29,7 +29,7 @@ To filter the activity list, enter a search term. You can also filter the list b
 The following table lists the activity that is logged.
 
 | Source | Activity |
-| --- | --- |
+| :----- | :------- |
 | Allow List | Create Allow List<br>Delete Allow List |
 | API Key | Create API Key<br>Expire API Key<br>Revoke API Key |
 | Backup | Create Backup<br>Delete Backup<br>Restore Backup |
@@ -39,6 +39,7 @@ The following table lists the activity that is logged.
 | Login Types | Edit Login Types |
 | Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
 | Payment | Add Payment<br>Edit Payment<br>Delete Payment |
+| Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | User | Add User<br>Edit User<br>Remove User<br>Activate user |
 | VPC | Create VPC<br>Delete VPC |
 | VPC Peering | Create VPC Peering<br>Delete VPC Peering |
