@@ -362,6 +362,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		palloc(bnlstate->numLookupAttrs * sizeof(AttrNumber));
 	int numattrs = plan->nl.nestParams->length;
 	ExprState **keyexprs = palloc(numattrs * (sizeof(ExprState*)));
+	List *outerParamExprs = NIL;
 
 	forthree(lc, plan->hashOps,
 			 lc2, plan->innerHashAttNos,
@@ -374,13 +375,14 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		bnlstate->innerAttrs[i] = lfirst_int(lc2);
 		Expr *outerExpr = (Expr *) lfirst(lc3);
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
+		outerParamExprs = lappend(outerParamExprs, outerExpr);
 		i++;
 	}
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(i, eqops, &eqFuncOids, &bnlstate->hashFunctions);
 
 	ExprState *tab_eq_fn =
-		ybPrepareOuterExprsEqualFn(plan->outerParamExprs,
+		ybPrepareOuterExprsEqualFn(outerParamExprs,
 								   eqops,
 								   (PlanState *) bnlstate);
 
@@ -399,7 +401,8 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 								 eqFuncOids, bnlstate->hashFunctions,
 								 GetBatchSize(plan), 0,
 								 econtext->ecxt_per_query_memory, tablecxt,
-								 econtext->ecxt_per_tuple_memory, false);
+								 econtext->ecxt_per_tuple_memory, econtext,
+								 false);
 
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
