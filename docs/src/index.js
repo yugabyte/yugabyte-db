@@ -384,6 +384,7 @@ $(document).ready(() => {
         minwidth: '300px',
         width: '300px',
       });
+      $('#dragbar').css('left', '300px');
     }
   });
 

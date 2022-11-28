@@ -23,17 +23,17 @@
 .td-main {
   aside.td-sidebar {
     .left-sidebar-wrap {
-      height: calc(100vh - 129px);
+      height: calc(100vh - 112px);
       position: sticky;
       margin-top: 0;
-      top: 129px;
+      top: 112px;
       transition: width 0.5s linear;
       max-width: 100%;
     }
 
     .left-sidebar-wrap-inner {
       position: sticky;
-      height: calc(100vh - 129px);
+      height: calc(100vh - 112px);
     }
 
     &.stick-bar {
@@ -73,6 +73,7 @@
 aside.td-sidebar {
   position: sticky;
   top: 8rem;
+  top: 112px;
   padding: 0;
   background: #fff;
 
@@ -135,8 +136,8 @@ aside.td-sidebar {
 
   nav {
     position: sticky;
-    top: 8rem;
-    max-height: calc(100vh - 129px);
+    top: 112px;
+    max-height: calc(100vh - 112px);
     overflow-y: scroll;
     scrollbar-width: thin;
     height: 100%;
@@ -189,6 +190,10 @@ aside.td-sidebar {
               margin-left: -16px;
             }
           }
+
+          > ul {
+            padding-left: 15px;
+          }
         }
       }
 
@@ -202,6 +207,7 @@ aside.td-sidebar {
         color: #4e5f6d;
         display: flex;
         padding: 0 16px 0 32px;
+        padding: 0 0 0 32px;
         position: relative;
         flex-flow: wrap;
         min-height: 40px;
@@ -215,8 +221,9 @@ aside.td-sidebar {
           height: 16px;
           font-style: normal;
           text-align: center;
-          background: #fbfcfd;
+          background: #fff;
           cursor: pointer;
+          z-index: 9;
 
           &::before {
             content: "\f0da";
@@ -240,7 +247,6 @@ aside.td-sidebar {
               top: 12px;
               position: absolute;
               left: 15px;
-              background: red;
               background: #e9eef2;
             }
           }
@@ -289,6 +295,8 @@ aside.td-sidebar {
           max-height: 2000px;
           overflow: hidden;
           transition: max-height 1.5s ease;
+          padding-left: 18px;
+          margin-left: -15px;
 
           li {
             padding-left: 13px;
@@ -326,6 +334,19 @@ aside.td-sidebar {
         }
 
         &.submenu {
+          position: relative;
+
+          &.open::before {
+            content: "";
+            width: 10px;
+            height: 40px;
+            background: #fff;
+            position: absolute;
+            left: -2px;
+            top: 0;
+            z-index: 1;
+          }
+
           &:not(.open):not(.unlink-list) > ul {
             max-height: 0;
             transition: all 0.5s ease;
@@ -365,13 +386,18 @@ aside.td-sidebar {
 
           a {
             &::after {
-              display: none;
+              display: none !important;
             }
           }
         }
 
         a {
           padding: 12px 0;
+
+          &::before,
+          &::after {
+            display: none !important;
+          }
 
           i {
             width: 16px;
@@ -442,7 +468,7 @@ aside.td-sidebar {
     width: 50px;
     max-width: 50px;
 
-    &::beforee {
+    &::before {
       content: "";
       background: #f5f1f2;
       width: 50px;
