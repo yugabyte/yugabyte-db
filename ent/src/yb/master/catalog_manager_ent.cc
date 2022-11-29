@@ -3423,7 +3423,9 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
 
-    if (!ltm->table_id().empty() && ltm->table_id().Get(0) == table_id &&
+    if (!ltm->table_id().empty() &&
+        (std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id) !=
+         ltm->table_id().end()) &&
         !ltm->started_deleting()) {
       if ((cdc_request_source == cdc::CDCSDK && !ltm->namespace_id().empty()) ||
           (cdc_request_source == cdc::XCLUSTER && ltm->namespace_id().empty())) {
