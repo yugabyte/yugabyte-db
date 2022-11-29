@@ -51,24 +51,49 @@
 
 <br>
 
-[Apache AGE](https://age.apache.org/#) is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for A Graph Extension, and is inspired by Bitnine's AgensGraph, a multimodel database fork of PostgreSQL. The goal of the project is to enable users of Postgres to use graph query modeling in unison with Postgres' existing relational model.
 
-A graph consists of a set of vertices (also called nodes) and edges, where each individual vertex and edge possesses a map of properties. A vertex is the basic object of a graph, that can exist independently of everything else in the graph. An edge creates a directed connection between two vertices. A graph database is simply composed of vertices and edges. This type of database is useful when the meaning is in the relationships between the data. Relational databases can easily handle direct relationships, but indirect relationships are more difficult to deal with in relational databases. A graph database stores relationship information as a first-class entity. Apache AGE gives you the best of both worlds, simultaneously.
+<h2><img height="30" src="/img/AGE.png">&nbsp;&nbsp;What is Apache AGE?</h2>
 
-Apache AGE is:
+[Apache AGE](https://age.apache.org/#) is an extension for PostgreSQL that enables users to leverage a graph database on top of the existing relational databases. AGE is an acronym for A Graph Extension and is inspired by Bitnine's AgensGraph, a multi-model database fork of PostgreSQL. The basic principle of the project is to create a single storage that handles both the relational and graph data model so that the users can use the standard ANSI SQL along with openCypher, one of the most popular graph query languages today. 
+</br>
+</br>
+</br>
+
+<p align="center">
+<img src="/img/age-01.png" width="80%" height="80%">
+</p>
+
+</br>
+
+Since AGE is based on the powerful PostgreSQL RDBMS, it is robust and fully featured. AGE is optimized for handling complex connected graph data. It provides plenty of robust databases features essential to the database environment, including ACID transactions, multi-version concurrency control (MVCC), stored procedure, triggers, constraints, sophisticated monitoring, and a flexible data model (JSON). Users with a relational background who require graph data analytics can use this extension with minimal effort because they can use existing data without having to go through migration. 
+
+There is a strong need for cohesive, easy-to-implement multi-model databases. As an extension of PostgreSQL, AGE supports all the functionalities and features of PostgreSQL while also offering a graph model to boot.
+
+
+<h2><img height="30" src="/img/tick.svg">&nbsp;&nbsp;Overview</h2>
+
+Apache AGE is : 
 
 - **Powerful**: adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
-- **Flexible**: allows you to perform openCypher queries, which make complex queries much easier to write.
-- **Intelligent**: allows you to perform graph queries that are the basis for many next level web services such as fraud detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
+- **Flexible**: allows you to perform openCypher queries, which makes complex queries much easier to write. It also enables multiple graphs at the same time.
+- **Intelligent**: allows you to perform graph queries that are the basis for many next-level web services such as fraud detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management, and more.
 
-Also, while the technology can be integrated against many data layers, a graph database is also the perfect companion for a [GraphQL](https://graphql.org/) API. Since the information is already in a native format, it simplifies many factors and even allows many operations to be generated automatically. GraphQL is rapidly  superceeding REST as the standard for cloud applications. 
+<h2><img height="30" src="/img/features.svg">&nbsp;&nbsp;Features</h2>
+</br>
+</br>
 
-## Overview
+<p align="center">
+<img src="/img/age-03.png" width="80%" height="80%">
+</p>
+</br>
 
-- **Apache AGE is currently being developed for the PostgreSQL 12 release** and will support PostgreSQL 13 and all the future releases of PostgreSQL.
-- Apache AGE supports the openCypher graph query language.
-- Apache AGE enables querying multiple graphs at the same time.
-- The goal of Apache AGE is to make it compatible with all relational databases in the future.
+- **Cypher Query**: supports graph query language
+- **Hybrid Querying**: enables SQL and/or Cypher
+- **Querying**: enables multiple graphs
+- **Hierarchical**: graph label organization
+- **Property Indexes**: on both vertices(nodes) and edges
+- **Full PostgreSQL**: supports PG features
+
 
 ## Latest Events
 
