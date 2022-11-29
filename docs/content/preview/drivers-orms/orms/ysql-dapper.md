@@ -28,7 +28,7 @@ type: docs
 
 The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
+The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
 
 ## Prerequisites
 
