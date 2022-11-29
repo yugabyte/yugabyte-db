@@ -39,7 +39,7 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
-#include "yb/rpc/rpc_context.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flags.h"
@@ -506,7 +506,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   auto scope_exit = ScopeExit([this] {
     if (write_buffer_) {
       WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
-      response_->set_rows_data_sidecar(narrow_cast<int32_t>(rpc_context_->CompleteRpcSidecar()));
+      response_->set_rows_data_sidecar(narrow_cast<int32_t>(sidecars_->Complete()));
     }
   });
 
@@ -854,9 +854,9 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
 }
 
 Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
-  if (write_buffer_ == nullptr && rpc_context_) {
+  if (write_buffer_ == nullptr && sidecars_) {
     // Reserve space for num rows.
-    write_buffer_ = &rpc_context_->StartRpcSidecar();
+    write_buffer_ = &sidecars_->Start();
     row_num_pos_ = write_buffer_->Position();
     pggate::PgWire::WriteInt64(0, write_buffer_);
   }

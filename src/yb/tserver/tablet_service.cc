@@ -62,6 +62,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 
+#include "yb/rpc/sidecars.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -359,9 +360,9 @@ class WriteQueryCompletionCallback {
       auto* ql_write_resp = ql_write_op->response();
       const QLRowBlock* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
-      rowblock->Serialize(ql_write_req.client(), &context_->StartRpcSidecar());
+      rowblock->Serialize(ql_write_req.client(), &context_->sidecars().Start());
       ql_write_resp->set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_->CompleteRpcSidecar()));
+          narrow_cast<int32_t>(context_->sidecars().Complete()));
     }
 
     if (include_trace_ && trace_) {

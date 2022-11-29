@@ -50,6 +50,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -506,8 +507,8 @@ Status OutboundCall::AssignSidecarTo(size_t idx, std::string* out) const {
   return call_response_.AssignSidecarTo(idx, out);
 }
 
-size_t OutboundCall::TransferSidecars(rpc::RpcContext* context) {
-  return call_response_.TransferSidecars(context);
+size_t OutboundCall::TransferSidecars(Sidecars* dest) {
+  return call_response_.TransferSidecars(dest);
 }
 
 string OutboundCall::ToString() const {
@@ -602,8 +603,8 @@ Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
       response_data_.buffer(), Slice(sidecar_bounds_[idx], sidecar_bounds_[idx + 1]));
 }
 
-size_t CallResponse::TransferSidecars(rpc::RpcContext* context) {
-  return context->TakeSidecars(response_data_.buffer(), sidecar_bounds_);
+size_t CallResponse::TransferSidecars(Sidecars* dest) {
+  return dest->Take(response_data_.buffer(), sidecar_bounds_);
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

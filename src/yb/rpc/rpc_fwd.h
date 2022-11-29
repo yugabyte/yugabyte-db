@@ -70,6 +70,7 @@ class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
+class Sidecars;
 class Strand;
 class StrandTask;
 class Stream;
