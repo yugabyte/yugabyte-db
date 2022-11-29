@@ -147,7 +147,6 @@ export const MetricTypesWithOperations = {
       'master_tc_malloc_stats',
       'master_glog_info_messages',
       'master_lsm_rocksdb_seek_next_prev',
-      'master_lsm_rocksdb_num_seek_or_next',
       'master_lsm_rocksdb_num_seeks_per_node',
       'master_lsm_rocksdb_total_sst_per_node',
       'master_lsm_rocksdb_avg_num_sst_per_node',
