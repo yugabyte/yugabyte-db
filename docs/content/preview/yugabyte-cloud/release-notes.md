@@ -19,7 +19,7 @@ type: docs
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.3 New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.3. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 - Stable release updated to version 2.14.4 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### November 15, 2022
