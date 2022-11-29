@@ -45,15 +45,7 @@ The **Create Cluster** wizard has the following pages:
 1. [Cluster Setup](#cluster-setup)
 1. [DB Credentials](#database-credentials)
 
-### General Settings
-
-![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)
-
-Set the following options:
-
-- **Cluster Name**: Enter a name for the cluster.
-- **Provider**: Choose a cloud provider - AWS or GCP.
-- **[Database Version](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+{{% includeMarkdown "include-general-settings.md" %}}
 
 ### Cluster Setup
 
@@ -83,9 +75,9 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 **Disk size/Node**: Enter the disk size per node in GB.
 
-Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
-Monthly total costs for the cluster are based on the total number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
 #### Configure VPC
 
