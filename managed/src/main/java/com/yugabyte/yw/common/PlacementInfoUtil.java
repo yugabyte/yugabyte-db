@@ -920,8 +920,10 @@ public class PlacementInfoUtil {
   // are the same.
   private static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
-
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
