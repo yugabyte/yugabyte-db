@@ -22,7 +22,7 @@ The source for the REST API-based applications is in the [Using ORMs with Yugaby
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-## Choose your language
+### Choose your language
 
 <ul class="nav yb-pills">
 
