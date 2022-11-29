@@ -94,7 +94,7 @@ Apache AGE is :
 - **Property Indexes**: on both vertices(nodes) and edges
 - **Full PostgreSQL**: supports PG features
 
-## Latest Events
+<h2><img height="20" src="/img/news.jpeg">&nbsp;&nbsp;Latest Events</h2>
 
 - Latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc0).
 - Renewed Apache AGE homepage - [Apache AGE website](http://age.apache.org/).
