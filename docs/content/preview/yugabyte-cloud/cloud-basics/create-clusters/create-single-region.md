@@ -59,7 +59,7 @@ Set the following options:
 
 Select **Single-Region Deployment** and set the following options.
 
-#### 1. Select a fault tolerance for your cluster
+#### Select a fault tolerance for your cluster
 
 ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
 
@@ -71,7 +71,7 @@ Fault tolerance determines how resilient the cluster is to node and cloud zone f
 
 You can't change the Fault tolerance of a cluster after it's created.
 
-#### 2. Choose a region and size your cluster
+#### Choose a region and size your cluster
 
 ![Add Cluster Wizard - Region and size](/images/yb-cloud/cloud-addcluster-paid3.2.png)
 
@@ -87,7 +87,7 @@ Dedicated clusters support both horizontal and vertical scaling; you can change 
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
-#### 3. Configure VPC
+#### Configure VPC
 
 ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 

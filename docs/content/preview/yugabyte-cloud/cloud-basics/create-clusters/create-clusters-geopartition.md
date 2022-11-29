@@ -71,7 +71,7 @@ Set the following options:
 
 Select **Multi-Region Deployment** and set the following options.
 
-#### 1. Select data distribution mode
+#### Select data distribution mode
 
 ![Add Cluster Wizard - Partition by region data distribution](/images/yb-cloud/cloud-addcluster-partition-data.png)
 
@@ -85,7 +85,7 @@ Select a fault tolerance for the regions. Fault tolerance determines how resilie
 
 Fault tolerance is applied to all regions in the cluster, including those added after cluster creation.
 
-#### 2. Select regions and node size
+#### Select regions and node size
 
 ![Add Cluster Wizard - Primary region and size](/images/yb-cloud/cloud-addcluster-partition.png)
 
