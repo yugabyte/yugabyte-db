@@ -19,13 +19,18 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state) {
+  const {
+    featureFlags: { test, released }
+  } = state;
+
   return {
     currentCustomer: state.customer.currentCustomer,
     alerts: state.customer.alerts,
     layout: state.customer.layout,
     tasks: state.tasks,
     modal: state.modal,
-    tables: state.tables
+    tables: state.tables,
+    enableTopKMetrics: test.enableTopKMetrics || released.enableTopKMetrics
   };
 }
 

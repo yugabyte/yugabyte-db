@@ -569,6 +569,7 @@ export default class UniverseOverviewNew extends Component {
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
     const isKubernetes = isKubernetesUniverse(universeInfo);
+    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
@@ -591,7 +592,7 @@ export default class UniverseOverviewNew extends Component {
               noMargin
               headerRight={
                 isNonEmptyObject(universeInfo) ? (
-                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?subtab=${subTab}`}>
+                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?${metricTabPath}=${subTab}`}>
                     Details
                   </Link>
                 ) : null
@@ -606,7 +607,10 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getCPUWidget = (universeInfo) => {
+     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
+    const subTab = isItKubernetesUniverse ? 'container' : 'server';
+    const metricTabPath = this.props.enableTopKMetrics ? 'tab' : 'subtab';
     return (
       <Col lg={2} md={4} sm={4} xs={6}>
         <StandaloneMetricsPanelContainer
@@ -619,7 +623,7 @@ export default class UniverseOverviewNew extends Component {
                 noMargin
                 headerLeft={'CPU Usage'}
                 headerRight={
-                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?subtab=server`}>
+                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?${metricTabPath}=${subTab}`}>
                     Details
                   </Link>
                 }
