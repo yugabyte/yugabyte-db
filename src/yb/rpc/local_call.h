@@ -48,7 +48,7 @@ class LocalOutboundCall : public OutboundCall {
   void Serialize(ByteBlocks* output) override;
 
   Status AssignSidecarTo(size_t idx, std::string* out) const override;
-  size_t TransferSidecars(rpc::RpcContext* context) override;
+  size_t TransferSidecars(Sidecars* context) override;
 
  private:
   friend class LocalYBInboundCall;

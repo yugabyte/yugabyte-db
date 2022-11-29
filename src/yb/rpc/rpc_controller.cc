@@ -114,7 +114,7 @@ Status RpcController::AssignSidecarTo(int idx, std::string* out) const {
   return call_->AssignSidecarTo(idx, out);
 }
 
-size_t RpcController::TransferSidecars(rpc::RpcContext* dest) {
+size_t RpcController::TransferSidecars(Sidecars* dest) {
   return call_->TransferSidecars(dest);
 }
 

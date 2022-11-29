@@ -137,8 +137,7 @@ class MessengerBuilder {
     return connection_context_factory_;
   }
 
-  MessengerBuilder& set_thread_pool_options(size_t queue_limit, size_t workers_limit) {
-    queue_limit_ = queue_limit;
+  MessengerBuilder& set_thread_pool_options(size_t workers_limit) {
     workers_limit_ = workers_limit;
     return *this;
   }
@@ -165,7 +164,6 @@ class MessengerBuilder {
   ConnectionContextFactoryPtr connection_context_factory_;
   StreamFactories stream_factories_;
   const Protocol* listen_protocol_;
-  size_t queue_limit_;
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;

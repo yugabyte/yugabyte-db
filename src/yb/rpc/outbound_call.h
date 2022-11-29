@@ -174,7 +174,7 @@ class CallResponse {
 
   // Transfer all sidecars to specified context, returning the first transferred sidecar index in
   // the context.
-  size_t TransferSidecars(rpc::RpcContext* context);
+  size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -343,7 +343,7 @@ class OutboundCall : public RpcCall {
 
   // See appropriate comments in CallResponse.
   virtual Status AssignSidecarTo(size_t idx, std::string* out) const;
-  virtual size_t TransferSidecars(rpc::RpcContext* dest);
+  virtual size_t TransferSidecars(Sidecars* dest);
 
   ConnectionId conn_id_;
   const std::string* hostname_;

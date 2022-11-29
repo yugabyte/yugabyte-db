@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <map>
+
 namespace yb {
 
 template <class Object>
