@@ -2668,7 +2668,7 @@ public class PlacementInfoUtil {
       Provider provider,
       int masterRpcPort,
       boolean newNamingStyle) {
-    List<String> masters = new ArrayList<String>();
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
