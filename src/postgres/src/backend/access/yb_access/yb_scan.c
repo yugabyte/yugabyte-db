@@ -2181,7 +2181,7 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	}
 
 	Cost cost_per_tuple = cpu_tuple_cost * yb_per_tuple_cost_factor +
-	                      baserel->baserestrictcost.per_tuple;
+	                       baserel->baserestrictcost.per_tuple;
 
 	*startup_cost += baserel->baserestrictcost.startup;
 
@@ -2417,7 +2417,6 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		}
 	}
 
-
 	path->path.rows = baserel_rows_estimate;
 
 	/*
@@ -2449,11 +2448,11 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 																	  scan_plan.hash_key,
 																	  scan_plan.primary_key);
 		baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
-	}
 
-	if (baserel_rows_estimate < baserel->rows)
-	{
-		baserel->rows = baserel_rows_estimate;
+		if (baserel_rows_estimate < baserel->rows)
+		{
+			baserel->rows = baserel_rows_estimate;
+		}
 	}
 
 	if (relation)
