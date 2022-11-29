@@ -8,6 +8,12 @@ layout: single
 type: docs
 ---
 
+On this page:
+
+- [Releases](#releases)
+- [Cloud provider regions](#cloud-provider-regions)
+- [Known issues](#known-issues)
+
 ## Releases
 
 ### November 28, 2022
