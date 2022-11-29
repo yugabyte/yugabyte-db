@@ -319,25 +319,34 @@ Starting with Apache AGE is very simple. You can easily select your platform a
 
 
 
+<h2><img height="20" src="/img/contributing.svg">&nbsp;&nbsp;Community</h2>
+
+Join the AGE community for help, questions, discussions, and contributions. 
+
+- Check our [website](https://age.apache.org/)
+- Chat live with us on [Discord](https://discord.com/invite/NMsBs9X8Ss/)
+- Follow us on [Twitter](https://twitter.com/apache_age?s=20&t=7Hu8Txk4vjvuEp-ryakacg)
+- Join our [Dev community](https://lists.apache.org/list.html?dev@age.apache.org)
 
 
+<h2><img height="20" src="/img/visualization.svg">&nbsp;&nbsp;Graph Visualization Tool for AGE</h2>
 
-
-
-
-
-
-## Graph Visualization Tool for AGE
 
 Apache AGE Viewer is a user interface for Apache AGE that provides visualization and exploration of data.
-Through this simple web visualization tool, users can enter complex graph queries and explore the results in graph and table forms.
-Apache AGE Viewer is enhanced to proceed with large graph data and discover the insights through various graph algorithms.
+This web visualization tool allows users to enter complex graph queries and explore the results in graph and table forms.
+Apache AGE Viewer is enhanced to proceed with extensive graph data and discover insights through various graph algorithms.
 Apache AGE Viewer will become a graph data administration and development platform for Apache AGE to support multiple relational databases: <https://github.com/apache/age-viewer>.
 
-- This is a visualization tool.
+**This is a visualization tool.**
 After installing AGE Extension, you may use this tool to get access to the visualization features.
 
-## Contribution
+
+![Viewer gdb, and graph](/img/agce.gif)
+
+
+
+<h2><img height="20" src="/img/community.svg">&nbsp;&nbsp;Contributing</h2>
 
 You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/age).
-Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation, by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/contribution/guide).
+Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/contribution/guide).
+Send all your comments and inquiries to the user mailing list, users@age.apache.org.
