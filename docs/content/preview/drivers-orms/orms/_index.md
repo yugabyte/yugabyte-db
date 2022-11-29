@@ -15,7 +15,7 @@ showRightNav: true
 
 The examples in this section illustrate how you can build a basic online e-commerce store application that connects to YugabyteDB by implementing a REST API server using the ORM of your choice.
 
-The source for the REST API based application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master) repository. The database access is managed using the ORM and includes the following tables:
+The source for the REST API-based applications is in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master) repository. Database access is managed using the ORM and includes the following tables:
 
 - `users` — the users of the e-commerce site
 - `products` — the products being sold
