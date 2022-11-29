@@ -12,10 +12,12 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/spf13/viper"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
 // Component 3: Platform
@@ -25,8 +27,8 @@ type Platform struct {
 	ConfFileLocation    string
 	templateFileName    string
 	version             string
-	DataDir							string
-	cronScript					string
+	DataDir             string
+	cronScript          string
 }
 
 // NewPlatform creates a new YBA service struct.
@@ -97,7 +99,7 @@ func (plat Platform) Install() {
 	// At the end of the installation, we rename .installStarted to .installCompleted, to signify the
 	// install has finished succesfully.
 	common.MoveFileGolang(common.InstallRoot+"/.installStarted",
-												common.InstallRoot+"/.installCompleted")
+		common.InstallRoot+"/.installCompleted")
 
 	plat.Start()
 
@@ -197,15 +199,15 @@ func (plat Platform) copyYbcPackages() {
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
-		common.CopyFileGolang(f, common.InstallRoot+"/data/yb-platform/ybc/release/" + fileName)
+		common.CopyFileGolang(f, common.InstallRoot+"/data/yb-platform/ybc/release/"+fileName)
 	}
 
 }
 
 func (plat Platform) renameAndCreateSymlinks() {
 
-	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot + "/yb-platform", "yugaware")
-	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot + "/yb-platform", "devops")
+	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot+"/yb-platform", "yugaware")
+	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot+"/yb-platform", "devops")
 
 }
 
@@ -226,7 +228,7 @@ func (plat Platform) Start() {
 	} else {
 
 		containerExposedPort := config.GetYamlPathData("platform.containerExposedPort")
-    restartSeconds := config.GetYamlPathData("platform.restartSeconds")
+		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
 		command1 := "bash"
 		arg1 := []string{"-c", plat.cronScript + " " + common.InstallVersionDir + " " +
@@ -314,53 +316,46 @@ func (plat Platform) Uninstall(removeData bool) {
 }
 
 // Status prints the status output specific to yb-platform.
-func (plat Platform) Status() {
+func (plat Platform) Status() common.Status {
+	status := common.Status{
+		Service:   plat.Name(),
+		Port:      viper.GetInt("platform.containerExposedPort"),
+		Version:   plat.version,
+		ConfigLoc: plat.ConfFileLocation,
+	}
 
-	name := "yb-platform"
-	port := config.GetYamlPathData("platform.externalPort")
-
-	runningStatus := ""
-
+	// Set the systemd service file location if one exists
 	if common.HasSudoAccess() {
-
-		args := []string{"is-active", name}
-		runningStatus, _ = common.ExecuteBashCommand(common.Systemctl, args)
-
-		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
-
-		// For display purposes.
-		if runningStatus != "active" {
-
-			runningStatus = "inactive"
-
-		}
-
+		status.ServiceFileLoc = plat.SystemdFileLocation
 	} else {
+		status.ServiceFileLoc = "N/A"
+	}
 
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
 		command := "bash"
 		args := []string{"-c", "pgrep -f yb-platform"}
 		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
-			runningStatus = "active"
+			status.Status = common.StatusRunning
 		} else {
-			runningStatus = "inactive"
+			status.Status = common.StatusStopped
 		}
 	}
-
-	systemdLoc := "N/A"
-
-	if common.HasSudoAccess() {
-
-		systemdLoc = plat.SystemdFileLocation
-	}
-
-	outString := name + "\t" + plat.version + "\t" + port +
-		"\t" + plat.ConfFileLocation + "\t" + systemdLoc +
-		"\t" + runningStatus + "\t"
-
-	fmt.Fprintln(common.StatusOutput, outString)
-
+	return status
 }
 
 func configureConfHTTPS() {
@@ -378,16 +373,16 @@ func configureConfHTTPS() {
 
 	common.ExecuteBashCommand("bash",
 		[]string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
-		"-keystore-password " + keyStorePassword +
-		" -cert-file myserver=cert.pem " +
-		"-key-file myserver=key.pem"})
+			"-keystore-password " + keyStorePassword +
+			" -cert-file myserver=cert.pem " +
+			"-key-file myserver=key.pem"})
 
 	common.ExecuteBashCommand("bash",
 		[]string{"-c", "cp " + "server.ks" + " " + common.InstallRoot + "/yb-platform/certs"})
 
 	if common.HasSudoAccess() {
 
-		common.Chown(common.InstallRoot + "/yb-platform/certs", "yugabyte", "yugabyte", true)
+		common.Chown(common.InstallRoot+"/yb-platform/certs", "yugabyte", "yugabyte", true)
 
 	}
 }
@@ -398,7 +393,7 @@ func (plat Platform) CreateCronJob() {
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 	common.ExecuteBashCommand("bash", []string{"-c",
 		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " + common.InstallVersionDir +
-		" " + containerExposedPort + " " + restartSeconds + "\") | sort - | uniq - | crontab - "})
+			" " + containerExposedPort + " " + restartSeconds + "\") | sort - | uniq - | crontab - "})
 }
 
 // GenerateCORSOrigin determines the IP address of the host to populate CORS origin field in conf.
