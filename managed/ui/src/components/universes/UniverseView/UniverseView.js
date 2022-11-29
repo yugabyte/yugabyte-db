@@ -227,15 +227,16 @@ export const UniverseView = (props) => {
 
   const formatUniverseState = (status, row) => {
     const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-      return ((task.targetUUID === row.universeUUID) && task.status === "Failure")
+      return ((task.targetUUID === row.universeUUID) && (
+        task.status === "Failure" || task.status === "Aborted"
+      ));
     });
     const failedTask = currentUniverseFailedTask?.[0];
-
     return (
       <div className={`universe-status-cell ${status.className}`}>
         <div>
           {getUniverseStatusIcon(status)}
-          <span>{failedTask ? `${failedTask.type} ${failedTask.target} failed` : status.text}</span>
+          <span>{(status.text === "Error" && failedTask) ? `${failedTask.type} ${failedTask.target} failed` : status.text}</span>
         </div>
         <UniverseAlertBadge universeUUID={row.universeUUID} listView />
       </div>
