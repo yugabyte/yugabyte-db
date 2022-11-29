@@ -522,6 +522,9 @@ public class UniverseCRUDHandler {
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
+      for (Cluster readOnlyCluster : taskParams.getReadOnlyClusters()) {
+        validateConsistency(taskParams.getPrimaryCluster(), readOnlyCluster);
+      }
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
@@ -686,6 +689,10 @@ public class UniverseCRUDHandler {
 
     // Update Primary cluster
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    for (Cluster readOnlyCluster : u.getUniverseDetails().getReadOnlyClusters()) {
+      validateConsistency(primaryCluster, readOnlyCluster);
+    }
+
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -702,6 +709,7 @@ public class UniverseCRUDHandler {
   private UUID updateCluster(
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
+    validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
     TaskType taskType = TaskType.EditUniverse;
