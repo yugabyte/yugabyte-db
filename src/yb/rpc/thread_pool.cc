@@ -163,10 +163,7 @@ class Worker {
 class ThreadPool::Impl {
  public:
   explicit Impl(ThreadPoolOptions options)
-      : share_(std::move(options)),
-        queue_full_status_(STATUS_SUBSTITUTE(ServiceUnavailable,
-                                             "Queue is full, max items: $0",
-                                             share_.options.queue_limit)) {
+      : share_(std::move(options)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
     workers_.reserve(share_.options.max_workers);
   }
@@ -258,7 +255,6 @@ class ThreadPool::Impl {
   std::atomic<bool> closing_ = {false};
   std::atomic<size_t> adding_ = {0};
   const Status shutdown_status_ = STATUS(Aborted, "Service is shutting down");
-  const Status queue_full_status_;
 };
 
 ThreadPool::ThreadPool(ThreadPoolOptions options)

@@ -236,10 +236,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    if (status.IsServiceUnavailable()) {
-      Overflow(call, "global", thread_pool_.options().queue_limit);
-      return;
-    }
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << LogPrefix()
         << call->method_name() << " request on " << service_->service_name() << " from "

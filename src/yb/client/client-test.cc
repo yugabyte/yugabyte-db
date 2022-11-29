@@ -82,9 +82,9 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -2333,8 +2333,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
-  rpc::RpcContext rpc_context(nullptr);
-  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &rpc_context);
+  rpc::Sidecars sidecars;
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
   PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
 
   psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");

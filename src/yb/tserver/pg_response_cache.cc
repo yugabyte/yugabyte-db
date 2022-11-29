@@ -28,6 +28,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tserver/pg_client.pb.h"
 
@@ -110,10 +111,11 @@ void FillResponse(PgPerformResponsePB* response,
                   const PgResponseCache::Response& value) {
   *response = value.response;
   auto rows_data_it = value.rows_data.begin();
+  auto& sidecars = context->sidecars();
   for (auto& op : *response->mutable_responses()) {
     if (op.has_rows_data_sidecar()) {
-      context->StartRpcSidecar().Append(rows_data_it->AsSlice());
-      op.set_rows_data_sidecar(narrow_cast<int>(context->CompleteRpcSidecar()));
+      sidecars.Start().Append(rows_data_it->AsSlice());
+      op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
     }
     ++rows_data_it;
   }

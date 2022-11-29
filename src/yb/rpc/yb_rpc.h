@@ -30,6 +30,7 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/ev_util.h"
 #include "yb/util/net/net_fwd.h"
@@ -139,23 +140,9 @@ class YBInboundCall : public InboundCall {
 
   Slice method_name() const override;
 
-  // See RpcContext::AddRpcSidecar()
-  WriteBuffer& StartRpcSidecar();
-  virtual size_t CompleteRpcSidecar();
-  Status AssignSidecarTo(int idx, std::string* out);
-  size_t TransferSidecars(rpc::RpcContext* context);
-  size_t TakeSidecars(
-      WriteBuffer* sidecar_buffer, google::protobuf::RepeatedField<uint32_t>* offsets);
-  size_t TakeSidecars(
-      const RefCntBuffer& buffer,
-      const boost::container::small_vector_base<const uint8_t*>& sidecar_bounds);
-
-  // See RpcContext::ResetRpcSidecars()
-  void ResetRpcSidecars();
-
-  Slice GetFirstSidecar() const;
-
-  RefCntSlice ExtractSidecar(size_t index) const;
+  Sidecars& sidecars() {
+    return sidecars_;
+  }
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -208,10 +195,7 @@ class YBInboundCall : public InboundCall {
  protected:
   ScopedTrackedConsumption consumption_;
 
-  // Fields to store sidecars state. See rpc/rpc_sidecar.h for more info.
-  simple_spinlock take_sidecar_mutex_;
-  WriteBuffer sidecar_buffer_;
-  google::protobuf::RepeatedField<uint32_t> sidecar_offsets_;
+  Sidecars sidecars_;
 
   // Serialize and queue the response.
   virtual void Respond(AnyMessageConstPtr response, bool is_success);

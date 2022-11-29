@@ -40,11 +40,11 @@ class PgsqlWriteOperation :
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
                       DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context,
-                      rpc::RpcContext* rpc_context)
+                      rpc::Sidecars* sidecars)
       : DocOperationBase(request),
         doc_read_context_(std::move(doc_read_context)),
         txn_op_context_(txn_op_context),
-        rpc_context_(rpc_context) {
+        sidecars_(sidecars) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
@@ -127,7 +127,7 @@ class PgsqlWriteOperation :
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
-  rpc::RpcContext* const rpc_context_;
+  rpc::Sidecars* const sidecars_;
 
   int64_t result_rows_ = 0;
   WriteBufferPos row_num_pos_;

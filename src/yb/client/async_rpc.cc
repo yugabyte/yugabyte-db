@@ -681,7 +681,7 @@ Status WriteRpc::SwapResponses() {
             // sidecar in upcall. So we could convert downcall sidecar index to upcall index
             // using simple addition.
             pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
-                &pgsql_op->rpc_context());
+                &pgsql_op->sidecars());
           }
           pgsql_op->SetSidecarIndex(
               pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
@@ -810,7 +810,7 @@ Status ReadRpc::SwapResponses() {
         if (pgsql_response.has_rows_data_sidecar()) {
           if (pgsql_upcall_sidecar_offset == -1) {
             pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
-                &pgsql_op->rpc_context());
+                &pgsql_op->sidecars());
           }
           pgsql_op->SetSidecarIndex(
               pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
