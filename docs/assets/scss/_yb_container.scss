@@ -27,7 +27,7 @@
     top: 0;
     margin-left: -10px;
 
-    @media (max-width: 1420px) {
+    @media (max-width: 1445px) {
       display: none;
     }
   }
@@ -38,7 +38,7 @@
     max-width: 300px;
     margin-left: -300px;
     min-width: 300px;
-    z-index: 99;
+    z-index: 999;
   }
 
   .content-parent {
@@ -48,7 +48,11 @@
     margin-left: auto;
     margin-right: auto;
     min-width: 1080px;
-    transition: all 1200ms linear;
+    &.no-right-sidebar { overflow: hidden; }
+
+    &:hover {
+      z-index: 100;
+    }
 
     @-moz-document url-prefix() {
       max-width: calc(100% - 270px);

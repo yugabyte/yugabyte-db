@@ -34,6 +34,8 @@
     .left-sidebar-wrap-inner {
       position: sticky;
       height: calc(100vh - 112px);
+      display: flex;
+      flex-flow: column;
     }
 
     &.stick-bar {
@@ -135,16 +137,15 @@ aside.td-sidebar {
   }
 
   nav {
-    position: sticky;
-    top: 112px;
-    max-height: calc(100vh - 112px);
-    overflow-y: scroll;
-    scrollbar-width: thin;
-    height: 100%;
-    display: flex;
-    flex-flow: column;
-    transition: width 0.5s linear, opacity 0.2s 0.3s linear;
-    min-width: 268px;
+    &:not(.fixed-nav) {
+      overflow-y: scroll;
+      scrollbar-width: thin;
+      height: 100%;
+      display: flex;
+      flex-flow: column;
+      transition: width 0.5s linear, opacity 0.2s 0.3s linear;
+      min-width: 268px;
+    }
 
     &.collapse {
       width: 0;
@@ -215,15 +216,18 @@ aside.td-sidebar {
         > i {
           border: 0;
           position: absolute;
-          left: 8px;
-          top: 12px;
-          width: 16px;
-          height: 16px;
+          left: 2px;
+          top: 0;
+          width: 26px;
+          height: 40px;
           font-style: normal;
           text-align: center;
           background: #fff;
           cursor: pointer;
           z-index: 9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
 
           &::before {
             content: "\f0da";
@@ -257,6 +261,7 @@ aside.td-sidebar {
           display: flex;
           align-items: center;
           padding: 12px 0 12px 8px;
+          word-break: break-word;
 
           &:hover {
             &::before {
@@ -267,6 +272,7 @@ aside.td-sidebar {
               position: absolute;
               left: 0;
               background: rgb(80, 124, 225);
+              z-index: 9999;
             }
           }
 
@@ -281,6 +287,7 @@ aside.td-sidebar {
               position: absolute;
               left: 0;
               background: rgb(80, 124, 225);
+              z-index: 9999;
             }
           }
 
@@ -289,20 +296,42 @@ aside.td-sidebar {
           }
         }
 
+        &.submenu {
+          position: relative;
+
+          &.open::before {
+            content: "";
+            width: 10px;
+            height: 40px;
+            background: #fff;
+            position: absolute;
+            left: 12px;
+            top: 0;
+            z-index: 1;
+          }
+
+          &:not(.open):not(.unlink-list) > ul {
+            max-height: 0;
+            transition: all 0.5s ease;
+          }
+        }
+
         ul {
           padding-left: 3px;
           width: 100%;
           max-height: 2000px;
+          max-height: 6000px;
           overflow: hidden;
           transition: max-height 1.5s ease;
+          width: calc(100% + 14px);
           padding-left: 18px;
-          margin-left: -15px;
+          margin-left: -16px;
 
           li {
             padding-left: 13px;
 
             > i {
-              left: -7px;
+              left: -12px;
             }
 
             a {
@@ -330,26 +359,14 @@ aside.td-sidebar {
                 }
               }
             }
-          }
-        }
 
-        &.submenu {
-          position: relative;
+            &.submenu {
+              position: relative;
 
-          &.open::before {
-            content: "";
-            width: 10px;
-            height: 40px;
-            background: #fff;
-            position: absolute;
-            left: -2px;
-            top: 0;
-            z-index: 1;
-          }
-
-          &:not(.open):not(.unlink-list) > ul {
-            max-height: 0;
-            transition: all 0.5s ease;
+              &.open::before {
+                left: -2px;
+              }
+            }
           }
         }
       }
@@ -470,6 +487,7 @@ aside.td-sidebar {
 
     &::before {
       content: "";
+      background: darkgreen;
       background: #f5f1f2;
       width: 50px;
       height: 100%;
@@ -567,4 +585,8 @@ aside.td-sidebar {
     padding-top: 30px;
     margin-top: 8rem;
   }
+}
+
+footer {
+  z-index: 999;
 }

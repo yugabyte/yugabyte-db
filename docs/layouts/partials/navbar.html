@@ -1,5 +1,4 @@
 {{ $anchorLink := "" }}
-{{ $activeMenu := "/" }}
 {{ $docDir := "" }}
 {{ $versionDir := "" }}
 
@@ -19,10 +18,10 @@
 
 {{ $.Scratch.Set "docVersion" $versionDir }}
 {{ $.Scratch.Set "leftNavName" $leftNavName }}
-{{ range .Site.Menus.main.ByWeight.Reverse }}
-  {{ if in .URL $docDir }}
-    {{ $activeMenu = .URL }}
-  {{ end }}
+
+{{ $startNow := "" }}
+{{ if .Site.Menus.start_now }}
+  {{ $startNow = .Site.Menus.start_now }}
 {{ end }}
 
 <nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar">
@@ -53,6 +52,32 @@
               <span>{{ .Name }}</span>
               {{ .Post }}
             </a>
+
+            {{ if and (eq .Identifier "start_now") ($startNow) }}
+              <ul class="header-submenu">
+                {{ range $startNow }}
+                  <li>
+                    <a href="{{ .URL }}" title="{{ .Name }}">
+                      {{ if .Params.imageUrl }}
+                      <div class="icon">
+                        <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" />
+                      </div>
+                      {{ end }}
+                      <div class="title">
+                        <span>{{ .Name }}</span>
+                        {{ if .Params.description }}
+                          <span class="desc">{{ .Params.description }}</span>
+                        {{ end }}
+                        {{ if .Params.tagLine }}
+                          <span class="tag-line">{{ .Params.tagLine }}</span>
+                        {{ end }}
+                        <span class="btn">{{ .Params.buttonText }}</span>
+                      </div>
+                    </a>
+                  </li>
+                {{ end }}
+              </ul>
+            {{ end }}
           </li>
         {{ end }}
       </ul>
@@ -78,7 +103,7 @@
           {{ end }}
         {{ end }}
 
-        <li class="header-link{{- if eq $activeMenu .URL }} active{{- end }}{{ if .HasChildren }} dropdown{{- end }}">
+        <li class="header-link{{ if .HasChildren }} dropdown{{- end }}">
           <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
             <span class="header-menu-text">{{ .Name }}</span>
           </a>
@@ -89,6 +114,15 @@
         </li>
       {{ end }}
     </ul>
+    {{ if .Site.Params.versions }}
+      <div class="header-version-dropdown main-heading-with-version">
+        <ul class="navbar-nav- mt-2 mt-lg-0">
+          <li class="nav-item dropdown mr-4- d-none d-lg-block">
+            {{ partial "navbar-version-selector.html" . }}
+          </li>
+        </ul>
+      </div>
+    {{ end }}
   </div>
 </nav>
 

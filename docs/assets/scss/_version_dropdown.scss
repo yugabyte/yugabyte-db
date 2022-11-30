@@ -5,6 +5,23 @@
   justify-content: space-between;
   margin: 20px 0;
 
+  &.header-version-dropdown {
+    margin: 0;
+
+    ul {
+      margin: 0 0 8px 0;
+
+      .dropdown-toggle {
+        padding: 5px 12px;
+      }
+    }
+
+    .dropdown-menu {
+      right: 0;
+      left: initial;
+    }
+  }
+
   .dropdown-toggle {
     padding: 8px 12px;
     transition: all 0.2s;
@@ -44,7 +61,7 @@
       vertical-align: 0.255em;
       content: "\f107";
       color: #97a5b0;
-      font-family: 'Font Awesome 6 Free';
+      font-family: "Font Awesome 6 Free";
       border: 0;
     }
   }
@@ -90,4 +107,8 @@
       }
     }
   }
+}
+
+.heading-content .navbar-nav {
+  display: none;
 }

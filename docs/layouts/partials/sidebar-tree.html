@@ -34,26 +34,26 @@
           {{- end }}
         {{- end }}
       </ul>
-
+    </nav>
+    <nav class="fixed-nav">
       <ul class="left-bottom-nav">
         {{ range .Site.Menus.leftbottom }}
-          <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-            <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
-            {{- if .HasChildren }}
-              <i></i>
-              <ul class="internal animated list">
-                {{- range .Children }}
-                  <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
-                    <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
-                  </li>
-                {{- end }}
-              </ul>
+        <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+          <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+          {{- if .HasChildren }}
+          <i></i>
+          <ul class="internal animated list">
+            {{- range .Children }}
+            <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+              <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+            </li>
             {{- end }}
-          </li>
+          </ul>
+          {{- end }}
+        </li>
         {{- end }}
       </ul>
     </nav>
-    <div class="hover-collapse">.</div>
   </div>
 
   <div class="side-nav-collapse-toggle-2"></div>

@@ -10,6 +10,10 @@ footer {
   min-height: inherit;
   z-index: 9;
 
+  &.row {
+    margin: 0;
+  }
+
   .container {
     max-width: 1170px;
 
