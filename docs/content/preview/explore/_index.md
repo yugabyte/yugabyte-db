@@ -139,6 +139,8 @@ To stop a single-node cluster, do the following:
 
   {{% tab header="Multi-node cluster" lang="Multi-node cluster" %}}
 
+The following instructions show how to simulate a multi-node cluster on a single computer. To deploy a true multi-node cluster, follow the instructions in [Deploy](../deploy/).
+
 If a single-node cluster is currently running, first destroy the running cluster as follows:
 
 ```sh
@@ -297,7 +299,7 @@ To start the application against a running local cluster, use the following comm
 java -jar ./yb-simu-base-app.jar
 ```
 
-By default, the application connects to the local YugabyteDB cluster at 127.0.0.1.
+By default, the application connects to a local YugabyteDB cluster at 127.0.0.1.
 
 To connect to a different address or node, use the `-Dnode` flag to specify an IP address. For example:
 
