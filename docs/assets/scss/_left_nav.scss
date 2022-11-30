@@ -175,13 +175,7 @@ aside.td-sidebar {
           letter-spacing: 0.5px;
           text-transform: uppercase;
 
-          &.bottom-line:not(.bottom-link) {
-            a {
-              &::after {
-                //display: none;
-              }
-            }
-
+          &.separator:not(.bottom-link) {
             &::after {
               content: "";
               display: inline-block;
