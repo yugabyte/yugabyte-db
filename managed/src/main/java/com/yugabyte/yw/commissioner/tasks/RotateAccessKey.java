@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import java.util.Collection;
 import java.util.UUID;
+import org.apache.commons.lang.StringUtils;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -169,9 +170,9 @@ public class RotateAccessKey extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       params.taskAccessKey = taskAccessKey;
       NodeTaskBase task;
-      if (command == "AddAuthorizedKey") {
+      if (command.equals("AddAuthorizedKey")) {
         task = (AddAuthorizedKey) createTask(AddAuthorizedKey.class);
-      } else if (command == "RemoveAuthorizedKey") {
+      } else if (command.equals("RemoveAuthorizedKey")) {
         task = (RemoveAuthorizedKey) createTask(RemoveAuthorizedKey.class);
       } else {
         task = (VerifyNodeSSHAccess) createTask(VerifyNodeSSHAccess.class);
