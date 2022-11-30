@@ -24,8 +24,10 @@ import os
 import sys
 import time
 
-from typing import List, Dict
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type: ignore
+from typing import List, Dict, cast
+from yugabyte_pycommon import run_program, WorkDirContext  # type: ignore
+
+from yb.common_util import init_logging
 
 
 def get_auto_flags(
@@ -100,7 +102,8 @@ def main() -> None:
     build_root = os.environ['YB_BUILD_ROOT']
 
     manager = multiprocessing.Manager()
-    return_dict: Dict[str, str] = manager.dict()
+    # manager.dict() returns DictProxy[Any, Any]
+    return_dict: Dict[str, str] = cast(Dict[str, str], manager.dict())
     process_list = []
     with WorkDirContext(build_root):
         for program_name in args.program_list.split(','):
@@ -138,5 +141,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    init_logging()
+    init_logging(verbose=False)
     main()
