@@ -62,6 +62,7 @@ import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import io.prometheus.client.CollectorRegistry;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
@@ -77,7 +78,6 @@ import org.pac4j.play.store.PlaySessionStore;
 import org.yb.perf_advisor.module.PerfAdvisor;
 import play.Configuration;
 import play.Environment;
-import io.prometheus.client.CollectorRegistry;
 
 /**
  * This class is a Guice module that tells Guice to bind different types
@@ -98,8 +98,6 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
-
-    bind(PerfAdvisor.class).asEagerSingleton();
 
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
@@ -134,6 +132,7 @@ public class Module extends AbstractModule {
 
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
+      bind(PerfAdvisor.class).asEagerSingleton();
       bind(SwamperHelper.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();
