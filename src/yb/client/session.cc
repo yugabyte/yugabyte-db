@@ -306,6 +306,7 @@ internal::Batcher& YBSession::Batcher() {
 }
 
 void YBSession::Apply(YBOperationPtr yb_op) {
+  VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
   Batcher().Add(yb_op);
 }
 

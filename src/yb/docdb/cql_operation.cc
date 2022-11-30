@@ -1537,6 +1537,11 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   size_t num_rows_skipped = 0;
   size_t offset = 0;
+
+  // Read RPC for aggregates can't have a limit.
+  LOG_IF(DFATAL, request_.is_aggregate() && request_.has_limit()) << "QLRead request "
+      "for aggregates should not specify a limit: " << request_.ShortDebugString();
+
   if (request_.has_offset()) {
     offset = request_.offset();
   }
