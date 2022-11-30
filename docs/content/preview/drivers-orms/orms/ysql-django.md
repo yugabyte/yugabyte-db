@@ -44,7 +44,7 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-## Set up the application
+## Set up the database connection
 
 - Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
 
@@ -266,7 +266,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/python/django).

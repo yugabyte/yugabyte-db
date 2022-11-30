@@ -64,6 +64,8 @@ Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-e
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
+## Set up the database connection
+
 Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
 
 ```python
@@ -270,7 +272,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The source for the application above can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) repository.

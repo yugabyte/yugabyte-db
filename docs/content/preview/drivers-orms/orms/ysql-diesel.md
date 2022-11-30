@@ -47,7 +47,7 @@ $ cargo build --release
 
 If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
 
-## Configure the database
+## Set up the database connection
 
 The database connection settings are managed using the `DATABASE_URL` in the `.env` file, which is in the following format:
 
@@ -315,7 +315,3 @@ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.

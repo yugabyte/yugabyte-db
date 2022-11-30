@@ -284,7 +284,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate).

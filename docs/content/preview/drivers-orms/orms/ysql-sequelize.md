@@ -258,7 +258,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).

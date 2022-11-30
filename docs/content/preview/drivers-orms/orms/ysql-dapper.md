@@ -37,13 +37,13 @@ This tutorial assumes that you have:
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
-## Clone the "orm-examples" repository
+### Clone the "orm-examples" repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/dapper/DapperORM
 ```
 
-## Database configuration
+## Set up the database connection
 
 To modify the database connection settings, change the `DefaultConnection` field in `appsettings.json` file which is in the following format:
 
@@ -258,7 +258,3 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.

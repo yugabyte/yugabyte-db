@@ -56,7 +56,7 @@ $ cd ./node/prisma/
 $ npm install
 ```
 
-## Create database
+## Set up the database connection
 
 From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using the following command:
 
@@ -317,7 +317,3 @@ $ npx prisma studio
 To view the tables and data created, go to [http://localhost:5555](http://localhost:5555).
 
 ![Prisma studio](/images/develop/ecosystem-integrations/prisma-orm-nodejs.png)
-
-## Explore the source
-
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).

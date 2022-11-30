@@ -44,7 +44,7 @@ The tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/entityframework
 ```
 
-## Database configuration
+## Set up the database connection
 
 To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
 
@@ -267,7 +267,3 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/csharp/entityframework) repository.

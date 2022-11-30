@@ -50,7 +50,7 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebean
 ```
 
-## Database configuration
+## Set up the database connection
 
 - Modify the database configuration section of the `conf/application.conf` file to include the YugabyteDB JDBC driver settings as follows:
 
@@ -68,7 +68,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
   libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
   ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using:
 
   ```sh
   $ ./bin/ysqlsh
@@ -357,7 +357,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.

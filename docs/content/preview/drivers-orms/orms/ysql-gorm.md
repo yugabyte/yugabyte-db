@@ -268,7 +268,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-As mentioned earlier, the source for this application can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repository.
