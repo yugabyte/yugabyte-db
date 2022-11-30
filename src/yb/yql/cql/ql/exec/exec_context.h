@@ -153,7 +153,7 @@ class QueryPagingState {
   }
 
   // row-read counters.
-  void set_read_count(size_t val) {
+  void set_read_count(int64_t val) {
     counter_pb_.set_read_count(val);
   }
 
@@ -162,7 +162,7 @@ class QueryPagingState {
   }
 
   // row-skip counter.
-  void set_skip_count(size_t val) {
+  void set_skip_count(int64_t val) {
     counter_pb_.set_skip_count(val);
   }
 
@@ -171,7 +171,7 @@ class QueryPagingState {
   }
 
   // row limit counter processing.
-  void set_select_limit(size_t val) {
+  void set_select_limit(int64_t val) {
     counter_pb_.set_select_limit(val);
   }
 
@@ -184,7 +184,7 @@ class QueryPagingState {
   }
 
   // row offset counter processing.
-  void set_select_offset(size_t val) {
+  void set_select_offset(int64_t val) {
     counter_pb_.set_select_offset(val);
   }
 
@@ -211,7 +211,7 @@ class QueryPagingState {
     return counter_pb_;
   }
 
-  uint64_t max_fetch_size() const {
+  int64_t max_fetch_size() const {
     return max_fetch_size_;
   }
 

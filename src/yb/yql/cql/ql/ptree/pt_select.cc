@@ -879,6 +879,8 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
     // the LIMIT and OFFSET should be applied to the PRIMARY ReadRequest.
     child_select_->limit_clause_ = nullptr;
     child_select_->offset_clause_ = nullptr;
+    // Pass is_aggregate_ flag to allow the child ignore PAGING.
+    child_select_->is_parent_aggregate_ = is_aggregate_;
   }
 
   // Compile the child tree.

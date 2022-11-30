@@ -207,6 +207,10 @@ CassandraIterator CassandraResult::CreateIterator() const {
   return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
 }
 
+bool CassandraResult::HasMorePages() const {
+  return cass_result_has_more_pages(cass_result_.get());
+}
+
 std::string CassandraResult::RenderToString(
     const std::string& line_separator, const std::string& value_separator) const {
   std::string result;

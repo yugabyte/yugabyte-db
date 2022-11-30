@@ -135,6 +135,8 @@ class CassandraResult {
   std::string RenderToString(const std::string& line_separator = ";",
                              const std::string& value_separator = ",") const;
 
+  bool HasMorePages() const;
+
   const CassResult* get() const { return cass_result_.get(); }
 
  private:
