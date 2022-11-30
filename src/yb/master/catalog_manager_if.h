@@ -226,7 +226,7 @@ class CatalogManagerIf {
 
   virtual Status VisitSysCatalog(int64_t term) = 0;
 
-  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
+  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
