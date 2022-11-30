@@ -921,13 +921,13 @@ class KeyManagementConfiguration extends Component {
         });
         configs = configs
           ? configs.filter((config) => {
-              return (
-                !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
+            return (
+              !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
                 (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
                 (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
                 (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
-              );
-            })
+            );
+          })
           : [];
       }
       //feature flagging

@@ -45,27 +45,27 @@ interface IndexInfoPerDatabase {
 // Handles Index Suggestions performance advice 
 export const handleIndexSuggestionRequest = async(universeUUID: string): Promise<QueryData[] | null> => {
   const result: QueryData[] = [];
-    const response = await fetchUnusedIndexesSuggestions(universeUUID);
-    if (!response.data?.error && response.data.length) {
-      const indexArray: IndexInfoPerDatabase[] = response.data;
-      result.push({
-        type: RecommendationTypeEnum.IndexSuggestion,
-        target: "yugabyte",
-        indicator: 4,
-        table: {
-          data: indexArray.slice(0, 5)
-        }
-      });
-      result.push({
-        type: RecommendationTypeEnum.IndexSuggestion,
-        target: "employee",
-        indicator: 2,
-        table: {
-          data: indexArray.slice(5, 7)
-        }
-      });
-      return result;
-    }
+  const response = await fetchUnusedIndexesSuggestions(universeUUID);
+  if (!response.data?.error && response.data.length) {
+    const indexArray: IndexInfoPerDatabase[] = response.data;
+    result.push({
+      type: RecommendationTypeEnum.IndexSuggestion,
+      target: "yugabyte",
+      indicator: 4,
+      table: {
+        data: indexArray.slice(0, 5)
+      }
+    });
+    result.push({
+      type: RecommendationTypeEnum.IndexSuggestion,
+      target: "employee",
+      indicator: 2,
+      table: {
+        data: indexArray.slice(5, 7)
+      }
+    });
+    return result;
+  }
   return null;
 };
 
@@ -85,7 +85,7 @@ export const handleSchemaSuggestionRequest = async(universeUUID: string): Promis
     }));
   }
   return null;
-}
+};
 
 //TODO: Update API once ready with new endpoint
 // Handles the number of queries running on a node  performance advice 

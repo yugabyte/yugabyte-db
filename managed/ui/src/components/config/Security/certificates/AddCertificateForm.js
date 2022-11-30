@@ -505,12 +505,12 @@ export default class AddCertificateForm extends Component {
                     />
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
                 {!isEditMode && (
@@ -598,12 +598,12 @@ export default class AddCertificateForm extends Component {
                     </div>
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
 
@@ -633,12 +633,12 @@ export default class AddCertificateForm extends Component {
 
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
               </Tabs>

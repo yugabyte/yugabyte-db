@@ -27,11 +27,11 @@ describe('YBPagination render with props (numPages)', () => {
   it('renders the pagination button list with positive length', () => {
     render(<YBPagination numPages={20} />);
 
-    const paginationList = screen.getByRole('list')
-    const { getAllByRole } = within(paginationList)
-    const paginationButtons = getAllByRole('listitem')
+    const paginationList = screen.getByRole('list');
+    const { getAllByRole } = within(paginationList);
+    const paginationButtons = getAllByRole('listitem');
     expect(paginationList).toBeInTheDocument();
-    expect(paginationButtons.length).not.toEqual(0)
+    expect(paginationButtons.length).not.toEqual(0);
   });
   it('renders the prev button', () => {
     render(<YBPagination numPages={20} />);

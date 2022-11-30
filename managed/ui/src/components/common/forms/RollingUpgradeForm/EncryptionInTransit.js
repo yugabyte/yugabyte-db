@@ -139,8 +139,8 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     clientRootCA: universeDetails.clientRootCA
       ? universeDetails.clientRootCA
       : universeDetails.rootAndClientRootCASame
-      ? universeDetails.rootCA
-      : CREATE_NEW_CERTIFICATE,
+        ? universeDetails.rootCA
+        : CREATE_NEW_CERTIFICATE,
     createNewRootCA: false,
     createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,

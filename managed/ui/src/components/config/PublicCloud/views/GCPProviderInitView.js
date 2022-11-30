@@ -104,7 +104,7 @@ class GCPProviderInitView extends Component {
       setUpChrony: vals['setUpChrony'],
       showSetUpChrony: vals['setUpChrony'],
       ntpServers: vals['ntpServers']
-    }
+    };
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig['network'] = vals.destVpcId;
       gcpCreateConfig['use_host_vpc'] = true;
@@ -361,14 +361,14 @@ class GCPProviderInitView extends Component {
                 {gcpProjectField}
                 {destVpcField}
                 {regionInput}
-              <Row>
-                <Col lg={3}>
-                  <div className="form-item-custom-label">NTP Setup</div>
-                </Col>
-                <Col lg={7}>
-                  <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
-                </Col>
-              </Row>
+                <Row>
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">NTP Setup</div>
+                  </Col>
+                  <Col lg={7}>
+                    <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
+                  </Col>
+                </Row>
               </Col>
             </Row>
 
@@ -418,7 +418,7 @@ const validate = (values) => {
     }
   }
   if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+    errors.ntpServers = 'NTP servers cannot be empty';
   }
   return errors;
 };

@@ -125,7 +125,7 @@ export const UniverseSupportBundle = (props) => {
         visible={showModal && visibleModal === 'supportBundleModal'}
         onHide={() => {
           resetSteps();
-          closeModal()
+          closeModal();
         }}
         cancelLabel="Close"
         showCancelButton
@@ -139,7 +139,7 @@ export const UniverseSupportBundle = (props) => {
         {steps === stepsObj.firstStep && (
           <FirstStep
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep)
+              handleStepChange(stepsObj.secondStep);
             }}
           />
         )}
@@ -149,7 +149,7 @@ export const UniverseSupportBundle = (props) => {
               if(selectedOptions) {
                 setPayload(selectedOptions);
               } else {
-                setPayload(defaultOptions)
+                setPayload(defaultOptions);
               }
             }}
             isK8sUniverse={isK8sUniverse}
@@ -161,14 +161,14 @@ export const UniverseSupportBundle = (props) => {
             handleDeleteBundle={(bundleUUID) => handleDeleteBundle(universeDetails.universeUUID, bundleUUID)}
             supportBundles={supportBundles}
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep)
+              handleStepChange(stepsObj.secondStep);
             }}
           />
         )}
       </YBModal>
     </Fragment>
   );
-}
+};
 
 export function getSupportBundle(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');

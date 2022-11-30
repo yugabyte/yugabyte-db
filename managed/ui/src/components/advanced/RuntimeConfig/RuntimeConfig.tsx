@@ -95,4 +95,4 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
       </YBTabsPanel>
     </div>
   );
-}
+};

@@ -117,10 +117,10 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
 
       const details =
         detail.channelType === 'Email' ? emailDetails :
-        detail.channelType === 'Slack' ? slackDetails :
-        detail.channelType === 'PagerDuty' ? pagerDutyDetails :
-        detail.channelType === 'WebHook' ? webHookDetails :
-        null;
+          detail.channelType === 'Slack' ? slackDetails :
+            detail.channelType === 'PagerDuty' ? pagerDutyDetails :
+              detail.channelType === 'WebHook' ? webHookDetails :
+                null;
       showList.push(
         <ul key={i} className="cert-details-modal__list alertDestinationDetail">
           {details}

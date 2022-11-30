@@ -197,9 +197,11 @@ export default class RestoreBackup extends Component {
             label={'Table'}
           />
           {(featureFlags.test?.addRestoreTimeStamp ||
-              featureFlags.released?.addRestoreTimeStamp) && (
-              <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
-            )}
+              featureFlags.released?.addRestoreTimeStamp) &&
+              (
+                <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
+              )
+          }
           <Field name="parallelism" component={YBFormInput} label={'Parallel Threads'} />
           <Field
             name="kmsConfigUUID"

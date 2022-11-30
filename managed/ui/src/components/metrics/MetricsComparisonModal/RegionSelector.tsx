@@ -56,7 +56,7 @@ export const RegionSelector: FC<RegionSelectorData> = ({
                 <MenuItem
                   key={`${cluster.clusterType}-${clusterIdx}`}
                   onSelect={() => onRegionChanged(clusterDisplayName, null, cluster.uuid)}
-                  onClick={() => { document.body.click() }}
+                  onClick={() => { document.body.click(); }}
                   eventKey={`${cluster.clusterType}-${regionIdx}`}
                   active={cluster.uuid === selectedRegionClusterUUID && currentSelectedRegion === clusterDisplayName}
                 >
@@ -67,7 +67,7 @@ export const RegionSelector: FC<RegionSelectorData> = ({
                 key={key}
                 // Added this line due to the issue that dropdown does not close
                 // when a menu item is selected
-                onClick={() => { document.body.click() }}
+                onClick={() => { document.body.click(); }}
                 eventKey={`${region.uuid}-${regionIdx}`}
                 active={currentSelectedRegion === regionDisplayName && cluster.uuid === selectedRegionClusterUUID}
               >
@@ -75,8 +75,8 @@ export const RegionSelector: FC<RegionSelectorData> = ({
               </MenuItem>
             </Fragment>
           );
-        })
-      })
+        });
+      });
     }
   }
 
@@ -89,7 +89,7 @@ export const RegionSelector: FC<RegionSelectorData> = ({
         active={currentSelectedRegion === MetricConsts.ALL}
         // Added this line due to the issue that dropdown does not close
         // when a menu item is selected
-        onClick={() => { document.body.click() }}
+        onClick={() => { document.body.click(); }}
         eventKey={MetricConsts.ALL}
       >
         {'All clusters & regions'}

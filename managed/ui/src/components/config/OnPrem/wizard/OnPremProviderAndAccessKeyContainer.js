@@ -136,7 +136,7 @@ const validate = (values) => {
     errors.privateKeyContent = 'Required';
   }
   if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
-    errors.ntpServers = 'NTP servers cannot be empty'
+    errors.ntpServers = 'NTP servers cannot be empty';
   }
   return errors;
 };

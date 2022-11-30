@@ -214,11 +214,11 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
         {
           host_base: editInitialValues.data.AWS_HOST_BASE
             ? [
-                {
-                  value: editInitialValues.data.AWS_HOST_BASE,
-                  label: editInitialValues.data.AWS_HOST_BASE
-                }
-              ]
+              {
+                value: editInitialValues.data.AWS_HOST_BASE,
+                label: editInitialValues.data.AWS_HOST_BASE
+              }
+            ]
             : [],
           region: [{ value: null, label: null }],
           bucket: { label: bucketAndFolder.bucket, value: bucketAndFolder.bucket },

@@ -143,9 +143,9 @@ export default class UniverseAppsModal extends Component {
         ? 'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --'
         : 'docker run -d yugabytedb/yb-sample-apps';
 
-       const command = (appType.title === 'YCQL'
-              ? sampleAppCommandTxt
-              : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts)
+      const command = (appType.title === 'YCQL'
+        ? sampleAppCommandTxt
+        : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts);
 
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>

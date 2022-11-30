@@ -30,9 +30,9 @@ const header = (isReadOnly, destinationCount, onAddAlertDestination) => (
       </FlexShrink>
       <FlexShrink className="pull-right">
         {!isReadOnly && (
-        <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
+          <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
           Add Destination
-        </Button>
+          </Button>
         )}
       </FlexShrink>
     </FlexContainer>
@@ -191,9 +191,9 @@ export const AlertDestinations = (props) => {
           </MenuItem>
 
           {!isReadOnly && (
-          <MenuItem onClick={() => showDeleteModal(row.name)}>
-            <i className="fa fa-trash"></i> Delete Destination
-          </MenuItem>
+            <MenuItem onClick={() => showDeleteModal(row.name)}>
+              <i className="fa fa-trash"></i> Delete Destination
+            </MenuItem>
           )}
 
           {
