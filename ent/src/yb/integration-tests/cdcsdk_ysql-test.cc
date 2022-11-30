@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <chrono>
 #include <utility>
+
 #include <boost/assign.hpp>
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
@@ -8373,16 +8375,20 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceW
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
   // Wait for a background task cycle to complete.
+  std::sort(expected_table_ids.begin(), expected_table_ids.end());
   auto result = WaitFor(
       [&]() -> Result<bool> {
-        return VERIFY_RESULT(GetCDCStreamTableIds(stream_id)) == expected_table_ids;
+        auto actual_table_ids = VERIFY_RESULT(GetCDCStreamTableIds(stream_id));
+        std::sort(actual_table_ids.begin(), actual_table_ids.end());
+        return actual_table_ids == expected_table_ids;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier,
       "Waiting for background task to update cdc streams.");
   EXPECT_OK(result);
   // Extra ASSERT here to get nicely formatted debug information in case of failure.
   if (!result.ok()) {
-    ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
+    EXPECT_THAT(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)),
+                testing::UnorderedElementsAreArray(expected_table_ids));
   }
 }
 
@@ -8438,8 +8444,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultip
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_1);
 
   // Check that both the streams metadata has all the 3 table ids.
-  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
-  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)), expected_table_ids);
+  ASSERT_THAT(
+      ASSERT_RESULT(GetCDCStreamTableIds(stream_id)),
+      testing::UnorderedElementsAreArray(expected_table_ids));
+  ASSERT_THAT(
+      ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)),
+      testing::UnorderedElementsAreArray(expected_table_ids));
 }
 
 TEST_F(
@@ -8504,9 +8514,15 @@ TEST_F(
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_2);
 
   // Check that both the streams metadata has all the 3 table ids.
-  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id)), expected_table_ids);
-  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)), expected_table_ids);
-  ASSERT_EQ(ASSERT_RESULT(GetCDCStreamTableIds(stream_id_2)), expected_table_ids);
+  ASSERT_THAT(
+      ASSERT_RESULT(GetCDCStreamTableIds(stream_id)),
+      testing::UnorderedElementsAreArray(expected_table_ids));
+  ASSERT_THAT(
+      ASSERT_RESULT(GetCDCStreamTableIds(stream_id_1)),
+      testing::UnorderedElementsAreArray(expected_table_ids));
+  ASSERT_THAT(
+      ASSERT_RESULT(GetCDCStreamTableIds(stream_id_2)),
+      testing::UnorderedElementsAreArray(expected_table_ids));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWithActiveStream)) {

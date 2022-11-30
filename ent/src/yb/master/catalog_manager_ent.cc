@@ -341,7 +341,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
         return Status::OK();
       }
     } else {
-      table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id(0));
+      table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id(0));
       if (!table) {
         LOG(ERROR) << "Invalid table ID " << metadata.table_id(0) << " for stream " << stream_id;
         // TODO (#2059): Potentially signals a race condition that table got deleted while stream
@@ -914,7 +914,7 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
       // in different schema have same name.
       if (entry.type() == SysRowEntryType::TABLE) {
         TRACE("Looking up table");
-        scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
+        scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
         if (table_info == nullptr) {
           return STATUS(
               InvalidArgument, "Table not found by ID", entry.id(),
@@ -1085,7 +1085,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
     }
     case SysRowEntryType::TABLE: { // Restore TABLES.
       TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, entry.id());
+      scoped_refptr<TableInfo> table = tables_->FindTableOrNull(entry.id());
       if (table == nullptr) {
         // Restore Table.
         // TODO: implement
@@ -1850,7 +1850,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
     {
       SharedLock lock(mutex_);
       // Try to find the specified indexed table by id.
-      indexed_table = FindPtrOrNull(*table_ids_map_, req.indexed_table_id());
+      indexed_table = tables_->FindTableOrNull(req.indexed_table_id());
     }
 
     if (indexed_table == nullptr) {
@@ -2129,7 +2129,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     TRACE("Looking up table");
     {
       SharedLock lock(mutex_);
-      table = FindPtrOrNull(*table_ids_map_, table_data->old_table_id);
+      table = tables_->FindTableOrNull(table_data->old_table_id);
     }
 
     if (table != nullptr) {
@@ -2196,8 +2196,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           }
           SharedLock lock(mutex_);
 
-          for (const auto& entry : *table_ids_map_) {
-            table = entry.second;
+          for (const auto& table : tables_->GetAllTables()) {
 
             if (new_namespace_id != table->namespace_id()) {
               VLOG_WITH_FUNC(3) << "Namespace ids do not match: "
@@ -2217,15 +2216,15 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
             // Found the new YSQL table by name.
             if (table_data->new_table_id.empty()) {
-              LOG_WITH_FUNC(INFO) << "Found existing table " << entry.first << " for "
+              LOG_WITH_FUNC(INFO) << "Found existing table " << table->id() << " for "
                                   << new_namespace_id << "/" << meta.name() << " (old table "
                                   << table_data->old_table_id << ") with schema "
                                   << table_data->pg_schema_name;
-              table_data->new_table_id = entry.first;
-            } else if (table_data->new_table_id != entry.first) {
+              table_data->new_table_id = table->id();
+            } else if (table_data->new_table_id != table->id()) {
               const string msg = Format(
                   "Found 2 YSQL tables with the same name: $0 - $1, $2",
-                  meta.name(), table_data->new_table_id, entry.first);
+                  meta.name(), table_data->new_table_id, table->id());
               LOG_WITH_FUNC(WARNING) << msg;
               return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
             }
@@ -2255,7 +2254,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   TRACE("Looking up new table");
   {
     SharedLock lock(mutex_);
-    table = FindPtrOrNull(*table_ids_map_, table_data->new_table_id);
+    table = tables_->FindTableOrNull(table_data->new_table_id);
   }
   if (table == nullptr) {
     const string msg = Format("Created table not found: $0", table_data->new_table_id);
@@ -2730,10 +2729,10 @@ void CatalogManager::CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule
   {
     SharedLock lock(mutex_);
     hidden_tablets = hidden_tablets_;
-    tables.reserve(table_ids_map_->size());
-    for (const auto& p : *table_ids_map_) {
-      if (!p.second->is_system()) {
-        tables.push_back(p.second);
+    tables.reserve(tables_->Size());
+    for (const auto& p : tables_->GetAllTables()) {
+      if (!p->is_system()) {
+        tables.push_back(p);
       }
     }
   }
@@ -3851,7 +3850,7 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
       const auto cdcsdk_unprocessed_tables = stream_info->cdcsdk_unprocessed_tables;
       for (const auto& table_id : cdcsdk_unprocessed_tables) {
-        auto table = FindPtrOrNull(*table_ids_map_, table_id);
+        auto table = tables_->FindTableOrNull(table_id);
         Schema schema;
         auto status = table->GetSchema(&schema);
         if (!status.ok()) {
@@ -3899,10 +3898,9 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
   // Get all the tables associated with the namespace.
   // If we find any table present only in the namespace, but not in the namespace, we add the table
   // id to 'cdcsdk_unprocessed_tables'.
-  for (const auto& entry : *table_ids_map_) {
-    auto& table_info = *entry.second;
+  for (const auto& table_info : tables_->GetAllTables()) {
     {
-      auto ltm = table_info.LockForRead();
+      auto ltm = table_info->LockForRead();
       if (!ltm->visible_to_client()) {
         continue;
       }
@@ -3914,7 +3912,7 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
       for (const auto& col : ltm->schema().columns()) {
         if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
           // ybrowid column is added for tables that don't have user-specified primary key.
-          VLOG(1) << "Table: " << table_info.id()
+          VLOG(1) << "Table: " << table_info->id()
                   << ", will not be added to CDCSDK stream, since it does not have a primary key";
           has_pk = false;
           break;
@@ -3925,17 +3923,17 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
       }
     }
 
-    if (IsMatviewTable(table_info)) {
+    if (IsMatviewTable(*table_info)) {
       continue;
     }
-    if (!IsUserTableUnlocked(table_info)) {
+    if (!IsUserTableUnlocked(*table_info)) {
       continue;
     }
 
-    if (!stream_table_ids.contains(table_info.id())) {
-      LOG(INFO) << "Found unprocessed table: " << table_info.id()
+    if (!stream_table_ids.contains(table_info->id())) {
+      LOG(INFO) << "Found unprocessed table: " << table_info->id()
                 << ", for stream: " << stream_info;
-      stream_info->cdcsdk_unprocessed_tables.insert(table_info.id());
+      stream_info->cdcsdk_unprocessed_tables.insert(table_info->id());
     }
   }
 }
@@ -4090,7 +4088,7 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     {
       TRACE("Acquired catalog manager lock");
       SharedLock lock(mutex_);
-      table = FindPtrOrNull(*table_ids_map_, table_id);
+      table = tables_->FindTableOrNull(table_id);
     }
     // GetTablets locks lock_ in shared mode.
     if (table) {
@@ -6934,7 +6932,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     consumer_table_id = iter->first;
 
     // The destination table should be found or created by now.
-    table = FindPtrOrNull(*table_ids_map_, consumer_table_id);
+    table = tables_->FindTableOrNull(consumer_table_id);
   }
   SCHECK(table, NotFound, Substitute("Missing table id $0", consumer_table_id));
 

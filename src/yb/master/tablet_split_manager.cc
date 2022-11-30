@@ -596,7 +596,7 @@ class OutstandingSplitState {
 };
 
 void TabletSplitManager::DoSplitting(
-    const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
+    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map) {
   VLOG_WITH_FUNC(2) << "Start";
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
   // splits, to avoid missing outstanding splits for tables that have recently become invalid for
@@ -604,18 +604,18 @@ void TabletSplitManager::DoSplitting(
   // invalid for splitting (e.g. for tables with frequent PITR schedules).
   // https://github.com/yugabyte/yugabyte-db/issues/11459
   vector<TableInfoPtr> valid_tables;
-  for (const auto& table : table_info_map) {
-    Status status = ValidateSplitCandidateTable(*table.second);
+  for (const auto& table : tables) {
+    Status status = ValidateSplitCandidateTable(*table);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
       continue;
     }
-    status = filter_->ValidateSplitCandidateTableCdc(*table.second);
+    status = filter_->ValidateSplitCandidateTableCdc(*table);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
       continue;
     }
-    valid_tables.push_back(table.second);
+    valid_tables.push_back(table);
   }
 
   TabletReplicaMapCache replica_cache;
@@ -784,7 +784,7 @@ void TabletSplitManager::DisableSplittingFor(
 }
 
 void TabletSplitManager::MaybeDoSplitting(
-    const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
+    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
     VLOG_WITH_FUNC(2) << "Skipping splitting run because enable_automatic_tablet_splitting is not "
                          "set";
@@ -816,7 +816,7 @@ void TabletSplitManager::MaybeDoSplitting(
     return;
   }
 
-  DoSplitting(table_info_map, tablet_info_map);
+  DoSplitting(tables, tablet_info_map);
   last_run_time_ = CoarseMonoClock::Now();
   automatic_split_manager_time_ms_->set_value(ToMilliseconds(last_run_time_ - start_time));
 }

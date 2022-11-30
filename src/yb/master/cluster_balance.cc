@@ -343,15 +343,15 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   // Also, set tservers that have pending deletes.
   SetBlacklistAndPendingDeleteTS();
 
-  for (const auto& table : GetTableMap()) {
-    if (SkipLoadBalancing(*table.second)) {
+  for (const auto& table : GetTables()) {
+    if (SkipLoadBalancing(*table)) {
       // Populate the list of tables for which LB has been skipped
       // in LB's internal vector.
-      skipped_tables_per_run_.push_back(table.second);
+      skipped_tables_per_run_.push_back(table);
       continue;
     }
-    const TableId& table_id = table.first;
-    const auto& table_info = table.second;
+    const TableId& table_id = table->id();
+    const auto& table_info = table;
 
     if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table_info)) {
       // Placement information was not present in catalog manager cache. This is probably a
@@ -430,25 +430,25 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   ReportUnusualLoadBalancerState();
 
   // Loop over all tables to analyze the global and per-table load.
-  for (const auto& table : GetTableMap()) {
-    if (SkipLoadBalancing(*table.second)) {
+  for (const auto& table : GetTables()) {
+    if (SkipLoadBalancing(*table)) {
       continue;
     }
 
-    auto it = per_table_states_.find(table.first);
+    auto it = per_table_states_.find(table->id());
     if (it == per_table_states_.end()) {
       // If the table state doesn't exist, it was not fully initialized in the previous iteration.
-      VLOG(1) << "Unable to find the state for table " << table.first;
+      VLOG(1) << "Unable to find the state for table " << table->id();
       continue;
     }
     state_ = it->second.get();
 
     // Prepare the in-memory structures.
-    auto handle_analyze_tablets = AnalyzeTabletsUnlocked(table.first);
+    auto handle_analyze_tablets = AnalyzeTabletsUnlocked(table->id());
     if (!handle_analyze_tablets.ok()) {
-      LOG(WARNING) << "Skipping load balancing " << table.first << ": "
+      LOG(WARNING) << "Skipping load balancing " << table->id() << ": "
                    << StatusToString(handle_analyze_tablets);
-      per_table_states_.erase(table.first);
+      per_table_states_.erase(table->id());
       master_errors++;
     }
   }
@@ -459,23 +459,23 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   bool task_added = false;
 
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
-  for (const auto& table : GetTableMap()) {
+  for (const auto& table : GetTables()) {
     state_ = nullptr;
     if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
       break;
     }
-    if (SkipLoadBalancing(*table.second)) {
+    if (SkipLoadBalancing(*table)) {
       continue;
     }
 
-    auto it = per_table_states_.find(table.first);
+    auto it = per_table_states_.find(table->id());
     if (it == per_table_states_.end()) {
       // If the table state doesn't exist, it didn't get analyzed by the previous iteration.
-      VLOG(1) << "Unable to find table state for table " << table.first
+      VLOG(1) << "Unable to find table state for table " << table->id()
               << ". Skipping load balancing execution";
       continue;
     } else {
-      VLOG(5) << "Load balancing table " << table.first;
+      VLOG(5) << "Load balancing table " << table->id();
     }
     state_ = it->second.get();
 
@@ -492,12 +492,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       for (; remaining_removals > 0; --remaining_removals) {
         if (state_->allow_only_leader_balancing_) {
           YB_LOG_EVERY_N_SECS(INFO, 30)
-              << "Skipping remove replicas. Only leader balancing table " << table.first;
+              << "Skipping remove replicas. Only leader balancing table " << table->id();
           break;
         }
         auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
         if (!handle_remove.ok()) {
-          LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
+          LOG(WARNING) << "Skipping remove replicas for " << table->id() << ": "
                        << StatusToString(handle_remove);
           master_errors++;
           break;
@@ -514,12 +514,12 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     for ( ; remaining_adds > 0; --remaining_adds) {
       if (state_->allow_only_leader_balancing_) {
         YB_LOG_EVERY_N_SECS(INFO, 30) << "Skipping Add replicas. Only leader balancing table "
-                                      << table.first;
+                                      << table->id();
         break;
       }
       auto handle_add = HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_add.ok()) {
-        LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
+        LOG(WARNING) << "Skipping add replicas for " << table->id() << ": "
                      << StatusToString(handle_add);
         master_errors++;
         break;
@@ -532,14 +532,14 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
     }
 
     if (PREDICT_FALSE(FLAGS_TEST_load_balancer_handle_under_replicated_tablets_only)) {
-      LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
+      LOG(INFO) << "Skipping remove replicas and leader moves for " << table->id();
       continue;
     }
 
     // Handle tablet servers with too many leaders.
     // Check the current pending tasks per table to ensure we don't trigger the same task.
     size_t table_remaining_leader_moves = state_->options_->kMaxConcurrentLeaderMovesPerTable;
-    set_remaining(state_->pending_stepdown_leader_tasks_[table.first].size(),
+    set_remaining(state_->pending_stepdown_leader_tasks_[table->id()].size(),
                   &table_remaining_leader_moves);
     // Keep track of both the global and per table limit on number of moves.
     for ( ;
@@ -547,7 +547,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
          --remaining_leader_moves, --table_remaining_leader_moves) {
       auto handle_leader = HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts);
       if (!handle_leader.ok()) {
-        LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
+        LOG(WARNING) << "Skipping leader moves for " << table->id() << ": "
                      << StatusToString(handle_leader);
         master_errors++;
         break;
@@ -599,8 +599,8 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
   }
 
   uint32_t table_tasks = 0;
-  for (const auto& table : GetTableMap()) {
-    table_tasks += table.second->NumLBTasks();
+  for (const auto& table : GetTables()) {
+    table_tasks += table->NumLBTasks();
   }
 
   if (!master_errors && !table_tasks && tasks_added_in_this_run) {
@@ -1512,8 +1512,8 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
   return table_info->GetTablets(IncludeInactive::kTrue);
 }
 
-const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
-  return *catalog_manager_->table_ids_map_;
+TableIndex::TablesRange ClusterLoadBalancer::GetTables() const {
+  return catalog_manager_->tables_->GetPrimaryTables();
 }
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
