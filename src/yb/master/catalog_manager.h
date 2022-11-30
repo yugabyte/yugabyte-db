@@ -60,18 +60,19 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/system_tablet.h"
+#include "yb/master/table_index.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -898,7 +899,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   intptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
     // This method should not hold the lock, because Version method is thread safe.
-    return tablet_map_.Version() + table_ids_map_.Version();
+    return tablet_map_.Version() + tables_.Version();
   }
 
   intptr_t tablet_locations_version() const override {
@@ -1138,6 +1139,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              const NamespaceId& namespace_id,
                              const NamespaceName& namespace_name,
                              const std::vector<Partition>& partitions,
+                             bool colocated,
                              IndexInfoPB* index_info,
                              TabletInfos* tablets,
                              CreateTableResponsePB* resp,
@@ -1175,6 +1177,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                            const PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
+                                           bool colocated,
                                            IndexInfoPB* index_info) REQUIRES(mutex_);
 
   // Helper for creating the initial TabletInfo state.
@@ -1466,6 +1469,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
   void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
+  void AbortAndWaitForAllTasksUnlocked() REQUIRES_SHARED(mutex_);
 
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
@@ -1515,7 +1519,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void HandleNewTableId(const TableId& id);
 
   // Creates a new TableInfo object.
-  scoped_refptr<TableInfo> NewTableInfo(TableId id) override;
+  scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) override;
 
   // Register the tablet server with the ts manager using the Raft config. This is called for
   // servers that are part of the Raft config but haven't registered as yet.
@@ -1632,8 +1636,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
   // are not saved in the name maps below.
 
-  // Table map: table-id -> TableInfo
-  VersionTracker<TableInfoMap> table_ids_map_ GUARDED_BY(mutex_);
+  // Data structure containing all tables.
+  VersionTracker<TableIndex> tables_ GUARDED_BY(mutex_);
 
   // Table map: [namespace-id, table-name] -> TableInfo
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
