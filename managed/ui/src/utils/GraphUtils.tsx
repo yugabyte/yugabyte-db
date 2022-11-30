@@ -85,7 +85,7 @@ export const getTabContent = (
           'YCQL Ops',
           'YEDIS Ops',
           'YEDIS Advanced',
-          'Resource']
+          'Resource'];
         if (skipList.includes(title)) {
           return null;
         }
@@ -93,4 +93,4 @@ export const getTabContent = (
     }
   }
   return tabData;
-}
+};

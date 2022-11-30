@@ -126,8 +126,8 @@ export const LDAPAuth = (props) => {
         enable_ldaps === 'true'
           ? 'enable_ldaps'
           : enable_ldap_start_tls === 'true'
-          ? 'enable_ldap_start_tls'
-          : 'unsecure';
+            ? 'enable_ldap_start_tls'
+            : 'unsecure';
       finalFormData = { ...finalFormData, ldap_security };
     }
 
@@ -142,12 +142,12 @@ export const LDAPAuth = (props) => {
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-                key: `${LDAP_PATH}.${key}`,
-                value: formValues[key]
-              })
+              key: `${LDAP_PATH}.${key}`,
+              value: formValues[key]
+            })
             : deleteRunTimeConfig({
-                key: `${LDAP_PATH}.${key}`
-              })
+              key: `${LDAP_PATH}.${key}`
+            })
         );
       }
 

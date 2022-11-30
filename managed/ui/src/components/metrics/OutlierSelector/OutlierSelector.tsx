@@ -30,7 +30,7 @@ export const OutlierSelector: FC<OutlierSelectorData> = ({
 }) => {
   const inputFormat = (num: Number) => {
     return splitType === SplitType.NODE ? num + ' nodes' : num + ' tables';
-  }
+  };
 
   return (
     <div className="outlier-container">
@@ -46,7 +46,7 @@ export const OutlierSelector: FC<OutlierSelectorData> = ({
               active={selectedOutlierType === outlierType.value}
             >
               <span className="outlier-button-title">{outlierType.label}</span>
-            </Button>)
+            </Button>);
           })}
         </ButtonGroup>
       </span>
@@ -63,4 +63,4 @@ export const OutlierSelector: FC<OutlierSelectorData> = ({
       />
     </div>
   );
-}
+};

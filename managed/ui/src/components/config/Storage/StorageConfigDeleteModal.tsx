@@ -83,8 +83,8 @@ export const StorageConfigDeleteModal: FC<StorageConfigDeleteModalProps> = ({
         associatedBackups?.length !== 0
           ? null
           : () => {
-              onDelete();
-            }
+            onDelete();
+          }
       }
       visible={visible}
     >

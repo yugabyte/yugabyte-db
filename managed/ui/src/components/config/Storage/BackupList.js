@@ -133,7 +133,7 @@ export const BackupList = (props) => {
             configName={configName}
             configUUID={configData}
             onDelete={() => {
-              deleteStorageConfig(configData)
+              deleteStorageConfig(configData);
             }}
           />
           <MenuItem

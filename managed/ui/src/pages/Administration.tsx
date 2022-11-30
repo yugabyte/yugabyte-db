@@ -61,7 +61,7 @@ const ADVANCED_TAB = {
   title: 'Advanced',
   id: 'advanced',
   defaultTab: 'global-config'
-}
+};
 
 interface RouteParams {
   tab: AdministrationTabs;

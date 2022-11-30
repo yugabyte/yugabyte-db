@@ -112,14 +112,14 @@ class TaskDetail extends Component {
           {/* TODO use API response to check retryable. */}
           {allowRetry && isNonEmptyString(currentTaskData.title) &&
             currentTaskData.retryable && (
-              <div
-                className="btn btn-orange text-center pull-right task-detail-button"
-                onClick={() => self.retryTaskClicked(taskUUID)}
-              >
-                <i className="fa fa-refresh"></i>
+            <div
+              className="btn btn-orange text-center pull-right task-detail-button"
+              onClick={() => self.retryTaskClicked(taskUUID)}
+            >
+              <i className="fa fa-refresh"></i>
                 Retry Task
-              </div>
-            )}
+            </div>
+          )}
         </div>
       );
     };

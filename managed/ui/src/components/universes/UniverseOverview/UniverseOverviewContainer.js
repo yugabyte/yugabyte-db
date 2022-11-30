@@ -1,5 +1,5 @@
 // Copyright YugaByte Inc.
-
+// eslint-disable-next-line import/named
 import { UniverseOverview } from '../../universes';
 import { connect } from 'react-redux';
 

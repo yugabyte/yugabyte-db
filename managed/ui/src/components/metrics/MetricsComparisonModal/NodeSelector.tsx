@@ -32,7 +32,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   let zone = '';
   let renderItem = null;
   let nodeData = null;
-  let isDisabled = (selectedUniverse === MetricConsts.ALL);
+  const isDisabled = (selectedUniverse === MetricConsts.ALL);
 
   if (
     isNonEmptyObject(selectedUniverse) &&
@@ -72,7 +72,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             key={zoneKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeItem.cloudInfo.az}
             active={selectedZoneName === nodeItem.cloudInfo.az}
           >
@@ -92,7 +92,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             key={nodeKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeIdx}
             active={selectedNode === nodeItem.nodeName}
           >
@@ -106,7 +106,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             {nodeItem.nodeName === otherSelectedNode ? 'Already selected' : ''}
           </MenuItem>
         </Fragment>
-      )
+      );
     });
 
     // By default we need to have 'All nodes' populated
@@ -118,7 +118,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedNode === MetricConsts.ALL && !selectedZoneName}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {'All AZs & nodes'}

@@ -82,8 +82,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;

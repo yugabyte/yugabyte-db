@@ -30,5 +30,5 @@ export const CpuUsage: FC<CpuUsageRecommendation> = ({ summary }) => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
