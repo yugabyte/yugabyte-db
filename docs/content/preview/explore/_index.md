@@ -19,6 +19,8 @@ The Explore section introduces you to YugabyteDB's features and provides example
 
 Most examples demonstrating database features such as API compatibility can be run on a single-node cluster on your laptop or using the free Sandbox cluster in YugabyteDB Managed. More advanced scenarios use a multi-node deployment. Refer to [Set up your YugabyteDB cluster](#set-up-your-yugabytedb-cluster) for instructions on creating clusters to run the examples.
 
+## Overview
+
 The following table describes the YugabyteDB features you can explore, along with the setup required to run the examples (single- or multi-node cluster).
 
 | Section | Purpose | [Cluster&nbsp;Setup](#set-up-your-yugabytedb-cluster) |
@@ -143,7 +145,7 @@ If a single-node cluster is currently running, first destroy the running cluster
 ./bin/yugabyted destroy
 ```
 
-Start a local three-node cluster with a replication factor of `3`by first creating a single node cluster as follows:
+Start a local three-node cluster with a replication factor of `3` by first creating a single node cluster as follows:
 
 ```sh
 ./bin/yugabyted start \
