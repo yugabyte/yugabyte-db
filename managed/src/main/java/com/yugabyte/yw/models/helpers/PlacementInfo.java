@@ -81,6 +81,8 @@ public class PlacementInfo {
     @ApiModelProperty public int numNodesInAZ;
     // Is this an affinitized zone.
     @ApiModelProperty public boolean isAffinitized;
+    // The Load Balancer id.
+    @ApiModelProperty public String lbName;
 
     @Override
     public String toString() {

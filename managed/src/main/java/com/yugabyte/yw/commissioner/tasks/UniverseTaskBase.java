@@ -2,10 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -47,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
@@ -99,6 +96,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -117,6 +115,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -130,10 +129,30 @@ import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
+
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -149,22 +168,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import javax.annotation.Nullable;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
+
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -2545,6 +2551,77 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Creates a task list to add/remove nodes from load balancer.
+   *
+   * @param lbMap The mapping for each cluster (Provider UUID + Region + LB Name) -> List of nodes
+   *     per AZ
+   */
+  public void createManageLoadBalancerTasks(Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap) {
+    if (MapUtils.isNotEmpty(lbMap)) {
+      SubTaskGroup subTaskGroup =
+          getTaskExecutor().createSubTaskGroup("ManageLoadBalancerGroup", executor);
+      for (Map.Entry<LoadBalancerPlacement, LoadBalancerConfig> lb : lbMap.entrySet()) {
+        LoadBalancerPlacement lbPlacement = lb.getKey();
+        LoadBalancerConfig lbConfig = lb.getValue();
+        ManageLoadBalancerGroup.Params params = new ManageLoadBalancerGroup.Params();
+        // Add the universe uuid.
+        params.universeUUID = taskParams().universeUUID;
+        // Add the provider uuid.
+        params.providerUUID = lbPlacement.getProviderUUID();
+        // Add the region for this load balancer
+        params.regionCode = lbPlacement.getRegionCode();
+        // Add the load balancer nodes to be added/removed
+        params.lbConfig = lbConfig;
+        // Create and add a task for this load balancer
+        ManageLoadBalancerGroup task = createTask(ManageLoadBalancerGroup.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+  /**
+   * Create Load Balancer map to add nodes to load balancer.
+   *
+   * @param taskParams The universe task params
+   */
+  public Map<LoadBalancerPlacement, LoadBalancerConfig> createLoadBalancerMap(
+      UniverseDefinitionTaskParams taskParams, List<NodeDetails> nodesToIgnore) {
+    // Prov1 + Reg1 + LB1 -> AZ1 (n1, n2, n3,...), AZ2 (n4, n5), AZ3(nX)
+    Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap = new HashMap<>();
+    // Get load balancers for each cluster
+    List<Cluster> clusters = taskParams.clusters;
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent.enableLB) {
+        // Map AZ -> nodes for each cluster
+        Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
+        Set<NodeDetails> nodes = taskParams.getNodesInCluster(cluster.uuid);
+        if (nodesToIgnore != null) {
+          nodes =
+              nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
+        }
+        for (NodeDetails node : nodes) {
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+          azNodes.computeIfAbsent(az, v -> new HashSet<>()).add(node);
+        }
+        PlacementInfo.PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(0);
+        UUID providerUUID = placementCloud.uuid;
+        List<PlacementInfo.PlacementAZ> azList =
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+        for (PlacementInfo.PlacementAZ placementAZ : azList) {
+          String lbName = placementAZ.lbName;
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          LoadBalancerPlacement lbPlacement =
+              new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+          LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
+          loadBalancerMap.computeIfAbsent(lbPlacement, v -> lbConfig).addNodes(az, azNodes.get(az));
+        }
+      }
+    }
+    return loadBalancerMap;
   }
 
   // Subtask to update gflags in memory.

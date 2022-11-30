@@ -286,6 +286,9 @@ public enum TaskType {
   UpdateUniverseAccessKey(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey.class),
 
+  ManageLoadBalancerGroup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup.class),
+
   // Tasks belonging to subtasks.xcluster classpath
   BootstrapProducer(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer.class),
 

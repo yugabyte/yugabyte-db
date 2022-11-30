@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NodeID;
+
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -44,4 +47,14 @@ public class AZUCloudImpl implements CloudAPI {
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     return true;
   }
+
+  @Override
+  public void manageNodeGroup(
+      Provider provider,
+      String regionCode,
+      String lbName,
+      List<String> nodeNames,
+      List<NodeID> nodeIDs,
+      String protocol,
+      List<Integer> ports) {}
 }
