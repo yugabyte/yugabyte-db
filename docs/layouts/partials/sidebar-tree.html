@@ -15,10 +15,12 @@
           {{- if eq $menuName $key }}
             {{ range .ByWeight }}
               {{- if .Params.showSection }}
-                {{ if and (.HasChildren) (.Params.hideLink) (not .Params.hideChildren) }}
-                  {{ $parentIdentifier := printf "%s" .Identifier }}
+                {{ if .Params.hideLink }}
+                  {{ if .HasChildren }}
+                    {{ $parentIdentifier := printf "%s" .Identifier }}
 
-                  {{ template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "newList" false "parentIdentifier" $parentIdentifier) }}
+                    {{ template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "newList" false "parentIdentifier" $parentIdentifier) }}
+                  {{- end }}
                 {{ else }}
                   <li class="section{{- if .HasChildren }} submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
                     <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
