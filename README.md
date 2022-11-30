@@ -127,7 +127,7 @@ Apache AGE is intended to be simple to install and run. It can be installed with
 &nbsp;Install PosgtreSQL
 </h4>
 
-You will need to install an AGE compatible version of Postgres<a>, for now AGE only supports Postgres 11 and 12.
+You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11 and 12. Supporting the latest versions is on AGE roadmap. 
      
 <h4>
 &nbsp;Install From Package Manager
