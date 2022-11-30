@@ -11,7 +11,7 @@
     </a>
     <a href="https://age.apache.org/age-manual/master/_static/logo.png" target="_blank">
     </a>
-     is the leading multi-model graph database </h3>
+     is a leading multi-model graph database </h3>
      
 </h3>
 
