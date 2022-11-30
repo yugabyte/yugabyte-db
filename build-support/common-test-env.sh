@@ -1021,8 +1021,11 @@ run_postproces_test_result_script() {
       --fatal-details-path-prefix "$YB_FATAL_DETAILS_PATH_PREFIX"
     )
   fi
-  "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
-    "${args[@]}" "$@"
+  (
+    export PYTHONPATH=${YB_SRC_ROOT}/python
+    "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
+      "${args[@]}" "$@"
+  )
 }
 
 rewrite_test_log() {

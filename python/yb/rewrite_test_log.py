@@ -31,7 +31,7 @@ from sys_detection import is_macos
 
 from typing import List, Optional, Set, Any, Tuple, Dict
 
-from yb.common_util import init_env, shlex_join
+from yb.common_util import init_logging, shlex_join
 
 UUID_RE_STR = '[0-9a-f]{32}'
 TABLET_OR_PEER_ID_RE_STR = r'\b[T|P] [0-9a-f]{32}\b'
@@ -562,7 +562,7 @@ class LogRewriterTool:
 
         args = parser.parse_args()
 
-        init_env(verbose=args.verbose)
+        init_logging(verbose=args.verbose)
 
         if args.output_extension:
             input_path, input_ext = os.path.splitext(args.input_log_path)

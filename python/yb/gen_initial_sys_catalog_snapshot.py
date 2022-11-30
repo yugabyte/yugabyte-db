@@ -23,8 +23,9 @@ import logging
 import shutil
 import time
 
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext, mkdir_p
-from yb.common_util import YB_SRC_ROOT
+from yugabyte_pycommon import run_program, WorkDirContext, mkdir_p  # type: ignore
+
+from yb.common_util import YB_SRC_ROOT, init_logging
 
 
 def main():
@@ -78,5 +79,5 @@ def main():
 
 
 if __name__ == '__main__':
-    init_logging()
+    init_logging(verbose=False)
     main()

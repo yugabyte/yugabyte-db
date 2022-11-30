@@ -35,7 +35,7 @@ from yb.common_util import (
     is_ninja_build_root,
 )
 
-from yb.cmake_cache import CMakeCache
+from yb.cmake_cache import CMakeCache, load_cmake_cache
 
 
 def make_extensions(exts_without_dot: List[str]) -> List[str]:
@@ -505,7 +505,7 @@ class CMakeDepGraph:
     def __init__(self, build_root: str) -> None:
         self.build_root = build_root
         self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
-        self.cmake_cache = CMakeCache(os.path.join(build_root, 'CMakeCache.txt'))
+        self.cmake_cache = load_cmake_cache(self.build_root)
         self._load()
 
     def _load(self) -> None:
@@ -626,9 +626,8 @@ class DependencyGraph:
         We are reading this information from CMakeCache.txt.
         """
         if self.cxx_tests_are_being_built_cached_value is None:
-            # If BUILD_TESTS is not present in the cache, we assume we are building the tests.
             self.cxx_tests_are_being_built_cached_value = \
-                bool(self.get_cmake_dep_graph().cmake_cache.get('BUILD_TESTS', True))
+                bool(self.get_cmake_dep_graph().cmake_cache.get_or_raise('YB_BUILD_TESTS'))
         return self.cxx_tests_are_being_built_cached_value
 
     def find_node(self,

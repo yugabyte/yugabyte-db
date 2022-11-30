@@ -515,14 +515,6 @@ is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
 }
 
-build_compiler_if_necessary() {
-  # Sometimes we have to build the compiler before we can run CMake.
-  if is_clang && is_linux; then
-    log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
-  fi
-}
-
 set_compiler_type_based_on_jenkins_job_name() {
   if [[ -n "${YB_COMPILER_TYPE:-}" ]]; then
     if [[ -n "${JOB_NAME:-}" ]]; then
@@ -2633,10 +2625,12 @@ build_clangd_index() {
   log "Building Clangd index at ${clangd_index_path}"
   (
     set -x
+    # The location of the final compilation database file needs to be consistent with that in the
+    # compile_commands.py module.
     time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
         --executor=all-TUs \
         "--format=${format}" \
-        "${BUILD_ROOT}/compile_commands.json" \
+        "${BUILD_ROOT}/compile_commands/combined_postprocessed/compile_commands.json" \
         >"${clangd_index_path}"
   )
 }
