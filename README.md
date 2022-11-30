@@ -94,12 +94,6 @@ Apache AGE is :
 - **Property Indexes**: on both vertices(nodes) and edges
 - **Full PostgreSQL**: supports PG features
 
-<h2><img height="20" src="/img/news.jpeg">&nbsp;&nbsp;Latest Events</h2>
-
-- Latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc0).
-- Renewed Apache AGE homepage - [Apache AGE website](http://age.apache.org/).
-- Send all your comments and inquiries to the user mailing list, users@age.apache.org.
-- Support for PostgreSQL will be added in the Q4 2022 to focus more on implementing the openCypher specification.
 
 
 <h2><img height="30" src="/img/documentation.svg">&nbsp;&nbsp;Documentation</h2>
