@@ -2,12 +2,7 @@
 title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Use yugabyted to run single-node YugabyteDB clusters.
-menu:
-  preview:
-    identifier: yugabyted
-    parent: configuration
-    weight: 2451
+description: Examples for insecure deployment of a YugabyteDB cluster.
 type: docs
 rightNav:
   hideH4: true
@@ -725,68 +720,54 @@ Combinations of environment variables and their uses.
 ## Examples
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li class="active">
+  <li>
     <a href="../yugabyted/#examples" class="nav-link">
       <!-- <i class="fa-brands fa-apple" aria-hidden="true"></i> -->
-      Secure Cluster
+    Secure Cluster
     </a>
   </li>
-  <li>
+  <li class="active">
     <a href="../insecure-yugabyted-examples/#examples" class="nav-link">
       <!-- <i class="fa-brands fa-linux" aria-hidden="true"></i> -->
-      Insecure Cluster
+    Insecure Cluster
     </a>
   </li>
 </ul>
 
 {{< note title="Note" >}}
 
-For any type of secure cluster deployment or using encryption at rest, `openssl` must be installed in the machine.
+For using encryption at rest, `openssl` must be installed in the machine.
 
 {{< /note >}}
 
 ### Create a single-node cluster
 
-Create a single-node secure cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
-./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
 ### Create a local multi-node cluster
 
-Create the certificates for SSL and TLS connection:
+Run the following command:
 
 ```sh
-./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
 ```
 
-Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory. Copy these certificates to the respective node's `<base_dir>/certs` directory.
-
-```sh
-cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
-cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
-cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
-```
-
-Start the first node by running the following command:
-
-```sh
-./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
-```
-
-On MacOS and Linux, the additional nodes need loopback addresses configured, as follows:
+On MacOS and Linux, the additional nodes need loopback addresses configured:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Add two more nodes to the cluster using the `join` option, as follows:
+Add two more nodes to the cluster using the `join` option.
 
 ```sh
-./bin/yugabyted start --secure --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
-./bin/yugabyted start --secure --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
+./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
+./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
 ```
 
 ### Destroy a local multi-node cluster
@@ -801,100 +782,80 @@ To destroy the multi-node cluster, execute the following:
 
 ### Create a multi-zone cluster
 
-To create a multi-node secrue cluster, start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+To create a multi-node cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
 ```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
+./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=zone
 ```
 
-Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
+Start the second and the third node on two separate VMs as follows:
 
 ```sh
-./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
 ```
-
-Manually copy the generated certificates in the first VM to the second and third VM.
-
-Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
-Copy the certificates for third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
-
-Start the second and the third node on two separate VMs, as follows:
-
 ```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-2a --fault_tolerance=zone
-
-./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-east.us-east-3a --fault_tolerance=zone
 ```
 
-After starting the yugabyted processes on all nodes, configure the data placement constraint of the cluster as follows:
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster:
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=zone
 ```
 
-The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more zones available in the cluster, the `configure` command configures the cluster to survive at least one availability zone failure. Otherwise, it outputs a warning message.
+This command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, the configure command configures the cluster to survive at least 1 availability zone failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
 You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
 
 ```sh
-./bin/yugabyted configure data_placement --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+./bin/yugabyted configure data_placement --fault_tolerance=zone --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
 ```
 
 You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
-./bin/yugabyted configure data_placement --fault_tolerance=zone --data_placement_constraint=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
+./bin/yugabyted configure data_placement --fault_tolerance=zone --constraint_value=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a --rf=3
 ```
 
 ### Create a multi-region cluster
 
-To create a multi-region secrue cluster, start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+To create a multi-region cluster, start the first yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
 ```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
+./bin/yugabyted start --advertise_address=<host-ip> --cloud_location=aws.us-east.us-east-1a --fault_tolerance=region
 ```
 
-Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
+Start the second and the third nodes on two separate VMs as follows:
 
 ```sh
-./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_VM_2>,<IP_of_VM_3>
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
 ```
-
-Manually copy the generated certificates in the first VM to the second and third VM.
-
-Copy the certificates for the second VM from `$HOME/var/generated_certs/<IP_of_VM_2>` in the first VM to `$HOME/var/certs` in the second VM.
-Copy the certificates for third VM from `$HOME/var/generated_certs/<IP_of_VM_3>` in first VM to `$HOME/var/certs` in the third VM.
-
-Start the second and the third node on two separate VMs, as follows:
-
 ```sh
-./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-west.us-west-1a --fault_tolerance=region
-
-./bin/yugabyted start --secure --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
+./bin/yugabyted start --advertise_address=<host-ip> --join=<ip-address-first-yugabyted-node> --cloud_location=aws.us-central.us-central-1a --fault_tolerance=region
 ```
 
-After starting the yugabyted processes on all nodes, configure the data placement constraint of the cluster as follows:
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster as follows:
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=region
 ```
 
-The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more regions available in the cluster, the `configure` command configures the cluster to survive at least one availability region failure. Otherwise, it outputs a warning message.
+This command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more regions available in the cluster, the command configures the cluster to survive at least 1 region failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
-You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone`. For example:
+You can set the data placement constraint manually using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone` as follows:
 
 ```sh
-./bin/yugabyted configure data_placement --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
+./bin/yugabyted configure data_placement --fault_tolerance=region --constraint_value=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a
 ```
 
-You can set the replication factor of the cluster manually using the `--rf` flag. For example:
+You can set the replication factor of the cluster manually using the `--rf` flag as follows:
 
 ```sh
-./bin/yugabyted configure data_placement --fault_tolerance=region --data_placement_constraint=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
+./bin/yugabyted configure data_placement --fault_tolerance=region --constraint_value=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
 ```
 
 ### Enabling and Disabling encryption at rest
