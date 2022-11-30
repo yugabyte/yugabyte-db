@@ -186,7 +186,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
   private String ysqlDb = Util.YUGABYTE_DB;
 
-  enum VersionCheckMode {
+  public enum VersionCheckMode {
     NEVER,
     ALWAYS,
     HA_ONLY
