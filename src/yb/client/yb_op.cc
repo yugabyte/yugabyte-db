@@ -50,8 +50,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/pgsql_ybctid.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/rpc/rpc_controller.h"
@@ -238,10 +238,9 @@ Status SetRangePartitionBounds(const Schema& schema,
     key_upper_bound->clear();
     return Status::OK();
   }
-  auto upper_bound_key =
-      docdb::PgsqlYbctid(std::move(range_components_end)).Encode().ToStringBuffer();
+  auto upper_bound_key = docdb::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
   if (request->is_forward_scan()) {
-    SetPartitionKey(docdb::PgsqlYbctid(std::move(range_components)).Encode().AsSlice(), request);
+    SetPartitionKey(docdb::DocKey(std::move(range_components)).Encode().AsSlice(), request);
     *key_upper_bound = std::move(upper_bound_key);
   } else {
     // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
@@ -352,7 +351,7 @@ Result<std::string> GetRangePartitionKey(
       "Cannot get range partition key for hash partitioned table");
 
   auto range_components = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
-  return docdb::PgsqlYbctid(std::move(range_components)).Encode().ToStringBuffer();
+  return docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
 }
 
 template<class Req>
@@ -372,7 +371,7 @@ Status InitWritePartitionKey(
   const auto& ybctid = request->ybctid_column_value().value();
   if (schema.num_hash_key_columns() > 0) {
     if (!IsNull(ybctid)) {
-      const uint16 hash_code = VERIFY_RESULT(docdb::PgsqlYbctid::DecodeHash(ybctid.binary_value()));
+      const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
       request->set_hash_code(hash_code);
       SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
       return Status::OK();
