@@ -175,10 +175,10 @@ aside.td-sidebar {
           letter-spacing: 0.5px;
           text-transform: uppercase;
 
-          &:nth-child(2):not(.bottom-link) {
+          &.bottom-line:not(.bottom-link) {
             a {
               &::after {
-                display: none;
+                //display: none;
               }
             }
 
@@ -186,7 +186,7 @@ aside.td-sidebar {
               content: "";
               display: inline-block;
               border-top: 1px solid #e9eef2;
-              width: calc(100% + 16px);
+              width: calc(100%);
               margin: 8px 0;
               margin-left: -16px;
             }
@@ -310,15 +310,13 @@ aside.td-sidebar {
             z-index: 1;
           }
 
-          &:not(.open):not(.unlink-list) > ul {
+          &:not(.open):not(.unlink-list-) > ul {
             max-height: 0;
             transition: all 0.5s ease;
           }
         }
 
         ul {
-          padding-left: 3px;
-          width: 100%;
           max-height: 2000px;
           max-height: 6000px;
           overflow: hidden;

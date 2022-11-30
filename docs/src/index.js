@@ -154,8 +154,8 @@ function yugabyteActiveLeftNav() {
  * Left Nav expansion.
  */
 function yugabyteExpandLeftNav() {
-  const maxWidthLimit = $(window).width() - (1080 + 50);
-  const maxLimit = parseInt($('.content-parent').css('margin-left').replace('px', ''), 10);
+  const maxWidthLimit = $(window).width() - 1080;
+  const maxLimit = parseInt($('.content-parent').css('margin-left').replace('px', ''), 10) - 20;
 
   let i = 0;
   let mouseMoveX = 0;
@@ -491,7 +491,7 @@ $(window).resize(() => {
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
   $('body').removeClass('left-menu-scrolling');
-  setInterval(() => {
+  setTimeout(() => {
     yugabyteExpandLeftNav();
   }, 1000);
 });

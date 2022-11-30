@@ -212,6 +212,7 @@
   [preview.params]
     showSection = true
     hideChildren = true
+    classes = "bottom-line"
 
 [[preview]]
   name = "Explore"
@@ -296,7 +297,7 @@
   identifier = "home"
   url = "/preview/"
   [preview_releases.params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [[preview_releases]]
@@ -315,7 +316,7 @@
   identifier = "home"
   url = "/preview/"
   [preview_faq.params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [[preview_faq]]
@@ -342,7 +343,7 @@
   identifier = "home"
   url = "/preview/"
   [preview_yugabyte-platform.params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [[preview_yugabyte-platform]]
@@ -371,7 +372,7 @@
   identifier = "home"
   url = "/preview/"
   [preview_yugabyte-cloud.params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [[preview_yugabyte-cloud]]
@@ -419,6 +420,7 @@
   [stable.params]
     showSection = true
     hideChildren = true
+    classes = "bottom-line"
 
 [[stable]]
   name = "Explore"
@@ -520,7 +522,7 @@
   identifier = "home"
   url = "/stable/"
   [stable_yugabyte-platform.params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [[stable_yugabyte-platform]]
@@ -559,6 +561,7 @@
   ["v2.12".params]
     showSection = true
     hideChildren = true
+    classes = "bottom-line"
 
 [["v2.12"]]
   name = "Explore"
@@ -660,7 +663,7 @@
   identifier = "home"
   url = "/v2.12/"
   ["v2.12_yugabyte-platform".params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [["v2.12_yugabyte-platform"]]
@@ -701,6 +704,7 @@
   ["v2.8".params]
     showSection = true
     hideChildren = true
+    classes = "bottom-line"
 
 [["v2.8"]]
   name = "Explore"
@@ -803,7 +807,7 @@
   identifier = "home"
   url = "/v2.8/"
   ["v2.8_yugabyte-platform".params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [["v2.8_yugabyte-platform"]]
@@ -832,6 +836,7 @@
   ["v2.6".params]
     showSection = true
     hideChildren = true
+    classes = "bottom-line"
 
 [["v2.6"]]
   name = "Explore"
@@ -923,7 +928,7 @@
   identifier = "home"
   url = "/v2.6/"
   ["v2.6_yugabyte-platform".params]
-    classes = "back-arrow"
+    classes = "bottom-line"
     showSection = true
 
 [["v2.6_yugabyte-platform"]]
