@@ -12,11 +12,29 @@
 
 
 set(POSTGRES_EXTRA_C_CXX_FLAGS "")
+
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
+
+set(added_pg_include_directories "")
+
+macro(add_pg_include_directory include_dir)
+  set(_tmp_duplicate_include_dir OFF)
+  foreach(_tmp_existing_include_dir IN LISTS added_pg_include_directories)
+    if("${_tmp_existing_include_dir}" STREQUAL "${include_dir}")
+      set(_tmp_duplicate_include_dir ON)
+    endif()
+  endforeach()
+  list(APPEND added_pg_include_directories "${include_dir}")
+  if(NOT _tmp_duplicate_include_dir)
+    string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -I${include_dir}")
+  endif()
+endmacro()
+
 foreach(include_dir ${yb_cmake_include_dirs})
-  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -I${include_dir}")
+  add_pg_include_directory("${include_dir}")
 endforeach(include_dir)
+
 if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
   string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS
          " -Wno-format-truncation"
@@ -25,7 +43,7 @@ if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
 endif()
 
 if(IS_CLANG)
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT APPLE)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT IS_APPLE_CLANG)
     string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -Wno-error=unused-but-set-variable")
   endif()
 
@@ -66,6 +84,13 @@ if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
 endif()
 
+set(PG_INCLUDE_DIRS "${OPENSSL_INCLUDE_DIR}")
+if(APPLE AND NOT IS_APPLE_CLANG)
+  string(APPEND POSTGRES_EXTRA_LD_FLAGS " -L${CMAKE_OSX_SYSROOT}/usr/lib")
+  string(APPEND POSTGRES_EXTRA_C_CXX_FLAGS " -isysroot ${CMAKE_OSX_SYSROOT}")
+  # This is needed for PostgreSQL's configure to find headers such as uuid.h.
+  string(APPEND PG_INCLUDE_DIRS " ${CMAKE_OSX_SYSROOT}/usr/include")
+endif()
 set(POSTGRES_FINAL_C_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}")
 yb_deduplicate_arguments(POSTGRES_FINAL_C_FLAGS)
 
@@ -112,7 +137,7 @@ list(APPEND build_postgres_args
      --ldflags               " ${POSTGRES_FINAL_LD_FLAGS}"
      --ldflags_ex            " ${POSTGRES_FINAL_EXE_LD_FLAGS}"
      --exe_ld_flags_after_yb_libs " ${PG_EXE_LD_FLAGS_AFTER_YB_LIBS}"
-     --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
+     --include_dirs          "${PG_INCLUDE_DIRS}"
      --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
      --thirdparty_dir        "${YB_THIRDPARTY_DIR}"
      --shared_library_suffix "${YB_SHARED_LIBRARY_SUFFIX}"

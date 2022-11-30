@@ -25,8 +25,7 @@ import time
 from packaging import version
 
 from yb.common_util import (
-    YB_SRC_ROOT, get_thirdparty_dir, load_yaml_file, init_env, shlex_join,
-    write_yaml_file
+    YB_SRC_ROOT, get_thirdparty_dir, load_yaml_file, shlex_join, write_yaml_file, init_logging
 )
 
 
@@ -38,7 +37,7 @@ def should_include_fossa_module(name: str) -> bool:
     return not name.startswith(('llvm', 'gmock', 'cassandra-cpp-driver', 'bison', 'flex'))
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description='Run FOSSA analysis (open source license compliance).')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
@@ -47,7 +46,7 @@ def main():
         nargs='*',
         help='These arguments are passed directly to fossa-cli')
     args = parser.parse_args()
-    init_env(args.verbose)
+    init_logging(verbose=args.verbose)
 
     # TODO: We may also want to try using the v2 option --unpack-archives
     #       Though that may be going to deeper level than we want.

@@ -1,4 +1,14 @@
 # Copyright (c) Yugabyte, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
 
 import os
 import sys
@@ -18,19 +28,23 @@ from yb.common_util import (
     write_json_file,
     get_absolute_path_aliases
 )
+from yb.postgres_build_util import POSTGRES_BUILD_SUBDIR
 
 # We build PostgreSQL code in a separate directory (postgres_build) rsynced from the source tree to
 # support out-of-source builds. Then, after generating the compilation commands, we rewrite them
-# to work with original files (in src/postgres) so that clangd can use them.
+# to work with original files (in src/postgres) so that Clangd can use them.
 
 # We create multiple directories under $BUILD_ROOT/compile_commands and put a single file named
-# compile_commands.json in each directory. This structure is needed due to some quirks of clangd and
-# clangd-indexer.
+# compile_commands.json in each directory. This is because many Clang-based tools take a directory
+# path containing compile_commands.json as a parameter, so the compilation database file should
+# always be named compile_commands.json.
 
 # The directory names listed below vary across two dimensions:
 # - YB. vs. PostgreSQL vs. combined.
-# - Raw vs. postprocessed. "Postprocessed" means paths are rewritten to refer to the source
-#   directory.
+# - Raw vs. postprocessed. "Postprocessed" means paths are rewritten to refer to files in the source
+#   directory rather than files copied to the postgres_build directory.
+
+COMPILATION_DATABASE_SUBDIR_NAME = 'compile_commands'
 
 COMBINED_POSTPROCESSED_DIR_NAME = 'combined_postprocessed'
 PG_POSTPROCESSED_DIR_NAME = 'pg_postprocessed'
@@ -39,6 +53,7 @@ YB_POSTPROCESSED_DIR_NAME = 'yb_postprocessed'
 COMBINED_RAW_DIR_NAME = 'combined_raw'
 YB_RAW_DIR_NAME = 'yb_raw'
 PG_RAW_DIR_NAME = 'pg_raw'
+YB_SRC_ROOT_SLASH = YB_SRC_ROOT + '/'
 
 
 def create_compile_commands_symlink(actual_file_path: str) -> None:
@@ -73,7 +88,7 @@ def get_include_path_arg(include_path: str) -> str:
 class IncludePathRewriter:
     """
     Rewrites include paths in a compilation command line so that they refer to sources in
-    src/postgres, not to rsynced sources in build/.../postgres_build.
+    src/postgres, not to rsynced sources in postgres_build.
     """
     original_working_directory: str
     new_working_directory: str
@@ -111,12 +126,11 @@ class IncludePathRewriter:
             # If we encounter the include directory build/.../postgres/include, we add these
             # additional include directories at the end of the command line. This will help with
             # finding include files even when the PostgreSQL build is not fully done.
+            postgres_build_dir = os.path.join(self.build_root, POSTGRES_BUILD_SUBDIR)
             self.additional_postgres_include_paths.extend([
                 os.path.join(YB_SRC_ROOT, 'src', 'postgres', 'src', 'interfaces', 'libpq'),
-                os.path.join(
-                    self.build_root, 'postgres_build', 'src', 'include'),
-                os.path.join(
-                    self.build_root, 'postgres_build', 'interfaces', 'libpq')
+                os.path.join(postgres_build_dir, 'src', 'include'),
+                os.path.join(postgres_build_dir, 'interfaces', 'libpq')
             ])
 
     def append_include_path_arg(self, include_path: str) -> None:
@@ -127,9 +141,11 @@ class IncludePathRewriter:
         self.append_include_path_arg(new_absolute_include_path)
 
         # Prevent adding multiple aliases for the same include path.
-        self.already_added_include_paths.add(new_absolute_include_path)
-        self.already_added_include_paths.add(os.path.abspath(new_absolute_include_path))
-        self.already_added_include_paths.add(os.path.realpath(new_absolute_include_path))
+        self.already_added_include_paths |= {
+            new_absolute_include_path,
+            os.path.abspath(new_absolute_include_path),
+            os.path.realpath(new_absolute_include_path),
+        }
 
     def handle_include_path(self, include_path: str) -> None:
         if os.path.isabs(include_path):
@@ -182,7 +198,7 @@ class CompileCommandProcessor:
             add_original_dir_to_path_for_files: Set[str]) -> None:
         self.build_root = build_root
 
-        self.pg_build_root = os.path.join(build_root, 'postgres_build')
+        self.pg_build_root = os.path.join(build_root, POSTGRES_BUILD_SUBDIR)
         self.pg_build_root_aliases = get_absolute_path_aliases(self.pg_build_root)
 
         self.postgres_src_root = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
@@ -283,5 +299,8 @@ def filter_compile_commands(input_path: str, output_path: str, file_name_regex_s
 
 def get_compile_commands_file_path(
         build_root: str,
-        subdir_name: str) -> str:
-    return os.path.join(build_root, 'compile_commands', subdir_name, 'compile_commands.json')
+        subdir_name: Optional[str] = None) -> str:
+    dir_path = os.path.join(build_root, COMPILATION_DATABASE_SUBDIR_NAME)
+    if subdir_name is not None:
+        dir_path = os.path.join(dir_path, subdir_name)
+    return os.path.join(dir_path, 'compile_commands.json')
