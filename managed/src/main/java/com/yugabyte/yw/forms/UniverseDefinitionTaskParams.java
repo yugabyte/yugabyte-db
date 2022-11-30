@@ -464,6 +464,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty public String awsArnString;
 
+    @ApiModelProperty() public boolean enableLB = false;
+
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
     // setup and will be in-place of privateIP
@@ -558,6 +560,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {
         newUserIntent.deviceInfo = deviceInfo.clone();
       }
