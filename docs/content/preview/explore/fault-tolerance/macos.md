@@ -25,54 +25,31 @@ Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/
 
 {{< /note >}}
 
-## Run the sample key-value app
-
-Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) using the following command:
-
-```sh
-wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
-
-Run the `SqlInserts` workload against the local cluster using the following command:
-
-```sh
-java -jar ./yb-sample-apps.jar --workload SqlInserts \
-                               --nodes 127.0.0.1:5433 \
-                               --num_threads_write 1 \
-                               --num_threads_read 4
-```
-
-The `SqlInserts` workload prints some statistics while running as follows:
-
-```output
-32001 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4508.59 ops/sec (0.88 ms/op), 121328 total ops  |  Write: 658.11 ops/sec (1.51 ms/op), 18154 total ops  |  Uptime: 30024 ms | ...
-37006 [Thread-1] INFO com.yugabyte.sample.common.metrics.MetricsTracker  - Read: 4342.41 ops/sec (0.92 ms/op), 143061 total ops  |  Write: 635.59 ops/sec (1.58 ms/op), 21335 total ops  |  Uptime: 35029 ms | ...
-```
-
-For more information about the output of the workload applications, refer to [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
+Follow the setup instructions to start a three-node cluster, connect the YB Simulation Base Demo application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe even load across all nodes
 
-You can check a lot of the per-node statistics by browsing to [tablet-servers](http://127.0.0.1:7000/tablet-servers). The total read and write IOPS per node are demonstrated by the following illustration:
+To view a table of per-node statistics for the cluster, navigate to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The following illustration shows the total read and write IOPS per node. Note that both the reads and the writes are roughly the same across all the nodes, indicating uniform load across the nodes.
 
 ![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
 
-Note how both the reads and the writes are roughly the same across all the nodes, indicating uniform usage across the nodes.
+To view the latency and throughput on the cluster while the workload is running, navigate to the [simulation application UI](http://127.0.0.1:8000/).
 
-## Remove a node and observe continuous write availability
+![Latency and throughput with 3 nodes](/images/ce/simulation-graph.png)
 
-Remove a node from the cluster using the following command:
+## Kill a node and observe continuous write availability
 
-```sh
-./bin/yugabyted stop \
-                  --base_dir=/tmp/ybd3
-```
+Kill one of the YB-Master processes on your computer.
 
-Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the status update.
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update.
 
-The `Time since heartbeat` value for that node will keep increasing. When the number reaches 60s (1 minute), YugabyteDB changes the status of the removed node from `ALIVE` to `DEAD`. Note that at this time the cluster is running in an under-replicated state for some subset of tablets.
+The `Time since heartbeat` value for that node will keep increasing. When that number reaches 60s (1 minute), YugabyteDB changes the status of that node from ALIVE to DEAD. Observe the load (tablets) and IOPS getting moved off the removed node and redistributed to the other nodes.
 
-![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
+![Read and write IOPS with 1 node dead](/images/ce/fault_tolerance_dead_node.png)
+
+Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the node being removed from the network diagram when it is stopped. Note that it may take about 60s (1 minute) to display the updated network diagram. You can also notice a slight spike and drop in the latency and throughput, both of which resume immediately as follows:
+
+![Latency and throughput graph after killing a node](/images/ce/stop-node-graph.png)
 
 ## Clean up
 
