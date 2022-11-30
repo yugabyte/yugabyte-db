@@ -143,7 +143,7 @@ class RpcShellClient(object):
         for response in stub.DownloadFile(
                 DownloadFileRequest(filename=in_path), timeout=timeout_sec):
             with open(out_path, mode="ab") as f:
-                f.write(response.chunk_data)
+                f.write(response.chunkData)
 
     def wait_for_server(self, num_retries=SERVER_READY_RETRY_LIMIT, **kwargs):
         """
