@@ -163,8 +163,6 @@ export const MetricTypesWithOperations = {
     title: 'DocDB',
     metrics: [
       'lsm_rocksdb_seek_next_prev',
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
@@ -179,6 +177,7 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_memory_rejections',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
@@ -210,8 +209,6 @@ export const MetricTypesWithOperations = {
     title: 'DocDB',
     metrics: [
       'lsm_rocksdb_seek_next_prev',
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
