@@ -4,7 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import io.prometheus.client.CollectorRegistry;
@@ -36,22 +37,18 @@ public class TaskGarbageCollector {
 
   // Config names
   static final String YB_TASK_GC_GC_CHECK_INTERVAL = "yb.taskGC.gc_check_interval";
-  static final String YB_TASK_GC_TASK_RETENTION_DURATION = "yb.taskGC.task_retention_duration";
 
   static {
     registerMetrics();
   }
 
   private final PlatformScheduler platformScheduler;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
 
-  // TODO: Instead of runtime config factory inject RuntimeConfigGetter and then do:
-  // Duration d = confGtr.getConfForScope(cust, CustomerConfKeys.taskGcRetentionDuration));
   @Inject
-  public TaskGarbageCollector(
-      PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
+  public TaskGarbageCollector(PlatformScheduler platformScheduler, RuntimeConfGetter confGetter) {
     this.platformScheduler = platformScheduler;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
   }
 
   @VisibleForTesting
@@ -121,13 +118,11 @@ public class TaskGarbageCollector {
 
   /** The interval at which the gc checker will run. */
   private Duration gcCheckInterval() {
-    return runtimeConfigFactory.staticApplicationConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
+    return confGetter.getStaticConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
   }
 
   /** For how many days to retain a completed task before garbage collecting it. */
   private Duration taskRetentionDuration(Customer customer) {
-    return runtimeConfigFactory
-        .forCustomer(customer)
-        .getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
+    return confGetter.getConfForScope(customer, CustomerConfKeys.taskGcRetentionDuration);
   }
 }
