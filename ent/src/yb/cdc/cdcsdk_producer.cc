@@ -227,6 +227,7 @@ Status PopulateBeforeImage(
 
   std::vector<ColumnSchema> columns(schema.columns());
 
+  size_t found_columns = 0;
   if (row.ColumnCount() == columns.size()) {
     for (size_t index = 0; index < row.ColumnCount(); ++index) {
       bool column_updated = false;
@@ -236,25 +237,27 @@ Status PopulateBeforeImage(
             tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map, composite_atts_map,
             row_message->add_old_tuple(), &ql_value.value()));
         if (row_message->op() == RowMessage_Op_UPDATE) {
+          const auto& old_tuple_column_name =
+              row_message->old_tuple(static_cast<int>(found_columns)).column_name();
           for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
                ++new_tuple_index) {
             if (row_message->new_tuple(static_cast<int>(new_tuple_index)).column_name() ==
-                columns[index].name()) {
+                old_tuple_column_name) {
               column_updated = true;
               break;
             }
           }
           if (!column_updated) {
-            *(row_message->add_new_tuple()) = row_message->old_tuple(static_cast<int>(index));
+            auto new_tuple_pb = row_message->mutable_new_tuple()->Add();
+            new_tuple_pb->CopyFrom(row_message->old_tuple(static_cast<int>(found_columns)));
           }
         }
+        found_columns += 1;
       }
     }
-  } else {
-    if (row_message->op() != RowMessage_Op_DELETE) {
-      for (size_t index = 0; index < schema.num_columns(); ++index) {
-        row_message->add_old_tuple();
-      }
+  } else if (row_message->op() != RowMessage_Op_DELETE) {
+    for (size_t index = 0; index < schema.num_columns(); ++index) {
+      row_message->add_old_tuple();
     }
   }
   return Status::OK();
