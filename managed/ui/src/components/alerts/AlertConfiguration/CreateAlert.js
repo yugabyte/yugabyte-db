@@ -161,9 +161,9 @@ const CreateAlert = (props) => {
       targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
-            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
-            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
-          }
+          all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+          uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+        }
         : { all: true },
       thresholds: '',
       thresholdUnit: currentMetric.thresholdUnit,

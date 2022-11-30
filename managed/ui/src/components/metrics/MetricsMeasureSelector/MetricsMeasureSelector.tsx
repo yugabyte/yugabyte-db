@@ -20,7 +20,7 @@ export const MetricsMeasureSelector: FC<MetricMeasureSelectorData> = ({
 }) => {
   const isOutlierDisabled = (metricMeasureValue: string) => {
     return metricMeasureValue === MetricMeasure.OUTLIER && isSingleNodeSelected;
-  }
+  };
 
   return (
     <div className="metrics-measure-container">
@@ -50,4 +50,4 @@ export const MetricsMeasureSelector: FC<MetricMeasureSelectorData> = ({
       </span>
     </div>
   );
-}
+};

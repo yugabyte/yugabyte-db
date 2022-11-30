@@ -125,9 +125,9 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
   const ybHAWebService: YbHAWebService =
     runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
       ? JSON.parse(
-          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-            .value
-        )
+        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+          .value
+      )
       : EMPTY_YB_HA_WEBSERVICE;
 
   // sort by is_leader to show active instance on the very top, then sort other items by address

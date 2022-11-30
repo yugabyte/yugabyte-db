@@ -20,7 +20,7 @@ function mapStateToProps(state) {
 const mapDispatchToProps = (dispatch) => {
   return {
     getNodeDetails: (universeUUID, nodeName) => {
-        return dispatch(getNodeDetails(universeUUID, nodeName));
+      return dispatch(getNodeDetails(universeUUID, nodeName));
     },
     getNodeDetailsResponse: (payload) => {
       dispatch(getNodeDetailsResponse(payload));

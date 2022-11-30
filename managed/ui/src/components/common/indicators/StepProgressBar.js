@@ -69,14 +69,14 @@ export default class StepProgressBar extends Component {
     });
     const progressbarClass =
         (status === 'Failure' || status === 'Aborted')
-        ? 'failed'
-        : (status === 'Created' || status === 'Abort' || status === 'Running')
-        ? 'running'
-        : 'finished';
+          ? 'failed'
+          : (status === 'Created' || status === 'Abort' || status === 'Running')
+            ? 'running'
+            : 'finished';
     const barWidth =
         tasksTotal === 0
-        ? ((status !== 'Success')? '0%' : '100%')
-        : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
+          ? ((status !== 'Success')? '0%' : '100%')
+          : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
             tasksTotal + '%';
 
     const listLabels = taskDetailsNormalized.map(function (item, idx) {

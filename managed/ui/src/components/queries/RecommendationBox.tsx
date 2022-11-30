@@ -24,7 +24,7 @@ const getRecommendation = (type: RecommendationTypeEnum, summary: ReactNode | st
     const indexSuggestionData = data.table?.data ?? [];
     return (
       <IndexSuggestion summary={summary} data={indexSuggestionData} />
-    )
+    );
   }
   if (type === RecommendationTypeEnum.SchemaSuggestion) {
     const schemaSuggestionData = data.table?.data ?? [];
@@ -128,7 +128,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {' that were never used.'}
           </span>
         </Fragment>
-      )
+      );
     }
     if (recommendationType === RecommendationTypeEnum.SchemaSuggestion) {
       const { indicator: numIndexes, target: databaseName } = recommendationData;
@@ -140,7 +140,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {' where using range sharding instead of hash can improve query speed.'}
           </span>
         </Fragment>
-      )
+      );
     }
     if (recommendationType === RecommendationTypeEnum.QueryLoadSkew) {
       const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
@@ -152,7 +152,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {`processed ${percent}% more queries than the other ${otherNodes} nodes`}
           </span>
         </Fragment>
-      )
+      );
     }
     if (recommendationType === RecommendationTypeEnum.ConnectionSkew) {
       const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
@@ -164,7 +164,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {` handled ${percent}% more connections than the other ${otherNodes} nodes in the past hour.`}
           </span>
         </Fragment>
-      )
+      );
     }
     if (recommendationType === RecommendationTypeEnum.CpuSkew) {
       const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
@@ -176,7 +176,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {` CPU use is ${percent}% greater than the ${otherNodes} nodes in the past hour.`}
           </span>
         </Fragment>
-      )
+      );
     }
     if (recommendationType === RecommendationTypeEnum.CpuUsage) {
       const { target: nodeName, indicator: percent, timeDurationSec: duration } = recommendationData;
@@ -189,10 +189,10 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
             {` CPU use exceeded ${percent}% for ${minuteDuration} mins.`}
           </span>
         </Fragment>
-      )
+      );
     }
     return null;
-  }
+  };
 
   const [isPanelExpanded, setPanelExpanded] = useState(false);
   return (
@@ -220,4 +220,4 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
       } noBackground
     />
   );
-}
+};

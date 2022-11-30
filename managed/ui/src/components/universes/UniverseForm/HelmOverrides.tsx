@@ -42,7 +42,7 @@ export const HelmOverridesUniversePage: FC<HelmOverridesUniversePage> = ({
   //fetch existing values from form(state)
   const formValues = useSelector((state: any) => state?.form?.UniverseForm?.values?.primary);
 
-  let editValues = {};
+  const editValues = {};
 
   if (formValues) {
     editValues['universeOverrides'] = formValues.universeOverrides;

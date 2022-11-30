@@ -33,21 +33,21 @@ const UNIVERSE_SELECT_STYLES = {
     ...styles,
     zIndex: 10
   })
-}
+};
 
 const convertDateToStr = (date) => {
   return date ? moment(date).format(DATE_FORMAT) : undefined;
-}
+};
 
 const convertDateFromStr = (dateStr) => {
   return new Date(dateStr);
-}
+};
 
 const getDefaultStartTime = () => new Date(
-    moment(new Date()).tz('UTC').add(-2, 'days').format(DATE_FORMAT));
+  moment(new Date()).tz('UTC').add(-2, 'days').format(DATE_FORMAT));
 
 const getDefaultEndTime = () => new Date(
-    moment(new Date()).tz('UTC').format(DATE_FORMAT));
+  moment(new Date()).tz('UTC').format(DATE_FORMAT));
 
 const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchUniverseList }) => {
 
@@ -66,9 +66,9 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
 
   const doSearch = () => {
     getLogs(maxLines, regex, selectedUniverse, convertDateToStr(startDate),
-            convertDateToStr(endDate));
+      convertDateToStr(endDate));
 
-    var newURL = new URL(
+    const newURL = new URL(
       window.location.protocol + '//' + window.location.host + window.location.pathname
     );
     if (regex) {
@@ -106,16 +106,16 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
     setEndDate(convertDateFromStr(endDateFromParam));
 
     getLogs(maxLinesFromParam, regexFromParam, universeFromParam, startDateFromParam,
-            endDateFromParam);
+      endDateFromParam);
     fetchUniverseList().then((resp) => {
       const universesOptions = resp.map((uni) => {
         return {
           label: uni.name,
           value: uni.name
-        }
+        };
       });
       setUniverseList(universesOptions);
-      setIsUniverseListLoading(false)
+      setIsUniverseListLoading(false);
     });
   });
 
@@ -134,7 +134,7 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
               isLoading={isUniverseListLoading}
               value={selectedUniverse ? { value: selectedUniverse, label: selectedUniverse } : null}
               onChange={(val) => {
-                setSelectedUniverse(val ? val.value : null)
+                setSelectedUniverse(val ? val.value : null);
               }}
               isClearable
               styles={UNIVERSE_SELECT_STYLES}
@@ -174,26 +174,26 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
         <Col lg={2}>
           <YBLabel label="Start time">
             <DateTimePicker
-                placeholder="Pick a time"
-                step={10}
-                formats={DATE_FORMAT}
-                onChange={(timestamp) => {
-                  setStartDate(timestamp);
-                }}
-                value={startDate}
+              placeholder="Pick a time"
+              step={10}
+              formats={DATE_FORMAT}
+              onChange={(timestamp) => {
+                setStartDate(timestamp);
+              }}
+              value={startDate}
             />
           </YBLabel>
         </Col>
         <Col lg={2}>
           <YBLabel label="End time">
             <DateTimePicker
-                placeholder="Pick a time"
-                step={10}
-                formats={DATE_FORMAT}
-                onChange={(timestamp) => {
-                  setEndDate(timestamp);
-                }}
-                value={endDate}
+              placeholder="Pick a time"
+              step={10}
+              formats={DATE_FORMAT}
+              onChange={(timestamp) => {
+                setEndDate(timestamp);
+              }}
+              value={endDate}
             />
           </YBLabel>
         </Col>

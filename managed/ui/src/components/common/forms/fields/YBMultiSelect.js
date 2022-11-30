@@ -66,7 +66,7 @@ const colourStyles = {
     ...base,
     width: "max-content",
     minWidth: "100%"
-}),
+  }),
   dropdownIndicator: (styles) => ({
     ...styles,
     cursor: 'pointer',
@@ -108,7 +108,7 @@ const MultiValueRemove = (props) => {
 
 const SingleValue = (props) => {
   return <components.SingleValue className="YBSingleValue" {...props} />;
-}
+};
 
 const DropdownIndicator = (props) => {
   const indicatorStyle = {

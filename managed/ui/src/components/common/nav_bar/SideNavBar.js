@@ -100,7 +100,7 @@ export default class SideNavBar extends Component {
                       icon="fa fa-upload"
                       text="Backups"
                       display={this.props.enableBackupv2}
-                      />
+                    />
                     <NavLink
                       to="/config"
                       icon="fa fa-cloud-upload"

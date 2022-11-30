@@ -21,14 +21,14 @@ import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 const customerConfigToasterHandler = (errorMessageObject) => {
   isNonEmptyObject(errorMessageObject)
     ? Object.keys(errorMessageObject).forEach((errorKey) => {
-        toast.error(
-          <ul>
-            {errorMessageObject[errorKey].map((error) => (
-              <li>{error}</li>
-            ))}
-          </ul>
-        );
-      })
+      toast.error(
+        <ul>
+          {errorMessageObject[errorKey].map((error) => (
+            <li>{error}</li>
+          ))}
+        </ul>
+      );
+    })
     : toast.error(errorMessageObject);
 };
 
@@ -50,7 +50,7 @@ const mapDispatchToProps = (dispatch) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
-            customerConfigToasterHandler(errorMessageObject);
+          customerConfigToasterHandler(errorMessageObject);
           
         } else {
           toast.success('Successfully added the backup configuration.');
@@ -68,7 +68,7 @@ const mapDispatchToProps = (dispatch) => {
         if (response.error) {
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
-            customerConfigToasterHandler(errorMessageObject);
+          customerConfigToasterHandler(errorMessageObject);
           
         } else {
           toast.success('Successfully updated the backup configuration.');

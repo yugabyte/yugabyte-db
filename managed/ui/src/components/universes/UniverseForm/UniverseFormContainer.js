@@ -616,7 +616,7 @@ const validateProviderFields = (values, props, clusterType) => {
     if (currentProviderCode === 'gcp' || currentProviderCode === 'kubernetes') {
       const specialCharsRegex = /^[a-z0-9-]*$/;
       const errorProviderName = currentProviderCode === 'gcp' ? 
-          currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
+        currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
 
       if (!specialCharsRegex.test(currentClusterData.universeName)) {
         errors.universeName =

@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import { Row, Col, ButtonGroup, DropdownButton, MenuItem }
- from 'react-bootstrap';
+  from 'react-bootstrap';
 import './AlertDetails.scss';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
 import { getSeverityLabel } from './AlertUtils';
@@ -34,7 +34,7 @@ const getAlertExpressionLink = (alertDetails) => {
     // Shouldn't happen though.
     return "";
   }
-  var url = new URL(alertDetails.alertExpressionUrl);
+  const url = new URL(alertDetails.alertExpressionUrl);
   url.hostname = window.location.hostname;
   return (
     <a
@@ -86,7 +86,7 @@ export default class AlertDetails extends Component {
                   <div className="alert-label-value">{getSourceName(alertDetails)}</div>
                 </Col>
                 <Col lg={2} md={2} xs={2}>
-                {getSeverityLabel(alertDetails.severity)}
+                  {getSeverityLabel(alertDetails.severity)}
                 </Col>
               </Row>
               <Row>
@@ -97,7 +97,7 @@ export default class AlertDetails extends Component {
                   </div>
                 </Col>
                 <Col lg={2} md={2} xs={2}>
-                {getAlertExpressionLink(alertDetails)}
+                  {getAlertExpressionLink(alertDetails)}
                 </Col>
               </Row>
               <Row>
@@ -111,48 +111,48 @@ export default class AlertDetails extends Component {
               </Row>
             </div>
             <div className='panel-highlight marginTop'>
-            <Row>
-              <Col lg={12} className="no-padding">
-                <Row>
-                  <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
-                    <h6 className="alert-label-header">Start</h6>
-                    <div label={alertDetails.createTime} className="alert-label-value">
-                      {moment(alertDetails.createTime).toString()}
-                    </div>
-                  </Col>
-                  <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
-                    <h6 className="alert-label-header">End</h6>
-                    <div label={alertDetails.acknowledgedTime} className="alert-label-value">
-                      {alertDetails.resolvedTime ? moment(alertDetails.resolvedTime).toString() : '-'}
-                    </div>
-                  </Col>
-                </Row>
-              </Col>
-            </Row>
-            <Row className="marginTop">
-              <Col lg={6} className="alert-label no-padding">
-                <h5 className="alert-label-header">status</h5>
-
-                <div className="alert-label-value">{alertDetails.state}</div>
-              </Col>
-              {alertDetails.state === 'ACTIVE' && !isReadOnly && (
-                <Col lg={6} className="no-padding">
-                  <ButtonGroup>
-                    <DropdownButton id="alert-mark-as-button" title="Mark as">
-                      <MenuItem
-                        eventKey="1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAcknowledge();
-                        }}
-                      >
-                        Acknowledged
-                      </MenuItem>
-                    </DropdownButton>
-                  </ButtonGroup>
+              <Row>
+                <Col lg={12} className="no-padding">
+                  <Row>
+                    <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
+                      <h6 className="alert-label-header">Start</h6>
+                      <div label={alertDetails.createTime} className="alert-label-value">
+                        {moment(alertDetails.createTime).toString()}
+                      </div>
+                    </Col>
+                    <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
+                      <h6 className="alert-label-header">End</h6>
+                      <div label={alertDetails.acknowledgedTime} className="alert-label-value">
+                        {alertDetails.resolvedTime ? moment(alertDetails.resolvedTime).toString() : '-'}
+                      </div>
+                    </Col>
+                  </Row>
                 </Col>
-              )}
-            </Row>
+              </Row>
+              <Row className="marginTop">
+                <Col lg={6} className="alert-label no-padding">
+                  <h5 className="alert-label-header">status</h5>
+
+                  <div className="alert-label-value">{alertDetails.state}</div>
+                </Col>
+                {alertDetails.state === 'ACTIVE' && !isReadOnly && (
+                  <Col lg={6} className="no-padding">
+                    <ButtonGroup>
+                      <DropdownButton id="alert-mark-as-button" title="Mark as">
+                        <MenuItem
+                          eventKey="1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAcknowledge();
+                          }}
+                        >
+                        Acknowledged
+                        </MenuItem>
+                      </DropdownButton>
+                    </ButtonGroup>
+                  </Col>
+                )}
+              </Row>
             </div>
             <Row className="marginTop">
               <Col lg={12} className="no-left-padding">

@@ -8,7 +8,7 @@ import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
 import { QueryLoadRecommendation } from '../../../redesign/helpers/dtos';
 import './styles.scss';
 
-var Plotly = require('plotly.js/lib/index-basic.js');
+const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) => {
   const previousData = usePrevious(data);
@@ -50,7 +50,7 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
       !_.isEqual(previousData, data)
     ) {
       const chartData = [maxNodeData, otherNodeData];
-      var layout = {
+      const layout = {
         showlegend: true,
         autosize: true,
         height: 170,
@@ -90,5 +90,5 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
       <div id="querySkewLoadGraph" >
       </div>
     </div>
-  )
-}
+  );
+};
