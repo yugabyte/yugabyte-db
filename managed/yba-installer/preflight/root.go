@@ -2,35 +2,36 @@
  * Copyright (c) YugaByte, Inc.
  */
 
- package preflight
+package preflight
 
- import (
-	 "strconv"
-	 "go.etcd.io/etcd/pkg/fileutil"
-	 "strings"
-	 "regexp"
-	 "os"
+import (
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
 
-	 log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	 "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-  )
+	"go.etcd.io/etcd/pkg/fileutil"
 
- var root = Root{"root", "warning"}
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+)
 
- type Root struct {
-	 name string
-	 WarningLevel string
- }
+var root = Root{"root", "warning"}
 
- func (r Root) Name() string {
-	 return r.name
- }
+type Root struct {
+	name         string
+	warningLevel string
+}
 
- func (r Root) GetWarningLevel() string {
-	 return r.WarningLevel
- }
+func (r Root) Name() string {
+	return r.name
+}
 
- func (r Root) Execute() {
+func (r Root) WarningLevel() string {
+	return r.warningLevel
+}
+
+func (r Root) Execute() {
 
 	if _, existsErr := os.Stat(common.InstallRoot); existsErr == nil {
 		err := fileutil.IsDirWriteable(common.InstallRoot)
@@ -42,7 +43,7 @@
 		command := "bash"
 		// TODO: Also duplicated some df code in ssd.go.
 		// Should resolve with https://yugabyte.atlassian.net/browse/PLAT-6177
-		args := []string{"-c", "df --output=avail -h \"" + common.InstallRoot+ "\" | tail -n 1"}
+		args := []string{"-c", "df --output=avail -h \"" + common.InstallRoot + "\" | tail -n 1"}
 		output, err := common.ExecuteBashCommand(command, args)
 		if err != nil {
 			log.Fatal(err.Error())
@@ -58,5 +59,9 @@
 				log.Info(common.InstallRoot + " has free space.")
 			}
 		}
-	  }
- }
+	}
+}
+
+func init() {
+	RegisterPreflightCheck(root)
+}
