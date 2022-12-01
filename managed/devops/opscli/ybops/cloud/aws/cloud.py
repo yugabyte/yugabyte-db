@@ -520,11 +520,17 @@ class AwsCloud(AbstractCloud):
                 'ResourceType': 'volume',
                 'Tags': resource_tags
             }]
+            wait_config = {
+                'Delay': 15,
+                'MaxAttempts': 80
+            }
             ec2 = boto3.resource('ec2', args.region)
             volume = ec2.Volume(volume_id)
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
             snapshot = volume.create_snapshot(TagSpecifications=snapshot_tag_specs)
-            snapshot.wait_until_completed()
+            waiter = ec2.get_waiter('snapshot_completed')
+            waiter.wait(SnapshotIds=[snapshot['SnapshotId']], WaiterConfig=wait_config)
+
             logging.info("==> Created a snapshot {}".format(snapshot.id))
 
             for _ in range(num_disks):
