@@ -1,52 +1,51 @@
 ---
-title: Build a C# application that uses Entity Framework and YSQL
-headerTitle: Build a C# application
-linkTitle: Entity Framework
-description: Build a C# application that uses Entity Framework and the YSQL API.
+title: C# ORM example application that uses Dapper ORM and YSQL
+headerTitle: C# ORM example application
+linkTitle: C#
+description: C# ORM example application that uses Dapper ORM and the YSQL API.
 menu:
   preview:
-    identifier: csharp-ef
+    identifier: csharp-dapper
     parent: orm-tutorials
-    weight: 190
+    weight: 720
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-entity-framework/" class="nav-link active">
+    <a href="../ysql-entity-framework/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Entity Framework ORM
     </a>
   </li>
   <li>
-    <a href="../ysql-dapper/" class="nav-link">
+    <a href="../ysql-dapper/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Dapper ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Entity Framework](https://docs.microsoft.com/en-us/ef/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/).
+The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/entityframework) repository.
+The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
 
 ## Prerequisites
 
-The tutorial assumes that you have:
+This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/) to have YugabyteDB up and running in minutes.
-
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
-## Clone the "orm-examples" repository
+### Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/entityframework
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/dapper/DapperORM
 ```
 
 ## Set up the database connection
 
-To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
+To modify the database connection settings, change the `DefaultConnection` field in `appsettings.json` file which is in the following format:
 
 `Host=$hostName; Port=$dbPort; Username=$dbUser; Password=$dbPassword; Database=$database`
 
@@ -55,12 +54,12 @@ To modify the database connection settings, change the default `ConnectionString
 | Host | Database server IP address or DNS name. | 127.0.0.1 |
 | Port | Database port where it accepts client connections. | 5433 |
 | Username | The username to connect to the database. | yugabyte |
-| Password | The password to connect to the database. | yugabyte |
-| Database | Database instance in database server. | ysql_entityframework |
+| Password | The password to connect to the database. |  |
+| Database | Database instance in database server. | yugabyte |
 
 ## Start the REST API server
 
-To change default port for REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field.
+To change default port for the REST API Server, go to `Properties/launchSettings.json` and change the `applicationUrl` field under the `DapperORM` field.
 
 - Build the REST API server.
 
@@ -74,7 +73,7 @@ To change default port for REST API Server, go to `Properties/launchSettings.jso
   $ dotnet run
   ```
 
-The REST server will run at `http://localhost:8080` by default.
+The REST server runs at `http://localhost:8080` by default.
 
 ## Send requests to the application
 
@@ -104,18 +103,10 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-Verify the `userId` and `productId` from the database using the following YSQL commands.
-
-```sh
-yugabyte=# \c ysql_entityframework
-```
-
-```output
-You are now connected to database "ysql_entityframework" as user "yugabyte".
-```
+Verify the `userId` and `productId` from the database using the following YSQL commands from your [ysqlsh](../../../../admin/ysqlsh/#starting-ysqlsh) shell.
 
 ```sql
-ysql_entityframework=# SELECT * FROM users;
+yugabyte=# SELECT * FROM users;
 ```
 
 ```output
@@ -127,7 +118,7 @@ ysql_entityframework=# SELECT * FROM users;
 ```
 
 ```sql
-ysql_entityframework=# SELECT * FROM products;
+yugabyte=# SELECT * FROM products;
 ```
 
 ```output
@@ -157,7 +148,7 @@ $ curl \
 ### Use the YSQL shell
 
 ```sql
-ysql_entityframework=# SELECT count(*) FROM users;
+yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -168,7 +159,7 @@ ysql_entityframework=# SELECT count(*) FROM users;
 ```
 
 ```sql
-ysql_entityframework=# SELECT count(*) FROM products;
+yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -179,7 +170,7 @@ ysql_entityframework=# SELECT count(*) FROM products;
 ```
 
 ```sql
-ysql_entityframework=# SELECT count(*) FROM orders;
+yugabyte=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -191,7 +182,7 @@ ysql_entityframework=# SELECT count(*) FROM orders;
 
 ### Use the REST API
 
-To use the REST API server to verify that the users, products, and orders were created in the `ysql_entityframework` database, enter the following commands. The results are output in JSON format.
+To use the REST API server to verify that the users, products, and orders were created in the `yugabyte` database, enter the following commands. The results are output in JSON format.
 
 ```sh
 $ curl http://localhost:8080/users

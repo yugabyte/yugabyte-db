@@ -1,93 +1,95 @@
 ---
-title: Build a Python application that uses YSQL and Django
-headerTitle: Build a Python application
-linkTitle: Django
-description: Build a Python application with Django that uses YSQL.
+title: Go ORM example application that uses GORM and YSQL
+headerTitle: Go ORM example application
+linkTitle: Go
+description: Go ORM example application that uses GORM and YSQL.
 menu:
   preview:
+    identifier: go-gorm
     parent: orm-tutorials
-    identifier: python-django
-    weight: 160
+    weight: 660
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      SQLAlchemy ORM
+      PG ORM
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link active">
+  <li >
+    <a href="../ysql-gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Django ORM
+      GORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Django](https://www.djangoproject.com/) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
+The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM.
 
-The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
+The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
 
-## Prerequisites
+## Before you begin
 
-This tutorial assumes that you have:
+This tutorial assumes that you have satisfied the following prerequisites.
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
-- [Python 3](https://www.python.org/downloads/) or later is installed.
-- [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
+### YugabyteDB
 
-## Clone the orm-examples repository
+YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running in five minutes by following the steps in [Quick start](../../../quick-start/).
+
+### Go
+
+Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
+
+### Go dependencies
+
+To install the required Go dependencies, run the following commands.
+
+```sh
+go get github.com/jinzhu/gorm
+go get github.com/jinzhu/gorm/dialects/postgres
+go get github.com/google/uuid
+go get github.com/gorilla/mux
+go get github.com/lib/pq
+go get github.com/lib/pq/hstore
+```
+
+## Clone the "orm-examples" repository
+
+Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-## Set up the database connection
-
-- Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
-
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ysql_django',
-        'USER': 'yugabyte',
-        'PASSWORD': '',
-        'HOST': '127.0.0.1',
-        'PORT': '5433',
-    }
-}
-```
-
-- Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
-
-```python
-SECRET_KEY = 'YOUR-SECRET-KEY'
-```
-
-- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local YugabyteDB cluster, run the following shell command:
+Run the following `export` command to specify the `GOPATH` environment variable.
 
 ```sh
-bin/ysqlsh -c "CREATE DATABASE ysql_django"
+export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
 ```
 
-- From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
+## Build and run the application
+
+Change to the `gorm` directory.
 
 ```sh
-python3 manage.py makemigrations && python3 manage.py migrate
+$ cd ./golang/gorm
 ```
 
-## Start the REST API server
-
-Run the following Python script to start the REST API server at port 8080, or specify a port of your own choice.
+Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
 
 ```sh
-python3 manage.py runserver 8080
+$ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
 ```
 
-The REST API server starts and listens for your requests at `http://localhost:8080`.
+Build and start the REST API server by running the following shell script.
+
+```sh
+$ ./build-and-run.sh
+```
+
+The REST API server will start and listen for requests at `http://localhost:8080`.
 
 ## Send requests to the application
 

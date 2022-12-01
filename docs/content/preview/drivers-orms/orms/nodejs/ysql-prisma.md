@@ -1,13 +1,13 @@
 ---
-title: Build a Node.js application that uses Sequelize ORM and YSQL
-headerTitle: Build a Node.js application
-linkTitle: Prisma
-description: Build a Node.js application that uses Sequelize ORM and YSQL.
+title: Node.js ORM example application that uses Sequelize ORM and YSQL
+headerTitle: Node.js ORM example application
+linkTitle: Node.js
+description: Node.js ORM example application that uses Sequelize ORM and YSQL.
 menu:
   preview:
-    parent: orm-tutorials
     identifier: nodejs-prisma
-    weight: 180
+    parent: orm-tutorials
+    weight: 700
 type: docs
 ---
 
@@ -93,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Managed cluster, do the following:
 
-1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+1. Download your [cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 

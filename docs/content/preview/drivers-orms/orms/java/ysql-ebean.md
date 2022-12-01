@@ -1,13 +1,13 @@
 ---
-title: Build a Java application that uses Ebean and YSQL
-headerTitle: Build a Java application
-linkTitle: Ebean
-description: Build a sample Java application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
+title: Java ORM example application that uses Ebean and YSQL
+headerTitle: Java ORM example application
+linkTitle: Java
+description: Java ORM example application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: orm-tutorials
     identifier: java-ebean
-    weight: 120
+    parent: orm-tutorials
+    weight: 640
 type: docs
 ---
 

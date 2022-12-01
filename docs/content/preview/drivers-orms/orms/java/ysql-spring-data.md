@@ -1,84 +1,73 @@
 ---
-title: Build a Node.js application that uses Sequelize ORM and YSQL
-headerTitle: Build a Node.js application
-linkTitle: Sequelize
-description: Build a Node.js application that uses Sequelize ORM and YSQL.
+title: Java ORM example application that uses Spring Boot and YSQL
+headerTitle: Java ORM example application
+linkTitle: Java
+description: Java ORM example application that uses Spring Boot and YSQL.
 menu:
   preview:
+    identifier: java-spring
     parent: orm-tutorials
-    identifier: nodejs-sequelize
-    weight: 170
+    weight: 630
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+  <li>
+    <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Sequelize ORM
+      Hibernate ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="../ysql-spring-data/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Prisma ORM
+      Spring Data JPA
+    </a>
+  </li>
+   <li>
+    <a href="../ysql-ebean/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Ebean ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Sequelize](https://sequelize.org/) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM.
+The following tutorial implements a REST API server using Java [Spring Boot](https://spring.io/projects/spring-boot). The scenario is that of an e-commerce application. Database access is managed through [Spring Data JPA](https://spring.io/projects/spring-data-jpa), which internally uses Hibernate as the JPA provider.
 
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
+The source for this example application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repository.
 
 ## Prerequisites
 
-This tutorial assumes that you have installed:
+This tutorial assumes that you have:
 
-- YugabyteDB and created a cluster. Refer to [Quick Start](../../../quick-start/).
-- [node.js](https://nodejs.org/en/) version 16 or later.
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
 
-## Clone the orm-examples repository
+## Clone the "orm-examples" repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
+There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+
 ## Build the application
 
 ```sh
-$ cd ./node/sequelize/
+$ cd orm-examples/java/spring
 ```
 
 ```sh
-npm install
-```
-
-## Specify SSL configuration
-
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
-
-Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
-
-```js
-sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
-    dialect: 'postgres',
-    port: 5433,
-    host: "<host_name>",
-    dialectOptions: {
-        ssl: {
-            rejectUnauthorized: true,
-            ca: fs.readFileSync('<path_to_root_crt>').toString(),
-        }
-    }
-  });
+$ mvn -DskipTests package
 ```
 
 ## Run the application
 
-Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
+Start the Sprint Boot REST API server at `http://localhost:8080`.
 
 ```sh
-$ DEBUG=sequelize:* npm start
+$ mvn spring-boot:run
 ```
 
 ## Send requests to the application
@@ -125,7 +114,7 @@ $ curl \
 
 ## Query results
 
-### Using ysqlsh
+### Using the YSQL shell
 
 ```sh
 $ ./bin/ysqlsh
@@ -137,6 +126,28 @@ Type "help" for help.
 
 yugabyte=#
 ```
+
+List the tables created by the app.
+
+```plpgsql
+yugabyte=# \d
+```
+
+```output
+List of relations
+ Schema |          Name           |   Type   |  Owner
+--------+-------------------------+----------+----------
+ public | orderline               | table    | yugabyte
+ public | orders                  | table    | yugabyte
+ public | orders_user_id_seq      | sequence | yugabyte
+ public | products                | table    | yugabyte
+ public | products_product_id_seq | sequence | yugabyte
+ public | users                   | table    | yugabyte
+ public | users_user_id_seq       | sequence | yugabyte
+(7 rows)
+```
+
+Note the 4 tables and 3 sequences in the list above.
 
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;
@@ -171,13 +182,28 @@ yugabyte=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
+```plpgsql
+yugabyte=# SELECT * FROM orderline;
+```
+
+```output
+ order_id                             | product_id | units
+--------------------------------------+------------+-------
+ 45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          2 |     4
+(3 rows)
+```
+
+Note that `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
+
 ### Using the REST API
 
 ```sh
 $ curl http://localhost:8080/users
 ```
 
-```output.json
+```json
 {
   "content": [
     {
@@ -201,7 +227,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```output.json
+```json
 {
   "content": [
     {
@@ -225,7 +251,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```output.json
+```json
 {
   "content": [
     {

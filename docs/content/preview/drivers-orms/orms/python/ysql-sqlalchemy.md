@@ -1,58 +1,59 @@
 ---
-title: Build a Go application that uses GORM and YSQL
-headerTitle: Build a Go application
-linkTitle: GORM
-description: Build an Go application that uses GORM and YSQL.
+title: Python ORM example application that uses SQLAlchemy and YSQL
+headerTitle: Python ORM example application
+linkTitle: Python
+description: Python ORM example application that uses SQLAlchemy and YSQL.
 menu:
   preview:
+    identifier: python-sqlalchemy
     parent: orm-tutorials
-    identifier: go-gorm
-    weight: 140
+    weight: 670
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-pg/" class="nav-link">
+    <a href="../ysql-sqlalchemy/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG ORM
+      SQLAlchemy ORM
     </a>
   </li>
-  <li >
-    <a href="../ysql-gorm/" class="nav-link active">
+  <li>
+    <a href="../ysql-django/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      GORM
+      Django ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM.
+This SQLAlchemy ORM example, running on Python, implements a basic REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/).
 
-The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
+The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 
 ## Before you begin
 
-This tutorial assumes that you have satisfied the following prerequisites.
+To configure and run this application, make sure that you've completed these prerequisites.
 
 ### YugabyteDB
 
-YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running in five minutes by following the steps in [Quick start](../../../quick-start/).
+YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
 
-### Go
+### Python
 
-Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
+Python 3 is installed
 
-### Go dependencies
+### Python packages (dependencies)
 
-To install the required Go dependencies, run the following commands.
+Python packages (dependencies) are installed
+
+- [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
+- [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/)
+- [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
+
+To quickly install these three packages, run the following command.
 
 ```sh
-go get github.com/jinzhu/gorm
-go get github.com/jinzhu/gorm/dialects/postgres
-go get github.com/google/uuid
-go get github.com/gorilla/mux
-go get github.com/lib/pq
-go get github.com/lib/pq/hstore
+$ pip3 install psycopg2-binary sqlalchemy jsonpickle
 ```
 
 ## Clone the "orm-examples" repository
@@ -63,33 +64,36 @@ Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-e
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-Run the following `export` command to specify the `GOPATH` environment variable.
+## Set up the database connection
 
-```sh
-export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
+Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
+
+```python
+import logging
+
+listen_port = 8080
+db_user = 'yugabyte'
+db_password = 'yugabyte'
+database = 'ysql_sqlalchemy'
+schema = 'ysql_sqlalchemy'
+db_host = 'localhost'
+db_port = 5433
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s"
+    )
 ```
 
-## Build and run the application
+## Start the REST API server
 
-Change to the `gorm` directory.
-
-```sh
-$ cd ./golang/gorm
-```
-
-Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
+Run the following Python script to start the server.
 
 ```sh
-$ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
+python3 ./src/rest-service.py
 ```
 
-Build and start the REST API server by running the following shell script.
-
-```sh
-$ ./build-and-run.sh
-```
-
-The REST API server will start and listen for requests at `http://localhost:8080`.
+The REST API server will start and listen for your requests at `http://localhost:8080`.
 
 ## Send requests to the application
 

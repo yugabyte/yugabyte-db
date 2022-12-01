@@ -1,13 +1,13 @@
 ---
-title: Build a Rust application that uses Diesel and YSQL
-headerTitle: Build a Rust application
-linkTitle: Diesel
-description: Build a sample Rust application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
+title: Rust ORM example application that uses Diesel and YSQL
+headerTitle: Rust ORM example application
+linkTitle: Rust
+description: Rust ORM example application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: orm-tutorials
     identifier: rust-diesel
-    weight: 210
+    parent: orm-tutorials
+    weight: 730
 type: docs
 ---
 

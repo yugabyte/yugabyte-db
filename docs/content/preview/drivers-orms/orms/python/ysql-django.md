@@ -1,74 +1,95 @@
 ---
-title: Build a Java application that uses YSQL
-headerTitle: Build a Java application
-linkTitle: Hibernate
-description: Build a sample Java application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
+title: Python ORM example application that uses YSQL and Django
+headerTitle: Python ORM example application
+linkTitle: Python
+description: Python ORM example application with Django that uses YSQL.
 menu:
   preview:
+    identifier: python-django
     parent: orm-tutorials
-    identifier: java-hibernate
-    weight: 100
+    weight: 680
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../ysql-hibernate/" class="nav-link active">
+  <li >
+    <a href="../ysql-sqlalchemy/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Hibernate ORM
+      SQLAlchemy ORM
     </a>
   </li>
   <li>
-    <a href="../ysql-spring-data/" class="nav-link">
+    <a href="../ysql-django/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data JPA
-    </a>
-  </li>
-   <li>
-    <a href="../ysql-ebean/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Ebean ORM
+      Django ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
+The following tutorial implements a REST API server using the [Django](https://www.djangoproject.com/) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
+The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
 
 ## Prerequisites
 
-This tutorial assumes that:
+This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
-- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
+- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- [Python 3](https://www.python.org/downloads/) or later is installed.
+- [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
-## Clone the "orm-examples" repository
+## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+## Set up the database connection
 
-## Build the application
+- Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
 
-```sh
-$ cd orm-examples/java/hibernate
+```python
+DATABASES =
+{
+    'default':
+    {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'ysql_django',
+        'USER': 'yugabyte',
+        'PASSWORD': '',
+        'HOST': '127.0.0.1',
+        'PORT': '5433',
+    }
+}
 ```
 
-```sh
-$ mvn -DskipTests package
+- Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
+
+```python
+SECRET_KEY = 'YOUR-SECRET-KEY'
 ```
 
-## Run the application
-
-Start the Hibernate application's REST API server at `http://localhost:8080`.
+- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local YugabyteDB cluster, run the following shell command:
 
 ```sh
-$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
+bin/ysqlsh -c "CREATE DATABASE ysql_django"
 ```
+
+- From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
+
+```sh
+python3 manage.py makemigrations && python3 manage.py migrate
+```
+
+## Start the REST API server
+
+Run the following Python script to start the REST API server at port 8080, or specify a port of your own choice.
+
+```sh
+python3 manage.py runserver 8080
+```
+
+The REST API server starts and listens for your requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
@@ -127,28 +148,6 @@ Type "help" for help.
 yugabyte=#
 ```
 
-List the tables created by the app.
-
-```plpgsql
-yugabyte=# \d
-```
-
-```output
-List of relations
- Schema |          Name           |   Type   |  Owner
---------+-------------------------+----------+----------
- public | orderline               | table    | yugabyte
- public | orders                  | table    | yugabyte
- public | orders_user_id_seq      | sequence | yugabyte
- public | products                | table    | yugabyte
- public | products_product_id_seq | sequence | yugabyte
- public | users                   | table    | yugabyte
- public | users_user_id_seq       | sequence | yugabyte
-(7 rows)
-```
-
-Note the 4 tables and 3 sequences in the list above.
-
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;
 ```
@@ -182,28 +181,13 @@ yugabyte=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
-```plpgsql
-yugabyte=# SELECT * FROM orderline;
-```
-
-```output
- order_id                             | product_id | units
---------------------------------------+------------+-------
- 45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
- f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
- f19b64ec-359a-47c2-9014-3c324510c52c |          2 |     4
-(3 rows)
-```
-
-Note that `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
-
 ### Using the REST API
 
 ```sh
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -227,7 +211,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -251,7 +235,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
     {

@@ -1,99 +1,74 @@
 ---
-title: Build a Python application that uses SQLAlchemy and YSQL
-headerTitle: Build a Python application
-linkTitle: SQLAlchemy
-description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
+title: Java ORM example application that uses YSQL
+headerTitle: Java ORM example application
+linkTitle: Java
+description: Java ORM example application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
+    identifier: java-hibernate
     parent: orm-tutorials
-    identifier: python-sqlalchemy
-    weight: 150
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
+  <li>
+    <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      SQLAlchemy ORM
+      Hibernate ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Django ORM
+      Spring Data JPA
+    </a>
+  </li>
+   <li>
+    <a href="../ysql-ebean/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Ebean ORM
     </a>
   </li>
 </ul>
 
-This SQLAlchemy ORM example, running on Python, implements a basic REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/).
+The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
 
-The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
 
-## Before you begin
+## Prerequisites
 
-To configure and run this application, make sure that you've completed these prerequisites.
+This tutorial assumes that:
 
-### YugabyteDB
-
-YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
-
-### Python
-
-Python 3 is installed
-
-### Python packages (dependencies)
-
-Python packages (dependencies) are installed
-
-- [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
-- [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/)
-- [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
-
-To quickly install these three packages, run the following command.
-
-```sh
-$ pip3 install psycopg2-binary sqlalchemy jsonpickle
-```
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3, or later, is installed.
 
 ## Clone the "orm-examples" repository
-
-Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-## Set up the database connection
+There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
 
-Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
-
-```python
-import logging
-
-listen_port = 8080
-db_user = 'yugabyte'
-db_password = 'yugabyte'
-database = 'ysql_sqlalchemy'
-schema = 'ysql_sqlalchemy'
-db_host = 'localhost'
-db_port = 5433
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s:%(levelname)s:%(message)s"
-    )
-```
-
-## Start the REST API server
-
-Run the following Python script to start the server.
+## Build the application
 
 ```sh
-python3 ./src/rest-service.py
+$ cd orm-examples/java/hibernate
 ```
 
-The REST API server will start and listen for your requests at `http://localhost:8080`.
+```sh
+$ mvn -DskipTests package
+```
+
+## Run the application
+
+Start the Hibernate application's REST API server at `http://localhost:8080`.
+
+```sh
+$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
+```
 
 ## Send requests to the application
 
@@ -152,6 +127,28 @@ Type "help" for help.
 yugabyte=#
 ```
 
+List the tables created by the app.
+
+```plpgsql
+yugabyte=# \d
+```
+
+```output
+List of relations
+ Schema |          Name           |   Type   |  Owner
+--------+-------------------------+----------+----------
+ public | orderline               | table    | yugabyte
+ public | orders                  | table    | yugabyte
+ public | orders_user_id_seq      | sequence | yugabyte
+ public | products                | table    | yugabyte
+ public | products_product_id_seq | sequence | yugabyte
+ public | users                   | table    | yugabyte
+ public | users_user_id_seq       | sequence | yugabyte
+(7 rows)
+```
+
+Note the 4 tables and 3 sequences in the list above.
+
 ```plpgsql
 yugabyte=# SELECT count(*) FROM users;
 ```
@@ -185,13 +182,28 @@ yugabyte=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
+```plpgsql
+yugabyte=# SELECT * FROM orderline;
+```
+
+```output
+ order_id                             | product_id | units
+--------------------------------------+------------+-------
+ 45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          2 |     4
+(3 rows)
+```
+
+Note that `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
+
 ### Using the REST API
 
 ```sh
 $ curl http://localhost:8080/users
 ```
 
-```output.json
+```json
 {
   "content": [
     {
@@ -215,7 +227,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```output.json
+```json
 {
   "content": [
     {
@@ -239,7 +251,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```output.json
+```json
 {
   "content": [
     {

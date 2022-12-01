@@ -1,13 +1,13 @@
 ---
 title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
-linkTitle: PG
+linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations with YugabyteDB.
 menu:
   preview:
-    parent: orm-tutorials
     identifier: go-pgorm
-    weight: 130
+    parent: orm-tutorials
+    weight: 650
 type: docs
 ---
 

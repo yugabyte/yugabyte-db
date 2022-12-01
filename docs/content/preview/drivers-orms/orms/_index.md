@@ -1,7 +1,7 @@
 ---
-title: REST ORM tutorials
-headerTitle: REST ORM tutorials
-linkTitle: REST ORM tutorials
+title: Build REST API apps with ORMs
+headerTitle: Build REST API apps with ORMs
+linkTitle: REST apps with ORMs
 description: Build a REST application using ORMs with YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
