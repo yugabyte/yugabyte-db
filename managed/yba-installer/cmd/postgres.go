@@ -187,13 +187,16 @@ func (pg Postgres) runInitDB() {
 
 		// Need to give the yugabyte user ownership of the entire postgres
 		// directory.
-		common.Chown(filepath.Dir(pg.ConfFileLocation), "yugabyte", "yugabyte", true)
-		common.Chown(filepath.Dir(pg.LogFile), "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(filepath.Dir(pg.ConfFileLocation), userName, userName, true)
+		common.Chown(filepath.Dir(pg.LogFile), userName, userName, true)
 
 		command3 := "sudo"
-		arg3 := []string{"-u", "yugabyte", "bash", "-c",
-			pg.PgBin + "/initdb -U " + "yugabyte -D " + pg.ConfFileLocation}
-		common.ExecuteBashCommand(command3, arg3)
+		arg3 := []string{"-u", userName, "bash", "-c",
+			pg.PgBin + "/initdb -U " + userName + " -D " + pg.ConfFileLocation}
+		if _, err := common.ExecuteBashCommand(command3, arg3); err != nil {
+			log.Fatal("Failed to run initdb for postgres: " + err.Error())
+		}
 
 	} else {
 
@@ -202,10 +205,10 @@ func (pg Postgres) runInitDB() {
 		command1 := "bash"
 		arg1 := []string{"-c",
 			pg.PgBin + "/initdb -U " + currentUser + " -D " + pg.ConfFileLocation}
-		common.ExecuteBashCommand(command1, arg1)
-
+		if _, err := common.ExecuteBashCommand(command1, arg1); err != nil {
+			log.Fatal("Failed to run initdb for postgres: " + err.Error())
+		}
 	}
-
 }
 
 // Set the data directory in postgresql.conf
@@ -227,16 +230,17 @@ func (pg Postgres) modifyPostgresConf() {
 // Move required files from initdb to the new data directory
 func (pg Postgres) setUpDataDir() {
 	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
 		// move init conf to data dir
 		common.ExecuteBashCommand("sudo",
-			[]string{"-u", "yugabyte", "mv", pg.ConfFileLocation, pg.dataDir})
+			[]string{"-u", userName, "mv", pg.ConfFileLocation, pg.dataDir})
 
 		// move conf files back to conf location
 		common.CreateDir(pg.ConfFileLocation, 0700)
-		common.Chown(pg.ConfFileLocation, "yugabyte", "yugabyte", false)
+		common.Chown(pg.ConfFileLocation, userName, userName, false)
 		common.ExecuteBashCommand(
 			"sudo",
-			[]string{"-u", "yugabyte", "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
+			[]string{"-u", userName, "find", pg.dataDir, "-iname", "*.conf", "-exec", "mv", "{}",
 				pg.ConfFileLocation, ";"})
 
 	}
@@ -247,7 +251,7 @@ func (pg Postgres) createYugawareDatabase() {
 
 	createdbString := pg.PgBin + "/createdb -h " + pg.MountPath + " yugaware"
 	command2 := "sudo"
-	arg2 := []string{"-u", "yugabyte", "bash", "-c", createdbString}
+	arg2 := []string{"-u", viper.GetString("service_username"), "bash", "-c", createdbString}
 
 	if !common.HasSudoAccess() {
 
@@ -269,7 +273,7 @@ func (pg Postgres) dropYugawareDatabase() {
 	var err error
 	if common.HasSudoAccess() {
 		_, err = common.ExecuteBashCommand("sudo",
-			[]string{"-u", "yugabyte", "bash", "-c", dropdbString})
+			[]string{"-u", viper.GetString("service_username"), "bash", "-c", dropdbString})
 	} else {
 		_, err = common.ExecuteBashCommand(dropdbString, []string{})
 	}

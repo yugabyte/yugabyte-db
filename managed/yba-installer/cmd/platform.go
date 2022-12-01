@@ -94,7 +94,8 @@ func (plat Platform) Install() {
 		plat.CreateCronJob()
 	} else {
 		// Allow yugabyte user to fully manage this installation (InstallRoot to be safe)
-		common.Chown(common.InstallRoot, "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(common.InstallRoot, userName, userName, true)
 	}
 	// At the end of the installation, we rename .installStarted to .installCompleted, to signify the
 	// install has finished succesfully.
@@ -381,8 +382,8 @@ func configureConfHTTPS() {
 		[]string{"-c", "cp " + "server.ks" + " " + common.InstallRoot + "/yb-platform/certs"})
 
 	if common.HasSudoAccess() {
-
-		common.Chown(common.InstallRoot+"/yb-platform/certs", "yugabyte", "yugabyte", true)
+		userName := viper.GetString("service_username")
+		common.Chown(common.InstallRoot+"/yb-platform/certs", userName, userName, true)
 
 	}
 }
