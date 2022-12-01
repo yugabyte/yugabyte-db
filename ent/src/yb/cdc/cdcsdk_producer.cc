@@ -204,7 +204,7 @@ Status PopulateBeforeImage(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ReadHybridTime& read_time,
     RowMessage* row_message, const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, const docdb::SubDocKey& decoded_primary_key,
-    const Schema& schema, const SchemaVersion schema_version) {
+     const Schema& schema, const SchemaVersion schema_version) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
 
@@ -219,7 +219,10 @@ Status PopulateBeforeImage(
 
   QLTableRow row;
   QLValue ql_value;
-  if (VERIFY_RESULT(iter.HasNext())) RETURN_NOT_OK(iter.NextRow(&row));
+  // If CDC is failed to get the before image row, skip adding before image columns.
+  if (iter.HasNext().ok()) {
+    RETURN_NOT_OK(iter.NextRow(&row));
+  }
 
   std::vector<ColumnSchema> columns(schema.columns());
 
@@ -390,7 +393,7 @@ Status PopulateCDCSDKIntentRecord(
               RETURN_NOT_OK(PopulateBeforeImage(
                   tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
                   enum_oid_label_map, composite_atts_map, prev_decoded_key, schema,
-                  tablet_peer->tablet()->metadata()->schema_version()));
+                  schema_version));
             } else {
               for (size_t index = 0; index < schema.num_columns(); ++index) {
                 row_message->add_old_tuple();
@@ -453,8 +456,7 @@ Status PopulateCDCSDKIntentRecord(
           auto hybrid_time = commit_time - 1;
           RETURN_NOT_OK(PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-              composite_atts_map, decoded_key, schema,
-              tablet_peer->tablet()->metadata()->schema_version()));
+              composite_atts_map, decoded_key, schema, schema_version));
         }
 
         if (row_message->old_tuple_size() == 0) {
@@ -532,8 +534,7 @@ Status PopulateCDCSDKIntentRecord(
             auto hybrid_time = commit_time - 1;
             RETURN_NOT_OK(PopulateBeforeImage(
                 tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
-                enum_oid_label_map, composite_atts_map, decoded_key, schema,
-                tablet_peer->tablet()->metadata()->schema_version()));
+                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version));
           } else {
             for (size_t index = 0; index < schema.num_columns(); ++index) {
               row_message->add_old_tuple();
@@ -557,8 +558,7 @@ Status PopulateCDCSDKIntentRecord(
         auto hybrid_time = commit_time - 1;
         RETURN_NOT_OK(PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-            composite_atts_map, prev_decoded_key, schema,
-            tablet_peer->tablet()->metadata()->schema_version()));
+            composite_atts_map, prev_decoded_key, schema, schema_version));
       } else {
         for (size_t index = 0; index < schema.num_columns(); ++index) {
           row_message->add_old_tuple();
@@ -639,8 +639,7 @@ Status PopulateCDCSDKWriteRecord(
         if (metadata.record_type == cdc::CDCRecordType::ALL) {
           RETURN_NOT_OK(PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema,
-              tablet_peer->tablet()->metadata()->schema_version()));
+              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version));
         } else {
           for (int new_tuple_index = 0; new_tuple_index < row_message->new_tuple_size();
                ++new_tuple_index) {
@@ -679,8 +678,7 @@ Status PopulateCDCSDKWriteRecord(
           (row_message->op() == RowMessage_Op_DELETE)) {
         RETURN_NOT_OK(PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-            enum_oid_label_map, composite_atts_map, decoded_key, schema,
-            tablet_peer->tablet()->metadata()->schema_version()));
+            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version));
 
         if (row_message->old_tuple_size() == 0) {
           RETURN_NOT_OK(AddPrimaryKey(
@@ -734,8 +732,7 @@ Status PopulateCDCSDKWriteRecord(
     if (metadata.record_type == cdc::CDCRecordType::ALL) {
       RETURN_NOT_OK(PopulateBeforeImage(
           tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema,
-          tablet_peer->tablet()->metadata()->schema_version()));
+          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version));
     } else {
       for (int index = 0; index < row_message->new_tuple_size(); ++index) {
         row_message->add_old_tuple();
