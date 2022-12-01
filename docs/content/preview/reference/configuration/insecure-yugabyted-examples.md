@@ -8,11 +8,11 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a two-server architecture, with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
-Using yugabyted, you can create single-node clusters, and, using the `--join` flag in the `start` command, multi-node clusters.
+Using yugabyted, you can create single-node clusters. To create multi-node clusters, you would need to use the `--join` flag in the `start` command.
 
 Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 
@@ -33,7 +33,7 @@ $ ./bin/yugabyted start
 
 ### Online help
 
-You can access the overview command line help for `yugabyted` by running one of the following examples from the YugabyteDB home.
+You can access command-line help for `yugabyted` by running one of the following examples from the YugabyteDB home:
 
 ```sh
 $ ./bin/yugabyted -h
@@ -43,7 +43,7 @@ $ ./bin/yugabyted -h
 $ ./bin/yugabyted -help
 ```
 
-For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command line help for the `yugabyted start` command by running the following:
+For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
 
 ```sh
 $ ./bin/yugabyted start -h
@@ -68,7 +68,7 @@ The following commands are available:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster in your local environment. This allows you to quickly get started with a YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads in your local environment.
 
 #### Syntax
 
@@ -93,7 +93,7 @@ Examples:
 #### Flags
 
 -h, --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --advertise_address *bind-ip*
 : IP address or local hostname on which yugabyted will listen.
@@ -117,10 +117,10 @@ Examples:
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
 
 --cloud_location *cloud-location*
-: Cloud location of the Yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
+: Cloud location of the yugabyted node in the format `cloudprovider.region.zone`. This information is used for multi-zone, multi-region, and multi-cloud deployments of YugabyteDB clusters.
 
 --fault_tolerance *fault_tolerance*
-: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values - none, zone, region, and cloud.
+: Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
 : Enable or disable the webserver UI. Default: `false`
@@ -160,13 +160,13 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 : Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
 --ysql_enable_auth *bool*
-: Enable or disable YSQL Authentication. Default: `false`.
-: If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to true.
+: Enable or disable YSQL authentication. Default: `false`.
+: If the `YSQL_PASSWORD` [environment variable](#environment-variables) exists, then authentication mode is automatically set to `true`.
 
 --use_cassandra_authentication *bool*
-: Enable or disable YCQL Authentication. Default: `false`.
-: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variables](#environment-variables) exist, then authentication mode is automatically set to true.
-: **Note**: The corresponding environment variables have higher priority than the command-line flags.
+: Enable or disable YCQL authentication. Default: `false`.
+: If the `YCQL_USER` or `YCQL_PASSWORD` [environment variables](#environment-variables) exist, then authentication mode is automatically set to `true`.
+Note that the corresponding environment variables have higher priority than the command-line flags.
 
 --initial_scripts_dir *initial-scripts-dir*
 : The directory from where yugabyted reads initialization scripts.
@@ -222,13 +222,13 @@ yugabyted configure data_placement --fault_tolerance=zone
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --fault_tolerance *fault-tolerance*
-: Specify the fault tolerance for the cluster. This flag can accept one of these values - zone, region, or cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in 3 different zones, if available.
+: Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-seperated values in the format `cloud.region.zone`.
+: Specify the data placement for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone`.
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
@@ -272,13 +272,13 @@ Examples:
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --disable *disable*
-: Disable encryption at rest for the cluster. No need to set a value for the flag. Use --enable or --disable flag to toggle encryption features on a YugabyteDB cluster.
+: Disable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --enable *enable*
-: Enable encryption at rest for the cluster. No need to set a value for the flag. Use --enable or --disable flag to toggle encryption features on a YugabyteDB cluster.
+: Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server.
@@ -328,7 +328,7 @@ Usage: yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --hostnames *hostnames*
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
@@ -360,7 +360,7 @@ Usage: yugabyted stop [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server that needs to be stopped.
@@ -389,7 +389,7 @@ Usage: yugabyted destroy [flags]
 #### Flags
 
 -h, --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server that needs to be destroyed.
@@ -418,7 +418,7 @@ Usage: yugabyted status [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose status is desired.
@@ -447,7 +447,7 @@ Usage: yugabyted version [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose version is desired.
@@ -476,7 +476,7 @@ Usage: yugabyted collect_logs [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --stdout *stdout*
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
@@ -525,7 +525,7 @@ Usage: yugabyted connect ysql [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose logs are desired.
@@ -552,7 +552,7 @@ Usage: yugabyted connect ycql [flags]
 #### Flags
 
 -h | --help
-: Print the command line help and exit.
+: Print the command-line help and exit.
 
 --config *config-file*
 : The path to the configuration file of the yugabyted server whose logs are desired.
@@ -651,7 +651,7 @@ Changing the values of the environment variables after the first run has no effe
 
 Set `YSQL_PASSWORD` to use the cluster in enforced authentication mode.
 
-Combinations of environment variables and their uses.
+The following are combinations of environment variables and their uses:
 
 - `YSQL_PASSWORD`
 
@@ -685,7 +685,7 @@ Combinations of environment variables and their uses.
 
 Set `YCQL_USER` or `YCQL_PASSWORD` to use the cluster in enforced authentication mode.
 
-Combinations of environment variables and their uses.
+The following are combinations of environment variables and their uses:
 
 - `YCQL_PASSWORD`
 
@@ -723,7 +723,7 @@ Combinations of environment variables and their uses.
   <li>
     <a href="../yugabyted/#examples" class="nav-link">
       <!-- <i class="fa-brands fa-apple" aria-hidden="true"></i> -->
-    Secure Cluster
+    Secure cluster
     </a>
   </li>
   <li class="active">
@@ -734,11 +734,7 @@ Combinations of environment variables and their uses.
   </li>
 </ul>
 
-{{< note title="Note" >}}
-
-For using encryption at rest, `openssl` must be installed in the machine.
-
-{{< /note >}}
+For using encryption at rest, `openssl` must be installed on the machine.
 
 ### Create a single-node cluster
 
@@ -756,14 +752,14 @@ Run the following command:
 ./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
 ```
 
-On MacOS and Linux, the additional nodes need loopback addresses configured:
+On MacOS and Linux, the additional nodes need loopback addresses configured as follows:
 
 ```sh
 sudo ifconfig lo0 alias 127.0.0.2
 sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Add two more nodes to the cluster using the `join` option.
+Add two more nodes to the cluster using the `join` option, as follows:
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
@@ -803,7 +799,7 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 ./bin/yugabyted configure data_placement --fault_tolerance=zone
 ```
 
-This command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more zones available in the cluster, the configure command configures the cluster to survive at least 1 availability zone failure. Otherwise, it outputs a warning message.
+The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more zones available in the cluster, the `configure` command configures the cluster to survive at least one availability zone failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
@@ -842,7 +838,7 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 ./bin/yugabyted configure data_placement --fault_tolerance=region
 ```
 
-This command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are 3 or more regions available in the cluster, the command configures the cluster to survive at least 1 region failure. Otherwise, it outputs a warning message.
+The preceding command determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more regions available in the cluster, the command configures the cluster to survive at least one region failure. Otherwise, it outputs a warning message.
 
 The replication factor of the cluster defaults to 3.
 
@@ -858,7 +854,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 ./bin/yugabyted configure data_placement --fault_tolerance=region --constraint_value=aws.us-east.us-east-1a,aws.us-west.us-west-1a,aws.us-central.us-central-1a --rf=3
 ```
 
-### Enabling and Disabling encryption at rest
+### Enable and disable encryption at rest
 
 Create a cluster using the desired deployment example.
 
@@ -877,14 +873,14 @@ To disable encryption at rest in a local cluster with encryption at rest enabled
 ./bin/yugabyted configure encrypt_at_rest --disable --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
-To disbale encryption-at-rest in a multi-zone or multi-region cluster with encryption-at-rest enabled, run the following command from any VM:
+To disable encryption at rest in a multi-zone or multi-region cluster with this type of encryption enabled, run the following command from any VM:
 ```sh
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
 ### Pass additional flags to YB-TServer
 
-Create a single-node cluster and set additional flags for the YB-TServer process.
+Create a single-node cluster and set additional flags for the YB-TServer process:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
@@ -892,7 +888,7 @@ Create a single-node cluster and set additional flags for the YB-TServer process
 
 ## Upgrade a YugabyteDB cluster
 
-To use the latest features of the database and apply the latest security fixes, it's prudent to upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/).
+To use the latest YugabyteDB features and apply the latest security updates, it is recommended to upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/).
 
 Upgrading an existing YugabyteDB cluster that was deployed using yugabyted includes the following steps:
 
@@ -903,12 +899,6 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
 Repeat the steps on all the nodes of the cluster, one node at a time.
 
 ### Upgrade a cluster from single to multi zone
-
-{{< note title="Note" >}}
-
-Multi-zone, multi-region deployment using yugabyted is supported in YugabyteDB 2.15.0.0 and later.
-
-{{< /note >}}
 
 The following steps assume that you have a running YugabyteDB cluster deployed using `yugabyted`, and have [downloaded the update](https://download.yugabyte.com/).
 
