@@ -396,6 +396,16 @@ If true, local transactions using transaction status tables other than `system.t
 
 Default: `true`
 
+## xCluster flags
+
+Settings related to managing xClusters.
+
+##### --xcluster_svc_queue_size
+
+The RPC queue size of the xCluster service. Should match the size of the tablet service queue size used for read and write requests.
+
+Default: 5000
+
 ## YSQL flags
 
 The following flags support the use of the [YSQL API](../../../api/ysql/):
