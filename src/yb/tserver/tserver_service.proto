@@ -91,6 +91,8 @@ service TabletServerService {
 
   rpc GetTserverCatalogVersionInfo(GetTserverCatalogVersionInfoRequestPB)
       returns (GetTserverCatalogVersionInfoResponsePB);
+
+  rpc ListMasterServers(ListMasterServersRequestPB) returns (ListMasterServersResponsePB);
 }
 
 message GetLogLocationRequestPB {

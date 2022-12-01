@@ -262,6 +262,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
 
+  Status ListMasterServers(const ListMasterServersRequestPB* req,
+                           ListMasterServersResponsePB* resp) const;
+
  protected:
   virtual Status RegisterServices();
 
