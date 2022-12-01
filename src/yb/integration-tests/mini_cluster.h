@@ -269,18 +269,25 @@ void StepDownRandomTablet(MiniCluster* cluster);
 
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
+using TabletPeerFilter = std::function<bool(const tablet::TabletPeerPtr&)>;
+
 std::unordered_set<std::string> ListTabletIdsForTable(
     MiniCluster* cluster, const std::string& table_id);
 
 std::unordered_set<std::string> ListActiveTabletIdsForTable(
     MiniCluster* cluster, const std::string& table_id);
 
-std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
+std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);
 
-std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
-    MiniCluster* cluster,
-    const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
+std::vector<tablet::TabletPeerPtr> ListTabletPeers(
+    MiniCluster* cluster, TabletPeerFilter filter);
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
+    MiniCluster* cluster, const TabletId& tablet_id, TabletPeerFilter filter = TabletPeerFilter());
+
+Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
+    MiniCluster* cluster, const TabletId& tablet_id);
 
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
@@ -321,7 +328,10 @@ Status StepDown(
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
+// Additionally checks peers for the specified table if table_id is specified.
 Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+
+Status WaitAllReplicasReady(MiniCluster* cluster, const TableId& table_id, MonoDelta timeout);
 
 // Waits until all tablet peers of specified cluster have the specified index in their log.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
@@ -341,7 +351,6 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
 
 Status WaitForInitDb(MiniCluster* cluster);
 
-using TabletPeerFilter = std::function<bool(const tablet::TabletPeer*)>;
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
 
 tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
@@ -367,6 +376,14 @@ Status WaitAllReplicasSynchronizedWithLeader(
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
+
+Status WaitForAnySstFiles(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
+
+Status WaitForPeersAreFullyCompacted(
+    MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
+    MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

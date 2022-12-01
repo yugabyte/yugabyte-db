@@ -667,9 +667,8 @@ TEST_F(PgConcurrentBlockedWaitersTest, YB_DISABLE_TEST_IN_TSAN(LongPauseRetrySin
 class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
   Status WaitForLoadBalance(int num_tablet_servers) {
-    auto client = VERIFY_RESULT(cluster_->CreateClient());
     return WaitFor(
-      [&]() -> Result<bool> { return client->IsLoadBalanced(num_tablet_servers); },
+      [&]() -> Result<bool> { return client_->IsLoadBalanced(num_tablet_servers); },
       60s * kTimeMultiplier,
       Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
   }
