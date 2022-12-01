@@ -39,6 +39,9 @@
     margin-left: -300px;
     min-width: 300px;
     z-index: 999;
+    @media(max-width:767px){
+      z-index: 10000;
+    }
   }
 
   .content-parent {
@@ -48,10 +51,14 @@
     margin-left: auto;
     margin-right: auto;
     min-width: 1080px;
-    &.no-right-sidebar { overflow: hidden; }
-
-    &:hover {
-      z-index: 100;
+    &.no-right-sidebar {
+      overflow: hidden;
+    }
+    
+    @media(max-width:767px){
+      &:hover{
+        z-index:1000;
+      }
     }
 
     @-moz-document url-prefix() {
@@ -69,6 +76,12 @@
       max-width: 100%;
       display: flex;
       min-height: 100vh;
+      flex-flow:row wrap;
+      >div{
+        display:flex;
+        max-width:100%;
+        min-height: calc(100vh - 170px);
+      }
     }
   }
 

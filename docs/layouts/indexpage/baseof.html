@@ -15,6 +15,7 @@
         </aside>
         <div class="row flex-xl-nowrap {{- if (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
           <div class="content-child">
+            <div>
               {{ if .Params.showRightNav }}
               <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
                 {{ partial "toc.html" . }}
@@ -25,10 +26,11 @@
                 {{ if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) }}{{ partial "breadcrumb.html" . }}{{ end }}
                 {{ block "main" . }}{{ end }}
               </main>
+            </div>
+            {{ partial "yb_footer.html" . }}
           </div>
         </div>
       </div>
-      {{ partial "footer.html" . }}
     </div>
     {{ partial "scripts.html" . }}
   </body>

@@ -89,10 +89,7 @@
     font-weight: 700;
     line-height: 42px;
     margin-bottom: 16px;
-
-    @media (max-width: 767px) {
-      word-break: break-all;
-    }
+    word-break: break-all;
 
     & + p {
       font-size: 20px;
