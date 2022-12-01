@@ -482,7 +482,7 @@ class YBPgsqlOp : public YBOperation {
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
   int64_t sidecar_index_ = -1;
-  std::string partition_key_;
+  std::string partition_key_; // May contain stale value, see YBPgsqlReadOp::GetPartitionKey().
   rpc::Sidecars& sidecars_;
 };
 
@@ -611,7 +611,7 @@ class YBNoOp {
 
 Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, LWPgsqlReadRequestPB* request);
+    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request);
 
 Status InitPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
@@ -627,6 +627,10 @@ Status GetRangePartitionBounds(
     const LWPgsqlReadRequestPB& request,
     std::vector<docdb::KeyEntryValue>* lower_bound,
     std::vector<docdb::KeyEntryValue>* upper_bound);
+
+
+Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
+    const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
 
 }  // namespace client
 }  // namespace yb
