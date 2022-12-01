@@ -3,6 +3,7 @@ title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Learn about how colocated tables aggregate data into a single tablet.
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/architecture/docdb/colocated_tables/
 menu:
@@ -13,7 +14,7 @@ menu:
 type: docs
 ---
 
-In workloads that need lower throughput and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets that should be hosted per node. Since each table by default requires at least one tablet per node, a YugabyteDB cluster with 5000 relations (which includes tables and indexes) will result in 5000 tablets per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node since each tablet adds some CPU, disk, and network overhead. If most or all of the tables in YugabyteDB cluster are small tables, then having separate tablets for each table unnecessarily adds pressure on CPU, network and disk.
+In workloads that need lower throughput and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets that should be hosted per node. Because each table by default requires at least one tablet per node, a YugabyteDB cluster with 5000 relations (which includes tables and indexes) will result in 5000 tablets per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node because each tablet adds some CPU, disk, and network overhead. If most or all of the tables in a YugabyteDB cluster are small tables, then having separate tablets for each table unnecessarily adds pressure on CPU, network, and disk.
 
 To help accommodate such relational tables and workloads, YugabyteDB supports colocating SQL tables. Colocating tables puts all of their data into a single tablet, called the colocation tablet. This can dramatically increase the number of relations (tables, indexes, etc) that can be supported per node while keeping the number of tablets per node low. Note that all the data in the colocation tablet is still replicated across three nodes (or whatever the replication factor is). Large tablets can be dynamically split at a future date if there is need to serve more throughput over a larger data set.
 
@@ -41,7 +42,7 @@ In this scenario, it is undesirable to have the small dataset spread across mult
 this might affect performance of certain queries due to more network hops (for example, joins).
 
 **Example:** User identity service for a global application. The user dataset size may not be too
-large, but is accessed in a relational manner, requires high availability and might need to be
+large, but is accessed in a relational manner, requires high availability, and might need to be
 geo-distributed for low latency access.
 
 ### Large datasets - a few large tables with many small tables
@@ -59,7 +60,8 @@ In this scenario, only the few large tables would need to be sharded and scaled 
 ### Scaling the number of databases, each database with a small dataset
 
 There may be scenarios where the number of databases grows rapidly, while the dataset of each database is small.
-This is characteristic of a microservices-oriented architecture, where each microservice needs its own database. These microservices are hosted in dev, test, staging, production and other environments. The net result is a lot of small databases, and the need to be able to scale the number of databases hosted. Colocated tables allow for the entire dataset in each database to be hosted in one tablet, enabling scalability of the number of databases in a cluster by simply adding more nodes.
+
+This is characteristic of a microservices-oriented architecture, where each microservice needs its own database. These microservices are hosted in dev, test, staging, production, and other environments. The net result is a lot of small databases, and the need to be able to scale the number of databases hosted. Colocated tables allow for the entire dataset in each database to be hosted in one tablet, enabling scalability of the number of databases in a cluster by simply adding more nodes.
 
 **Example:** Multi-tenant SaaS services where one database is created per customer. As new customers are rapidly on-boarded, it becomes necessary to add more databases quickly while maintaining high-availability and fault-tolerance of each database.
 
