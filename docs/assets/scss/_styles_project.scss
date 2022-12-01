@@ -393,6 +393,10 @@ body:not(.td-home) .td-main main {
     align-items: flex-start;
     justify-content: flex-start;
     flex-flow: column;
+
+    .heading-content {
+      width: 100%;
+    }
   }
 
   .heading-image {
