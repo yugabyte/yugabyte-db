@@ -282,7 +282,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // Process RPC status.
   void ProcessRpcStatus(const AsyncRpc &rpc, const Status &s);
 
-  // Async Callbacks.
+  // Tablet lookup and its async callbacks.
+  void LookupTabletFor(InFlightOp* op);
   void TabletLookupFinished(InFlightOp* op, Result<internal::RemoteTabletPtr> result);
 
   void TransactionReady(const Status& status);

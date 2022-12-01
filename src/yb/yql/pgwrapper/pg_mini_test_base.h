@@ -30,7 +30,7 @@ class RpcServerBase;
 
 namespace pgwrapper {
 
-class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
+class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
   // This allows modifying flags before we start the postgres process in SetUp.
   virtual void BeforePgProcessStart() {
@@ -78,6 +78,8 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   Result<TableId> GetTableIDFromTableName(const std::string table_name);
+
+  Result<master::CatalogManagerIf*> catalog_manager() const;
 
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);

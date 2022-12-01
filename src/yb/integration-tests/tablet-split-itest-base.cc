@@ -453,7 +453,8 @@ Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(
   return SplitTabletAndValidate(split_hash_code, num_rows);
 }
 
-Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::string& tablet_id) {
+Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::SendTServerRpcSyncGetSplitKey(
+    const TabletId& tablet_id) {
   auto tserver = cluster_->mini_tablet_server(0);
   auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
       proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
@@ -466,8 +467,8 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::
   return resp;
 }
 
-Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpcSync(
-    const std::string& tablet_id) {
+Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterRpcSyncSplitTablet(
+    const TabletId& tablet_id) {
   auto master_admin_proxy = master::MasterAdminProxy(
       proxy_cache_.get(), VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
@@ -576,21 +577,6 @@ Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_has
 
   RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
   return source_tablet_id;
-}
-
-Result<master::SplitTabletResponsePB> TabletSplitITest::SplitSingleTablet(
-    const TabletId& tablet_id) {
-  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
-      proxy_cache_.get(), client_->GetMasterLeaderAddress());
-  rpc::RpcController controller;
-  controller.set_timeout(kRpcTimeout);
-
-  master::SplitTabletRequestPB req;
-  master::SplitTabletResponsePB resp;
-  req.set_tablet_id(tablet_id);
-
-  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
-  return resp;
 }
 
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
