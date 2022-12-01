@@ -30,7 +30,7 @@
 # under the License.
 #
 
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.17.3)
 
 project(YugabyteDB)
 
