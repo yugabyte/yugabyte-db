@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -175,6 +176,7 @@ public class Module extends AbstractModule {
       bind(AccessKeyRotationUtil.class).asEagerSingleton();
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
+      bind(PerfAdvisorScheduler.class).asEagerSingleton();
     }
   }
 
