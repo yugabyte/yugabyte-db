@@ -2847,6 +2847,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {2, 2, 5, 0, 0, 0};
+  const uint32_t expected_count_packed_row[] = {2, 3, 4, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecordWithThreeColumns expected_records[] = {
@@ -2854,22 +2855,31 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
       {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {4, 99, 66}};
   ExpectedRecordWithThreeColumns expected_before_image_records[] = {
       {}, {}, {1, 2, INT_MAX}, {}, {1, 3, INT_MAX}, {}, {1, 4, INT_MAX}, {4, 5, 6}, {4, 99, 6}};
+  ExpectedRecordWithThreeColumns expected_before_image_records_with_packed_row[] = {
+      {}, {}, {0, 0, 0}, {}, {0, 0, 0}, {}, {0, 0, 0}, {4, 5, 6}, {4, 99, 6}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
+  // If the packed row is enabled and there are multiple tables altered, if CDC fail to get before
+  // image row with the current running schema version, then it will ignore the before image tuples.
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   for (uint32_t i = 0; i < record_size; ++i) {
     const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
     if (i <= 6) {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true, expected_before_image_records[i]);
+          record, expected_records[i], count, true,
+          FLAGS_ysql_enable_packed_row ? expected_before_image_records_with_packed_row[i]
+                                       : expected_before_image_records[i]);
     } else {
       CheckRecordWithThreeColumns(
-          record, expected_records[i], count, true, expected_before_image_records[i], true);
+          record, expected_records[i], count, true,
+          FLAGS_ysql_enable_packed_row ? expected_before_image_records_with_packed_row[i]
+                                       : expected_before_image_records[i],
+          true);
     }
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
