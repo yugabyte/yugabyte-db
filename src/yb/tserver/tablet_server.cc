@@ -817,5 +817,38 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   return nullptr;
 }
 
+Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
+                                       ListMasterServersResponsePB* resp) const {
+  auto master_addresses = options().GetMasterAddresses();
+  auto peer_status = resp->mutable_master_server_and_type();
+  std::vector<Endpoint> master_entries;
+  for (const auto& list : *master_addresses) {
+    for (const auto& master_addr : list) {
+      Status s = master_addr.ResolveAddresses(&master_entries);
+      if (!s.ok()) {
+        VLOG(1) << "Could not resolve: " << master_addr.ToString();
+      }
+    }
+  }
+
+  // de-duplicate master entries.
+  std::sort(master_entries.begin(), master_entries.end());
+  master_entries.erase(
+      std::unique(master_entries.begin(), master_entries.end()), master_entries.end());
+
+  std::string leader = heartbeater_->get_leader_master_hostport();
+  for (const auto& master_endpoint : master_entries) {
+    auto master_entry = peer_status->Add();
+    auto master = HostPort(master_endpoint).ToString();
+    master_entry->set_master_server(master);
+    if (leader.compare(master) == 0) {
+      master_entry->set_is_leader(true);
+    } else {
+      master_entry->set_is_leader(false);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace tserver
 }  // namespace yb
