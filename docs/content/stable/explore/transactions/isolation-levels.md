@@ -32,7 +32,7 @@ type: docs
 -->
 </ul>
 
-Yugabyte supports three isolation levels in the transactional layer - Serializable, Snapshot and Read Committed. PostgreSQL (and the SQL standard) have four isolation levels - `Serializable`, `Repeatable read`, `Read Committed` and `Read uncommitted`. The mapping between the PostgreSQL isolation levels in YSQL, along with which transaction anomalies can occur at each isolation level are shown below.
+Yugabyte supports three isolation levels in the transactional layer - Serializable, Snapshot, and Read Committed<sup>$</sup>. PostgreSQL (and the SQL standard) have four isolation levels - Serializable, Repeatable read, Read Committed, and Read uncommitted. The mapping between the PostgreSQL isolation levels in YSQL, along with which transaction anomalies can occur at each isolation level are shown below.
 
 PostgreSQL Isolation  | YugabyteDB Equivalent | Dirty Read | Nonrepeatable Read | Phantom Read | Serialization Anomaly
 -----------------|--------------|------------------------|---|---|---
@@ -41,7 +41,7 @@ Read <br/>committed   | Read Committed<sup>$</sup> | Not possible | Possible | P
 Repeatable <br/>read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-<sup>$</sup> Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 {{< note title="Note" >}}
 The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL APIs (and also PostgreSQL) syntactic default, maps to Snapshot Isolation (unless the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`).
@@ -289,9 +289,9 @@ SELECT * FROM example;
 
 ## Read Committed Isolation
 
-This is same as Snapshot Isolation except that every statement in the transaction will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). In other words, each statement works on a new "snapshot" of the database that includes everything that is committed before the statement is issued. Conflict detection is the same as in Snapshot Isolation.
-
 Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+This is same as Snapshot Isolation except that every statement in the transaction will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). In other words, each statement works on a new "snapshot" of the database that includes everything that is committed before the statement is issued. Conflict detection is the same as in Snapshot Isolation.
 
 <table style="margin:0 5px;">
   <tr>
