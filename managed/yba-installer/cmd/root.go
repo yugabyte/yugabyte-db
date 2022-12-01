@@ -12,7 +12,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	pre "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 )
 
 // List of services required for YBA installation.
@@ -67,9 +67,9 @@ func preflightCmd() *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) == 1 && args[0] == "list" {
-				pre.PreflightList()
+				preflight.PreflightList()
 			} else {
-				pre.PreflightChecks(common.InputFile, skippedPreflightChecks...)
+				preflight.Run(common.InputFile, skippedPreflightChecks...)
 			}
 		},
 	}
@@ -268,7 +268,7 @@ func installCmd() *cobra.Command {
 
 			if bringPostgres {
 
-				if !pre.ValidateUserPostgres(common.InputFile) {
+				if !preflight.ValidateUserPostgres(common.InputFile) {
 					log.Fatal("User Postgres not correctly configured! " +
 						"Check settings and the above logging message.")
 				}
@@ -277,14 +277,14 @@ func installCmd() *cobra.Command {
 
 			if bringPython {
 
-				if !pre.ValidateUserPython(common.InputFile) {
+				if !preflight.ValidateUserPython(common.InputFile) {
 
 					log.Fatal("User Python not correctly configured! " +
 						"Check settings.")
 				}
 			}
 
-			pre.PreflightChecks(common.InputFile, skippedPreflightChecks...)
+			preflight.Run(common.InputFile, skippedPreflightChecks...)
 
 			// Common install steps
 			common.Install(common.GetVersion())
@@ -350,6 +350,9 @@ func init() {
 		upgradeCmd, startCmd, stopCmd, restartCmd, statusCmd)
 
 	// Init viper
+	// Set some default values
+	viper.SetDefault("service_username", "yugabyte")
+
 	viper.SetConfigFile(common.InputFile)
 	viper.AddConfigPath(".")
 	viper.ReadInConfig()

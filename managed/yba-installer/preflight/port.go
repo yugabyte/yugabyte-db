@@ -2,38 +2,41 @@
  * Copyright (c) YugaByte, Inc.
  */
 
- package preflight
+package preflight
 
- import (
-	 "net"
-	 "fmt"
+import (
+	"net"
 
-     log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-  )
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+)
 
- var port = Port{"port", "warning"}
+var port = Port{"port", "warning"}
 
- type Port struct {
-	 name string
-	 WarningLevel string
- }
+type Port struct {
+	name         string
+	warningLevel string
+}
 
- func (p Port) Name() string {
-	 return p.name
- }
+func (p Port) Name() string {
+	return p.name
+}
 
- func (p Port) GetWarningLevel() string {
-	 return p.WarningLevel
- }
+func (p Port) WarningLevel() string {
+	return p.warningLevel
+}
 
- func (p Port) Execute() {
+func (p Port) Execute() {
 
 	for _, port := range ports {
-        _, err := net.Listen("tcp", ":" + port)
-        if err != nil {
-            log.Fatal(fmt.Sprintf("Connecting error: ", err))
-        } else {
-            log.Info("Connection to port: " + port + " successful.")
-        }
-    }
- }
+		_, err := net.Listen("tcp", ":"+port)
+		if err != nil {
+			log.Fatal("Connecting error: " + err.Error())
+		} else {
+			log.Info("Connection to port: " + port + " successful.")
+		}
+	}
+}
+
+func init() {
+	RegisterPreflightCheck(port)
+}
