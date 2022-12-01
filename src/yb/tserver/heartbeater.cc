@@ -143,14 +143,20 @@ class Heartbeater::Thread {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
     master_addresses_ = std::move(master_addresses);
     VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
+  std::string get_leader_master_hostport() {
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    return leader_master_hostport_.ToString();
+  }
+
  private:
   void RunThread();
-  Status FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport);
+  Status FindLeaderMaster(CoarseTimePoint deadline,
+                          HostPort* leader_hostport) REQUIRES(master_meta_mtx_);;
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
@@ -159,19 +165,22 @@ class Heartbeater::Thread {
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
-
   const std::string& LogPrefix() const {
     return server_->LogPrefix();
   }
 
-  server::MasterAddressesPtr get_master_addresses() {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  server::MasterAddressesPtr get_master_addresses_unlocked() {
     CHECK_NOTNULL(master_addresses_.get());
     return master_addresses_;
   }
 
-  // Protecting master_addresses_.
-  std::mutex master_addresses_mtx_;
+  server::MasterAddressesPtr get_master_addresses() {
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    return get_master_addresses_unlocked();
+  }
+
+  // Protecting master list and leader.
+  std::mutex master_meta_mtx_;
 
   // The hosts/ports of masters that we may heartbeat to.
   //
@@ -242,6 +251,11 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
   thread_->set_master_addresses(std::move(master_addresses));
 }
 
+std::string Heartbeater::get_leader_master_hostport() {
+  return thread_->get_leader_master_hostport();
+}
+
+
 ////////////////////////////////////////////////////////////
 // Heartbeater::Thread
 ////////////////////////////////////////////////////////////
@@ -278,9 +292,10 @@ void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
 
 } // anonymous namespace
 
-Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport) {
+Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline,
+                                             HostPort* leader_hostport) {
   Status s = Status::OK();
-  const auto master_addresses = get_master_addresses();
+  const auto master_addresses = get_master_addresses_unlocked();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
     // "Shortcut" the process when a single master is specified.
     *leader_hostport = (*master_addresses)[0][0];
@@ -309,6 +324,7 @@ Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort*
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
+  std::lock_guard<std::mutex> l(master_meta_mtx_);
   auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
@@ -653,7 +669,7 @@ void Heartbeater::Thread::RunThread() {
     if (!s.ok()) {
       const auto master_addresses = get_master_addresses();
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to heartbeat to " << leader_master_hostport_.ToString()
+          << "Failed to heartbeat to " << get_leader_master_hostport()
           << ": " << s << " tries=" << consecutive_failed_heartbeats_
           << ", num=" << master_addresses->size()
           << ", masters=" << yb::ToString(master_addresses)

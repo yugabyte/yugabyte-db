@@ -90,6 +90,8 @@ using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
+using yb::tserver::ListMasterServersRequestPB;
+using yb::tserver::ListMasterServersResponsePB;
 using yb::consensus::StartRemoteBootstrapRequestPB;
 using yb::consensus::StartRemoteBootstrapResponsePB;
 
@@ -112,6 +114,8 @@ const char* const kCompactTabletOp = "compact_tablet";
 const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kReloadCertificatesOp = "reload_certificates";
 const char* const kRemoteBootstrapOp = "remote_bootstrap";
+const char* const kListMasterServersOp = "list_master_servers";
+
 
 DEFINE_UNKNOWN_string(server_address, "localhost",
               "Address of server to run against");
@@ -161,6 +165,7 @@ namespace yb {
 namespace tools {
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
+typedef ListMasterServersResponsePB::MasterServerAndTypePB MasterServerAndTypePB;
 
 class TsAdminClient {
  public:
@@ -240,6 +245,9 @@ class TsAdminClient {
 
   // Performs a manual remote bootstrap onto `target_server` for a given tablet.
   Status RemoteBootstrap(const std::string& target_server, const std::string& tablet_id);
+
+  // List information for all master servers.
+  Status ListMasterServers();
 
  private:
   std::string addr_;
@@ -650,6 +658,32 @@ Status TsAdminClient::RemoteBootstrap(const std::string& source_server,
   return Status::OK();
 }
 
+Status TsAdminClient::ListMasterServers() {
+  CHECK(initted_);
+  std::vector<MasterServerAndTypePB> master_servers;
+  ListMasterServersRequestPB req;
+  ListMasterServersResponsePB resp;
+  RpcController rpc;
+
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->ListMasterServers(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  master_servers.assign(resp.master_server_and_type().begin(),
+                          resp.master_server_and_type().end());
+
+  std::cout << "RPC Host/Port\t\tRole" << std::endl;
+  for (const auto &master_server_and_type : master_servers) {
+    std::string leader_string = master_server_and_type.is_leader() ? "Leader" : "Follower";
+    std::cout << master_server_and_type.master_server() << "\t\t" << leader_string << std::endl;
+  }
+
+  return Status::OK();
+}
+
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -676,7 +710,8 @@ void SetUsage(const char* argv0) {
       << "  " << kVerifyTabletOp
       << " <tablet_id> <number of indexes> <index list> <start_key> <number of rows>\n"
       << "  " << kReloadCertificatesOp << "\n"
-      << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n";
+      << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
+      << "  " << kListMasterServersOp << "\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -886,6 +921,11 @@ static int TsCliMain(int argc, char** argv) {
     string tablet_id = argv[3];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.RemoteBootstrap(target_server, tablet_id),
                                     "Unable to run remote bootstrap");
+  } else if (op == kListMasterServersOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ListMasterServers(),
+                                    "Unable to list master servers on " + addr);
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
