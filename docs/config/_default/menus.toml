@@ -151,20 +151,20 @@
     newTab = true
 
 [[leftbottom]]
+  name = "Yugabyte University"
+  weight = 3
+  parent = "join-our-community"
+  pre = "<i class='icon-university'></i>"
+  url = "https://university.yugabyte.com/"
+  [leftbottom.params]
+    newTab = true
+
+[[leftbottom]]
   name = "GitHub"
   weight = 2
   parent = "join-our-community"
   pre = "<i class='icon-github'></i>"
   url = "https://github.com/yugabyte/yugabyte-db"
-  [leftbottom.params]
-    newTab = true
-
-[[leftbottom]]
-  name = "University"
-  weight = 3
-  parent = "join-our-community"
-  pre = "<i class='icon-university'></i>"
-  url = "https://university.yugabyte.com/"
   [leftbottom.params]
     newTab = true
 
