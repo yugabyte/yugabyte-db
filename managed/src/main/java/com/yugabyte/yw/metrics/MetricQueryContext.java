@@ -24,6 +24,8 @@ public class MetricQueryContext {
   @Builder.Default boolean topKQuery = false;
   // Filters, applied to each metric query
   @Builder.Default Map<String, String> additionalFilters = Collections.emptyMap();
+  // Filters, applied to each metric query
+  @Builder.Default Map<String, String> excludeFilters = Collections.emptyMap();
   // Group by, applied to each metric query
   @Builder.Default Set<String> additionalGroupBy = Collections.emptySet();
   // Group by, which need to be removed from original metric group by list

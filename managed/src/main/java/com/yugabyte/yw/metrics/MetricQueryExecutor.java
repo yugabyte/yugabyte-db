@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -121,6 +123,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
               .additionalFilters(additionalFilters)
               .metricOrFilters(splitQueryFilters)
               .additionalGroupBy(getAdditionalGroupBy(metricSettings))
+              .excludeFilters(getExcludeFilters(metricSettings))
               .build();
       Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
       responseJson.set("layout", Json.toJson(configDefinition.getLayout()));
@@ -173,6 +176,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
             .queryRangeSecs(range)
             .additionalFilters(additionalFilters)
             .additionalGroupBy(getAdditionalGroupBy(metricSettings))
+            .excludeFilters(getExcludeFilters(metricSettings))
             .build();
     Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
     Map<String, String> topKQueryParams = new HashMap<>(queryParam);
@@ -229,11 +233,24 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       case NODE:
         return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);
       case TABLE:
-        return ImmutableSet.of(MetricQueryHelper.TABLE_ID, MetricQueryHelper.TABLE_NAME);
+        return ImmutableSet.of(
+            MetricQueryHelper.NAMESPACE_NAME,
+            MetricQueryHelper.TABLE_ID,
+            MetricQueryHelper.TABLE_NAME);
       case NAMESPACE:
         return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME);
       default:
         return Collections.emptySet();
+    }
+  }
+
+  private Map<String, String> getExcludeFilters(MetricSettings metricSettings) {
+    switch (metricSettings.getSplitType()) {
+      case TABLE:
+      case NAMESPACE:
+        return Collections.singletonMap(MetricQueryHelper.NAMESPACE_NAME, SYSTEM_PLATFORM_DB);
+      default:
+        return Collections.emptyMap();
     }
   }
 }

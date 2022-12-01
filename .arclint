@@ -17,6 +17,8 @@
      "(^python/yb/test_data/.*[.](log|out)$)",
      "(^managed/src/main/resources/metric/Dashboard.json$)",
      "(^managed/src/main/resources/metric/recording_rules.yml$)",
+     "(^managed/src/main/resources/metric/.*_level_params.json$)",
+     "(^managed/src/test/resources/metric/targets_.*.json$)",
      "(^managed/devops/replicated.yml$)"
   ],
   "linters": {

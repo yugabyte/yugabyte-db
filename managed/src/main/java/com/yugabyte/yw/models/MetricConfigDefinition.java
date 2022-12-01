@@ -241,23 +241,24 @@ public class MetricConfigDefinition {
     query.append(metric);
 
     // If we have additional filters, we add them
+    Map<String, String> allFilters = new HashMap<>(filters);
     if (!context.getAdditionalFilters().isEmpty()) {
-      filters.putAll(context.getAdditionalFilters());
+      allFilters.putAll(context.getAdditionalFilters());
       // The kubelet volume metrics only has the persistentvolumeclain field
       // as well as namespace. Adding any other field will cause the query to fail.
       if (metric.startsWith("kubelet_volume")) {
-        filters.remove("pod_name");
-        filters.remove("container_name");
+        allFilters.remove("pod_name");
+        allFilters.remove("container_name");
       }
       // For all other metrics, it is safe to remove the filter if
       // it exists.
       else {
-        filters.remove("persistentvolumeclaim");
+        allFilters.remove("persistentvolumeclaim");
       }
     }
 
-    if (!filters.isEmpty()) {
-      query.append(filtersToString(filters));
+    if (!allFilters.isEmpty()) {
+      query.append(filtersToString(allFilters, context.getExcludeFilters()));
     }
 
     // Range is applicable only when we have functions
@@ -288,13 +289,8 @@ public class MetricConfigDefinition {
           functions[functions.length - 1] = settings.getNodeAggregation().getAggregationFunction();
         }
       }
-      if (functions.length > 1) {
-        // We need to split the multiple functions and form the query string
-        for (String functionName : functions) {
-          queryStr = String.format("%s(%s)", functionName, queryStr);
-        }
-      } else {
-        queryStr = String.format("%s(%s)", function, queryStr);
+      for (String functionName : functions) {
+        queryStr = String.format("%s(%s)", functionName, queryStr);
       }
     }
 
@@ -325,19 +321,22 @@ public class MetricConfigDefinition {
    * @return String representation of the map ex: {memory="used", extra="1"} {memory="used"}
    *     {type=~"iostat_write_count|iostat_read_count"}
    */
-  private String filtersToString(Map<String, String> filters) {
-    StringBuilder filterStr = new StringBuilder();
-    String prefix = "{";
+  private String filtersToString(Map<String, String> filters, Map<String, String> excludeFilters) {
+    List<String> filtersList = new ArrayList<>();
     for (Map.Entry<String, String> filter : filters.entrySet()) {
-      filterStr.append(prefix);
       if (specialFilterPattern.matcher(filter.getValue()).find()) {
-        filterStr.append(filter.getKey() + "=~\"" + filter.getValue() + "\"");
+        filtersList.add(filter.getKey() + "=~\"" + filter.getValue() + "\"");
       } else {
-        filterStr.append(filter.getKey() + "=\"" + filter.getValue() + "\"");
+        filtersList.add(filter.getKey() + "=\"" + filter.getValue() + "\"");
       }
-      prefix = ", ";
     }
-    filterStr.append("}");
-    return filterStr.toString();
+    for (Map.Entry<String, String> excludeFilter : excludeFilters.entrySet()) {
+      if (specialFilterPattern.matcher(excludeFilter.getValue()).find()) {
+        filtersList.add(excludeFilter.getKey() + "!~\"" + excludeFilter.getValue() + "\"");
+      } else {
+        filtersList.add(excludeFilter.getKey() + "!=\"" + excludeFilter.getValue() + "\"");
+      }
+    }
+    return "{" + String.join(", ", filtersList) + "}";
   }
 }
