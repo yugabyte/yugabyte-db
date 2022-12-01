@@ -4,7 +4,7 @@ linkTitle: lag(), lead()
 headerTitle: lag(), lead()
 description: Describes the functionality of the YSQL window functions lag(), lead()
 menu:
-  v2.12:
+  v2.12_api:
     identifier: lag-lead
     parent: window-function-syntax-semantics
     weight: 40

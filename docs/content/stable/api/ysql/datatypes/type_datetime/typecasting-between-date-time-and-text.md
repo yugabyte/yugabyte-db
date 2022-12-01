@@ -4,7 +4,7 @@ headerTitle: Typecasting between date-time values and text values
 linkTitle: Typecasting between date-time and text-values
 description: Describes how to typecast date-time values to text values, and vice versa. [YSQL]
 menu:
-  stable:
+  stable_api:
     identifier: typecasting-between-date-time-and-text
     parent: api-ysql-datatypes-datetime
     weight: 50
@@ -117,10 +117,10 @@ And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensiti
 ```output
  Friday / September
  Fri 07-Sep-1042 11:59:59.543216 BC
- 
+
  Venerdì / Settembre
  Ven 07-Set-1042 11:59:59.543216 BC
- 
+
  Perjantai / Syyskuu
  Pe 07-Syy-1042 11:59:59.543216 BC
 ```
@@ -380,22 +380,22 @@ Yugabyte recommends that application code should convert between _text_ values a
   drop table if exists t cascade;
   create table t(k int primary key, t1 time not null, t2 time not null);
   insert into t(k, t1, t2) values(1, '00:00:00'::time, '00:00:00'::time);
-  
+
   deallocate all;
   prepare s_1(text) as
   update t set t1 = to_timestamp($1, 'hh24:mi:ss')::time
   where k = 1;
-  
+
   prepare s_2(text) as
   update t set t2 = to_timestamp($1, 'hh24:mi:ss')::time
   where k = 1;
-  
+
   set timezone = 'UTC';
   execute s_1('13:00:56');
-  
+
   set timezone = 'America/Los_Angeles';
   execute s_2('13:00:56');
-  
+
   select (t1 = t2)::text from t where k = 1;
 ```
 

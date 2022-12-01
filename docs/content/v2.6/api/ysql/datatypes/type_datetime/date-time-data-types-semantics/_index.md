@@ -5,7 +5,7 @@ linkTitle: semantics of the date-time data types
 description: The semantics of the date, time, timestamp, timestamptz, and interval data types. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.6:
+  v2.6_api:
     identifier: date-time-data-types-semantics
     parent: api-ysql-datatypes-datetime
     weight: 40

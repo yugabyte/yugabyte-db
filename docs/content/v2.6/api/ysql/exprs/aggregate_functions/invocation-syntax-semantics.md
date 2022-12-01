@@ -4,7 +4,7 @@ linkTitle: Invocation syntax and semantics
 headerTitle: Aggregate function invocation—SQL syntax and semantics
 description: This section specifies the syntax and semantics of aggregate function invocation.
 menu:
-  v2.6:
+  v2.6_api:
     identifier: aggregate-functions-invocation-syntax-semantics
     parent: aggregate-functions
     weight: 20

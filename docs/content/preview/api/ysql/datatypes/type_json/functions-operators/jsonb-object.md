@@ -4,7 +4,7 @@ headerTitle: jsonb_object() and json_object()
 linkTitle: jsonb_object()
 description: Create a JSON object from SQL arrays that specify keys with their values of SQL data type text.
 menu:
-  preview:
+  preview_api:
     identifier: jsonb-object
     parent: json-functions-operators
     weight: 150

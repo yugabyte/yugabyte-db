@@ -4,7 +4,7 @@ headerTitle: FROZEN data type
 linkTitle: FROZEN
 description: Use the FROZEN data type to specify columns of binary strings that result from serializing collections, tuples, or user-defined types.
 menu:
-  v2.6:
+  v2.6_api:
     parent: api-cassandra
     weight: 1401
 type: docs

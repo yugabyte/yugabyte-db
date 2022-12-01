@@ -4,7 +4,7 @@ linkTitle: regr_%()
 headerTitle: regr_%()
 description: Describes the functionality of the regr_%() YSQL aggregate functions for linear regression analysis
 menu:
-  v2.6:
+  v2.6_api:
     identifier: regr
     parent: linear-regression
     weight: 20

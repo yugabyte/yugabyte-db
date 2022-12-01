@@ -4,7 +4,7 @@ headerTitle: Case study—implementing a stopwatch with SQL
 linkTitle: Case study—SQL stopwatch
 description: Case study—using YSQL to implement a stopwatch
 menu:
-  v2.8:
+  v2.8_api:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130

@@ -4,7 +4,7 @@ headerTitle: CREATE OPERATOR
 linkTitle: CREATE OPERATOR
 description: Use the CREATE OPERATOR statement to create an operator.
 menu:
-  v2.8:
+  v2.8_api:
     identifier: ddl_create_operator
     parent: statements
 type: docs

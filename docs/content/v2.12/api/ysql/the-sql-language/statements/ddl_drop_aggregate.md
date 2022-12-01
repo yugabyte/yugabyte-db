@@ -4,7 +4,7 @@ headerTitle: DROP AGGREGATE
 linkTitle: DROP AGGREGATE
 description: Use the DROP AGGREGATE statement to remove an aggregate.
 menu:
-  v2.12:
+  v2.12_api:
     identifier: ddl_drop_aggregate
     parent: statements
 type: docs

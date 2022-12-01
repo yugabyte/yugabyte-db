@@ -95,9 +95,47 @@
     excludeVersion = true
 
 [[main]]
-  name = "API"
+  name = "APIs"
   weight = 3
-  url = "/api/"
+  identifier = "yugabyte-apis"
+
+[[main]]
+  name = "YSQL"
+  weight = 1
+  identifier = "yugabytedb-api-ysql"
+  parent = "yugabyte-apis"
+  url = "/api/ysql/"
+  [main.params]
+    imageUrl = "/icons/database.svg"
+
+[[main]]
+  name = "YCQL"
+  weight = 2
+  identifier = "yugabytedb-api-ycql"
+  parent = "yugabyte-apis"
+  url = "/api/ycql/"
+  [main.params]
+    imageUrl = "/icons/cloud.svg"
+
+[[main]]
+  name = "YugabyteDB Anywhere API"
+  weight = 3
+  identifier = "yugabytedb-anywhere-api"
+  parent = "yugabyte-apis"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  [main.params]
+    imageUrl = "/icons/server.svg"
+    newTab = true
+
+[[main]]
+  name = "YugabyteDB Managed API"
+  weight = 4
+  identifier = "yugabytedb-anaged-api"
+  parent = "yugabyte-apis"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  [main.params]
+    imageUrl = "/icons/cloud.svg"
+    newTab = true
 
 [[main]]
   name = "FAQ"
@@ -289,6 +327,51 @@
   [preview.params]
     showSection = true
 
+########## Menus (in preview) for APIs
+
+[[preview_api]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/preview/"
+  [preview_api.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_api]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabyte-api-ysql"
+  [preview_api.params]
+    showSection = true
+    hideLink = true
+
+[[preview_api]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabyte-api-ycql"
+  [preview_api.params]
+    showSection = true
+    hideLink = true
+
+[[preview_api]]
+  name = "YugabyteDB Anywhere API"
+  weight = 4
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  [preview_api.params]
+    showSection = true
+    newTab = true
+
+[[preview_api]]
+  name = "YugabyteDB Managed API"
+  weight = 5
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  [preview_api.params]
+    showSection = true
+    newTab = true
+
 ########## Menus (in preview) for releases section
 
 [[preview_releases]]
@@ -360,7 +443,6 @@
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [preview_yugabyte-platform.params]
-    classes = "other-links"
     showSection = true
     newTab = true
 
@@ -389,7 +471,6 @@
   identifier = "yugabytedb-managed-api"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   [preview_yugabyte-cloud.params]
-    classes = "other-links"
     showSection = true
     newTab = true
 
@@ -399,7 +480,6 @@
   identifier = "yugabytedb-managed-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [preview_yugabyte-cloud.params]
-    classes = "other-links"
     showSection = true
 
 ########## Menus for stable
@@ -539,7 +619,51 @@
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [stable_yugabyte-platform.params]
-    classes = "other-links"
+    showSection = true
+    newTab = true
+
+########## Menus (in stable) for APIs
+
+[[stable_api]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/stable/"
+  [stable_api.params]
+    classes = "separator"
+    showSection = true
+
+[[stable_api]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabyte-api-ysql"
+  [stable_api.params]
+    showSection = true
+    hideLink = true
+
+[[stable_api]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabyte-api-ycql"
+  [stable_api.params]
+    showSection = true
+    hideLink = true
+
+[[stable_api]]
+  name = "YugabyteDB Anywhere API"
+  weight = 4
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  [stable_api.params]
+    showSection = true
+    newTab = true
+
+[[stable_api]]
+  name = "YugabyteDB Managed API"
+  weight = 5
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  [stable_api.params]
     showSection = true
     newTab = true
 
@@ -680,7 +804,51 @@
   identifier = "yugabytedb-anywhere-api"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   ["v2.12_yugabyte-platform".params]
-    classes = "other-links"
+    showSection = true
+    newTab = true
+
+########## Menus (in v2.12) for APIs
+
+[["v2.12_api"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/preview/"
+  ["v2.12_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.12_api"]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabyte-api-ysql"
+  ["v2.12_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.12_api"]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabyte-api-ycql"
+  ["v2.12_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.12_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 4
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  ["v2.12_api".params]
+    showSection = true
+    newTab = true
+
+[["v2.12_api"]]
+  name = "YugabyteDB Managed API"
+  weight = 5
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  ["v2.12_api".params]
     showSection = true
     newTab = true
 
@@ -818,6 +986,51 @@
     showSection = true
     hideLink = true
 
+########## Menus (in v2.8) for APIs
+
+[["v2.8_api"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/preview/"
+  ["v2.8_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.8_api"]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabyte-api-ysql"
+  ["v2.8_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.8_api"]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabyte-api-ycql"
+  ["v2.8_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.8_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 4
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  ["v2.8_api".params]
+    showSection = true
+    newTab = true
+
+[["v2.8_api"]]
+  name = "YugabyteDB Managed API"
+  weight = 5
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  ["v2.8_api".params]
+    showSection = true
+    newTab = true
+
 ########## Menus for v2.6
 
 [["v2.6"]]
@@ -938,3 +1151,48 @@
   ["v2.6_yugabyte-platform".params]
     showSection = true
     hideLink = true
+
+########## Menus (in v2.6) for APIs
+
+[["v2.6_api"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/preview/"
+  ["v2.6_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.6_api"]]
+  name = "YSQL"
+  weight = 2
+  identifier = "yugabyte-api-ysql"
+  ["v2.6_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.6_api"]]
+  name = "YCQL"
+  weight = 3
+  identifier = "yugabyte-api-ycql"
+  ["v2.6_api".params]
+    showSection = true
+    hideLink = true
+
+[["v2.6_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 4
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  ["v2.6_api".params]
+    showSection = true
+    newTab = true
+
+[["v2.6_api"]]
+  name = "YugabyteDB Managed API"
+  weight = 5
+  identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  ["v2.6_api".params]
+    showSection = true
+    newTab = true

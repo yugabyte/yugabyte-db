@@ -4,7 +4,7 @@ headerTitle: CREATE GROUP
 linkTitle: CREATE GROUP
 description: Use the CREATE GROUP statement to create a group role. CREATE GROUP is an alias for CREATE ROLE and is used to create a group role.
 menu:
-  preview:
+  preview_api:
     identifier: dcl_create_group
     parent: statements
 aliases:

@@ -4,7 +4,7 @@ linkTitle: Scatter-plot for 21-Oct-2020
 headerTitle: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 description: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 menu:
-  preview:
+  preview_api:
     identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30

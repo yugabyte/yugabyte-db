@@ -4,7 +4,7 @@ headerTitle: DROP KEYSPACE
 linkTitle: DROP KEYSPACE
 description: Use the DROP KEYSPACE statement to remove a keyspace from the system.
 menu:
-  v2.8:
+  v2.8_api:
     parent: api-cassandra
     weight: 1260
 type: docs

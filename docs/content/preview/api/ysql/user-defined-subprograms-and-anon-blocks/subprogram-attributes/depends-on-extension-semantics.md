@@ -4,7 +4,7 @@ headerTitle: The semantics of the "depends on extension" subprogram attribute
 linkTitle: «Depends on extension» semantics
 description: Describes the semantics of the depends on extension subprogram attribute [YSQL].
 menu:
-  preview:
+  preview_api:
     identifier: depends-on-extension-semantics
     parent: subprogram-attributes
     weight: 10

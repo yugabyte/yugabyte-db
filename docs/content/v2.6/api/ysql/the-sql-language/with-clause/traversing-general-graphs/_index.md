@@ -5,7 +5,7 @@ linkTitle: traversing general graphs
 description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
 image: /images/section_icons/api/ysql.png
 menu:
-  v2.6:
+  v2.6_api:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50

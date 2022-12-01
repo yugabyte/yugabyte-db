@@ -4,7 +4,7 @@ linkTitle: Row
 headerTitle: The literal for a "row" type value
 description: The literal for a "row" type value
 menu:
-  v2.6:
+  v2.6_api:
     identifier: row
     parent: array-literals
     weight: 30

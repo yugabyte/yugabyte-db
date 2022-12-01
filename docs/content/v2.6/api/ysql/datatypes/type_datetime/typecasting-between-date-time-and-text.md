@@ -4,7 +4,7 @@ headerTitle: Typecasting between date-time values and text values
 linkTitle: typecasting between date-time and text-values
 description: Describes how to typecast date-time values to text values, and vice-versa. [YSQL]
 menu:
-  v2.6:
+  v2.6_api:
     identifier: typecasting-between-date-time-and-text
     parent: api-ysql-datatypes-datetime
     weight: 30

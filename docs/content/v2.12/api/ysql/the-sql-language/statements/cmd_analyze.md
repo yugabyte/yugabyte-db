@@ -5,7 +5,7 @@ linkTitle: ANALYZE
 description: Collect statistics about database tables with the ANALYZE statement.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  v2.12:
+  v2.12_api:
     identifier: cmd_analyze
     parent: statements
 type: docs

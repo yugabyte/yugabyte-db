@@ -4,7 +4,7 @@ headerTitle: Multiplying or dividing an interval value by a real or integral num
 linkTitle: interval-number multiplication
 description: Explains the semantics of multiplying or dividing an interval value by a number. [YSQL]
 menu:
-  v2.6:
+  v2.6_api:
     identifier: interval-number-multiplication
     parent: interval-arithmetic
     weight: 30

@@ -4,7 +4,7 @@ headerTitle: TRUNCATE
 linkTitle: TRUNCATE
 description: Use the TRUNCATE statement to remove all rows from a specified table.
 menu:
-  v2.6:
+  v2.6_api:
     parent: api-cassandra
     weight: 1330
 type: docs

@@ -4,7 +4,7 @@ headerTitle: COMMIT
 linkTitle: COMMIT
 description: Use the COMMIT statement to commit the current transaction.
 menu:
-  v2.12:
+  v2.12_api:
     identifier: txn_commit
     parent: statements
 type: docs

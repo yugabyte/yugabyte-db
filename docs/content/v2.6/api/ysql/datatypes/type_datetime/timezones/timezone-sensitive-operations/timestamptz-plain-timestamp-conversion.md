@@ -4,7 +4,7 @@ headerTitle: The sensitivity of the conversion between timestamptz and plain tim
 linkTitle: timestamptz to/from timestamp conversion
 description: Explains the sensitivity of conversion between timestamptz and plain timestamp to the UTC offset. [YSQL]
 menu:
-  v2.6:
+  v2.6_api:
     identifier: timestamptz-plain-timestamp-conversion
     parent: timezone-sensitive-operations
     weight: 10

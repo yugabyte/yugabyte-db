@@ -4,7 +4,7 @@ headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve (part of) rows of specified columns that meet a given condition from a table.
 menu:
-  preview:
+  preview_api:
     parent: api-cassandra
     weight: 1310
 aliases:

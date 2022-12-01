@@ -5,7 +5,7 @@ linkTitle: timezones and UTC offsets
 description: Explains everything about timezones and UTC offsets. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.6:
+  v2.6_api:
     identifier: timezones
     parent: api-ysql-datatypes-datetime
     weight: 20

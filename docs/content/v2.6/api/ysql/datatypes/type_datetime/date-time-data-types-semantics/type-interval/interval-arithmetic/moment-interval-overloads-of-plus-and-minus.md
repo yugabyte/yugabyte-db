@@ -4,7 +4,7 @@ headerTitle: The moment-interval overloads of the "+" and "-" operators for time
 linkTitle: moment-interval overloads of "+" and "-"
 description: Explains the semantics of the moment-interval overloads of the "+" and "-" operators for the timestamptz, timestamp, and time data types. [YSQL]
 menu:
-  v2.6:
+  v2.6_api:
     identifier: moment-interval-overloads-of-plus-and-minus
     parent: interval-arithmetic
     weight: 50

@@ -4,7 +4,7 @@ headerTitle: jsonb_object_agg()
 linkTitle: jsonb_object_agg()
 description: Aggregate a SETOF values into a JSON object.
 menu:
-  v2.8:
+  v2.8_api:
     identifier: jsonb-object-agg
     parent: json-functions-operators
     weight: 155

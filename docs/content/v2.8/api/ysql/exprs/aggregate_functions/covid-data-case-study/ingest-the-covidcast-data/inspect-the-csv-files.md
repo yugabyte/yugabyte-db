@@ -3,7 +3,7 @@ title: Inspect the COVIDcast .csv files
 linkTitle: Inspect the COVIDcast data
 headerTitle: Inspect the COVIDcast .csv files
 menu:
-  v2.8:
+  v2.8_api:
     identifier: inspect-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 10

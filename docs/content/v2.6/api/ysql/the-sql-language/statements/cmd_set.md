@@ -4,7 +4,7 @@ headerTitle: SET
 linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 menu:
-  v2.6:
+  v2.6_api:
     identifier: cmd_set
     parent: statements
 type: docs

@@ -4,7 +4,7 @@ headerTitle: DROP FUNCTION
 linkTitle: DROP FUNCTION
 description: Remove a function from a database.
 menu:
-  v2.6:
+  v2.6_api:
     identifier: ddl_drop_function
     parent: statements
 type: docs

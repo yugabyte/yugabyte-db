@@ -4,7 +4,7 @@ linkTitle: array_to_string()
 headerTitle: array_to_string()
 description: array_to_string()
 menu:
-  v2.6:
+  v2.6_api:
     identifier: array-to-string
     parent: array-functions-operators
 type: docs

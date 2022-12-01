@@ -4,7 +4,7 @@ linkTitle: array_remove()
 headerTitle: array_remove()
 description: array_remove()
 menu:
-  preview:
+  preview_api:
     identifier: array-remove
     parent: array-functions-operators
 type: docs

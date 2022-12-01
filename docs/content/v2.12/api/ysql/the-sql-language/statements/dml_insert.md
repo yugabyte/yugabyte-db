@@ -4,7 +4,7 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add one or more rows to the specified table.
 menu:
-  v2.12:
+  v2.12_api:
     identifier: dml_insert
     parent: statements
 type: docs

@@ -4,7 +4,7 @@ headerTitle: Three syntax contexts that use the specification of a UTC offset
 linkTitle: syntax contexts for offset
 description: Explains the three syntax contexts that use the specification of a UTC offset. [YSQL]
 menu:
-  v2.6:
+  v2.6_api:
     identifier: syntax-contexts-to-spec-offset
     parent: timezones
     weight: 50

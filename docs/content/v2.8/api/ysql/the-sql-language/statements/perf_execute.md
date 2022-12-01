@@ -4,7 +4,7 @@ headerTitle: EXECUTE
 linkTitle: EXECUTE
 description: Use the EXECUTE statement to execute a previously prepared statement.
 menu:
-  v2.8:
+  v2.8_api:
     identifier: perf_execute
     parent: statements
 type: docs
