@@ -356,16 +356,16 @@ export const TableSelect = (props: TableSelectProps) => {
   const replicationItems =
     props.configAction === XClusterConfigAction.ADD_TABLE
       ? getReplicationItemsFromTables(
-          sourceUniverseTablesQuery.data,
-          targetUniverseTablesQuery.data,
-          sharedXClusterConfigs,
-          props.xClusterConfigUUID
-        )
+        sourceUniverseTablesQuery.data,
+        targetUniverseTablesQuery.data,
+        sharedXClusterConfigs,
+        props.xClusterConfigUUID
+      )
       : getReplicationItemsFromTables(
-          sourceUniverseTablesQuery.data,
-          targetUniverseTablesQuery.data,
-          sharedXClusterConfigs
-        );
+        sourceUniverseTablesQuery.data,
+        targetUniverseTablesQuery.data,
+        sharedXClusterConfigs
+      );
 
   const bootstrapTableData = Object.entries(replicationItems[tableType].keyspaces)
     .filter(([keyspace, _]) => hasSubstringMatch(keyspace, keyspaceSearchTerm))

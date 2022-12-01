@@ -62,8 +62,10 @@ import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import io.prometheus.client.CollectorRegistry;
 import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -73,6 +75,7 @@ import org.pac4j.oidc.config.OidcConfiguration;
 import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.perf_advisor.module.PerfAdvisor;
 import play.Configuration;
 import play.Environment;
 
@@ -86,6 +89,7 @@ public class Module extends AbstractModule {
 
   private final Environment environment;
   private final Configuration config;
+  private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Configuration config) {
     this.environment = environment;
@@ -94,6 +98,7 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+
     if (!config.getBoolean("play.evolutions.enabled")) {
       // We want to init flyway only when evolutions are not enabled
       bind(YBFlywayInit.class).asEagerSingleton();
@@ -109,6 +114,12 @@ public class Module extends AbstractModule {
     // TODO: Other scopes
 
     install(new CloudModules());
+    CollectorRegistry.defaultRegistry.clear();
+    try {
+      DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
+    } catch (Exception domainValidatorException) {
+      log.info("Skipping Initialization of domain validator for dev env's");
+    }
 
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
@@ -121,6 +132,7 @@ public class Module extends AbstractModule {
 
     // We only needed to bind below ones for Platform mode.
     if (config.getString("yb.mode", "PLATFORM").equals("PLATFORM")) {
+      bind(PerfAdvisor.class).asEagerSingleton();
       bind(SwamperHelper.class).asEagerSingleton();
       bind(NodeManager.class).asEagerSingleton();
       bind(MetricQueryHelper.class).asEagerSingleton();

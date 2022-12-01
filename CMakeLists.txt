@@ -30,8 +30,7 @@
 # under the License.
 #
 
-# Require cmake that includes FindICU module (https://cmake.org/cmake/help/v3.7/release/3.7.html)
-cmake_minimum_required(VERSION 3.7.0)
+cmake_minimum_required(VERSION 3.20.0)
 
 project(YugabyteDB)
 
@@ -41,7 +40,7 @@ if("$CACHE{YB_PCH_ON}" STREQUAL "")
   else()
     set(YB_USE_PCH OFF)
   endif()
-  set(YB_PCH_ON ${YB_USE_PCH} CACHE BOOL "Whether to use precompiled headers")
+  set(YB_PCH_ON ${YB_USE_PCH} CACHE BOOL "Whether to use precompiled headers" FORCE)
 endif()
 
 message("-- CMAKE_SYSTEM_INFO_FILE: ${CMAKE_SYSTEM_INFO_FILE}")
@@ -105,7 +104,12 @@ set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies")
 # This is used to let the add_executable wrapper know if we're adding a test.
 set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "")
 
-yb_disable_tests_if_necessary()
+if(NOT DEFINED YB_BUILD_TESTS)
+  message("Will build tests by default")
+  set(YB_BUILD_TESTS ON)
+endif()
+yb_put_vars_into_cache(YB_BUILD_TESTS)
+message("YB_BUILD_TESTS=${YB_BUILD_TESTS}")
 
 parse_build_root_basename()
 if("${YB_BUILD_TYPE}" STREQUAL "")
@@ -139,7 +143,9 @@ endif()
 set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
 
-set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
+set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}" CACHE INTERNAL
+    "Top-level directory of yugabyte-db-thirdparty checkout or pre-built location")
+
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
   if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/thirdparty_path.txt")
     file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/thirdparty_path.txt" YB_THIRDPARTY_DIR)
@@ -167,6 +173,8 @@ else()
   set(YB_SHARED_LIBRARY_SUFFIX ".so")
 endif()
 message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
+set(YB_SHARED_LIBRARY_SUFFIX "${YB_SHARED_LIBRARY_SUFFIX}" CACHE INTERNAL
+    "Platform-specific shared library suffix, including the dot.")
 
 message("CMAKE_C_COMPILER=${CMAKE_C_COMPILER}")
 CHECK_YB_COMPILER_PATH(${CMAKE_C_COMPILER})
@@ -301,7 +309,6 @@ endif()
 # versions of the compiler will have different keys in ccache.
 ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
-ADD_CXX_FLAGS("-DROCKSDB_LIB_IO_POSIX")
 ADD_CXX_FLAGS("-DSNAPPY")
 ADD_CXX_FLAGS("-DLZ4")
 ADD_CXX_FLAGS("-DZLIB")
@@ -342,12 +349,9 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "11.0.0")
-    # Clang versions earlier than 11 cannot correctly handle unique_lock with manual
-    # locking/unlocking.
-    ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
-    ADD_CXX_FLAGS("-Wthread-safety-analysis")
-  endif()
+  ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
+  ADD_CXX_FLAGS("-Wthread-safety-analysis")
+
   if("$ENV{YB_ENABLE_STATIC_ANALYZER}" STREQUAL "1")
     if(APPLE)
       message("YB_ENABLE_STATIC_ANALYZER is set to 1, but we are not running the static analyzer"
@@ -484,7 +488,7 @@ if (IS_CLANG)
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
 
-  if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0" AND APPLE)
+  if (APPLE)
     ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
   endif()
 elseif(IS_GCC)
@@ -499,7 +503,7 @@ include(YugabyteFindThirdParty)
 yb_find_third_party_installed_dir()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
 
-if(NOT APPLE AND IS_CLANG)
+if(IS_CLANG)
   YB_SETUP_CLANG()
   if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
     YB_SETUP_SANITIZER()
@@ -520,10 +524,6 @@ endif()
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
 if ("${YB_BUILD_TYPE}" STREQUAL "asan")
-  if(NOT (IS_CLANG OR
-          IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "4.9"))
-    message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 4.9")
-  endif()
   set(CXX_NO_SANITIZE_FLAG "alignment")
   if(NOT APPLE)
     set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
@@ -534,15 +534,7 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
 endif ()
 
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-  # GCC 4.8 and 4.9 (latest as of this writing) don't allow you to specify a
-  # sanitizer blacklist.
   if(IS_CLANG)
-    # Require clang 3.4 or newer; clang 3.3 has issues with TSAN and pthread
-    # symbol interception.
-    if("${COMPILER_VERSION}" VERSION_LESS "3.4")
-      message(SEND_ERROR "Must use clang 3.4 or newer to run a sanitizer build."
-        " Try using clang from thirdparty/")
-    endif()
     ADD_CXX_FLAGS("-fsanitize-blacklist=${BUILD_SUPPORT_DIR}/sanitize-blacklist.txt")
   else()
     message(WARNING "GCC does not support specifying a sanitizer blacklist. Known sanitizer "
@@ -847,7 +839,7 @@ math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
         "excluded: ${YB_NUM_EXCLUDED_TESTS}")
-if(NOT ${BUILD_TESTS} AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "1")
+if(NOT YB_BUILD_TESTS AND NOT ${YB_NUM_INCLUDED_TESTS} STREQUAL "1")
   message(
     FATAL_ERROR
     "BUILD_TESTS is not set, but we still added ${YB_NUM_INCLUDED_TESTS} tests"

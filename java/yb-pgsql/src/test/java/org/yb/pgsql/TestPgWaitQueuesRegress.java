@@ -21,7 +21,7 @@ import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgPessimisticLockingRegress extends BasePgSQLTest {
+public class TestPgWaitQueuesRegress extends BasePgSQLTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -39,9 +39,9 @@ public class TestPgPessimisticLockingRegress extends BasePgSQLTest {
   }
 
   @Test
-  public void runPessimisticLockingRegressTest() throws Exception {
+  public void runPgWaitQueuesRegressTest() throws Exception {
     runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_pessimistic_locking_schedule",
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_wait_queues_schedule",
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
   }
 }

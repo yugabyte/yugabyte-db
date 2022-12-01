@@ -225,6 +225,12 @@ extern bool YBTransactionsEnabled();
 extern bool IsYBReadCommitted();
 
 /*
+ * Whether wait-queues are enabled for the cluster or not (via the TServer gflag
+ * enable_wait_queues).
+ */
+extern bool YBIsWaitQueueEnabled();
+
+/*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();
@@ -710,5 +716,26 @@ extern void YBCheckServerAccessIsAllowed();
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
+
+/*
+ * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
+ * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * common.proto.
+ *
+ * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
+ * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
+ * appropriate conflict-resolution steps for the different row-level lock policies.
+ *
+ * This function does the following:
+ * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
+ *		and NO WAIT are not supported yet.
+ * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
+ *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
+ *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ */
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
 
 #endif /* PG_YB_UTILS_H */

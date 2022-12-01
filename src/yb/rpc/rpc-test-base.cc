@@ -167,8 +167,8 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
   for (auto size : req.sizes()) {
     auto sidecar = RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
-    yb_call->StartRpcSidecar().Append(sidecar.as_slice());
-    resp.add_sidecars(narrow_cast<uint32_t>(yb_call->CompleteRpcSidecar()));
+    yb_call->sidecars().Start().Append(sidecar.as_slice());
+    resp.add_sidecars(narrow_cast<uint32_t>(yb_call->sidecars().Complete()));
   }
 
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
@@ -426,8 +426,10 @@ class AbacusService: public rpc_test::AbacusServiceIf {
 TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
                        const TestServerOptions& options)
     : messenger_(std::move(messenger)),
-      thread_pool_(std::make_unique<ThreadPool>(
-          "rpc-test", kQueueLength, options.n_worker_threads)) {
+      thread_pool_(std::make_unique<ThreadPool>(ThreadPoolOptions {
+        .name = "rpc-test",
+        .max_workers = options.n_worker_threads,
+      })) {
 
   EXPECT_OK(messenger_->ListenAddress(
       rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(),

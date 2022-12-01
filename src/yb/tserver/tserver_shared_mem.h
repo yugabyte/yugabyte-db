@@ -23,14 +23,14 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/slice.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 namespace yb {
 namespace tserver {
 
 class TServerSharedData {
  public:
-  // In per-db catalog version mode, this puts a limit on the maximum number of databases
-  // that can exist in a cluster.
-  static constexpr uint32_t kMaxNumDbCatalogVersions = 10000;
+  static constexpr uint32_t kMaxNumDbCatalogVersions = kYBCMaxNumDbCatalogVersions;
 
   TServerSharedData() {
     // All atomics stored in shared memory must be lock-free. Non-robust locks

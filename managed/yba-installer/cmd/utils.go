@@ -24,10 +24,13 @@ import (
 // Bash Command Constants
 // SYSTEMCTL linux command
 const SYSTEMCTL string = "systemctl"
+
 // LN linux command
 const LN string = "ln"
+
 // CHOWN linux command
 const CHOWN string = "chown"
+
 // SYSTEMD_DIR Systemd service file directory
 const SYSTEMD_DIR string = "/etc/systemd/system"
 

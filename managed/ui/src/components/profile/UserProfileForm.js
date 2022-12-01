@@ -87,9 +87,9 @@ export default class UserProfileForm extends Component {
       confirmPassword: '',
       timezone: currentUser.data.timezone
         ? {
-            value: currentUser.data.timezone,
-            label: this.formatTimezoneLabel(currentUser.data.timezone)
-          }
+          value: currentUser.data.timezone,
+          label: this.formatTimezoneLabel(currentUser.data.timezone)
+        }
         : defaultTimezoneOption
     };
     const timezoneOptions = [defaultTimezoneOption];
@@ -107,11 +107,11 @@ export default class UserProfileForm extends Component {
       email: isLDAPUser
         ? Yup.string().required('Enter Email or Username')
         : Yup.string()
-            .matches(
-              /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
-              'This is not a valid email or value'
-            )
-            .required('Enter email'),
+          .matches(
+            /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+            'This is not a valid email or value'
+          )
+          .required('Enter email'),
 
       code: Yup.string()
         .required('Enter Environment name')

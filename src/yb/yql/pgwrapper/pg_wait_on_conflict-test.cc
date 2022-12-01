@@ -53,7 +53,7 @@ using namespace std::literals;
 namespace yb {
 namespace pgwrapper {
 
-class PgPessimisticLockingTest : public PgMiniTestBase {
+class PgWaitQueuesTest : public PgMiniTestBase {
  protected:
   static constexpr int kClientStatementTimeoutSeconds = 60;
 
@@ -76,7 +76,7 @@ auto GetBlockerIdx(auto idx, auto cycle_length) {
   return (idx / cycle_length) * cycle_length + (idx + 1) % cycle_length;
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -132,7 +132,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
   ASSERT_LE(CoarseMonoClock::Now(), deadline);
 
-  // TODO(pessimistic): It's still possible that all of the second SELECT statements succeed, since
+  // TODO(wait-queues): It's still possible that all of the second SELECT statements succeed, since
   // if their blockers are aborted they may be released by the wait queue and allowed to write and
   // return to the client without checking the statement's own transaction status. If we fix this we
   // should re-enable this check as well.
@@ -141,7 +141,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -197,7 +197,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
   ASSERT_LE(CoarseMonoClock::Now(), deadline);
 
-  // TODO(pessimistic): It's still possible that all of the second UPDATE statements succeed, since
+  // TODO(wait-queues): It's still possible that all of the second UPDATE statements succeed, since
   // if their blockers are aborted they may be released by the wait queue and allowed to write and
   // return to the client without checking the statement's own transaction status. If we fix this we
   // should re-enable this check as well.
@@ -206,11 +206,11 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-// TODO(pessimistic): Once we have active unblocking of deadlocked waiters, re-enable this test.
+// TODO(wait-queues): Once we have active unblocking of deadlocked waiters, re-enable this test.
 // Note: the following test fails due to a delay in the time it takes for an aborted transaction to
 // signal to the client. This requires more investigation into how pg_client handles heartbeat
 // failure while waiting on an RPC sent to the tserver.
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
   constexpr int kNumIndicesBase = 100;
   constexpr int kNumTrials = 10;
 
@@ -273,7 +273,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransact
   }
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockExplicitLocks)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockExplicitLocks)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   constexpr int kClients = 3;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
@@ -325,7 +325,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockExplici
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockWrites)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockWrites)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   constexpr int kClients = 3;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
@@ -369,7 +369,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockWrites)
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(MultipleWaitersUnblock)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultipleWaitersUnblock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   constexpr int kClients = 50;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
@@ -412,7 +412,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(MultipleWaitersUnblock)
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(LongWaitBeforeDeadlock)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(LongWaitBeforeDeadlock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   constexpr int kClients = 2;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
@@ -458,7 +458,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(LongWaitBeforeDeadlock)
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnblock)) {
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnblock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(setup_conn.ExecuteFormat(
@@ -502,7 +502,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnbloc
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
-// TODO(pessimistic): Add a stress test with many concurrent accesses to the same key to test not
+// TODO(wait-queues): Add a stress test with many concurrent accesses to the same key to test not
 // only waiting behavior but also that in-memory locks are acquired and respected as expected.
 
 class ConcurrentBlockedWaitersTest {
@@ -639,7 +639,7 @@ class ConcurrentBlockedWaitersTest {
   CountDownLatch finished_waiter_ = CountDownLatch(0);
 };
 
-class PgConcurrentBlockedWaitersTest : public PgPessimisticLockingTest,
+class PgConcurrentBlockedWaitersTest : public PgWaitQueuesTest,
                                        public ConcurrentBlockedWaitersTest {
   Result<PGConn> GetDbConn() const override { return Connect(); }
 
@@ -664,7 +664,7 @@ TEST_F(PgConcurrentBlockedWaitersTest, YB_DISABLE_TEST_IN_TSAN(LongPauseRetrySin
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }
 
-class PgLeaderChangePessimisticLockingTest : public PgConcurrentBlockedWaitersTest {
+class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
  protected:
   Status WaitForLoadBalance(int num_tablet_servers) {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
@@ -675,7 +675,7 @@ class PgLeaderChangePessimisticLockingTest : public PgConcurrentBlockedWaitersTe
   }
 };
 
-TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServers)) {
+TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServers)) {
   constexpr int kNumTablets = 15;
   constexpr int kNumWaiters = 30;
 
@@ -691,7 +691,7 @@ TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServe
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }
 
-TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer)) {
+TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer)) {
   constexpr int kNumTablets = 15;
   constexpr int kNumWaiters = 30;
 
@@ -709,7 +709,7 @@ TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(StepDownOne
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }
 
-class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
+class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
                                                 public ConcurrentBlockedWaitersTest {
  protected:
   void SetUp() override {
@@ -728,7 +728,7 @@ class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
   }
 };
 
-TEST_F(PgTabletSplittingPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
+TEST_F(PgTabletSplittingWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
   constexpr int kNumTablets = 1;
   constexpr int kNumWaiters = 30;
 

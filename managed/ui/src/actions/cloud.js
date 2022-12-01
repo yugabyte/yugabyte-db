@@ -522,10 +522,10 @@ export function listAccessKeysResponse(response) {
   };
 }
 
-export function listAccessKeysReqCompleted(){
+export function listAccessKeysReqCompleted() {
   return {
     type: LIST_ACCESS_KEYS_REQUEST_COMPLETED
-  }
+  };
 }
 
 export function getEBSTypeList() {

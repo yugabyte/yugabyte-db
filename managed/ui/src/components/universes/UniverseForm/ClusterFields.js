@@ -1653,7 +1653,7 @@ export default class ClusterFields extends Component {
       'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
     const isAuthEnabled =
       formValues.primary[
-      fieldName === 'primary.ysqlPassword' ? 'enableYSQLAuth' : 'enableYCQLAuth'
+        fieldName === 'primary.ysqlPassword' ? 'enableYSQLAuth' : 'enableYCQLAuth'
       ];
     if (!isAuthEnabled) {
       return undefined;
@@ -1668,7 +1668,7 @@ export default class ClusterFields extends Component {
   validateConfirmPassword(value, formValues, formikBag, fieldName) {
     const passwordValue =
       formValues.primary[
-      fieldName === 'primary.ysqlConfirmPassword' ? 'ysqlPassword' : 'ycqlPassword'
+        fieldName === 'primary.ysqlConfirmPassword' ? 'ysqlPassword' : 'ycqlPassword'
       ];
     if (!_.isEmpty(passwordValue)) {
       return value === passwordValue ? undefined : 'Password should match';
@@ -2788,12 +2788,14 @@ export default class ClusterFields extends Component {
               </div>
               {this.state.awsInstanceWithEphemeralStorage &&
                 (featureFlags.test['pausedUniverse'] ||
-                  featureFlags.released['pausedUniverse']) && (
-                  <span className="aws-instance-with-ephemeral-storage-warning">
-                    ! Selected instance type is with ephemeral storage, If you will pause this
-                    universe your data will get lost.
-                  </span>
-                )}
+                  featureFlags.released['pausedUniverse']) &&
+                  (
+                    <span className="aws-instance-with-ephemeral-storage-warning">
+                      ! Selected instance type is with ephemeral storage, If you will pause this
+                      universe your data will get lost.
+                    </span>
+                  )
+              }
             </Col>
           </Row>
 
@@ -2824,12 +2826,14 @@ export default class ClusterFields extends Component {
                   currentProvider.code === 'gcp' &&
                   this.state.gcpInstanceWithEphemeralStorage &&
                   (featureFlags.test['pausedUniverse'] ||
-                    featureFlags.released['pausedUniverse']) && (
-                    <span className="gcp-ephemeral-storage-warning">
-                      ! Selected instance type is with ephemeral storage, If you will pause this
-                      universe your data will get lost.
-                    </span>
-                  )}
+                    featureFlags.released['pausedUniverse']) &&
+                    (
+                      <span className="gcp-ephemeral-storage-warning">
+                        ! Selected instance type is with ephemeral storage, If you will pause this
+                        universe your data will get lost.
+                      </span>
+                    )
+                }
               </Col>
             </Row>
             <Row>
@@ -3012,7 +3016,7 @@ export default class ClusterFields extends Component {
                 </Col>
               </Row>
             )}
-            {isDefinedNotNull(currentProvider) && (
+            {isDefinedNotNull(currentProvider) && currentProvider.code !== 'kubernetes' && (
               <Row>
                 <Col md={12}>
                   <div className="form-right-aligned-labels">

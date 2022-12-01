@@ -117,40 +117,40 @@ class AuthenticatedArea extends Component {
           >
             <Table responsive>
               <thead>
-              <tr>
-                <th>Shortcut</th>
-                <th>Description</th>
-              </tr>
+                <tr>
+                  <th>Shortcut</th>
+                  <th>Description</th>
+                </tr>
               </thead>
               <tbody>
-              <tr>
-                <td>?</td>
-                <td>Show help</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT + n</td>
-                <td>Create new universe</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT + e</td>
-                <td>Edit universe</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT + c</td>
-                <td>Provider config</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT + m</td>
-                <td>View metrics</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT + t</td>
-                <td>View tasks</td>
-              </tr>
-              <tr>
-                <td>CTRL + SHIFT +l</td>
-                <td>View universes</td>
-              </tr>
+                <tr>
+                  <td>?</td>
+                  <td>Show help</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT + n</td>
+                  <td>Create new universe</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT + e</td>
+                  <td>Edit universe</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT + c</td>
+                  <td>Provider config</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT + m</td>
+                  <td>View metrics</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT + t</td>
+                  <td>View tasks</td>
+                </tr>
+                <tr>
+                  <td>CTRL + SHIFT +l</td>
+                  <td>View universes</td>
+                </tr>
               </tbody>
             </Table>
           </YBModal>

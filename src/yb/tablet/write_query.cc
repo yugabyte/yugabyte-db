@@ -388,7 +388,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
         req,
         rpc::SharedField(table_info, table_info->doc_read_context.get()),
         txn_op_ctx,
-        rpc_context_);
+        rpc_context_ ? &rpc_context_->sidecars() : nullptr);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }
@@ -415,6 +415,46 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   if (!status.ok()) {
     query_ptr->ExecuteDone(status);
   }
+}
+
+// The conflict management policy (as defined in conflict_resolution.h) to be used is determined
+// based on the following -
+//   1. For explicit row level locking, YSQL sets the "wait_policy" field which maps to a
+//      corresponding ConflictManagementPolicy as detailed in the WaitPolicy enum in common.proto.
+//   2. For everything else, either the WAIT_ON_CONFLICT or the FAIL_ON_CONFLICT policy is used
+//      based on whether wait queues are enabled or not.
+docdb::ConflictManagementPolicy GetConflictManagementPolicy(
+    const docdb::WaitQueue* wait_queue, const docdb::LWKeyValueWriteBatchPB& write_batch) {
+  // Either write_batch.read_pairs is not empty or doc_ops is non empty. Both can't be non empty
+  // together. This is because read_pairs is filled only in case of a read operation that has a
+  // row mark or is part of a serializable txn.
+  // 1. In case doc_ops are present, we either use the WAIT_ON_CONFLICT or the FAIL_ON_CONFLICT
+  //    policy based on whether wait queues are enabled or not.
+  // 2. In case of a read rpc that has wait_policy, we use the corresponding conflict management
+  //    policy.
+
+  auto conflict_management_policy = wait_queue ? docdb::WAIT_ON_CONFLICT : docdb::FAIL_ON_CONFLICT;
+  const auto& pairs = write_batch.read_pairs();
+  if (!pairs.empty() && write_batch.has_wait_policy()) {
+    switch (write_batch.wait_policy()) {
+      case WAIT_BLOCK:
+        conflict_management_policy = docdb::WAIT_ON_CONFLICT;
+        break;
+      case WAIT_SKIP:
+        conflict_management_policy = docdb::SKIP_ON_CONFLICT;
+        break;
+      case WAIT_ERROR:
+        conflict_management_policy = docdb::FAIL_ON_CONFLICT;
+        break;
+      default:
+        LOG(WARNING) << "Unknown wait policy " << write_batch.wait_policy();
+    }
+  }
+
+  VLOG(2) << FullyDecodeTransactionId(write_batch.transaction().transaction_id())
+          << ": effective conflict_management_policy=" << conflict_management_policy;
+
+  return conflict_management_policy;
 }
 
 Status WriteQuery::DoExecute() {
@@ -453,10 +493,13 @@ Status WriteQuery::DoExecute() {
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = shared_tablet->clock()->Now();
+    auto conflict_management_policy = GetConflictManagementPolicy(
+        shared_tablet->wait_queue(), write_batch);
     return docdb::ResolveOperationConflicts(
-        doc_ops_, now, shared_tablet->doc_db(), partial_range_key_intents,
-        transaction_participant, shared_tablet->metrics()->transaction_conflicts.get(),
-        &prepare_result_.lock_batch, shared_tablet->wait_queue(),
+        doc_ops_, conflict_management_policy, now, shared_tablet->doc_db(),
+        partial_range_key_intents, transaction_participant,
+        shared_tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        shared_tablet->wait_queue(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -483,14 +526,16 @@ Status WriteQuery::DoExecute() {
         // Empty values are disallowed by docdb.
         // https://github.com/YugaByte/yugabyte-db/issues/736
         pair.dup_value(std::string(1, docdb::KeyEntryTypeAsChar::kNullLow));
-        write_batch.set_wait_policy(WAIT_ERROR);
       }
     }
   }
 
-  // TODO(pessimistic): Ensure that wait_queue respects deadline() during conflict resolution.
+  auto conflict_management_policy = GetConflictManagementPolicy(
+      shared_tablet->wait_queue(), write_batch);
+
+  // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
-      doc_ops_, write_batch, shared_tablet->clock()->Now(),
+      doc_ops_, conflict_management_policy, write_batch, shared_tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       shared_tablet->doc_db(), partial_range_key_intents,
       transaction_participant, shared_tablet->metrics()->transaction_conflicts.get(),

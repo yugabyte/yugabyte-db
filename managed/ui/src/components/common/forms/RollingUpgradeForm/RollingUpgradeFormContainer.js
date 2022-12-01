@@ -79,11 +79,12 @@ function mapStateToProps(state, ownProps) {
   } = state;
 
   const initialValues = {};
+  let intialSystemdValue = false;
   if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
     initialValues.tlsCertificate = currentUniverse.data.universeDetails.rootCA;
 
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-    var intialSystemdValue = primaryCluster.userIntent.useSystemd;
+    intialSystemdValue = primaryCluster.userIntent.useSystemd;
     if (isDefinedNotNull(primaryCluster)) {
       initialValues.ybSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion;
 

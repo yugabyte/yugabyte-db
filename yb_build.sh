@@ -74,7 +74,7 @@ Build options:
     Skip PostgreSQL build
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
-  --no-tests
+  --no-tests, --skip-tests
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
@@ -449,9 +449,6 @@ run_cxx_build() {
           ! -f ${make_file}
         ) && ${force_no_run_cmake} == "false" ]]
   then
-    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
-      build_compiler_if_necessary
-    fi
     local cmake_binary
     if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
       cmake_binary=/opt/homebrew/bin/cmake
@@ -461,6 +458,7 @@ run_cxx_build() {
     log "Using cmake binary: $cmake_binary"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
+    set +e
     (
       # Always disable remote build (running the compiler on a remote worker node) when running the
       # CMake step.
@@ -474,7 +472,26 @@ run_cxx_build() {
       # shellcheck disable=SC2086
       "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
     )
+    local cmake_exit_code=$?
+    set -e
     capture_sec_timestamp "cmake_end"
+    if [[ ${cmake_exit_code} != 0 ]]; then
+      log "CMake failed with exit code ${cmake_exit_code}."
+      (
+        find "${BUILD_ROOT}" -name "CMake*.log" | while read log_path; do
+          echo
+          echo "----------------------------------------------------------------------------------"
+          echo "Contents of ${log_path}:"
+          echo "----------------------------------------------------------------------------------"
+          echo
+          cat "${log_path}"
+          echo
+          echo "----------------------------------------------------------------------------------"
+          echo
+        done
+      ) >&2
+      fatal "CMake failed with exit code ${cmake_exit_code}. See additional logging above."
+    fi
   fi
 
   if [[ ${cmake_only} == "true" ]]; then
@@ -679,6 +696,10 @@ set_initdb_target() {
   build_java=false
 }
 
+disable_initdb() {
+  export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -749,6 +770,9 @@ clean_postgres=false
 make_ninja_extra_args=""
 java_lint=false
 collect_java_tests=false
+
+# This will be set to true/false based on --no-tests / --with-tests.
+build_tests=""
 
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
@@ -979,7 +1003,7 @@ while [[ $# -gt 0 ]]; do
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
-    -j[1-9])
+    -j[1-9]|-j[1-9][0-9]|-j[1-9][0-9][0-9]|-j[1-9][0-9][0-9][0-9])
       export YB_MAKE_PARALLELISM=${1#-j}
     ;;
     --remote)
@@ -1183,8 +1207,11 @@ while [[ $# -gt 0 ]]; do
     --resolve-java-dependencies)
       resolve_java_dependencies=true
     ;;
-    --no-tests)
-      export YB_DO_NOT_BUILD_TESTS=1
+    --no-tests|--skip-tests)
+      build_tests=false
+    ;;
+    --with-tests)
+      build_tests=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
@@ -1232,7 +1259,7 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_LINUXBREW=0
     ;;
     --no-initdb)
-      export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      disable_initdb
     ;;
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
@@ -1296,8 +1323,19 @@ fi
 decide_whether_to_use_ninja
 handle_predefined_build_root
 
-unset cmake_opts
+# Setting CMake options.
+cmake_opts=()
 set_cmake_build_type_and_compiler_type
+if [[ -n ${build_tests} ]]; then
+  force_run_cmake=true
+  # YB_BUILD_TESTS will get stored in CMake cache and take effect on further runs.
+  if [[ ${build_tests} == "true" ]]; then
+    cmake_opts+=( -DYB_BUILD_TESTS=ON )
+  else
+    cmake_opts+=( -DYB_BUILD_TESTS=OFF )
+  fi
+fi
+
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
@@ -1306,7 +1344,7 @@ if [[ ${verbose} == "true" ]]; then
 fi
 export BUILD_TYPE=$build_type
 
-if "$force_run_cmake" && "$force_no_run_cmake"; then
+if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
@@ -1332,7 +1370,7 @@ if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
 
-if "$java_only" && ! "$build_java"; then
+if [[ ${java_only} == "true" && ${build_java} == "false" ]]; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
 fi
@@ -1586,6 +1624,7 @@ fi
 if [[ $build_type == "compilecmds" ]]; then
   if [[ ${#make_targets[@]} -eq 0 ]]; then
     make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
+    disable_initdb
   else
     log "Custom targets specified for a compilecmds build, not adding default targets"
   fi
@@ -1599,6 +1638,8 @@ if [[ $build_type == "compilecmds" ]]; then
   # script and that is where the top-level combined compile_commands.json file is created.
   build_java=false
 fi
+
+readonly build_java=${build_java}
 
 if [[ ${build_cxx} == "true" ||
       ${force_run_cmake} == "true" ||

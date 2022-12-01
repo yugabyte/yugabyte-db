@@ -54,6 +54,7 @@ public class AccessManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   public static final String PEM_PERMISSIONS = "r--------";
   public static final String PUB_PERMISSIONS = "rw-r--r--";
+  private static final String KUBECONFIG_PERMISSIONS = "rw-------";
   public static final String STORAGE_PATH = "yb.storage.path";
 
   @Inject
@@ -556,8 +557,11 @@ public class AccessManager extends DevopsBase {
     if (!edit && Files.exists(configFile)) {
       throw new RuntimeException("File " + configFile.getFileName() + " already exists.");
     }
+
+    Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
     try {
       Files.write(configFile, configFileContent.getBytes());
+      Files.setPosixFilePermissions(configFile, ownerRW);
       FileData.writeFileToDB(configFile.toAbsolutePath().toString());
       return configFile.toAbsolutePath().toString();
     } catch (Exception e) {

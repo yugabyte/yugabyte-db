@@ -4,21 +4,21 @@ services:
     contents: |
       include classpath("application.common.conf")
 
-      log.override.path="{{ installRoot }}/{{ yamlPath ".platform.logPath" }}"
+      log.override.path="{{ installRoot }}/{{ yamlPath "platform.logPath" }}"
 
-      play.crypto.secret="{{ yamlPath ".platform.appSecret" }}"
+      play.crypto.secret="{{ yamlPath "platform.appSecret" }}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
       play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"
       play.server.https.keyStore.type = "JKS"
-      play.server.https.keyStore.password = "{{ yamlPath ".platform.keyStorePassword" }}"
+      play.server.https.keyStore.password = "{{ yamlPath "platform.keyStorePassword" }}"
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath ".platform.externalPort" }}/yugaware"
+        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "platform.externalPort" }}/yugaware"
         default.driver=org.postgresql.Driver
-        default.username="{{ yamlPath ".platform.platformDbUser" }}"
-        default.password="{{ yamlPath ".platform.platformDbPassword" }}"
+        default.username="{{ yamlPath "platform.platformDbUser" }}"
+        default.password="{{ yamlPath "platform.platformDbPassword" }}"
         default.logStatements=true
         default.migration.initOnMigrate=true
         default.migration.auto=true
@@ -31,8 +31,8 @@ services:
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ installRoot }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ installRoot }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/api/v1"
-        metrics.management.url = "http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/-"
+        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/api/v1"
+        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/-"
         storage.path = "{{ installRoot }}/data/yb-platform"
         seedData = false
         multiTenant = false
@@ -44,25 +44,25 @@ services:
         health.status_interval_ms = 43200000
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
-        security.use_oauth = "{{ yamlPath ".platform.useOauth" }}"
+        security.use_oauth = "{{ yamlPath "platform.useOauth" }}"
         security.type = ""
         # Override in case SECURITY_TYPE is set.
-        security.type = "{{ yamlPath ".platform.ybSecurityType" }}"
+        security.type = "{{ yamlPath "platform.ybSecurityType" }}"
         security.clientID = ""
-        security.clientID = "{{ yamlPath ".platform.ybOidcClientId" }}"
+        security.clientID = "{{ yamlPath "platform.ybOidcClientId" }}"
         security.secret = ""
-        security.secret = "{{ yamlPath ".platform.ybOidcSecret" }}"
+        security.secret = "{{ yamlPath "platform.ybOidcSecret" }}"
         security.discoveryURI = ""
-        security.discoveryURI = "{{ yamlPath ".platform.ybOidcDiscoveryUri" }}"
+        security.discoveryURI = "{{ yamlPath "platform.ybOidcDiscoveryUri" }}"
         security.oidcScope = ""
-        security.oidcScope = "{{ yamlPath ".platform.ybOidcScope" }}"
+        security.oidcScope = "{{ yamlPath "platform.ybOidcScope" }}"
         security.oidcEmailAttribute = ""
-        security.oidcEmailAttribute = "{{ yamlPath ".platform.ybOidcEmailAttr" }}"
+        security.oidcEmailAttribute = "{{ yamlPath "platform.ybOidcEmailAttr" }}"
         taskGC.gc_check_interval = 1 day
         taskGC.task_retention_duration = 30 days
         # The IP of the platform.
         url = ""
-        url = "{{ yamlPath ".platform.ywUrl" }}"
+        url = "{{ yamlPath "platform.ywUrl" }}"
       }
 
       ybc {
@@ -90,7 +90,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["{{ yamlPath ".platform.corsOrigin" }}"]
+          allowedOrigins =  ["{{ yamlPath "platform.corsOrigin" }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
@@ -121,10 +121,10 @@ services:
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
-        -Dhttps.port={{ yamlPath ".platform.containerExposedPort" }}
+        -Dhttps.port={{ yamlPath "platform.containerExposedPort" }}
 
       Restart=always
-      RestartSec={{ yamlPath ".platform.restartSeconds"}}
+      RestartSec={{ yamlPath "platform.restartSeconds"}}
 
       [Install]
       WantedBy=multi-user.target

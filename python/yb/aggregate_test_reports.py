@@ -85,6 +85,8 @@ from json.decoder import JSONDecodeError
 
 from typing import List, Dict, Optional, Any, Tuple, Set, cast, Callable
 
+from yb.common_util import init_logging
+
 
 def is_test_failure(report: Dict[str, Any]) -> bool:
     for key in ['num_errors', 'num_failures']:
@@ -265,7 +267,7 @@ def aggregate_test_reports(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    yugabyte_pycommon.init_logging()
+    init_logging(verbose=False)
     args = parse_args()
     aggregate_test_reports(args)
 

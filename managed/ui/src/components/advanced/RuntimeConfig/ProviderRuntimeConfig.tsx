@@ -31,7 +31,7 @@ export const ProviderRuntimeConfig: FC<ProviderRuntimeConfigProps> = ({
   const onProviderDropdownChanged = (providerName: string, providerUUID: string) => {
     setProviderDropdownValue(providerName);
     setProviderUUID(providerUUID);
-  }
+  };
 
   useEffect(() => {
     resetRuntimeConfigs();
@@ -46,7 +46,7 @@ export const ProviderRuntimeConfig: FC<ProviderRuntimeConfigProps> = ({
     );
   }
   if (providers.isLoading || (providers.isIdle && providers.data === undefined)) {
-    return <YBLoading />
+    return <YBLoading />;
   }
 
   const providersList = providers.data;
@@ -93,4 +93,4 @@ export const ProviderRuntimeConfig: FC<ProviderRuntimeConfigProps> = ({
       />
     </div>
   );
-}
+};

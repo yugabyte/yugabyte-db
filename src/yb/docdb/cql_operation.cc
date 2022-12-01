@@ -1734,8 +1734,9 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
     pair->dup_key(doc_key.Encode().AsSlice());
   }
   pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
-  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
-  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  // Wait policies make sense only for YSQL to support different modes like waiting, skipping, or
+  // failing on detecting intent conflicts. YCQL behaviour matches Fail-on-Conflict always (see
+  // proto for details).
   out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }

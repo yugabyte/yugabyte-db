@@ -74,10 +74,15 @@ class WriteBuffer {
 
   void AssignTo(std::string* out) const;
   void AssignTo(size_t begin, size_t end, std::string* out) const;
-  void CopyTo(size_t begin, size_t end, char* out) const;
   std::string ToBuffer() const;
   std::string ToBuffer(size_t begin, size_t end) const;
   RefCntSlice ExtractContinuousBlock(size_t begin, size_t end) const;
+
+  void CopyTo(size_t begin, size_t end, std::byte* out) const;
+
+  void CopyTo(std::byte* out) const {
+    CopyTo(0, size_, out);
+  }
 
  private:
   const char* CopyToLastBlock(const char* data, const char* end);

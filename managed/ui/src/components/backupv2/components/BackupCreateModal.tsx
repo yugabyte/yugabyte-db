@@ -610,19 +610,19 @@ function BackupConfigurationForm({
                   {target.label}
                   {target.value === Backup_Options_Type.CUSTOM &&
                     values['backup_tables'] === Backup_Options_Type.CUSTOM && (
-                      <span className="tables-count">
-                        <span>{values['selected_ycql_tables'].length} tables selected</span>
-                        <span
-                          className="edit-selection"
-                          onClick={() => {
-                            setFieldValue('show_select_ycql_table', true);
-                          }}
-                        >
-                          <i className="fa fa-pencil" />&nbsp;
-                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
-                        </span>
+                    <span className="tables-count">
+                      <span>{values['selected_ycql_tables'].length} tables selected</span>
+                      <span
+                        className="edit-selection"
+                        onClick={() => {
+                          setFieldValue('show_select_ycql_table', true);
+                        }}
+                      >
+                        <i className="fa fa-pencil" />&nbsp;
+                        {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                       </span>
-                    )}
+                    </span>
+                  )}
                 </label>
                 <br />
               </>
@@ -923,26 +923,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-                return (
-                  <div className="selected-table-item" key={t.tableUUID}>
-                    {t.tableName}
-                    <span
-                      className="remove-selected-table"
-                      onClick={() => {
-                        if (isEditMode) return;
-                        setFieldValue(
-                          'selected_ycql_tables',
-                          values['selected_ycql_tables'].filter(
-                            (f: ITable) => f.tableUUID !== t.tableUUID
-                          )
-                        );
-                      }}
-                    >
-                      <img alt="Remove" src={Close} width="22" />
-                    </span>
-                  </div>
-                );
-              })}
+              return (
+                <div className="selected-table-item" key={t.tableUUID}>
+                  {t.tableName}
+                  <span
+                    className="remove-selected-table"
+                    onClick={() => {
+                      if (isEditMode) return;
+                      setFieldValue(
+                        'selected_ycql_tables',
+                        values['selected_ycql_tables'].filter(
+                          (f: ITable) => f.tableUUID !== t.tableUUID
+                        )
+                      );
+                    }}
+                  >
+                    <img alt="Remove" src={Close} width="22" />
+                  </span>
+                </div>
+              );
+            })}
         </Col>
       </Row>
     </YBModalForm>

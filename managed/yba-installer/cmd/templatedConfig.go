@@ -14,7 +14,7 @@ import (
 	"strings"
 	"text/template"
 
-	yaml2 "github.com/goccy/go-yaml"
+	"github.com/spf13/viper"
 	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 )
@@ -76,46 +76,35 @@ func validateJSONSchema(filename string) {
 
 // Custom function to return Yaml data that we call from within the templated
 // configuration file, to better support future file generation.
+//
+// TODO: Make this use viper directly, instead of re-reading the input.yml
 func getYamlPathData(text string) string {
-
-	inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
-	if errYml != nil {
-		LogError(fmt.Sprintf("Error: %v.", errYml))
-	}
-
+	// TODO: we should validate if we ever send a key that has spaces.
 	pathString := strings.ReplaceAll(text, " ", "")
 
+	// Handle default values that are not set in the input config.
 	if strings.Contains(pathString, "appSecret") {
 		return platformAppSecret
 	} else if strings.Contains(pathString, "corsOrigin") {
 		return GenerateCORSOrigin()
-	} else {
-		yamlPathString := "$" + pathString
-		path, err := yaml2.PathString(yamlPathString)
-		if err != nil {
-			LogError("Yaml Path string " + yamlPathString + " not valid.")
-		}
-
-		var val string
-		err = path.Read(bytes.NewReader(inputYml), &val)
-		if strings.Contains(pathString, "platformDbPassword") && val == "" {
-			return randomDbPassword
-		}
-		// To keep the password constant during reconfiguration.
-		if strings.Contains(pathString, "keyStorePassword") && val == "" {
-			return "password"
-		}
-		// Have to be regular user if not root, since we will not have access to the
-		// postgres user.
-		if !hasSudoAccess() {
-			if strings.Contains(pathString, "platformDbUser") {
-				currentUser, _ := ExecuteBashCommand("bash", []string{"-c", "whoami"})
-				currentUser = strings.ReplaceAll(strings.TrimSuffix(currentUser, "\n"), " ", "")
-				return currentUser
-			}
-		}
-		return val
 	}
+
+	val := viper.GetString(pathString)
+	if strings.Contains(pathString, "platformDbPassword") && val == "" {
+		return randomDbPassword
+	}
+
+	// Have to be regular user if not root, since we will not have access to the
+	// postgres user.
+	if !hasSudoAccess() {
+		if strings.Contains(pathString, "platformDbUser") {
+			currentUser, _ := ExecuteBashCommand("bash", []string{"-c", "whoami"})
+			currentUser = strings.ReplaceAll(strings.TrimSuffix(currentUser, "\n"), " ", "")
+			return currentUser
+		}
+	}
+	return val
+
 }
 
 func getOStype() string {
