@@ -6,8 +6,8 @@ package cmd
 
 import (
 	"fmt"
+	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -403,13 +403,12 @@ func (plat Platform) CreateCronJob() {
 
 // GenerateCORSOrigin determines the IP address of the host to populate CORS origin field in conf.
 func (plat Platform) GenerateCORSOrigin() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
 
-	command0 := "bash"
-	args0 := []string{"-c", "ip route get 1.2.3.4 | awk '{print $7}'"}
-	cmd := exec.Command(command0, args0...)
-	cmd.Stderr = os.Stderr
-	out, _ := cmd.Output()
-	CORSOriginIP := string(out)
-	CORSOrigin := "https://" + strings.TrimSuffix(CORSOriginIP, "\n") + ""
-	return strings.TrimSuffix(strings.ReplaceAll(CORSOrigin, " ", ""), "\n")
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return "https:" + localAddr.IP.String()
 }
