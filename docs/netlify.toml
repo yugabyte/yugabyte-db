@@ -211,8 +211,14 @@
   from = "/preview/develop/build-apps/rust/ysql-diesel/"
   to = "/preview/drivers-orms/orms/ysql-diesel/"
   force = true
-
-
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-sdyb/"
+  to = "/preview/integrations/spring-framework/sdyb/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-pg/"
+  to = "/preview/drivers-orms/go/pg/"
+  force = true
 # Build an app for aiopg, now in integrations
 
 [[redirects]]
