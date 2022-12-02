@@ -1,6 +1,6 @@
 {{ if or .Site.Params.gcs_engine_id .Site.Params.algolia_docsearch -}}
 <i class="search-icon"></i>
-<input type="search" name="q" style="width: 400px;border: 1px solid #d7dee4;height: 32px;text-indent: 38px;border-radius: 8px;outline:none;font-size: 13px;color: #6d7c88;" class=" td-search-input" placeholder="Search YugabyteDB Docs" aria-label="Search YugabyteDB Docs" autocomplete="off">
+<input type="search" name="q" style="width: 400px;border: 1px solid #d7dee4;height: 32px;text-indent: 38px;border-radius: 8px;outline:none;font-size: 13px;color: #0B1117;" class=" td-search-input" placeholder="Search documentation" aria-label="Search documentation" autocomplete="off">
 {{ else if .Site.Params.offlineSearch -}}
 {{ $offlineSearchIndex := resources.Get "json/offline-search-index.json" | resources.ExecuteAsTemplate "offline-search-index.json" . -}}
 {{ if hugo.IsProduction -}}
@@ -13,8 +13,8 @@
 <input
   type="search"
   class="td-search-input"
-  placeholder="Search YugabyteDB Docs"
-  aria-label="Search YugabyteDB Docs"
+  placeholder="Search documentation"
+  aria-label="Search documentation"
   autocomplete="off"
   {{/*
     The data attribute name of the json file URL must end with `src` since

@@ -45,29 +45,37 @@ function checkAnchorMultilines() {
  * Active main Nav.
  */
 function yugabyteActiveMainNav() {
-  const pathName = location.pathname.split('/');
-  let flag = 0;
-  let anchorVal = '';
-  let urlConf = '';
-  if (pathName[1] && pathName[2]) {
-    urlConf = '/' + pathName[1] + '/' + pathName[2] + '/';
-    $('#header-menu-list > li > a').each(function () {
-      if ($(this).attr('href')) {
-        anchorVal = $(this).attr('href');
+  const pathName = location.pathname;
+
+  // For exact link match.
+  if ($(`#header-menu-list a[href="${pathName}"]`).length > 0) {
+    $(`#header-menu-list a[href="${pathName}"]`).parents('li.header-link').addClass('active');
+  } else { // When exact link doesn't match.
+    const splitPath = pathName.replace(/^\/+|\/+$/g, '').split('/');
+    splitPath.pop();
+
+    while (splitPath.length > 0) {
+      const checkPath = splitPath.join('/');
+      if ($(`#header-menu-list a[href^="/${checkPath}/"]`).length > 0) {
+        $(`#header-menu-list a[href^="/${checkPath}/"]`).first().parents('li.header-link').addClass('active');
+        break;
       } else {
-        anchorVal = '/preview/' + $(this).attr('title').toLowerCase() + '/';
+        splitPath.pop();
       }
-      if (anchorVal.indexOf(urlConf) !== -1) {
-        $(this).parent('li').addClass('active');
-        flag = 1;
-      }
-    });
+    }
   }
-  if (location.pathname === '/' || location.pathname === '/search/') {
-    flag = 1;
+}
+
+/**
+ * Move Right Nav to dropdown in mobile .
+ */
+function rightnavAppend() {
+  if ($(window).width() < 992) {
+    $('.td-navbar .td-navbar-nav-scroll .navbar-nav').appendTo('.page-header');
   }
-  if (flag === 0) {
-    $('#header-menu-list > li:first-child').addClass('active');
+
+  if ($('.page-header ul.navbar-nav').length > 0 && $(window).width() > 991) {
+    $('.page-header ul.navbar-nav').prependTo('#main_navbar');
   }
 }
 
@@ -125,7 +133,7 @@ function yugabyteActiveLeftNav() {
 }
 
 $(document).on('click', '.header-menu li.dropdown', (event) => {
-  if ($(window).width() < 991) {
+  if ($(window).width() < 992) {
     if ($(event.currentTarget).hasClass('active')) {
       $('.header-menu li.dropdown.active').removeClass('active');
     } else {
@@ -188,9 +196,8 @@ function yugabyteDraggabbleSideNav() {
       }
 
       $('.td-main').css('padding-left', mouseMoveX);
-      $('#dragbar').css('left', mouseMoveX);
+      // $('#dragbar').css('left', mouseMoveX);
       $('.td-sidebar').css({
-        maxWidth: mouseMoveX,
         marginLeft: (mouseMoveX * -1),
         left: mouseMoveX,
       });
@@ -241,7 +248,7 @@ $(document).ready(() => {
       }
     }
 
-    $(document).on('click', '#main_navbar li:last-child a.nav-link', (event) => {
+    $(document).on('click', '#main_navbar li:last-child a.nav-link,.right-nav a.nav-link[role="button"]', (event) => {
       $(event.currentTarget).toggleClass('open');
     });
 
@@ -250,6 +257,7 @@ $(document).ready(() => {
       $('.mobile-menu').toggleClass('open');
       $('.mobile-search').removeClass('open');
       $('.page-header').removeClass('open-search');
+      $('body').toggleClass('hidden-scroll');
     });
 
     $(document).on('click', 'ul#header-menu-list li', () => {
@@ -261,19 +269,14 @@ $(document).ready(() => {
     $(document).on('click', '.mobile-search', () => {
       $('.page-header').toggleClass('open-search');
       $('.page-header,.mobile-menu').removeClass('open');
+      $('body').removeClass('hidden-scroll');
       $('.mobile-search').toggleClass('open');
       if ($('.page-header .search-container-wrap').length === 0) {
         $('.page-header').append('<div class="navbar-nav search-container-wrap">' + $('.search-container-wrap').html() + '</div>');
       }
     });
 
-    if ($(window).width() < 768) {
-      $('.td-navbar .td-navbar-nav-scroll .navbar-nav').appendTo('.page-header');
-    }
-
-    if ($('.page-header ul.navbar-nav').length > 0 && $(window).width() > 767) {
-      $('.page-header ul.navbar-nav').prependTo('#main_navbar');
-    }
+    rightnavAppend();
   })();
 
   /**
@@ -512,6 +515,8 @@ $(window).scroll(() => {
 });
 
 $(window).resize(() => {
+  rightnavAppend();
+
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
