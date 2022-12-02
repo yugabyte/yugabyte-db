@@ -13,8 +13,6 @@
 
 #include "yb/master/table_index.h"
 
-#include <format>
-
 #include "gmock/gmock.h"
 #include "yb/master/master_util.h"
 #include <gtest/gtest.h>
