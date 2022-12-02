@@ -238,6 +238,7 @@ To run the application and insert a new row, execute the following steps:
     ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
     ```
 
-## Next steps
+## Learn more
 
-Explore [scaling Java applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

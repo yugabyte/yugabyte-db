@@ -27,42 +27,42 @@ The source for the REST API-based applications is in the [Using ORMs with Yugaby
 <ul class="nav yb-pills">
 
   <li>
-    <a href="ysql-hibernate/" class="orange">
+    <a href="java/ysql-hibernate/" class="orange">
       <i class="fa-brands fa-java"></i>
       Java
     </a>
   </li>
 
   <li>
-    <a href="ysql-pg/" class="orange">
+    <a href="go/ysql-gorm/" class="orange">
       <i class="fa-brands fa-golang"></i>
       Go
     </a>
   </li>
 
   <li>
-    <a href="ysql-sqlalchemy/" class="orange">
+    <a href="python/ysql-sqlalchemy/" class="orange">
       <i class="fa-brands fa-python"></i>
       Python
     </a>
   </li>
 
   <li>
-    <a href="ysql-sequelize/" class="orange">
+    <a href="nodejs/ysql-sequelize/" class="orange">
       <i class="fa-brands fa-node-js"></i>
       NodeJS
     </a>
   </li>
 
   <li>
-    <a href="ysql-entity-framework/" class="orange">
+    <a href="csharp/ysql-entity-framework/" class="orange">
       <i class="icon-csharp"></i>
       C#
     </a>
   </li>
 
   <li>
-    <a href="ysql-diesel/" class="orange">
+    <a href="rust/ysql-diesel/" class="orange">
       <i class="fa-brands fa-rust"></i>
       Rust
     </a>

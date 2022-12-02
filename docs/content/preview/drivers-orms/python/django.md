@@ -215,6 +215,7 @@ To run the application and insert a new row, execute the following steps.
 
    You can also verify this using the [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) client shell.
 
-## Next steps
+## Learn more
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Python applications using [SQLAlchemy ORM](../sqlalchemy/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

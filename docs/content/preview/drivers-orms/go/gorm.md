@@ -112,6 +112,7 @@ for _, employee := range employees {
 }
 ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Go applications using [PG](../pg/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

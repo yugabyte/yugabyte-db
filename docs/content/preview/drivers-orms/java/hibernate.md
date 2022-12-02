@@ -228,6 +228,7 @@ Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John',
 Query returned: name=John, age=35, language: Java
 ```
 
-## Next Steps
+## Learn more
 
-Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Java applications using [Ebean ORM](../ebean/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

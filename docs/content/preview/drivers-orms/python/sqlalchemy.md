@@ -146,6 +146,7 @@ Name: John Age: 35 Language: Java
 Name: Ivy Age: 27 Language: C++
 ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Python applications using [Django ORM](../django/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

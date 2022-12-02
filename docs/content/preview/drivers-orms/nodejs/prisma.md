@@ -262,6 +262,7 @@ npx prisma studio
 
 Open [http://localhost:5555](http://localhost:5555) in your browser to see the table and data created.
 
-## Next steps
+## Learn more
 
-Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

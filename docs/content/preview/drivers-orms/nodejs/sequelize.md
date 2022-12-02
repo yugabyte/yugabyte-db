@@ -210,6 +210,7 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
       });
     ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Node.js applications using [Prisma ORM](../prisma/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
