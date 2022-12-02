@@ -13,10 +13,10 @@
       Type=forking
       TimeoutSec=300
 
-      ExecStart={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      ExecStart={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
       -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} start
 
-      ExecStop={{ .PgCtl }} -D {{ .ConfFileLocation }} \
+      ExecStop={{ .PgBin }}/pg_ctl -D {{ .ConfFileLocation }} \
       -w -o "-k {{ .MountPath }}" -l {{ .LogFile }} stop
 
       Restart=always

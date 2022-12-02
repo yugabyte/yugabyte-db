@@ -90,7 +90,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["{{ yamlPath "platform.corsOrigin" }}"]
+          allowedOrigins =  ["{{ .GenerateCORSOrigin }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [

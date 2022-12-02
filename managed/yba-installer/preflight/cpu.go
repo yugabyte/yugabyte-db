@@ -7,17 +7,18 @@ package preflight
 import (
 	"fmt"
 	"runtime"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 var cpu = Cpu{"cpu", "warning"}
 
 type Cpu struct {
-	Name         string
+	name         string
 	WarningLevel string
 }
 
-func (c Cpu) GetName() string {
-	return c.Name
+func (c Cpu) Name() string {
+	return c.name
 }
 
 func (c Cpu) GetWarningLevel() string {
@@ -27,9 +28,9 @@ func (c Cpu) GetWarningLevel() string {
 func (c Cpu) Execute() {
 
 	if runtime.NumCPU() < defaultMinCPUs {
-		LogError(fmt.Sprintf("System currently has %v CPU but requires %v CPUs.",
+		log.Fatal(fmt.Sprintf("System currently has %v CPU but requires %v CPUs.",
 			runtime.NumCPU(), defaultMinCPUs))
 	} else {
-		LogInfo(fmt.Sprintf("System meets the requirement of %v Virtual CPUs!", defaultMinCPUs))
+		log.Info(fmt.Sprintf("System meets the requirement of %v Virtual CPUs!", defaultMinCPUs))
 	}
 }
