@@ -419,7 +419,9 @@ export default class ClusterFields extends Component {
           'async.enableClientToNodeEncrypt': userIntent.enableClientToNodeEncrypt,
           'async.enableEncryptionAtRest': encryptionAtRestEnabled,
           'async.useSystemd': userIntent.useSystemd,
-          'async.tlsCertificateId': universeDetails.rootCA
+          'async.tlsCertificateId': universeDetails.rootCA,
+          'async.numNodes' : userIntent.numNodes,
+          'async.replicationFactor' : userIntent.replicationFactor,
         });
       }
       if (userIntent && providerUUID) {
