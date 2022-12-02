@@ -521,6 +521,9 @@ public class UniverseCRUDHandler {
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
+      for (Cluster readOnlyCluster : taskParams.getReadOnlyClusters()) {
+        validateConsistency(taskParams.getPrimaryCluster(), readOnlyCluster);
+      }
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
@@ -572,6 +575,7 @@ public class UniverseCRUDHandler {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+          universe.save();
           // TODO(bhavin192): remove the flag once the new naming style
           // is stable enough.
           if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
@@ -622,6 +626,7 @@ public class UniverseCRUDHandler {
       }
 
       universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      universe.save();
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
       if (cloudEnabled) {
@@ -630,6 +635,7 @@ public class UniverseCRUDHandler {
         AvailabilityZone zone = provider.regions.get(0).zones.get(0);
         if (zone.secondarySubnet != null) {
           universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
+          universe.save();
         }
       }
 
@@ -637,6 +643,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.USE_CUSTOM_IMAGE,
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
+      universe.save();
 
       Ebean.commitTransaction();
 
@@ -704,6 +711,10 @@ public class UniverseCRUDHandler {
 
     // Update Primary cluster
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    for (Cluster readOnlyCluster : u.getUniverseDetails().getReadOnlyClusters()) {
+      validateConsistency(primaryCluster, readOnlyCluster);
+    }
+
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -720,6 +731,7 @@ public class UniverseCRUDHandler {
   private UUID updateCluster(
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
+    validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
     TaskType taskType = TaskType.EditUniverse;
@@ -963,7 +975,6 @@ public class UniverseCRUDHandler {
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     taskParams.clusters.add(primaryCluster);
-    // validateConsistency(primaryCluster, readOnlyCluster); // TODO: do we need this?
 
     // Set the provider code.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(addOnCluster.userIntent.provider));

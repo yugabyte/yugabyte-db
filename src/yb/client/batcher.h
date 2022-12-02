@@ -294,7 +294,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void Run() override;
 
-  std::map<PartitionKey, Status> CollectOpsErrors();
+  std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+      CollectOpsErrors();
 
   BatcherState state_ = BatcherState::kGatheringOps;
 

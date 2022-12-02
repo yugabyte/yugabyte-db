@@ -253,7 +253,7 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
 
-    var onPremSkipProvisioning = false;
+    let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
       const onPremKey = accessKeys.data.find(
         (accessKey) => accessKey.idKey.providerUUID === provider.uuid
@@ -312,11 +312,11 @@ class UniverseDetail extends Component {
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
 
-    let editTLSAvailability = getFeatureState(
+    const editTLSAvailability = getFeatureState(
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
-    let manageKeyAvailability = getFeatureState(
+    const manageKeyAvailability = getFeatureState(
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
@@ -607,12 +607,12 @@ class UniverseDetail extends Component {
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
                         ).value === 'true' && (
-                          <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
-                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                        <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
+                          <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade VM Image
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        )}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                       {!universePaused && !useSystemd && (
                         <YBMenuItem
                           disabled={updateInProgress || onPremSkipProvisioning}
@@ -647,16 +647,16 @@ class UniverseDetail extends Component {
                           currentCustomer.data.features,
                           'universes.details.overview.editUniverse'
                         ) && (
-                          <YBMenuItem
-                            to={`/universes/${uuid}/edit/primary`}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editUniverse'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
-                          </YBMenuItem>
-                        )}
+                        <YBMenuItem
+                          to={`/universes/${uuid}/edit/primary`}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editUniverse'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
 
                       {!universePaused && (
                         <YBMenuItem
@@ -743,28 +743,28 @@ class UniverseDetail extends Component {
 
                       {(featureFlags.test['supportBundle'] ||
                         featureFlags.released['supportBundle']) && (
-                          <>
-                            <MenuItem divider />
-                            {!universePaused && (
-                              <UniverseSupportBundle
-                                currentUniverse={currentUniverse.data}
-                                modal={modal}
-                                closeModal={closeModal}
-                                button={
-                                  <YBMenuItem
-                                    disabled={updateInProgress}
-                                    onClick={showSupportBundleModal}
-                                  >
-                                    <YBLabelWithIcon icon="fa fa-file-archive-o">
+                        <>
+                          <MenuItem divider />
+                          {!universePaused && (
+                            <UniverseSupportBundle
+                              currentUniverse={currentUniverse.data}
+                              modal={modal}
+                              closeModal={closeModal}
+                              button={
+                                <YBMenuItem
+                                  disabled={updateInProgress}
+                                  onClick={showSupportBundleModal}
+                                >
+                                  <YBLabelWithIcon icon="fa fa-file-archive-o">
                                       Support Bundles
-                                    </YBLabelWithIcon>
-                                  </YBMenuItem>
-                                }
-                              />
-                            )}
-                            <MenuItem divider />
-                          </>
-                        )}
+                                  </YBLabelWithIcon>
+                                </YBMenuItem>
+                              }
+                            />
+                          )}
+                          <MenuItem divider />
+                        </>
+                      )}
 
                       {!universePaused && (
                         <YBMenuItem
@@ -807,22 +807,23 @@ class UniverseDetail extends Component {
                       {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
-                          featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem
-                            onClick={showToggleUniverseStateModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.pausedUniverse'
-                            )}
-                          >
-                            <YBLabelWithIcon
-                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
-                            >
-                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
-                        )}
-
+                          featureFlags.released['pausedUniverse']) &&
+                            (
+                              <YBMenuItem
+                                onClick={showToggleUniverseStateModal}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.pausedUniverse'
+                                )}
+                              >
+                                <YBLabelWithIcon
+                                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                                >
+                                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            )
+                      }
                       <YBMenuItem
                         onClick={showDeleteUniverseModal}
                         availability={getFeatureState(

@@ -7,6 +7,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
@@ -65,6 +66,7 @@ public class AppInit {
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       BackupGarbageCollector backupGC,
+      PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
@@ -128,6 +130,18 @@ public class AppInit {
         Customer customer = Customer.getAll().get(0);
         alertDestinationService.createDefaultDestination(customer.uuid);
         alertConfigurationService.createDefaultConfigs(customer);
+      }
+
+      boolean ywFileDataSynced =
+          Boolean.valueOf(
+              configHelper
+                  .getConfig(ConfigHelper.ConfigType.FileDataSync)
+                  .getOrDefault("synced", "false")
+                  .toString());
+
+      if (!ywFileDataSynced) {
+        String storagePath = appConfig.getString("yb.storage.path");
+        configHelper.syncFileData(storagePath, false);
       }
 
       if (mode.equals("PLATFORM")) {
@@ -195,6 +209,9 @@ public class AppInit {
 
       // Schedule garbage collection of backups
       backupGC.start();
+
+      // Schedule perf advisor data retrieval
+      // perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();

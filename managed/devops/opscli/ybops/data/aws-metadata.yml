@@ -10,7 +10,7 @@ region_cidr_format: "{}.0.0/16"
 zone_cidr_format: "{}.{}.0/20"
 
 # For list of AMIs: https://wiki.almalinux.org/cloud/AWS.html#community-amis
-# AMIs labeled with 'image' have x86_64 architecture and release tag = 8.6.20220715.
+# AMIs labeled with 'image' have x86_64 architecture and release tag = 8.7.20221110.
 # AMIs labeled with 'arm_image' have arm64 architecture and release tag = 8.7.20221110.
 
 # Last Updated: 2022-Nov-15
@@ -18,70 +18,70 @@ zone_cidr_format: "{}.{}.0/20"
 regions:
   us-west-1:
     cidr_prefix: "172.150"
-    image: ami-0e046a5d1172cba32
+    image: ami-05c8aebecaa8cb8e9
     arm_image: ami-0b9e10529ea809514
   us-west-2:
     cidr_prefix: "172.151"
-    image: ami-01ad1e3d2d7278f10
+    image: ami-0f12219b4df721aa6
     arm_image: ami-08e61774857a2b931
   us-east-1:
     cidr_prefix: "172.152"
-    image: ami-013e93e9fbc908d88
+    image: ami-0924610ece26e5e7b
     arm_image: ami-02c9a8bba92028114
 #  us-south-1:
 #    cidr_prefix: "172.153"
 #    image: N/A
   ap-northeast-1:
     cidr_prefix: "172.154"
-    image: ami-0113c5fc6ac5e0043
+    image: ami-05faf1bb6b8ea4b89
     arm_image: ami-0882fb28b1be4d30c
 # TODO: not currently supported in x-region VPC.
 # TODO: seems like at least we have an AMI...
   ap-northeast-2:
     cidr_prefix: "172.155"
-    image: ami-0b808e3ad34cb9737
+    image: ami-00f106831803f5b5f
     arm_image: ami-095326290fa0e3573
   ap-southeast-1:
     cidr_prefix: "172.156"
-    image: ami-0226c7236bc5c777b
+    image: ami-07e2e187d68ce189d
     arm_image: ami-0d8d98a39e6c659a0
   ap-southeast-2:
     cidr_prefix: "172.157"
-    image: ami-0beacb82191c7b2d9
+    image: ami-0aa29f1c98936e9a9
     arm_image: ami-01f658764786195d3
   eu-central-1:
     cidr_prefix: "172.158"
-    image: ami-049e79e8a8e13327c
+    image: ami-027a47e7ce46f36ef
     arm_image: ami-0c402347868961364
   eu-west-1:
     cidr_prefix: "172.159"
-    image: ami-07715cd6db772c7e3
+    image: ami-06a678bf61dc41a72
     arm_image: ami-06a678bf61dc41a72
   # CIDR prefixes cannot be 172.16x because this is reserved address space.
   # See https://en.wikipedia.org/wiki/Private_network#Private_use_of_other_reserved_addresses
   sa-east-1:
     cidr_prefix: "10.100"
-    image: ami-0bf9c7cf3f259cdbc
+    image: ami-0d838f4b0dc284975
     arm_image: ami-0649838557daaf047
   us-east-2:
     cidr_prefix: "10.101"
-    image: ami-0c520b629d071105a
+    image: ami-02f76e15e87d1574f
     arm_image: ami-0654405a8bd61f31c
   eu-west-2:
     cidr_prefix: "10.102"
-    image: ami-0625af50d3384aff2
+    image: ami-0fb5afa2e872eff9f
     arm_image: ami-0d909593312b9255a
   eu-west-3:
     cidr_prefix: "10.103"
-    image: ami-05772b392a34b94b8
+    image: ami-026b68532b942de3a
     arm_image: ami-0048914b9d9cd367d
   ca-central-1:
     cidr_prefix: "10.104"
-    image: ami-02babadf9c5e63d47
+    image: ami-0a6182f806c6876d1
     arm_image: ami-02e9e81a185160da9
   ap-south-1:
     cidr_prefix: "10.105"
-    image: ami-0d0a3f206d0bd1efc
+    image: ami-06118baa57e191a1d
     arm_image: ami-03133f245242b05e1
 # TODO: not currently supported in x-region VPC.
 # cn-north-1:
@@ -89,27 +89,27 @@ regions:
 #    image: N/A
   ap-northeast-3:
     cidr_prefix: "10.107"
-    image: ami-0848a81cb13386a65
+    image: ami-0ed7db42601cde3bc
     arm_image: ami-02dc32460f81327cf
   af-south-1:
     cidr_prefix: "10.108"
-    image: ami-008b171ea1311121b
+    image: ami-07572a7b4f4804454
     arm_image: ami-0734b92b9b36616aa
   me-south-1:
     cidr_prefix: "10.109"
-    image: ami-064676c608620af91
+    image: ami-0377072803c1257ab
     arm_image: ami-0035d3feab8018f64
   ap-east-1:
     cidr_prefix: "10.110"
-    image: ami-0238d5a61a557b69f
+    image: ami-029a7025125e2e104
     arm_image: ami-076eef897fb8ffc91
   eu-south-1:
     cidr_prefix: "10.111"
-    image: ami-04185cafa08264e2c
+    image: ami-03082acb4cbf3fa29
     arm_image: ami-0eb6074ccc064cc9f
   eu-north-1:
     cidr_prefix: "10.112"
-    image: ami-05d343ed0beb6c1eb
+    image: ami-0d8c35ca5db3d075d
     arm_image: ami-0ca3c60f15c43d0da
 sg_rules:
   - ip_protocol: tcp

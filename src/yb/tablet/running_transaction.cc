@@ -100,7 +100,8 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
 
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
     auto transaction_status =
-        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
+        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_,
+                    external_transaction());
     // If we don't have status at global_limit_ht, then we should request updated status.
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
@@ -194,10 +195,15 @@ void RunningTransaction::ScheduleRemoveIntents(
 boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
     HybridTime time,
     HybridTime last_known_status_hybrid_time,
-    TransactionStatus last_known_status) {
+    TransactionStatus last_known_status,
+    bool external_transaction) {
   switch (last_known_status) {
-    case TransactionStatus::ABORTED:
-      return TransactionStatus::ABORTED;
+    case TransactionStatus::ABORTED: {
+      if (!external_transaction || last_known_status_hybrid_time >= time) {
+        return TransactionStatus::ABORTED;
+      }
+      return boost::none;
+    }
     case TransactionStatus::COMMITTED:
       return last_known_status_hybrid_time > time
           ? TransactionStatus::PENDING
@@ -371,7 +377,8 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
   auto w = status_waiters_.begin();
   for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
     if (it->serial_no <= serial_no ||
-        GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
+        GetStatusAt(
+            it->global_limit_ht, time_of_status, transaction_status, external_transaction()) ||
         time_of_status < it->read_ht) {
       result.push_back(std::move(*it));
     } else {
@@ -391,15 +398,22 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
                                        const std::vector<StatusRequest>& status_waiters) {
   for (const auto& waiter : status_waiters) {
     auto status_for_waiter = GetStatusAt(
-        waiter.global_limit_ht, time_of_status, transaction_status);
+        waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
     if (status_for_waiter) {
-      // We know status at global_limit_ht, so could notify waiter.
-      auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
-      if (result.status == TransactionStatus::COMMITTED ||
-          result.status == TransactionStatus::PENDING) {
-        result.aborted_subtxn_set = aborted_subtxn_set;
+      if (external_transaction() && *status_for_waiter == TransactionStatus::PENDING) {
+        last_known_status_hybrid_time_ = waiter.read_ht;
+        last_known_status_ = TransactionStatus::PENDING;
+        waiter.callback(TransactionStatusResult{
+            TransactionStatus::PENDING, waiter.read_ht, aborted_subtxn_set});
+      } else {
+        // We know status at global_limit_ht, so could notify waiter.
+        auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
+        if (result.status == TransactionStatus::COMMITTED ||
+            result.status == TransactionStatus::PENDING) {
+          result.aborted_subtxn_set = aborted_subtxn_set;
+        }
+        waiter.callback(std::move(result));
       }
-      waiter.callback(std::move(result));
     } else if (time_of_status >= waiter.read_ht) {
       // It means that between read_ht and global_limit_ht transaction was pending.
       // It implies that transaction was not committed before request was sent.

@@ -97,7 +97,6 @@ public class Universe extends Model {
 
   public void updateSwamperConfigWritten(Boolean swamperConfigWritten) {
     this.swamperConfigWritten = swamperConfigWritten;
-    this.save();
   }
 
   public enum HelmLegacy {
@@ -133,9 +132,8 @@ public class Universe extends Model {
 
   @JsonIgnore
   public void setConfig(Map<String, String> newConfig) {
-    LOG.info("Setting config {} on universe {} [ {} ]", Json.toJson(config), name, universeUUID);
+    LOG.info("Setting config {} on universe {} [ {} ]", Json.toJson(newConfig), name, universeUUID);
     this.config = newConfig;
-    this.save();
   }
 
   public void updateConfig(Map<String, String> newConfig) {

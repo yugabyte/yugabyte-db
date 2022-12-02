@@ -65,6 +65,12 @@ class DBIteratorWrapper : public Iterator {
     return wrapped_->GetProperty(prop_name, prop);
   }
 
+  bool ScanForward(
+      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) override {
+    return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
+  }
+
  protected:
   std::unique_ptr<Iterator> wrapped_;
 };

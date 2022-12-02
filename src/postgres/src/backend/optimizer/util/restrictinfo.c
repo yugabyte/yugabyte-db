@@ -249,8 +249,12 @@ get_batched_restrictinfo(RestrictInfo *rinfo,
 		}
 	}
 
-	/* Make sure this satisfies the outer_batched_relids constraint. */
-	if (!bms_overlap(ret->clause_relids, outer_batched_relids))
+	/*
+  	 * Make sure this clause involves both outer_batched_relids and
+   	 * inner_relids.
+   	 */
+  	if (!bms_overlap(ret->right_relids, outer_batched_relids) ||
+    	!bms_overlap(ret->left_relids, inner_relids))
 		return NULL;
 
 	return ret;

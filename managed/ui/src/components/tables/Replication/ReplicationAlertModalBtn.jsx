@@ -38,9 +38,9 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   const [alertConfigurationUUID, setAlertConfigurationUUID] = useState(null);
   const [submissionError, setSubmissionError] = useState();
   const configurationFilter = {
-      name: ALERT_NAME,
-      targetUuid: universeUUID
-  }
+    name: ALERT_NAME,
+    targetUuid: universeUUID
+  };
   const queryClient = useQueryClient();
   const { isFetching } = useQuery(
     ['getAlertConfigurations', configurationFilter],
@@ -49,15 +49,15 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
       enabled: isModalVisible,
       onSuccess: (data) => {
         if(Array.isArray(data) && data.length > 0) {
-           const configuration = data[0];
-           setAlertConfigurationUUID(configuration.uuid);
+          const configuration = data[0];
+          setAlertConfigurationUUID(configuration.uuid);
 
-           // update form value via workaround as initial form value inside <YBModalForm> is set when
-           // it rendered for the first time and we don't have an API response at that time yet
-           formik.current.setValues({
-             enableAlert: configuration.active,
-             lagThreshold: configuration.thresholds.SEVERE.threshold
-           });
+          // update form value via workaround as initial form value inside <YBModalForm> is set when
+          // it rendered for the first time and we don't have an API response at that time yet
+          formik.current.setValues({
+            enableAlert: configuration.active,
+            lagThreshold: configuration.thresholds.SEVERE.threshold
+          });
 
         }
       }
@@ -78,10 +78,10 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
 
   const submit = async (values, formikBag) => {
     const templateFilter = {
-       name: ALERT_NAME
+      name: ALERT_NAME
     };
     const alertTemplates = await getAlertTemplates(templateFilter);
-    const template = alertTemplates[0]
+    const template = alertTemplates[0];
     template.active = values.enableAlert;
     template.thresholds.SEVERE.threshold = values.lagThreshold;
     template.target = {

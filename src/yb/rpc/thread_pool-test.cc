@@ -89,7 +89,10 @@ class TestTask final : public ThreadPoolTask {
 TEST_F(ThreadPoolTest, TestSingleThread) {
   constexpr size_t kTotalTasks = 100;
   constexpr size_t kTotalWorkers = 1;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
@@ -106,7 +109,10 @@ TEST_F(ThreadPoolTest, TestSingleThread) {
 TEST_F(ThreadPoolTest, TestSingleProducer) {
   constexpr size_t kTotalTasks = 10000;
   constexpr size_t kTotalWorkers = 4;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
@@ -124,7 +130,10 @@ TEST_F(ThreadPoolTest, TestMultiProducers) {
   constexpr size_t kTotalTasks = 10000;
   constexpr size_t kTotalWorkers = 4;
   constexpr size_t kProducers = 4;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
@@ -154,7 +163,10 @@ TEST_F(ThreadPoolTest, TestQueueOverflow) {
   constexpr size_t kTotalTasks = 10000;
   constexpr size_t kTotalWorkers = 4;
   constexpr size_t kProducers = 4;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
@@ -192,7 +204,10 @@ TEST_F(ThreadPoolTest, TestShutdown) {
   constexpr size_t kTotalTasks = 10000;
   constexpr size_t kTotalWorkers = 4;
   constexpr size_t kProducers = 4;
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
 
   CountDownLatch latch(kTotalTasks);
   std::vector<TestTask> tasks(kTotalTasks);
@@ -249,10 +264,12 @@ TEST_F(ThreadPoolTest, TestOwns) {
     CountDownLatch latch_{1};
   };
 
-  constexpr size_t kTotalTasks = 1;
   constexpr size_t kTotalWorkers = 1;
 
-  ThreadPool pool("test", kTotalTasks, kTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalWorkers,
+  });
   ASSERT_FALSE(pool.OwnsThisThread());
   TestTask task(&pool);
   pool.Enqueue(&task);
@@ -266,7 +283,10 @@ constexpr size_t kPoolMaxTasks = 100;
 constexpr size_t kPoolTotalWorkers = 4;
 
 TEST_F(ThreadPoolTest, Strand) {
-  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kPoolTotalWorkers,
+  });
   Strand strand(&pool);
 
   CountDownLatch latch(kPoolMaxTasks);
@@ -285,7 +305,10 @@ TEST_F(ThreadPoolTest, Strand) {
 }
 
 TEST_F(ThreadPoolTest, StrandShutdown) {
-  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kPoolTotalWorkers,
+  });
   Strand strand(&pool);
 
   CountDownLatch latch1(1);
@@ -312,7 +335,10 @@ TEST_F(ThreadPoolTest, StrandShutdown) {
 }
 
 TEST_F(ThreadPoolTest, NotUsedStrandShutdown) {
-  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kPoolTotalWorkers,
+  });
 
   Strand strand(&pool);
 
@@ -334,7 +360,10 @@ TEST_F(ThreadPoolTest, NotUsedStrandShutdown) {
 TEST_F(ThreadPoolTest, StrandShutdownAndDestroyRace) {
   constexpr size_t kNumIters = 10;
 
-  ThreadPool pool("test", kPoolMaxTasks, kPoolTotalWorkers);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kPoolTotalWorkers,
+  });
 
   auto task = []{};
 

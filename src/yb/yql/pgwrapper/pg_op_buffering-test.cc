@@ -34,7 +34,7 @@ class PgOpBufferingTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     PgMiniTestBase::SetUp();
-    write_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    write_rpc_watcher_ = std::make_unique<MetricWatcher>(
         *cluster_->mini_tablet_server(0)->server(),
         METRIC_handler_latency_yb_tserver_TabletServerService_Write);
   }
@@ -43,7 +43,7 @@ class PgOpBufferingTest : public PgMiniTestBase {
     return 1;
   }
 
-  std::unique_ptr<HistogramMetricWatcher> write_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> write_rpc_watcher_;
 };
 
 const std::string kTable = "test";

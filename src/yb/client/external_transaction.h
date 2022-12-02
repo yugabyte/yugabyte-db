@@ -36,21 +36,37 @@ namespace yb {
 namespace client {
 
 struct ExternalTransactionMetadata {
-  TransactionId transaction_id = TransactionId::Nil();
+  enum class OperationType {
+    CREATE = 0,
+    COMMIT = 1
+  };
+  TransactionId transaction_id;
   TabletId status_tablet;
-  uint64_t commit_ht;
+  OperationType operation_type;
+  uint64_t hybrid_time;
   std::vector<TabletId> involved_tablet_ids;
+
+  std::string OperationTypeToString() const {
+    switch (operation_type) {
+      case OperationType::CREATE:
+        return "CREATE";
+      case OperationType::COMMIT:
+        return "COMMIT";
+      default:
+        return "UNKNOWN";
+    }
+  }
 };
 
 class ExternalTransaction {
  public:
-  ExternalTransaction() {}
-  explicit ExternalTransaction(TransactionManager* transaction_manager_,
-                               const ExternalTransactionMetadata& metadata);
+  explicit ExternalTransaction(TransactionManager* transaction_manager_);
   ~ExternalTransaction();
-  void Commit(CommitCallback commit_callback);
+  void Create(const ExternalTransactionMetadata& metadata, CreateCallback create_callback);
+  void Commit(const ExternalTransactionMetadata& metadata, CommitCallback commit_callback);
     // Utility function for Commit.
-  std::future<Status> CommitFuture();
+  std::future<Status> CommitFuture(const ExternalTransactionMetadata& metadata);
+  std::future<Status> CreateFuture(const ExternalTransactionMetadata& metadata);
 
  private:
   CoarseTimePoint TransactionRpcDeadline();
@@ -58,9 +74,12 @@ class ExternalTransaction {
                   const tserver::UpdateTransactionResponsePB& response,
                   CommitCallback commit_callback);
 
+  void CreateDone(const Status& status,
+                  const tserver::UpdateTransactionResponsePB& response,
+                  CreateCallback create_callback);
+
   TransactionManager* transaction_manager_;
-  ExternalTransactionMetadata metadata_;
-  rpc::Rpcs::Handle commit_handle_;
+  rpc::Rpcs::Handle handle_;
 };
 
 } // namespace client

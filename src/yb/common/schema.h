@@ -792,6 +792,10 @@ class Schema {
     colocation_id_ = colocation_id;
   }
 
+  bool is_colocated() const {
+    return has_colocation_id() || has_cotable_id();
+  }
+
   // Extract a given column from a row where the type is
   // known at compile-time. The type is checked with a debug
   // assertion -- but if the wrong type is used and these assertions

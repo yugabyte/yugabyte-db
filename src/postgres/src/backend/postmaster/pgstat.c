@@ -2994,6 +2994,9 @@ pgstat_bestart(void)
 		dbForm = (Form_pg_database) GETSTRUCT(tuple);
 		strcpy(lbeentry.st_databasename, dbForm->datname.data);
 		ReleaseSysCache(tuple);
+
+		/* Initialization of allocated memory measurement value */
+		lbeentry.yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
 	}
 
 	/* We have userid for client-backends, wal-sender and bgworker processes */
@@ -3504,6 +3507,11 @@ pgstat_read_current_status(void)
 									   &localentry->backend_xid,
 									   &localentry->backend_xmin);
 
+			if (YBIsEnabledInPostgresEnvVar())
+			{
+				localentry->yb_backend_rss_mem_bytes =
+					YbPgGetCurRSSMemUsage(localentry->backendStatus.st_procpid);
+			}
 			localentry++;
 			localappname += NAMEDATALEN;
 			localclienthostname += NAMEDATALEN;
@@ -6904,4 +6912,26 @@ PgBackendStatus **
 getBackendStatusArrayPointer(void)
 {
 	return &BackendStatusArray;
+}
+
+/* ----------
+ * yb_pgstat_report_allocated_mem_bytes() -
+ *
+ *	Called from utils/mmgr/mcxt.c to update our allocated memory measurement
+ *	value
+ * ----------
+ */
+void
+yb_pgstat_report_allocated_mem_bytes(void)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+
+	beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
+
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }

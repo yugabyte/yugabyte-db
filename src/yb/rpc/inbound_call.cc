@@ -256,7 +256,7 @@ void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetr
   }
 }
 
-void InboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void InboundCall::Serialize(ByteBlocks* output) {
   size_t old_size = output->size();
   DoSerialize(output);
   if (rpc_method_response_bytes_) {

@@ -1,5 +1,9 @@
 main {
   .td-content {
+    :not(pre) > code {
+      overflow: hidden;
+    }
+
     code {
       display: inline-block;
       vertical-align: middle;
@@ -7,7 +11,6 @@ main {
       font-size: inherit !important;
       line-height: 110%;
       max-width: 100%;
-      overflow: auto;
       background: #f2f6ff;
       border: 1px solid #cbdbff;
       border-radius: 4px;
@@ -28,6 +31,7 @@ main {
     li p > a > code,
     li > code,
     li > em code,
+    p > a > code,
     p > code {
       font-size: 12px !important;
       line-height: 16px;
@@ -51,7 +55,6 @@ main {
 
       > code {
         position: relative;
-        overflow: hidden;
       }
     }
 
@@ -68,6 +71,15 @@ main {
     pre + p,
     .highlight + p {
       margin-top: 24px;
+    }
+
+    > pre.can-be-copied {
+      + {
+        h2,
+        h4 {
+          margin-top: 0;
+        }
+      }
     }
 
     pre {

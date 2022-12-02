@@ -38,7 +38,7 @@ using PrefetchedDataHolder =
 // GetData method is used to access particular table data.
 class PgSysTablePrefetcher {
  public:
-  PgSysTablePrefetcher();
+  explicit PgSysTablePrefetcher(uint64_t latest_known_ysql_catalog_version);
   ~PgSysTablePrefetcher();
 
   // Register new sys table to be read on a first GetData method call.

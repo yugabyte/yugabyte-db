@@ -270,7 +270,7 @@ public class SchedulerTest extends FakeDBApplication {
           @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            universeDetails.backupInProgress = value;
+            universeDetails.updateInProgress = value;
             universe.setUniverseDetails(universeDetails);
           }
         };

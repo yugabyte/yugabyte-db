@@ -71,5 +71,8 @@
     "vars/cloud/azu.yml",
     "vars/cloud/gcp.yml",
     "vars/cloud/onprem.yml"
+  ],
+  "connection_plugins": [
+    "connection_plugins/node_agent_rpc.py"
   ]
 }

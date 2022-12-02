@@ -25,8 +25,18 @@
 #include "miscadmin.h"
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+
+/* YB includes */
+#include "pgstat.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
+#ifdef __linux__
+#include <stdio.h>
+#include <unistd.h>
+#else
+#include <libproc.h>
+#endif
 
 YbPgMemTracker PgMemTracker = {0};
 
@@ -65,6 +75,50 @@ YbPgMemUpdateMax()
 			snapshot_mem - PgMemTracker.stmt_max_mem_base_bytes);
 }
 
+/*
+ * Update the current actual heap memory usage in MemTracker by getting
+ * the value from TCMalloc.
+ */
+static void
+YbPgMemUpdateCur()
+{
+#ifdef TCMALLOC_ENABLED
+	YbGetActualHeapSizeBytes(&PgMemTracker.backend_cur_allocated_mem_bytes);
+	yb_pgstat_report_allocated_mem_bytes();
+#endif
+}
+
+int64_t
+YbPgGetCurRSSMemUsage(int pid)
+{
+#ifdef __linux__
+	uint64 resident = 0;
+	char path[20];
+	snprintf(path, 20, "/proc/%d/statm", pid);
+	FILE* fp = fopen(path, "r");
+
+	if (fp == NULL)
+		return -1; /* Can't open */
+
+	if (fscanf(fp, "%*s%lu", &resident) != 1)
+	{
+		fclose(fp);
+		return -1; /* Can't read */
+	}
+	fclose(fp);
+	return resident * sysconf(_SC_PAGESIZE);
+#else
+	struct proc_taskallinfo info;
+	int result = proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &info,
+		sizeof(struct proc_taskallinfo));
+
+	if (result == 0 || result < sizeof(info))
+		return -1; /* Can't be determined or wrong value */
+
+	return info.ptinfo.pti_resident_size;
+#endif
+}
+
 void
 YbPgMemAddConsumption(Size sz)
 {
@@ -83,6 +137,9 @@ YbPgMemAddConsumption(Size sz)
 
 	/* Only update max memory when memory is increasing */
 	YbPgMemUpdateMax();
+
+	/* Update current heap memory usage */
+	YbPgMemUpdateCur();
 }
 
 void
@@ -92,11 +149,16 @@ YbPgMemSubConsumption(Size sz)
 		return;
 
 	// Avoid overflow when subtracting sz.
-	PgMemTracker.pg_cur_mem_bytes = Max(PgMemTracker.pg_cur_mem_bytes - sz, 0);
+	PgMemTracker.pg_cur_mem_bytes = PgMemTracker.pg_cur_mem_bytes >= sz ?
+										PgMemTracker.pg_cur_mem_bytes - sz :
+										0;
 	// Only call release if pggate is alive, and update its liveness from the
 	// return value.
 	if (PgMemTracker.pggate_alive)
 		PgMemTracker.pggate_alive = YBCTryMemRelease(sz);
+
+	/* Update current heap memory usage */
+	YbPgMemUpdateCur();
 }
 
 void

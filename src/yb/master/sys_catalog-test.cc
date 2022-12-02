@@ -77,7 +77,7 @@ class TestTableLoader : public Visitor<PersistentTableInfo> {
 
   Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     // Setup the table info
-    TableInfo *table = new TableInfo(table_id);
+    TableInfo *table = new TableInfo(table_id, /* colocated */ false);
     auto l = table->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
@@ -152,7 +152,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Create new table.
   const std::string table_id = "abc";
-  scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
+  scoped_refptr<TableInfo> table =
+      master_->catalog_manager()->NewTableInfo(table_id, /* colocated */ false);
   {
     auto l = table->LockForWrite();
     l.mutable_data()->pb.set_name("testtb");
@@ -196,7 +197,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
 // Verify that data mutations are not available from metadata() until commit.
 TEST_F(SysCatalogTest, TestTableInfoCommit) {
-  scoped_refptr<TableInfo> table(master_->catalog_manager()->NewTableInfo("123"));
+  scoped_refptr<TableInfo> table(
+      master_->catalog_manager()->NewTableInfo("123", /* colocated */ false));
 
   // Mutate the table, under the write lock.
   auto writer_lock = table->LockForWrite();
@@ -276,7 +278,8 @@ static TabletInfo *CreateTablet(TableInfo *table,
 // Test the sys-catalog tablets basic operations (add, update, delete,
 // visit)
 TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
-  scoped_refptr<TableInfo> table(master_->catalog_manager()->NewTableInfo("abc"));
+  scoped_refptr<TableInfo> table(
+      master_->catalog_manager()->NewTableInfo("abc", /* colocated */ false));
   // This leaves all three in StartMutation.
   scoped_refptr<TabletInfo> tablet1(CreateTablet(table.get(), "123", "a", "b"));
   scoped_refptr<TabletInfo> tablet2(CreateTablet(table.get(), "456", "b", "c"));
@@ -1032,7 +1035,8 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
 
   // Create new table.
   const std::string table_id = "abc";
-  scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
+  scoped_refptr<TableInfo> table =
+      master_->catalog_manager()->NewTableInfo(table_id, /* colocated */ false);
   {
     auto l = table->LockForWrite();
     l.mutable_data()->pb.set_name("testtb");

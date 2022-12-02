@@ -441,7 +441,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ")";
 
       stmt.execute("SET yb_test_fail_next_ddl TO true");
-      runInvalidQuery(stmt, ddlSql, "DDL failed as requested");
+      runInvalidQuery(stmt, ddlSql, "Failed DDL operation as requested");
 
       // Letting CatalogManagerBgTasks do the cleanup.
       Thread.sleep(BuildTypeUtil.adjustTimeout(5000));

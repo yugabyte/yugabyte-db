@@ -98,6 +98,30 @@ class InternalIterator : public Cleanable {
     return STATUS(NotSupported, "");
   }
 
+  // Iterate over the key-values and call the callback functions, until:
+  // 1. Provided upper bound is reached (optional)
+  // 2. Iterator upper bound is reached (if present)
+  // 3. Reaches end of iteration.
+  // Note: this API only works in cases where there are only unique key insertions in the RocksDB.
+  // Because this call skips the merge step for keys encountered during scan.
+  // REQUIRED: Valid()
+  //
+  // Input:
+  //  Upperbound - Current call upperbound, if empty, then iterator upperbound is used.
+  //  KeyFilterCallback - optional callback to filter out keys before they are cached, and a
+  //  mechanism
+  //    to control the multiple key-values at lower layer.
+  //  ScanCallback - callback function to call when visiting a key-value pair.
+  // Output: Returns bool when the upperbound is reached, otherwise returns false when either
+  //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
+  //  status() call should be used to figure out the callback failure vs lower layer failure.
+  virtual bool ScanForward(
+      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) {
+    LOG(FATAL) << "ScanForward is not supported yet";
+    return false;
+  }
+
  private:
   // No copying allowed
   InternalIterator(const InternalIterator&) = delete;

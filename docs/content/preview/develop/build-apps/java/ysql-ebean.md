@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav yb-pills">
   <li >
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
@@ -30,8 +30,8 @@ type: docs
       Spring Data JPA
     </a>
   </li>
-   <li>
-    <a href="../ysql-ebean/" class="nav-link active">
+   <li class="active">
+    <a href="../ysql-ebean/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Ebean ORM
     </a>

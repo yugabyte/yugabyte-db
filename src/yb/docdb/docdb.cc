@@ -78,7 +78,7 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1000,
+DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
              "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {
@@ -811,8 +811,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
     write_id = stream_state->write_id;
     reverse_index_iter.Next();
   }
-  const uint64_t max_records = FLAGS_cdc_max_stream_intent_records;
-  const uint64_t write_id_limit = write_id + max_records;
+  const uint64_t& max_records = FLAGS_cdc_max_stream_intent_records;
+  uint64_t cur_records = 0;
 
   while (reverse_index_iter.Valid()) {
     const Slice key_slice(reverse_index_iter.key());
@@ -831,12 +831,9 @@ Result<ApplyTransactionState> GetIntentsBatch(
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.
-        if (write_id >= write_id_limit) {
+        if (cur_records >= max_records) {
           return ApplyTransactionState{
-              .key = key_slice.ToBuffer(),
-              .write_id = write_id,
-              .aborted = {},
-          };
+              .key = key_slice.ToBuffer(), .write_id = write_id, .aborted = {}};
         }
         {
           intent_iter.Seek(reverse_index_value);
@@ -884,6 +881,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
                     << (*key_value_intents).size();
+            ++cur_records;
             ++write_id;
           }
         }

@@ -19,13 +19,17 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import javax.inject.Inject;
-import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Abortable
@@ -175,6 +179,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
 
       createConfigureUniverseTasks(primaryCluster);
+
+      // Create Load Balancer map to add nodes to load balancer
+      Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
+          createLoadBalancerMap(taskParams(), null);
+      createManageLoadBalancerTasks(loadBalancerMap);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

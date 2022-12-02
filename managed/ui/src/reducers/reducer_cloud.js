@@ -328,7 +328,7 @@ export default function (state = INITIAL_STATE, action) {
       }
       return setPromiseResponse(state, 'accessKeys', action);
     case LIST_ACCESS_KEYS_REQUEST_COMPLETED:
-      return { ...state, allAccessKeysReqCompleted: true }
+      return { ...state, allAccessKeysReqCompleted: true };
     case GET_EBS_TYPE_LIST:
       return {
         ...state,

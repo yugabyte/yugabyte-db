@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
@@ -22,11 +23,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
@@ -37,6 +40,14 @@ import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseClustersControllerTest extends UniverseCreateControllerTestBase {
+
+  @Override
+  public void setUp() {
+    super.setUp();
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+  }
 
   @Override
   protected JsonNode getUniverseJson(Result universeCreateResponse) {
@@ -110,14 +121,37 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     testCreateReadonlyCluster(null, intent -> intent.assignPublicIP = false, false);
   }
 
+  @Test
+  public void updatePrimaryNotConsistentFailTest() {
+    Universe universe =
+        ModelFactory.createFromConfig(ModelFactory.awsProvider(customer), "ahaha", "r1-az1-1-1");
+
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent,
+                universe.getUniverseDetails().getPrimaryCluster().placementInfo));
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    primaryCluster.userIntent.enableYSQLAuth = !primaryCluster.userIntent.enableYSQLAuth;
+    primaryCluster.userIntent.instanceTags = Collections.singletonMap("qq", "vv");
+
+    ObjectNode bodyJson = Json.newObject();
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(primaryCluster));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(bodyJson));
+    assertBadRequest(
+        result,
+        "Ysql auth setting should be the same for primary and readonly replica true vs false");
+  }
+
   private void testCreateReadonlyCluster(
       Consumer<UniverseDefinitionTaskParams.UserIntent> primaryMutator,
       Consumer<UniverseDefinitionTaskParams.UserIntent> readonlyMutator,
       boolean success) {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();

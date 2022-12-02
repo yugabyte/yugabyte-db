@@ -98,6 +98,7 @@ public class UniverseTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     u.updateConfig(config);
+    u.save();
     assertEquals(config, u.getConfig());
   }
 
@@ -317,6 +318,7 @@ public class UniverseTest extends FakeDBApplication {
     Map<String, String> universeParams = new HashMap<>();
     universeParams.put(Universe.TAKE_BACKUPS, "true");
     u.updateConfig(universeParams);
+    u.save();
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");

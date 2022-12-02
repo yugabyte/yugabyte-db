@@ -6,6 +6,8 @@ headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /quick-start/
+  - /preview/quick-start/create-local-cluster/
+  - /preview/quick-start/install/
 layout: single
 type: docs
 body_class: yb-page-style
@@ -285,6 +287,19 @@ yugabyte=#
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
 
+## Build an application
+
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). This section shows how to connect applications to your cluster using your favorite programming language.
+
+### Choose your language
+
+{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+
+## Next step
+
+[Explore YugabyteDB](../explore/)
+
+<!--
 ## Build a Java application
 
 The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations.
@@ -368,7 +383,7 @@ Perform the following to create a sample Java project:
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
-    <dependency>
+<!--    <dependency>
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
       <version>5.0.0</version>
@@ -594,3 +609,4 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```
+-->

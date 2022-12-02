@@ -1919,6 +1919,22 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPref
   Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
 }
 
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigValue), PgMiniSingleTServerTest) {
+  constexpr size_t kValueSize = 32_MB;
+  constexpr int kKey = 42;
+  const std::string kValue = RandomHumanReadableString(kValueSize);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, '$1')", kKey, kValue));
+
+  auto start = MonoTime::Now();
+  auto result = ASSERT_RESULT(conn.FetchValue<std::string>(
+      Format("SELECT md5(b) FROM t WHERE a = $0", kKey)));
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Passed: " << finish - start << ", result: " << result;
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
   FLAGS_TEST_force_master_leader_resolution = true;

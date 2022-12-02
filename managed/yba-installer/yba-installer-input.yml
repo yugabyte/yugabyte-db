@@ -43,7 +43,6 @@
 # prometheus
 prometheus:
     scrapeInterval: 15
-    evaluationInterval: 15
     scrapeTimeout: 10
     externalPort: 9090
     maxConcurrency: 20
@@ -147,14 +146,14 @@ prometheus:
 # will be generated), override if you wish to change the
 # password.
 
-# logPath: Directory to store YBA logs (will be created if it does not exist).
+# logPath: Directory (relative to install root) to store YBA logs.
 
 # restartSeconds: time in seconds for systemd to wait before restarting
 # the platform
 
 platform:
-   logPath: "yb-platform/data/logs"
-   platformDbUser: "postgres"
+   logPath: "data/logs"
+   platformDbUser: "yugabyte"
    platformDbPassword: ""
    useOauth: false
    ybSecurityType: ""
@@ -216,7 +215,7 @@ additional: |
 # postgress
 postgres:
    bringOwn: false
-   port: "5432"
+   port: 5432
    username: "postgres"
    password: ""
    restartSeconds: 10
@@ -237,9 +236,14 @@ python:
 # during uninstalls of Yugabyte Platform, and add it to the corresponding
 # comma-separated service list.
 dataVolumes:
-   yb-platform: "data"
-   prometheus: "storage, swamper_targets, swamper_rules"
-   postgres: "data"
+   yb-platform:
+      - "data"
+   prometheus:
+      - "storage"
+      - "swamper_targets"
+      - "swamper_rules"
+   postgres:
+      - "data"
 
 # Service Management. For installation of Yugabyte Anywhere, you can choose
 # to have all of your services either be systemd managed or crontab managed,

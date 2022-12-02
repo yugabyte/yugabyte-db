@@ -25,6 +25,8 @@ import logging
 
 from typing import Union, List, Optional
 
+from yb.common_util import shlex_join
+
 
 class ProgramResult:
     cmd_line: List[str]
@@ -87,7 +89,11 @@ def run_program(
     if not isinstance(args, list):
         args = [args]
     if log_command:
-        logging.info("Running command: %s", args)
+        if cwd is None:
+            dir_for_logging = os.getcwd()
+        else:
+            dir_for_logging = cwd
+        logging.info("Running command: %s (in directory: %s)", shlex_join(args), dir_for_logging)
     try:
         program_subprocess = subprocess.Popen(
             args,

@@ -4,7 +4,7 @@
     line-height: 24px;
 
     & + p {
-      margin: 24px 0 0 0;
+      margin: 12px 0 0 0;
     }
   }
 }
@@ -66,6 +66,12 @@
               align-items: center;
               justify-content: center;
             }
+          }
+        }
+
+        @for $i from 1 through 100 {
+          &[start="#{$i}"] {
+            counter-reset: lis $i;
           }
         }
       }

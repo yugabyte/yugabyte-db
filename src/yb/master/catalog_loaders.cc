@@ -50,6 +50,8 @@ DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
 DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
                  "When set, it pauses load of cluster config during sys catalog load.");
 
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
 namespace yb {
 namespace master {
 
@@ -70,11 +72,11 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     return Status::OK();
   }
 
-  CHECK(!ContainsKey(*catalog_manager_->table_ids_map_, table_id))
-        << "Table already exists: " << table_id;
+  CHECK(catalog_manager_->tables_->FindTableOrNull(table_id) == nullptr)
+      << "Table already exists: " << table_id;
 
   // Setup the table info.
-  scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id);
+  scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id, metadata.colocated());
   auto l = table->LockForWrite();
   auto& pb = l.mutable_data()->pb;
   pb.CopyFrom(metadata);
@@ -96,8 +98,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
-  auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
-  (*table_ids_map_checkout)[table->id()] = table;
+  auto table_map_checkout = catalog_manager_->tables_.CheckOut();
+  table_map_checkout->AddTable(table);
   if (!l->started_deleting() && !l->started_hiding()) {
     if (l->table_type() != PGSQL_TABLE_TYPE) {
       catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
@@ -113,14 +115,24 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // Tables created as part of a Transaction should check transaction status and be deleted
   // if the transaction is aborted.
   if (metadata.has_transaction()) {
-    LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
     TransactionMetadata txn = VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
-    std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
-    WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, catalog_manager_->ysql_transaction_.get(),
-                  txn, when_done)),
-        "Could not submit VerifyTransaction to thread pool");
+    if (metadata.ysql_ddl_txn_verifier_state_size() > 0) {
+      if (FLAGS_ysql_ddl_rollback_enabled) {
+        catalog_manager_->ScheduleYsqlTxnVerification(table, txn);
+      }
+    } else {
+      // This is a table/index for which YSQL transaction verification is not supported yet.
+      // For these, we only support rolling back creating the table. If the transaction has
+      // completed, merely check for the presence of this entity in the PG catalog.
+      LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
+      std::function<Status(bool)> when_done =
+          std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
+      WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
+          std::bind(&YsqlTransactionDdl::VerifyTransaction,
+                    catalog_manager_->ysql_transaction_.get(),
+                    txn, table, false /* has_ysql_ddl_txn_state */, when_done)),
+          "Could not submit VerifyTransaction to thread pool");
+    }
   }
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "
@@ -144,7 +156,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   }
 
   // Lookup the table.
-  TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
+  TableInfoPtr first_table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id());
 
   // TODO: We need to properly remove deleted tablets.  This can happen async of master loading.
   if (!first_table) {
@@ -200,7 +212,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     bool should_delete_tablet = !tablet_deleted;
 
     for (const auto& table_id : table_ids) {
-      TableInfoPtr table = FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id);
+      TableInfoPtr table = catalog_manager_->tables_->FindTableOrNull(table_id);
 
       if (table == nullptr) {
         // If the table is missing and the tablet is in "preparing" state
@@ -214,9 +226,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         }
 
         // Otherwise, something is wrong...
-        LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
-                     << ", metadata: " << metadata.DebugString()
-                     << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
+        LOG(WARNING) << Format("Missing table $0 required by tablet $1, metadata: $2",
+                               table_id, tablet_id, metadata.DebugString());
         // If we ignore deleted tables, then a missing table can be expected and we continue.
         if (PREDICT_TRUE(FLAGS_master_ignore_deleted_on_load)) {
           continue;
@@ -390,7 +401,11 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
             std::bind(&CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1);
         WARN_NOT_OK(catalog_manager_->background_tasks_thread_pool_->SubmitFunc(
             std::bind(&YsqlTransactionDdl::VerifyTransaction,
-                      catalog_manager_->ysql_transaction_.get(), txn, when_done)),
+                      catalog_manager_->ysql_transaction_.get(),
+                      txn,
+                      nullptr /* table */,
+                      false /* has_ysql_ddl_state */,
+                      when_done)),
           "Could not submit VerifyTransaction to thread pool");
       }
       break;

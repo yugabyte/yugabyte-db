@@ -19,10 +19,8 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -73,7 +71,6 @@ public class CreateBackup extends UniverseTaskBase {
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().universeUUID);
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
@@ -86,9 +83,6 @@ public class CreateBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
       isUniverseLocked = true;
-      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
-      // already having a backup in progress.
-      lockedUpdateBackupState(true);
       try {
         // Check if the storage config is in active state or not.
         CustomerConfig customerConfig =
@@ -99,13 +93,6 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
-
-        if (cloudType != CloudType.kubernetes) {
-          // Ansible Configure Task for copying xxhsum binaries from
-          // third_party directory to the DB nodes.
-          installThirdPartyPackagesTask(params().universeUUID, universe)
-              .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
-        }
 
         if (universe.isYbcEnabled()
             && !universe
@@ -168,8 +155,6 @@ public class CreateBackup extends UniverseTaskBase {
           getRunnableTask().runSubTasks();
         }
         throw t;
-      } finally {
-        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       try {
@@ -222,10 +207,7 @@ public class CreateBackup extends UniverseTaskBase {
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
             && config.get(Universe.TAKE_BACKUPS).equals("true");
-    if (alreadyRunning
-        || !shouldTakeBackup
-        || universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress) {
+    if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
         if (baseBackupUUID == null) {
           // Update backlog status only for full backup as we don't store expected task time

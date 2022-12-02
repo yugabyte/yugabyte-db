@@ -99,10 +99,10 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[LDAP_DN]'
+  --data-raw '[LDAP DN]'
   ```
 
-  Replace `[LDAP_DN]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN]` with the actual value, as per the following example: <br>
 
   `DC=yugabyte,DC=com`
 
@@ -113,10 +113,10 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[LDAP_DN_PREFIX]'
+  --data-raw '[LDAP DN PREFIX]'
   ```
 
-  Replace `[LDAP_DN_PREFIX]` with the actual value, as per the following example: <br>
+  Replace `[LDAP DN PREFIX]` with the actual value, as per the following example: <br>
 
   `CN=`
 
@@ -179,10 +179,10 @@ The following is the runtime configuration to specify:
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[SERVICE_ACCOUNT_USERNAME]'
+  --data-raw '[SERVICE ACCOUNT USERNAME]'
   ```
 
-  Replace `[SERVICE_ACCOUNT_USERNAME]` with the actual value.
+  Replace `[SERVICE ACCOUNT USERNAME]` with the actual value.
 
   -->
 
@@ -193,10 +193,10 @@ The following is the runtime configuration to specify:
   --header 'X-AUTH-YW-API-TOKEN: 5182724b-1891-4cde-bcd1-b8f7a3b7331e' \
   --header 'Content-Type: text/plain' \
   --header 'Cookie: csrfCookie=d5cdb2b36b00fcad1f4fdb24605aee412f8dfaa0-1641544510767-641be933bf684abcade3c592' \
-  --data-raw '[SERVICE_ACCOUNT_PASSWORD]'
+  --data-raw '[SERVICE ACCOUNT PASSWORD]'
   ```
 
-  Replace `[SERVICE_ACCOUNT_PASSWORD]` with the actual value.<br>
+  Replace `[SERVICE ACCOUNT PASSWORD]` with the actual value.<br>
 
 ## Define the YugabyteDB Anywhere role
 

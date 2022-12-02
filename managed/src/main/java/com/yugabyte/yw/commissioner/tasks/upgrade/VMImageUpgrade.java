@@ -95,9 +95,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       if (node.isTserver) processTypes.add(ServerType.TSERVER);
       if (getUniverse().isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
+      // The node is going to be stopped. Ignore error because of previous error due to
+      // possibly detached root volume.
       processTypes.forEach(
           processType ->
-              createServerControlTask(node, processType, "stop")
+              createServerControlTask(
+                      node, processType, "stop", params -> params.isIgnoreError = true)
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
@@ -140,6 +143,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
     }
+    // Delete after all the disks are replaced.
+    createDeleteRootVolumesTasks(getUniverse(), nodes, null /* volume Ids */)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {

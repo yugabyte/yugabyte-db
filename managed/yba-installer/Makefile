@@ -16,8 +16,8 @@ BIN_DIR := ${TOP_BUILDDIR}/bin
 PACKAGE_DIR := ${TOP_BUILDDIR}/yba_installer-${VERSION}-${GOOS}-${GOARCH}
 PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 
-CONFIG_FILE_FOLDER:=$(CURDIR)/configFiles
-CRONTAB_SCRIPT_FOLDER:=$(CURDIR)/crontabScripts
+CONFIG_FILE_FOLDER:=$(CURDIR)/config/templates
+CRONTAB_SCRIPT_FOLDER:=$(CURDIR)/config/cron
 CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-installer-input.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 

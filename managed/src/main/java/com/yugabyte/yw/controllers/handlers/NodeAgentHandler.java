@@ -183,7 +183,7 @@ public class NodeAgentHandler {
                       "Purging node agent {} because connection failed. Error: {}",
                       n.uuid,
                       e.getMessage());
-                  n.purge();
+                  n.purge(getNodeAgentBaseCertDirectory(n));
                 }
               });
     } catch (Exception e) {
@@ -191,7 +191,8 @@ public class NodeAgentHandler {
     }
   }
 
-  private Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
+  @VisibleForTesting
+  Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
         appConfig.getString("yb.storage.path"),
         "node-agent",
@@ -492,6 +493,6 @@ public class NodeAgentHandler {
    * @param uuid the node UUID.
    */
   public void unregister(UUID uuid) {
-    NodeAgent.maybeGet(uuid).ifPresent(NodeAgent::purge);
+    NodeAgent.maybeGet(uuid).ifPresent(n -> n.purge(getNodeAgentBaseCertDirectory(n)));
   }
 }

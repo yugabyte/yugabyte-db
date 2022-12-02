@@ -199,3 +199,7 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 ```
 
 The difference between `verify-ca` and `verify-full` depends on the policy of the root CA. If you're using a public CA, verify-ca allows connections to a server that somebody else may have registered with the CA. Because of this behavior, you should always use verify-full with a public CA. If you're using a local CA, or even a self-signed certificate, using verify-ca may provide enough protection, but the best security practice is to always use verify-full.
+
+## Limitations
+
+Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.

@@ -99,7 +99,7 @@ class GraphPanelHeader extends Component {
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
     let currentUniversePrefix = MetricConsts.ALL;
-    let currentRegion = MetricConsts.ALL;
+    const currentRegion = MetricConsts.ALL;
 
     if (this.props.origin === MetricOrigin.UNIVERSE) {
       currentUniverse = this.props.universe.currentUniverse.data;
@@ -442,7 +442,7 @@ class GraphPanelHeader extends Component {
     const newParams = _.cloneDeep(this.state);
     const maxOutlierValue = this.state.metricMeasure === MetricMeasure.OUTLIER
       ? MAX_OUTLIER_NUM_NODES
-      : MAX_OUTLIER_NUM_TABLES
+      : MAX_OUTLIER_NUM_TABLES;
     if (typeof outlierNumNodes === 'number'
       && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= maxOutlierValue
     ) {
@@ -582,11 +582,11 @@ class GraphPanelHeader extends Component {
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
       if (enableTopKMetrics) {
-        universePicker = <UniversePicker
+        universePicker = (<UniversePicker
           {...this.props}
           universeItemChanged={this.universeItemChanged}
           selectedUniverse={self.state.currentSelectedUniverse}
-        />
+        />);
       } else {
         // TODO: Needs to be removed once Top K metrics is tested and integrated fully
         universePicker = (
@@ -734,7 +734,7 @@ class GraphPanelHeader extends Component {
                                   window.URL.revokeObjectURL(url);
                                   a.remove();
                                 }
-                              })
+                              });
                           }}>
                             {'Download Grafana JSON'}
                           </MenuItem>
@@ -776,14 +776,14 @@ class GraphPanelHeader extends Component {
                   {enableTopKMetrics && currentSelectedUniverse !== MetricConsts.ALL &&
                     ((this.state.metricMeasure === MetricMeasure.OUTLIER) ||
                       this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
-                    <OutlierSelector
-                      outlierTypes={outlierTypes}
-                      selectedOutlierType={this.state.outlierType}
-                      onOutlierTypeChanged={this.onOutlierTypeChanged}
-                      setNumNodeValue={this.setNumNodeValue}
-                      defaultOutlierNumNodes={this.state.outlierNumNodes}
-                      splitType={splitType}
-                    />}
+                      <OutlierSelector
+                        outlierTypes={outlierTypes}
+                        selectedOutlierType={this.state.outlierType}
+                        onOutlierTypeChanged={this.onOutlierTypeChanged}
+                        setNumNodeValue={this.setNumNodeValue}
+                        defaultOutlierNumNodes={this.state.outlierNumNodes}
+                        splitType={splitType}
+                      />}
                 </FlexGrow>
               </FlexContainer>
               {enableNodeComparisonModal ? (
@@ -829,7 +829,7 @@ class UniversePicker extends Component {
             key={idx}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={item.universeUUID}
             active={item.universeUUID === selectedUniverse.universeUUID}
           >
@@ -846,7 +846,7 @@ class UniversePicker extends Component {
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedUniverse === MetricConsts.ALL}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {"All universes"}

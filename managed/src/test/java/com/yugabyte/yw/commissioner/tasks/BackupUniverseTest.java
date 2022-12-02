@@ -47,6 +47,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {

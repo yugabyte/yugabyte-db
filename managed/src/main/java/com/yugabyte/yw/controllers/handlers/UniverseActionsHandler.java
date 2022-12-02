@@ -62,6 +62,7 @@ public class UniverseActionsHandler {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, value.toString());
     universe.updateConfig(config);
+    universe.save();
   }
 
   public UUID setUniverseKey(
@@ -311,6 +312,7 @@ public class UniverseActionsHandler {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString());
     universe.updateConfig(config);
+    universe.save();
   }
 
   public void configureAlerts(Universe universe, Form<AlertConfigFormData> formData) {
@@ -336,6 +338,7 @@ public class UniverseActionsHandler {
     }
     config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
     universe.updateConfig(config);
+    universe.save();
   }
 
   public UUID pause(Customer customer, Universe universe) {

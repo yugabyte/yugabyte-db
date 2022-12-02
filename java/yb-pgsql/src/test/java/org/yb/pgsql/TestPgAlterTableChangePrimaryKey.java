@@ -22,6 +22,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -445,9 +446,9 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   }
 
   @Test
-  public void tablesInColocatedDb() throws Exception {
+  public void tablesInLegacyColocatedDb() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE DATABASE clc WITH colocated = true");
+      stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
     }
 
     try (Connection conn2 = getConnectionBuilder().withDatabase("clc").connect();
@@ -460,7 +461,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (3)");
       stmt.executeUpdate("INSERT INTO nopk_c VALUES (4)");
 
-      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocated=false)");
+      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocation=false)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
       stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
 
@@ -482,7 +483,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
           0 /* expectedNumHashKeyCols */,
           1 /* expectedNumTablets */);
       alterAddPrimaryKeyId(stmt, "nopk_nc");
-      assertEquals(1, getNumTablets(stmt, "normal_table"));
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
 
       // Colocation IDs are not persisted.
       assertRowList(stmt, colocatedPropsSql, Arrays.asList(
@@ -511,6 +512,82 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
           new Row("normal_table", true, null, 20001),
           new Row("normal_table_pkey", null, null, null),
           new Row("nopk_c", true, null, 20003),
+          new Row("nopk_nc", false, null, null)));
+    }
+  }
+
+  @Test
+  public void tablesInColocatedDb() throws Exception {
+    markClusterNeedsRecreation();
+    // Change the default flag value to allow to create colocation database.
+    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
+                                                     "false"),
+                            Collections.emptyMap());
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE DATABASE clc WITH colocation = true");
+    }
+
+    try (Connection conn2 = getConnectionBuilder().withDatabase("clc").connect();
+        Statement stmt = conn2.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE normal_table (id int PRIMARY KEY)");
+      stmt.executeUpdate("INSERT INTO normal_table VALUES (1)");
+      stmt.executeUpdate("INSERT INTO normal_table VALUES (2)");
+
+      stmt.executeUpdate("CREATE TABLE nopk_c (id int) WITH (colocation_id=100500)");
+      stmt.executeUpdate("INSERT INTO nopk_c VALUES (3)");
+      stmt.executeUpdate("INSERT INTO nopk_c VALUES (4)");
+
+      stmt.executeUpdate("CREATE TABLE nopk_nc (id int) WITH (colocation=false)");
+      stmt.executeUpdate("INSERT INTO nopk_nc VALUES (5)");
+      stmt.executeUpdate("INSERT INTO nopk_nc VALUES (6)");
+
+      assertEquals(1, getNumTablets(stmt, "normal_table"));
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
+      assertEquals(NUM_TABLET_SERVERS, getNumTablets(stmt, "nopk_nc"));
+
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 100500),
+          new Row("nopk_nc", false, null, null)));
+
+      runInvalidQuery(stmt, "ALTER TABLE nopk_c ADD PRIMARY KEY (id HASH)",
+          "cannot colocate hash partitioned index");
+
+      alterAddPrimaryKey(stmt, "nopk_c",
+          "(id)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      alterAddPrimaryKeyId(stmt, "nopk_nc");
+      assertEquals(1, getNumTablets(stmt, "nopk_c"));
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 20002),
+          new Row("nopk_c_pkey", null, null, null),
+          new Row("nopk_nc", false, null, null),
+          new Row("nopk_nc_pkey", null, null, null)));
+
+      assertRowList(stmt, "SELECT * FROM normal_table ORDER BY id", Arrays.asList(
+          new Row(1),
+          new Row(2)));
+      assertRowList(stmt, "SELECT * FROM nopk_c ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+      assertRowList(stmt, "SELECT * FROM nopk_nc ORDER BY id", Arrays.asList(
+          new Row(5),
+          new Row(6)));
+
+      alterDropPrimaryKey(stmt, "nopk_c", "nopk_c_pkey", 1 /* expectedNumTablets */);
+      alterDropPrimaryKey(stmt, "nopk_nc");
+
+      // Colocation IDs are not persisted.
+      assertRowList(stmt, colocatedPropsSql, Arrays.asList(
+          new Row("normal_table", true, "default", 20001),
+          new Row("normal_table_pkey", null, null, null),
+          new Row("nopk_c", true, "default", 20003),
           new Row("nopk_nc", false, null, null)));
     }
   }

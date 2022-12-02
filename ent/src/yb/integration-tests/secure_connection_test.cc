@@ -76,7 +76,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
 
   Status CreateClient() override {
     auto host = "127.0.0.52";
-    client_ = VERIFY_RESULT(DoCreateClient(host, host, &secure_context_));
+    client_ = VERIFY_RESULT(cluster_->CreateSecureClient(host, host, &secure_context_));
     return Status::OK();
   }
 
@@ -85,18 +85,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
     FLAGS_yb_client_admin_operation_timeout_sec = 5;
     auto name = "127.0.0.54";
     auto host = "127.0.0.52";
-    return DoCreateClient(name, host, &bad_secure_context_);
-  }
-
-  Result<std::unique_ptr<client::YBClient>> DoCreateClient(
-      const std::string& name, const std::string& host,
-      std::unique_ptr<rpc::SecureContext>* secure_context) {
-    rpc::MessengerBuilder messenger_builder("test_client");
-    *secure_context = VERIFY_RESULT(server::SetupSecureContext(
-        FLAGS_certs_dir, name, server::SecureContextType::kInternal, &messenger_builder));
-    auto messenger = VERIFY_RESULT(messenger_builder.Build());
-    messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
-    return cluster_->CreateClient(std::move(messenger));
+    return cluster_->CreateSecureClient(name, host, &bad_secure_context_);
   }
 
   void TestSimpleOps();

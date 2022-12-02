@@ -41,10 +41,10 @@ class PgFKeyTest : public PgMiniTestBase {
   void SetUp() override {
     PgMiniTestBase::SetUp();
     const auto& tserver = *cluster_->mini_tablet_server(0)->server();
-    read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    read_rpc_watcher_ = std::make_unique<MetricWatcher>(
         tserver,
         METRIC_handler_latency_yb_tserver_TabletServerService_Read);
-    perform_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    perform_rpc_watcher_ = std::make_unique<MetricWatcher>(
         tserver,
         METRIC_handler_latency_yb_tserver_PgClientService_Perform);
   }
@@ -53,8 +53,8 @@ class PgFKeyTest : public PgMiniTestBase {
     return 1;
   }
 
-  std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
-  std::unique_ptr<HistogramMetricWatcher> perform_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> read_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> perform_rpc_watcher_;
 };
 
 Status InsertItems(

@@ -192,16 +192,8 @@ void RpcContext::RespondApplicationError(int error_ext_id, const std::string& me
   responded_ = true;
 }
 
-size_t RpcContext::AddRpcSidecar(const Slice& car) {
-  return call_->AddRpcSidecar(car);
-}
-
-void RpcContext::ResetRpcSidecars() {
-  call_->ResetRpcSidecars();
-}
-
-void RpcContext::ReserveSidecarSpace(size_t space) {
-  call_->ReserveSidecarSpace(space);
+Sidecars& RpcContext::sidecars() {
+  return call_->sidecars();
 }
 
 const Endpoint& RpcContext::remote_address() const {

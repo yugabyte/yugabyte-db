@@ -8,6 +8,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Objects;
 
 @ApiModel(description = "Device information")
 public class DeviceInfo {
@@ -73,6 +74,24 @@ public class DeviceInfo {
     result.storageClass = storageClass;
     result.throughput = throughput;
     return result;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    DeviceInfo that = (DeviceInfo) o;
+    return Objects.equals(volumeSize, that.volumeSize)
+        && Objects.equals(numVolumes, that.numVolumes)
+        && Objects.equals(diskIops, that.diskIops)
+        && Objects.equals(throughput, that.throughput)
+        && Objects.equals(mountPoints, that.mountPoints)
+        && storageType == that.storageType;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(volumeSize, numVolumes, diskIops, throughput, mountPoints, storageType);
   }
 
   private void checkVolumeBaseInfo() {

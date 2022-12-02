@@ -2,7 +2,7 @@
 title: Compare Vitess with YugabyteDB
 headerTitle: Vitess
 linkTitle: Vitess
-description: Compare Vitess with YugabyteDB
+description: Compare Vitess with the YugabyteDB database.
 aliases:
   - /comparisons/vitess/
 menu:
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Vitess is an automated sharding solution for MySQL. Each MySQL instance acts as a shard of the overall database. It uses etcd, a separate strongly consistent key-value store, to store shard location metadata such as which shard is located in which instance. Vitess uses a pool of stateless servers to route queries to the appropriate shard based on the mapping stored in etcd. Each of the instances use standard MySQL master-slave replication to account for high availability.
+Vitess is an automated sharding solution for MySQL. Each MySQL instance acts as a shard of the overall database. It uses etcd, a separate strongly consistent key-value store, to store shard location metadata such as which shard is located in which instance. Vitess uses a pool of stateless servers to route queries to the appropriate shard based on the mapping stored in etcd. Each instance uses standard MySQL source-replica replication to account for high availability.
 
 ## No single logical SQL database
 
