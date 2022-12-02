@@ -5,142 +5,45 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
+
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 )
 
 // Component 2: Prometheus
 type Prometheus struct {
-	Name                string
+	name                string
 	SystemdFileLocation string
 	ConfFileLocation    string
 	templateFileName    string
-	Version             string
+	version             string
 	isUpgrade           bool
 	DataDir             string
 	PromDir             string
+	cronScript					string
 }
 
-// TODO: Pass this in from common when defining services? At that point can pull from input.yaml
-// var DataDir = INSTALL_ROOT + "/data/prometheus"
-// var PromDir = INSTALL_ROOT + "/prometheus"
-
-// Method of the Component
-// Interface are implemented by
-// the Prometheus struct and customizable
-// for each specific service.
-
+// NewPrometheus creates a new prometheus service struct.
 func NewPrometheus(installRoot, version string, isUpgrade bool) Prometheus {
 	return Prometheus{
 		"prometheus",
-		SYSTEMD_DIR + "/prometheus.service",
-		INSTALL_ROOT + "/prometheus/conf/prometheus.yml",
+		common.SystemdDir + "/prometheus.service",
+		common.InstallRoot + "/prometheus/conf/prometheus.yml",
 		"yba-installer-prometheus.yml",
 		version,
 		isUpgrade,
 		// data directory
-		INSTALL_ROOT + "/data/prometheus",
+		common.InstallRoot + "/data/prometheus",
 		// prometheus code/conf directory
-		INSTALL_ROOT + "/prometheus"}
-}
-
-func (prom Prometheus) SetUpPrereqs() {
-	prom.moveAndExtractPrometheusPackage(prom.Version)
-}
-
-func (prom Prometheus) Install() {
-	prom.createDataDirs()
-	prom.createPrometheusSymlinks(prom.Version, prom.isUpgrade)
-
-	//chown is not needed when we are operating under non-root, the user will already
-	//have the necesary access.
-	if hasSudoAccess() {
-
-		ExecuteBashCommand(CHOWN, []string{"yugabyte:yugabyte", "-R",
-			INSTALL_ROOT + "/prometheus"})
-
-	}
-
-	//Crontab based monitoring for non-root installs.
-	if !hasSudoAccess() {
-		prom.CreateCronJob()
-	}
-}
-
-func (prom Prometheus) Start() {
-
-	if hasSudoAccess() {
-
-		ExecuteBashCommand(SYSTEMCTL, []string{"daemon-reload"})
-		ExecuteBashCommand(SYSTEMCTL, []string{"start", "prometheus"})
-		ExecuteBashCommand(SYSTEMCTL, []string{"status", "prometheus"})
-
-	} else {
-		scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
-		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
-			scriptPath,
-			viper.GetInt("prometheus.externalPort"),
-			viper.GetInt("prometheus.maxConcurrency"),
-			viper.GetInt("prometheus.maxSamples"),
-			viper.GetInt("prometheus.timeout"),
-			viper.GetInt("prometheus.restartSeconds"),
-		)
-		command1 := "bash"
-		arg1 := []string{"-c", bashCmd}
-
-		ExecuteBashCommand(command1, arg1)
-
-	}
-
-}
-
-func (prom Prometheus) Stop() {
-
-	if hasSudoAccess() {
-
-		arg1 := []string{"stop", "prometheus"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
-
-	} else {
-
-		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(INSTALL_ROOT + "/prometheus/testfile")
-
-		commandCheck0 := "bash"
-		argCheck0 := []string{"-c", "pgrep prometheus"}
-		out0, _ := ExecuteBashCommand(commandCheck0, argCheck0)
-
-		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-		// process itself was started by a non-root user.)
-		if strings.TrimSuffix(string(out0), "\n") != "" {
-			pids := strings.Split(string(out0), "\n")
-			for _, pid := range pids {
-				argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
-				ExecuteBashCommand(commandCheck0, argStop)
-			}
-		}
-	}
-}
-
-func (prom Prometheus) Restart() {
-
-	if hasSudoAccess() {
-
-		arg1 := []string{"restart", "prometheus"}
-		ExecuteBashCommand(SYSTEMCTL, arg1)
-
-	} else {
-
-		prom.Stop()
-		prom.Start()
-
-	}
-
+		common.InstallRoot + "/prometheus",
+		fmt.Sprintf("%s/%s/managePrometheus.sh", common.InstallVersionDir, common.CronDir)}
 }
 
 func (prom Prometheus) getSystemdFile() string {
@@ -151,41 +54,140 @@ func (prom Prometheus) getConfFile() string {
 	return prom.ConfFileLocation
 }
 
-func (prom Prometheus) getTemplateFile() string {
+// TemplateFile returns service's templated config file path
+func (prom Prometheus) TemplateFile() string {
 	return prom.templateFileName
 }
 
-// Per current cleanup.sh script.
-func (prom Prometheus) Uninstall(removeData bool) {
-	prom.Stop()
-	RemoveAllExceptDataVolumes([]string{"prometheus"})
+// Name returns the name of the service.
+func (prom Prometheus) Name() string {
+	return prom.name
 }
 
-func (prom Prometheus) VersionInfo() string {
-	return prom.Version
-}
+// Install the prometheus service.
+func (prom Prometheus) Install() {
+	config.GenerateTemplate(prom)
+	prom.moveAndExtractPrometheusPackage()
+	prom.createDataDirs()
+	prom.createPrometheusSymlinks()
 
-func (prom Prometheus) moveAndExtractPrometheusPackage(ver string) {
+	//chown is not needed when we are operating under non-root, the user will already
+	//have the necesary access.
+	if common.HasSudoAccess() {
 
-	srcPath := INSTALL_VERSION_DIR + "/third-party/prometheus-" + ver + ".linux-amd64.tar.gz"
-	dstPath := INSTALL_VERSION_DIR + "/packages/prometheus-" + ver + ".linux-amd64.tar.gz"
+		common.Chown(common.InstallRoot + "/prometheus", "yugabyte", "yugabyte", true)
 
-	CopyFileGolang(srcPath, dstPath)
-	rExtract, errExtract := os.Open(dstPath)
-	if errExtract != nil {
-		LogError("Error in starting the File Extraction process.")
 	}
 
-	path_package_extracted := INSTALL_VERSION_DIR + "/packages/prometheus-" + ver + ".linux-amd64"
+	//Crontab based monitoring for non-root installs.
+	if !common.HasSudoAccess() {
+		prom.CreateCronJob()
+	}
 
-	if _, err := os.Stat(path_package_extracted); err == nil {
-		LogDebug(path_package_extracted + " already exists, skipping re-extract.")
+	prom.Start()
+}
+
+// Start the prometheus service.
+func (prom Prometheus) Start() {
+
+	if common.HasSudoAccess() {
+
+		common.ExecuteBashCommand(common.Systemctl, []string{"daemon-reload"})
+		common.ExecuteBashCommand(common.Systemctl, []string{"start", "prometheus"})
+		common.ExecuteBashCommand(common.Systemctl, []string{"status", "prometheus"})
+
 	} else {
-		if err := tar.Untar(rExtract, INSTALL_VERSION_DIR+"/packages",
-			tar.WithMaxUntarSize(-1)); err != nil {
-			LogError(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
+		bashCmd := fmt.Sprintf("%s %d %d %d %d %d > /dev/null 2>&1 &",
+			prom.cronScript,
+			viper.GetInt("prometheus.externalPort"),
+			viper.GetInt("prometheus.maxConcurrency"),
+			viper.GetInt("prometheus.maxSamples"),
+			viper.GetInt("prometheus.timeout"),
+			viper.GetInt("prometheus.restartSeconds"),
+		)
+		command1 := "bash"
+		arg1 := []string{"-c", bashCmd}
+
+		common.ExecuteBashCommand(command1, arg1)
+
+	}
+
+}
+
+func (prom Prometheus) Stop() {
+
+	if common.HasSudoAccess() {
+
+		arg1 := []string{"stop", "prometheus"}
+		common.ExecuteBashCommand(common.Systemctl, arg1)
+
+	} else {
+
+		// Delete the file used by the crontab bash script for monitoring.
+		os.RemoveAll(common.InstallRoot + "/prometheus/testfile")
+
+		commandCheck0 := "bash"
+		argCheck0 := []string{"-c", "pgrep prometheus"}
+		out0, _ := common.ExecuteBashCommand(commandCheck0, argCheck0)
+
+		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
+		// process itself was started by a non-root user.)
+		if strings.TrimSuffix(string(out0), "\n") != "" {
+			pids := strings.Split(string(out0), "\n")
+			for _, pid := range pids {
+				argStop := []string{"-c", "kill -9 " + strings.TrimSuffix(pid, "\n")}
+				common.ExecuteBashCommand(commandCheck0, argStop)
+			}
 		}
-		LogDebug(dstPath + " successfully extracted.")
+	}
+}
+
+// Restart the prometheus service.
+func (prom Prometheus) Restart() {
+
+	if common.HasSudoAccess() {
+
+		arg1 := []string{"restart", "prometheus"}
+		common.ExecuteBashCommand(common.Systemctl, arg1)
+
+	} else {
+
+		prom.Stop()
+		prom.Start()
+
+	}
+
+}
+
+// Uninstall uninstalls prometheus and optionally removes all data.
+func (prom Prometheus) Uninstall(removeData bool) {
+	prom.Stop()
+}
+
+func (prom Prometheus) moveAndExtractPrometheusPackage() {
+
+	srcPath := fmt.Sprintf(
+		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.InstallVersionDir, prom.version)
+	dstPath := fmt.Sprintf(
+		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.InstallVersionDir, prom.version)
+
+	common.CopyFileGolang(srcPath, dstPath)
+	rExtract, errExtract := os.Open(dstPath)
+	if errExtract != nil {
+		log.Fatal("Error in starting the File Extraction process.")
+	}
+	defer rExtract.Close()
+
+	extPackagePath := fmt.Sprintf(
+		"%s/packages/prometheus-%s.linux-amd64", common.InstallVersionDir, prom.version)
+	if _, err := os.Stat(extPackagePath); err == nil {
+		log.Debug(extPackagePath + " already exists, skipping re-extract.")
+	} else {
+		if err := tar.Untar(rExtract, common.InstallVersionDir+"/packages",
+			tar.WithMaxUntarSize(-1)); err != nil {
+			log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
+		}
+		log.Debug(dstPath + " successfully extracted.")
 	}
 
 }
@@ -195,82 +197,38 @@ func (prom Prometheus) createDataDirs() {
 	os.MkdirAll(prom.DataDir+"/storage", os.ModePerm)
 	os.MkdirAll(prom.DataDir+"/swamper_targets", os.ModePerm)
 	os.MkdirAll(prom.DataDir+"/swamper_rules", os.ModePerm)
-	LogDebug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
+	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
 	// Create the log file
-	Create(prom.DataDir + "/prometheus.log")
+	common.Create(prom.DataDir + "/prometheus.log")
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres directory.
 
-		ExecuteBashCommand(CHOWN,
-			[]string{"-R", "yugabyte:yugabyte", prom.DataDir})
+		common.Chown(prom.DataDir, "yugabyte", "yugabyte", true)
 	}
 }
 
-func (prom Prometheus) createPrometheusSymlinks(ver string, isUpgrade bool) {
+func (prom Prometheus) createPrometheusSymlinks() {
 
-	pkgPromBinary := INSTALL_VERSION_DIR + "/packages/prometheus-" + ver + ".linux-amd64/prometheus"
+	// Version specific promtheus that we untarred to packages.
+	promPkg := fmt.Sprintf("%s/packages/prometheus-%s.linux-amd64",
+		common.InstallVersionDir, prom.version)
 
-	promBinaryLink := INSTALL_ROOT + "/prometheus/bin/prometheus"
+	promBinaryDir := common.InstallRoot + "/prometheus/bin"
 
 	// Required for systemctl.
-	if hasSudoAccess() {
-		promBinaryLink = "/usr/local/bin/prometheus"
-
+	if common.HasSudoAccess() {
+		promBinaryDir = "/usr/local/bin"
 	}
 
-	arg1 := []string{"-sf", pkgPromBinary, promBinaryLink}
+	common.CreateSymlink(promPkg, promBinaryDir, "prometheus")
+	common.CreateSymlink(promPkg, promBinaryDir, "promtool")
+	common.CreateSymlink(promPkg, prom.PromDir, "consoles")
+	common.CreateSymlink(promPkg, prom.PromDir, "console_libraries")
 
-	if _, err := os.Stat(promBinaryLink); err == nil {
-		os.Remove(promBinaryLink)
-		ExecuteBashCommand(LN, arg1)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(LN, arg1)
-	}
-
-	if hasSudoAccess() {
-		os.Chmod(promBinaryLink, os.ModePerm)
-	}
-
-	promBin := INSTALL_ROOT + "/prometheus/bin/"
-	os.MkdirAll(promBin, os.ModePerm)
-	pkgPromToolPath := INSTALL_VERSION_DIR + "/packages/prometheus-" + ver + ".linux-amd64/promtool"
-
-	arg3 := []string{"-sf", pkgPromToolPath, promBin + "promtool"}
-
-	if _, err := os.Stat(INSTALL_ROOT + "/prometheus/bin/promtool"); err == nil {
-		os.Remove(INSTALL_ROOT + "/prometheus/bin/promtool")
-		ExecuteBashCommand(LN, arg3)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(LN, arg3)
-	}
-
-	pkgConsoleDir := INSTALL_VERSION_DIR + "/packages/prometheus-" + ver + ".linux-amd64/consoles/"
-
-	arg5 := []string{"-sf", pkgConsoleDir, prom.PromDir}
-
-	if _, err := os.Stat(INSTALL_ROOT + "/prometheus/consoles"); err == nil {
-		os.Remove(INSTALL_ROOT + "/prometheus/consoles")
-		ExecuteBashCommand(LN, arg5)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(LN, arg5)
-	}
-
-	pkgConsoleLibraryDir := INSTALL_VERSION_DIR + "/packages/prometheus-" +
-		ver + ".linux-amd64/console_libraries/"
-
-	arg7 := []string{"-sf", pkgConsoleLibraryDir, prom.PromDir}
-
-	if _, err := os.Stat(INSTALL_ROOT + "/prometheus/console_libraries"); err == nil {
-		os.Remove(INSTALL_ROOT + "/prometheus/console_libraries")
-		ExecuteBashCommand(LN, arg7)
-	} else if errors.Is(err, os.ErrNotExist) {
-		ExecuteBashCommand(LN, arg7)
-	}
-
-	if hasSudoAccess() {
-		Chown(prom.PromDir, "yugabyte", "yugabyte", true)
+	if common.HasSudoAccess() {
+		common.Chown(prom.PromDir, "yugabyte", "yugabyte", true)
 	}
 
 }
@@ -280,14 +238,14 @@ func (prom Prometheus) createPrometheusSymlinks(ver string, isUpgrade bool) {
 func (prom Prometheus) Status() {
 
 	name := "prometheus"
-	port := fmt.Sprintf("%d", viper.GetInt("prometheus.externalPort"))
+	port :=  config.GetYamlPathData("prometheus.externalPort")
 
 	runningStatus := ""
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 
 		args := []string{"is-active", name}
-		runningStatus, _ = ExecuteBashCommand(SYSTEMCTL, args)
+		runningStatus, _ = common.ExecuteBashCommand(common.Systemctl, args)
 
 		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
 
@@ -301,7 +259,7 @@ func (prom Prometheus) Status() {
 
 		command := "bash"
 		args := []string{"-c", "pgrep " + name}
-		out0, _ := ExecuteBashCommand(command, args)
+		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
 			runningStatus = "active"
@@ -312,29 +270,29 @@ func (prom Prometheus) Status() {
 
 	systemdLoc := "N/A"
 
-	if hasSudoAccess() {
+	if common.HasSudoAccess() {
 
 		systemdLoc = prom.SystemdFileLocation
 	}
 
-	outString := name + "\t" + prom.Version + "\t" + port +
+	outString := name + "\t" + prom.version + "\t" + port +
 		"\t" + prom.ConfFileLocation + "\t" + systemdLoc +
 		"\t" + runningStatus + "\t"
 
-	fmt.Fprintln(statusOutput, outString)
+	fmt.Fprintln(common.StatusOutput, outString)
 
 }
 
+// CreateCronJob creates the cron job for managing prometheus with cron script in non-root.
 func (prom Prometheus) CreateCronJob() {
-	scriptPath := INSTALL_VERSION_DIR + "/crontabScripts/manage" + prom.Name + "NonRoot.sh"
 	bashCmd := fmt.Sprintf(
-		"(crontab -l 2>/dev/null; echo \"@reboot %s %d %d %d %d %d \") | sort - | uniq - | crontab - ",
-		scriptPath,
-		viper.GetInt("prometheus.externalPort"),
-		viper.GetInt("prometheus.maxConcurrency"),
-		viper.GetInt("prometheus.maxSamples"),
-		viper.GetInt("prometheus.timeout"),
-		viper.GetInt("prometheus.restartSeconds"),
+		"(crontab -l 2>/dev/null; echo \"@reboot %s %s %s %s %s %s \") | sort - | uniq - | crontab - ",
+		prom.cronScript,
+		config.GetYamlPathData("prometheus.externalPort"),
+		config.GetYamlPathData("prometheus.maxConcurrency"),
+		config.GetYamlPathData("prometheus.maxSamples"),
+		config.GetYamlPathData("prometheus.timeout"),
+		config.GetYamlPathData("prometheus.restartSeconds"),
 	)
-	ExecuteBashCommand("bash", []string{"-c", bashCmd})
+	common.ExecuteBashCommand("bash", []string{"-c", bashCmd})
 }

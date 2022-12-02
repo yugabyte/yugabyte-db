@@ -738,4 +738,6 @@ uint32_t YbGetNumberOfDatabases();
 void YBUpdateRowLockPolicyForSerializable(
 		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
 
+const char* yb_fetch_current_transaction_priority(void);
+
 #endif /* PG_YB_UTILS_H */

@@ -240,9 +240,7 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_host"], extra_vars["ssh_port"],
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
-        # It is possible this failed since the routing was already set up.
-        # If so, ignore the error if the code is permission denied
-        if rc and rc != 3:
+        if rc:
             raise YBOpsRecoverableError(
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port

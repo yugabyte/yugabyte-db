@@ -478,13 +478,13 @@ run_cxx_build() {
     if [[ ${cmake_exit_code} != 0 ]]; then
       log "CMake failed with exit code ${cmake_exit_code}."
       (
-        find "${BUILD_ROOT}" -name "CMake*.log" | while read log_path; do
+        find "${BUILD_ROOT}" -name "CMake*.log" | while read -r cmake_log_path; do
           echo
           echo "----------------------------------------------------------------------------------"
-          echo "Contents of ${log_path}:"
+          echo "Contents of ${cmake_log_path}:"
           echo "----------------------------------------------------------------------------------"
           echo
-          cat "${log_path}"
+          cat "${cmake_log_path}"
           echo
           echo "----------------------------------------------------------------------------------"
           echo

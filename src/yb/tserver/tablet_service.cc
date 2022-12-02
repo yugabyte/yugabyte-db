@@ -313,6 +313,7 @@ bool TabletServiceImpl::CheckWriteThrottlingOrRespond(
 }
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
+typedef ListMasterServersResponsePB::MasterServerAndTypePB MasterServerAndTypePB;
 
 class WriteQueryCompletionCallback {
  public:
@@ -2457,6 +2458,19 @@ void TabletServiceImpl::GetTserverCatalogVersionInfo(
   auto status = server_->get_ysql_db_oid_to_cat_version_info_map(req->size_only(), resp);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
+                                          ListMasterServersResponsePB* resp,
+                                          rpc::RpcContext context) {
+  const Status s = server_->tablet_manager()->server()->ListMasterServers(req, resp);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s,
+                         TabletServerErrorPB::UNKNOWN_ERROR,
+                         &context);
     return;
   }
   context.RespondSuccess();

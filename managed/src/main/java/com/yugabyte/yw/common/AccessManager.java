@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.ctc.wstx.util.StringUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
@@ -43,6 +45,7 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -683,5 +686,42 @@ public class AccessManager extends DevopsBase {
     if (formParam != providerKeyParam) {
       failAccessKeyRequest(param);
     }
+  }
+
+  /**
+   * Checks whether the private access keys have the valid permission.
+   *
+   * @param universe
+   * @param allAccessKeyMap
+   * @return true if access keys permission is unchanged.
+   */
+  public boolean checkAccessKeyPermissionsValidity(
+      Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
+    return !universe
+        .getUniverseDetails()
+        .clusters
+        .stream()
+        .anyMatch(
+            cluster -> {
+              String keyCode = cluster.userIntent.accessKeyCode;
+              UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+              if (!StringUtils.isEmpty(keyCode)) {
+                AccessKeyId id = AccessKeyId.create(providerUUID, keyCode);
+                AccessKey accessKey = allAccessKeysMap.get(id);
+                String keyFilePath = accessKey.getKeyInfo().privateKey;
+                try {
+                  String permissions =
+                      PosixFilePermissions.toString(
+                          Files.getPosixFilePermissions(Paths.get(keyFilePath)));
+                  if (!permissions.equals(PEM_PERMISSIONS)) {
+                    return true;
+                  }
+                } catch (IOException e) {
+                  log.error("Error while fetching permissions of access key: {}", e);
+                  return true;
+                }
+              }
+              return false;
+            });
   }
 }

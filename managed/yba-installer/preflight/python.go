@@ -7,27 +7,30 @@
  import (
 	 "strings"
 	 "regexp"
+
+     log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+     "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
   )
- 
+
  var python = Python{"python", "critical"}
- 
+
  type Python struct {
-	 Name string
+	 name string
 	 WarningLevel string
  }
- 
- func (p Python) GetName() string {
-	 return p.Name
+
+ func (p Python) Name() string {
+	 return p.name
  }
- 
+
  func (p Python) GetWarningLevel() string {
 	 return p.WarningLevel
  }
- 
+
  func (p Python) Execute() {
 	command := "bash"
     args := []string{"-c", "python3 --version"}
-    output, _ := ExecuteBashCommand(command, args)
+    output, _ := common.ExecuteBashCommand(command, args)
 
     outputTrimmed := strings.TrimSuffix(output, "\n")
 
@@ -35,11 +38,11 @@
 
     if !re.MatchString(outputTrimmed) {
 
-        LogError("System does not meet Python requirements. Please install any " +
+        log.Fatal("System does not meet Python requirements. Please install any " +
         "version of Python between 3.6 and 3.9 to continue.")
 
     } else {
 
-        LogInfo("System meets Python installation requirements.")
+        log.Info("System meets Python installation requirements.")
     }
  }

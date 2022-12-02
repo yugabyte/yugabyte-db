@@ -123,7 +123,7 @@ create_postgres_backup() {
   if [[ "${yba_installer}" = true ]]; then
     # -f flag does not work for docker based installs. Tries to dump inside postgres container but
     # we need output on the host itself.
-    ybai_backup_cmd = "${backup_cmd} -f ${backup_path}"
+    ybai_backup_cmd="${backup_cmd} -f ${backup_path}"
     docker_aware_cmd "postgres" "${ybai_backup_cmd}"
   else
     docker_aware_cmd "postgres" "${backup_cmd}" > "${backup_path}"
