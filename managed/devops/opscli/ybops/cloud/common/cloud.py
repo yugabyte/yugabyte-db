@@ -24,7 +24,7 @@ from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, remote_exec_command)
 from ybops.utils.remote_shell import RemoteShell
 from ybops.common.exceptions import YBOpsRecoverableError
-from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port
+from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port, DEFAULT_SSH_PORT
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -245,11 +245,8 @@ class AbstractCloud(AbstractCommandParser):
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port
         # Reboot instance
-        remote_exec_command(
-            extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
-            args.private_key_file, 'sudo reboot', ssh2_enabled=args.ssh2_enabled)
-        self.wait_for_ssh_ports(
-            extra_vars["ssh_host"], args.search_pattern, [extra_vars["ssh_port"]])
+        host_info = self.get_host_info(args)
+        self.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
         # Make sure we can ssh into the node after the reboot as well.
         if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
                         extra_vars["ssh_user"], args.private_key_file, num_retries=120,
@@ -657,6 +654,8 @@ class AbstractCloud(AbstractCommandParser):
 
         while retry_count < self.SSH_RETRY_COUNT:
             logging.info("[app] Waiting for ssh ports: {}:{}".format(private_ip, str(ssh_ports)))
+            # Sleep just as a precaution
+            time.sleep(self.SSH_WAIT_SECONDS)
             # Try connecting with the given ssh ports in succession.
             for ssh_port in ssh_ports:
                 ssh_port = int(ssh_port)
