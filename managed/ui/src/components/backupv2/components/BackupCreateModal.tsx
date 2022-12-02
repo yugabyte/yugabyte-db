@@ -323,8 +323,13 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     incremental_backup_frequency: Yup.number().test({
       message: 'Incremental backup interval must be less than full backup',
       test: function (value) {
-        if (!isScheduledBackup || !this.parent.is_incremental_backup_enabled || this.parent.use_cron_expression) return true;
-        
+        if (
+          !isScheduledBackup ||
+          !this.parent.is_incremental_backup_enabled ||
+          this.parent.use_cron_expression
+        )
+          return true;
+
         return (
           value *
             MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
@@ -610,19 +615,20 @@ function BackupConfigurationForm({
                   {target.label}
                   {target.value === Backup_Options_Type.CUSTOM &&
                     values['backup_tables'] === Backup_Options_Type.CUSTOM && (
-                    <span className="tables-count">
-                      <span>{values['selected_ycql_tables'].length} tables selected</span>
-                      <span
-                        className="edit-selection"
-                        onClick={() => {
-                          setFieldValue('show_select_ycql_table', true);
-                        }}
-                      >
-                        <i className="fa fa-pencil" />&nbsp;
-                        {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
+                      <span className="tables-count">
+                        <span>{values['selected_ycql_tables'].length} tables selected</span>
+                        <span
+                          className="edit-selection"
+                          onClick={() => {
+                            setFieldValue('show_select_ycql_table', true);
+                          }}
+                        >
+                          <i className="fa fa-pencil" />
+                          &nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
+                        </span>
                       </span>
-                    </span>
-                  )}
+                    )}
                 </label>
                 <br />
               </>

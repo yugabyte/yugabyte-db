@@ -261,7 +261,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <YBButton
-                    btnText={<>Add Incremental Backup<YBTag>Beta</YBTag></>}
+                    btnText={
+                      <>
+                        Add Incremental Backup<YBTag>Beta</YBTag>
+                      </>
+                    }
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
                     disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
