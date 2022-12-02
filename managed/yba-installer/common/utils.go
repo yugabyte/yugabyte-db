@@ -18,7 +18,6 @@ import (
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	// "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
-
 )
 
 // Bash Command Constants
@@ -129,8 +128,8 @@ func ExecuteBashCommand(command string, args []string) (o string, e error) {
 	if err == nil {
 		log.Debug(command + " " + strings.Join(args, " ") + " successfully executed.")
 	} else {
-		log.Debug(command + " " + strings.Join(args, " ") + " failed with error " + err.Error() +
-			"\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
+		log.Info("ERROR: '" + command + " " + strings.Join(args, " ") + "' failed with error " +
+			err.Error() + "\nPrinting stdOut/stdErr " + execOut.String() + execErr.String())
 	}
 
 	return execOut.String(), err
@@ -216,7 +215,6 @@ func GetCurrentUser() string {
 	}
 	return user.Username
 }
-
 
 // CopyFileGolang copies src file to dst.
 // Assumes both src/dst are valid absolute paths and dst file parent directory is already created.
