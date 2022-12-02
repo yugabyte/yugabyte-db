@@ -44,66 +44,190 @@ using yb::util::CompareUsingLessThan;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+// Checks whether slice starts with primitive value.
+// Valid cases are end of group or primitive value starting with value type.
+Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
+  if (PREDICT_FALSE(slice->empty())) {
+    return STATUS(Corruption, "Unexpected end of key when decoding document key");
+  }
+  KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice->data());
+  if (current_value_type == KeyEntryType::kGroupEnd) {
+    slice->consume_byte();
+    return false;
+  }
+
+  if (allow_special || !IsSpecialKeyEntryType(current_value_type)) {
+    return true;
+  }
+
+  return STATUS_FORMAT(Corruption, "Expected a primitive value type, got $0", current_value_type);
+}
+
+constexpr auto kNumValuesNoLimit = std::numeric_limits<int>::max();
+
+// Consumes up to n_values_limit primitive values from key until group end is found.
+// Callback is called for each value and responsible for consuming this single value from slice.
+template<class Callback>
+Status ConsumePrimitiveValuesFromKey(
+    Slice* slice, AllowSpecial allow_special, Callback callback,
+    int n_values_limit = kNumValuesNoLimit) {
+  const auto initial_slice(*slice);  // For error reporting.
+  for (; n_values_limit > 0; --n_values_limit) {
+    if (!VERIFY_RESULT(HasPrimitiveValue(slice, allow_special))) {
+      return Status::OK();
+    }
+
+    RETURN_NOT_OK_PREPEND(callback(),
+        Substitute("while consuming primitive values from $0",
+                   initial_slice.ToDebugHexString()));
+  }
+  return Status::OK();
+}
+
+Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
+                                     boost::container::small_vector_base<Slice>* result,
+                                     int n_values_limit = kNumValuesNoLimit) {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result]() -> Status {
+    auto begin = slice->data();
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, /* out */ nullptr));
+    if (result) {
+      result->emplace_back(begin, slice->data());
+    }
+    return Status::OK();
+  }, n_values_limit);
+}
+
+Status ConsumePrimitiveValuesFromKey(
+    Slice* slice, AllowSpecial allow_special, std::vector<KeyEntryValue>* result,
+    int n_values_limit = kNumValuesNoLimit) {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
+    result->emplace_back();
+    return result->back().DecodeFromKey(slice);
+  }, n_values_limit);
+}
+
+} // namespace
+
+Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
+  if (!VERIFY_RESULT(HasPrimitiveValue(slice, AllowSpecial::kFalse))) {
+    return false;
+  }
+  RETURN_NOT_OK(KeyEntryValue::DecodeKey(slice, nullptr /* out */));
+  return true;
+}
+
+Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<KeyEntryValue>* result) {
+  return ConsumePrimitiveValuesFromKey(slice, AllowSpecial::kFalse, result);
+}
+
 // ------------------------------------------------------------------------------------------------
 // DocKey
 // ------------------------------------------------------------------------------------------------
 
 DocKey::DocKey()
-    : DocKeyBase(),
-      cotable_id_(Uuid::Nil()),
-      colocation_id_(kColocationIdNotSet) {}
+    : cotable_id_(Uuid::Nil()),
+      colocation_id_(kColocationIdNotSet),
+      hash_present_(false),
+      hash_(0) {
+}
 
 DocKey::DocKey(std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(std::move(range_components)),
-      cotable_id_(Uuid::Nil()),
-      colocation_id_(kColocationIdNotSet) {}
+    : cotable_id_(Uuid::Nil()),
+      colocation_id_(kColocationIdNotSet),
+      hash_present_(false),
+      hash_(0),
+      range_group_(std::move(range_components)) {
+}
 
-DocKey::DocKey(
-    DocKeyHash hash,
-    std::vector<KeyEntryValue> hashed_components,
-    std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(hash, std::move(hashed_components), std::move(range_components)),
-      cotable_id_(Uuid::Nil()),
-      colocation_id_(kColocationIdNotSet) {}
+DocKey::DocKey(DocKeyHash hash,
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
+    : cotable_id_(Uuid::Nil()),
+      colocation_id_(kColocationIdNotSet),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
+}
 
-DocKey::DocKey(
-    const Uuid& cotable_id,
-    DocKeyHash hash,
-    std::vector<KeyEntryValue> hashed_components,
-    std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(hash, std::move(hashed_components), std::move(range_components)),
-      cotable_id_(cotable_id),
-      colocation_id_(kColocationIdNotSet) {}
+DocKey::DocKey(const Uuid& cotable_id,
+               DocKeyHash hash,
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
+    : cotable_id_(cotable_id),
+      colocation_id_(kColocationIdNotSet),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
+}
 
-DocKey::DocKey(
-    const ColocationId colocation_id,
-    DocKeyHash hash,
-    std::vector<KeyEntryValue> hashed_components,
-    std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(hash, std::move(hashed_components), std::move(range_components)),
-      cotable_id_(Uuid::Nil()),
-      colocation_id_(colocation_id) {}
+DocKey::DocKey(const ColocationId colocation_id,
+               DocKeyHash hash,
+               std::vector<KeyEntryValue> hashed_components,
+               std::vector<KeyEntryValue> range_components)
+    : cotable_id_(Uuid::Nil()),
+      colocation_id_(colocation_id),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
+}
 
 DocKey::DocKey(const Uuid& cotable_id)
-    : DocKeyBase(), cotable_id_(cotable_id), colocation_id_(kColocationIdNotSet) {}
+    : cotable_id_(cotable_id),
+      colocation_id_(kColocationIdNotSet),
+      hash_present_(false),
+      hash_(0) {
+}
 
 DocKey::DocKey(const ColocationId colocation_id)
-    : DocKeyBase(), cotable_id_(Uuid::Nil()), colocation_id_(colocation_id) {}
+    : cotable_id_(Uuid::Nil()),
+      colocation_id_(colocation_id),
+      hash_present_(false),
+      hash_(0) {
+}
 
 DocKey::DocKey(const Schema& schema)
-    : DocKeyBase(), cotable_id_(schema.cotable_id()), colocation_id_(schema.colocation_id()) {}
+    : cotable_id_(schema.cotable_id()),
+      colocation_id_(schema.colocation_id()),
+      hash_present_(false),
+      hash_(0) {
+}
+
+DocKey::DocKey(const Schema& schema, DocKeyHash hash)
+    : cotable_id_(schema.cotable_id()),
+      colocation_id_(schema.colocation_id()),
+      hash_present_(true),
+      hash_(hash) {
+}
 
 DocKey::DocKey(const Schema& schema, std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(std::move(range_components)),
-      cotable_id_(schema.cotable_id()),
-      colocation_id_(schema.colocation_id()) {}
+    : cotable_id_(schema.cotable_id()),
+      colocation_id_(schema.colocation_id()),
+      hash_present_(false),
+      hash_(0),
+      range_group_(std::move(range_components)) {
+}
 
 DocKey::DocKey(const Schema& schema, DocKeyHash hash,
                std::vector<KeyEntryValue> hashed_components,
                std::vector<KeyEntryValue> range_components)
-    : DocKeyBase(hash, std::move(hashed_components), std::move(range_components)),
-      cotable_id_(schema.cotable_id()),
-      colocation_id_(schema.colocation_id()) {}
+    : cotable_id_(schema.cotable_id()),
+      colocation_id_(schema.colocation_id()),
+      hash_present_(true),
+      hash_(hash),
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
+}
+
+KeyBytes DocKey::Encode() const {
+  KeyBytes result;
+  AppendTo(&result);
+  return result;
+}
 
 namespace {
 
@@ -125,13 +249,28 @@ RefCntPrefix DocKey::EncodeAsRefCntPrefix() const {
 
 void DocKey::AppendTo(KeyBytes* out) const {
   auto encoder = DocKeyEncoder(out);
-  if (has_cotable_id()) {
+  if (!cotable_id_.IsNil()) {
     encoder.CotableId(cotable_id_).Hash(hash_present_, hash_, hashed_group_).Range(range_group_);
   } else {
     encoder.ColocationId(colocation_id_)
-        .Hash(hash_present_, hash_, hashed_group_)
-        .Range(range_group_);
+           .Hash(hash_present_, hash_, hashed_group_)
+           .Range(range_group_);
   }
+}
+
+void DocKey::Clear() {
+  hash_present_ = false;
+  hash_ = 0xdead;
+  hashed_group_.clear();
+  range_group_.clear();
+}
+
+void DocKey::ClearRangeComponents() {
+  range_group_.clear();
+}
+
+void DocKey::ResizeRangeComponents(int new_size) {
+  range_group_.resize(new_size);
 }
 
 namespace {
@@ -331,7 +470,7 @@ int MaxRangeComponentsToDecode(const DocKeyPart part_to_decode, const bool hash_
     case DocKeyPart::kUpToId:
       LOG(FATAL) << "Internal error: unexpected to have DocKeyPart::kUpToId here";
     case DocKeyPart::kWholeDocKey:
-      return DocKeyBase::kNumValuesNoLimit;
+      return kNumValuesNoLimit;
     case DocKeyPart::kUpToHashCode: FALLTHROUGH_INTENDED;
     case DocKeyPart::kUpToHash:
       return 0;
@@ -406,13 +545,42 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   return status;
 }
 
+namespace {
+
+// We need a special implementation of converting a vector to string because we need to pass the
+// auto_decode_keys flag to PrimitiveValue::ToString.
+void AppendVectorToString(
+    std::string* dest,
+    const std::vector<KeyEntryValue>& vec,
+    AutoDecodeKeys auto_decode_keys) {
+  bool need_comma = false;
+  for (const auto& pv : vec) {
+    if (need_comma) {
+      dest->append(", ");
+    }
+    need_comma = true;
+    dest->append(pv.ToString(auto_decode_keys));
+  }
+}
+
+void AppendVectorToStringWithBrackets(
+    std::string* dest,
+    const std::vector<KeyEntryValue>& vec,
+    AutoDecodeKeys auto_decode_keys) {
+  dest->push_back('[');
+  AppendVectorToString(dest, vec, auto_decode_keys);
+  dest->push_back(']');
+}
+
+}  // namespace
+
 string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   string result = "DocKey(";
-  if (has_cotable_id()) {
+  if (!cotable_id_.IsNil()) {
     result += "CoTableId=";
     result += cotable_id_.ToString();
     result += ", ";
-  } else if (has_colocation_id()) {
+  } else if (colocation_id_ != kColocationIdNotSet) {
     result += "ColocationId=";
     result += std::to_string(colocation_id_);
     result += ", ";
@@ -435,6 +603,21 @@ bool DocKey::operator ==(const DocKey& other) const {
          colocation_id_ == other.colocation_id_ &&
          HashedComponentsEqual(other) &&
          range_group_ == other.range_group_;
+}
+
+bool DocKey::HashedComponentsEqual(const DocKey& other) const {
+  return hash_present_ == other.hash_present_ &&
+      // Only compare hashes and hashed groups if the hash presence flag is set.
+      (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_));
+}
+
+void DocKey::AddRangeComponent(const KeyEntryValue& val) {
+  range_group_.push_back(val);
+}
+
+void DocKey::SetRangeComponent(const KeyEntryValue& val, int idx) {
+  DCHECK_LT(idx, range_group_.size());
+  range_group_[idx] = val;
 }
 
 int DocKey::CompareTo(const DocKey& other) const {
@@ -494,9 +677,9 @@ std::string DocKey::DebugSliceToString(Slice slice) {
 }
 
 bool DocKey::BelongsTo(const Schema& schema) const {
-  if (has_cotable_id()) {
+  if (!cotable_id_.IsNil()) {
     return cotable_id_ == schema.cotable_id();
-  } else if (has_colocation_id()) {
+  } else if (colocation_id_ != kColocationIdNotSet) {
     return colocation_id_ == schema.colocation_id();
   }
   return schema.cotable_id().IsNil() && schema.colocation_id() == kColocationIdNotSet;
@@ -1081,10 +1264,89 @@ Result<bool> DocKeyDecoder::DecodeColocationId(ColocationId* colocation_id) {
   return true;
 }
 
+Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_special) {
+  if (input_.empty()) {
+    return false;
+  }
+
+  auto first_value_type = static_cast<KeyEntryType>(input_[0]);
+
+  if (first_value_type == KeyEntryType::kGroupEnd) {
+    return false;
+  }
+
+  auto good_value_type = allow_special || !IsSpecialKeyEntryType(first_value_type);
+  if (!good_value_type) {
+    return STATUS_FORMAT(Corruption,
+        "Expected first value type to be primitive or GroupEnd, got $0 in $1",
+        first_value_type, input_.ToDebugHexString());
+  }
+
+  if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kUInt16Hash) {
+    return false;
+  }
+
+  if (input_.size() < sizeof(DocKeyHash) + 1) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
+        input_.size());
+  }
+
+  // We'll need to update this code if we ever change the size of the hash field.
+  static_assert(sizeof(DocKeyHash) == sizeof(uint16_t),
+      "It looks like the DocKeyHash's size has changed -- need to update encoder/decoder.");
+  if (out) {
+    *out = BigEndian::Load16(input_.data() + 1);
+  }
+  input_.remove_prefix(sizeof(DocKeyHash) + 1);
+  return true;
+}
+
+Status DocKeyDecoder::DecodeKeyEntryValue(AllowSpecial allow_special) {
+  return DecodeKeyEntryValue(nullptr /* out */, allow_special);
+}
+
+Status DocKeyDecoder::DecodeKeyEntryValue(KeyEntryValue* out, AllowSpecial allow_special) {
+  if (allow_special &&
+      !input_.empty() &&
+      (input_[0] == KeyEntryTypeAsChar::kLowest || input_[0] == KeyEntryTypeAsChar::kHighest)) {
+    input_.consume_byte();
+    return Status::OK();
+  }
+  return KeyEntryValue::DecodeKey(&input_, out);
+}
+
+Status DocKeyDecoder::ConsumeGroupEnd() {
+  if (input_.empty() || input_[0] != KeyEntryTypeAsChar::kGroupEnd) {
+    return STATUS_FORMAT(Corruption, "Group end expected but $0 found", input_.ToDebugHexString());
+  }
+  input_.consume_byte();
+  return Status::OK();
+}
+
+bool DocKeyDecoder::GroupEnded() const {
+  return input_.empty() || input_[0] == KeyEntryTypeAsChar::kGroupEnd;
+}
+
+Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
+  return docdb::HasPrimitiveValue(&input_, allow_special);
+}
+
 Status DocKeyDecoder::DecodeToRangeGroup() {
   RETURN_NOT_OK(DecodeCotableId());
   RETURN_NOT_OK(DecodeColocationId());
-  return DocKeyBaseDecoder::DecodeToRangeGroup();
+  if (VERIFY_RESULT(DecodeHashCode())) {
+    while (VERIFY_RESULT(HasPrimitiveValue())) {
+      RETURN_NOT_OK(DecodeKeyEntryValue());
+    }
+  }
+
+  return Status::OK();
+}
+
+Result<bool> DocKeyDecoder::DecodeHashCode(AllowSpecial allow_special) {
+  return DecodeHashCode(nullptr /* out */, allow_special);
 }
 
 Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
@@ -1123,7 +1385,7 @@ Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rh
   }
 
   // Check all hashed components if present or first range component otherwise.
-  int num_components_to_check = hash_present ? DocKeyBase::kNumValuesNoLimit : 1;
+  int num_components_to_check = hash_present ? kNumValuesNoLimit : 1;
 
   while (!lhs_decoder.GroupEnded() && num_components_to_check > 0) {
     auto lhs_start = lhs_decoder.left_input().data();

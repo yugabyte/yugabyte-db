@@ -219,7 +219,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -261,6 +261,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
+  Status ListMasterServers(const ListMasterServersRequestPB* req,
+                           ListMasterServersResponsePB* resp) const;
 
  protected:
   virtual Status RegisterServices();

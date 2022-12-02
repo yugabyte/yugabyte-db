@@ -119,8 +119,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // UUID of task which set updateInProgress flag.
   @ApiModelProperty public UUID updatingTaskUUID = null;
 
-  @ApiModelProperty public boolean backupInProgress = false;
-
   // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
@@ -466,6 +464,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty public String awsArnString;
 
+    @ApiModelProperty() public boolean enableLB = false;
+
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
     // setup and will be in-place of privateIP
@@ -560,6 +560,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      newUserIntent.enableLB = enableLB;
       if (deviceInfo != null) {
         newUserIntent.deviceInfo = deviceInfo.clone();
       }

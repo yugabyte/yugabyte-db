@@ -30,6 +30,9 @@ import glob
 
 from typing import Any, Dict, AnyStr
 
+from yb.common_util import init_logging
+
+
 # Example test failure (from C++)
 # <?xml version="1.0" ?><testsuites disabled="0" errors="0" failures="1" name="AllTests" tests="1
 #                                   time="0.125" timestamp="2019-03-07T23:04:23">
@@ -318,5 +321,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    yugabyte_pycommon.init_logging()
+    init_logging(verbose=False)
     main()

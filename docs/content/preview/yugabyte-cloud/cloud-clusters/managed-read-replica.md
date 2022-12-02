@@ -55,11 +55,11 @@ To add or edit read-replicas:
 
     **Nodes** - Choose the number of nodes to deploy in the region. The number of nodes can't be less than the replication factor.
 
-1. To add a replica, click **Add Region**. To delete a replica, click the Trash icon.
+1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the replicas. Node size is the same for all replicas.
+1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the read replicas. Node size is the same for all replicas.
 
-    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Confirm and Save Changes** when you are done.
 

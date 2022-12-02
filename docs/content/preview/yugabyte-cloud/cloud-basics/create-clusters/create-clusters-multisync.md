@@ -50,15 +50,7 @@ The **Create Cluster** wizard has the following pages:
 1. [Cluster Setup](#cluster-setup)
 1. [DB Credentials](#database-credentials)
 
-### General Settings
-
-![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)
-
-Set the following options:
-
-- **Cluster Name**: Enter a name for the cluster.
-- **Provider**: Choose a cloud provider - AWS or GCP.
-- **[Database Version](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+{{% includeMarkdown "include-general-settings.md" %}}
 
 ### Cluster Setup
 
@@ -68,7 +60,7 @@ Select **Multi-Region Deployment** and set the following options.
 
 ![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
 
-Set **Data distribution** to **Replicate across regions**.
+Set **Data Distribution** to **Replicate across regions**.
 
 #### Select regions and node size
 
@@ -84,9 +76,9 @@ Set **Data distribution** to **Replicate across regions**.
 
 **Node size**: Enter the number of virtual CPUs per node and the disk size per node (in GB). You must choose the regions before you can set the node size.
 
-Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
-Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
 ### Database Credentials
 

@@ -163,10 +163,10 @@ export const AddDestinationChannelForm = (props) => {
       return (<span />);
     }
     const defaultNotificationTitle = "YugabyteDB Anywhere {{ $labels.severity }} alert"
-      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}"
+      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}";
     const defaultNotificationText = "{{ $labels.definition_name }} alert with severity level"
       + " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'"
-      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}"
+      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}";
     return (
       <>
         <Row>
@@ -195,7 +195,7 @@ export const AddDestinationChannelForm = (props) => {
         </Row>
       </>
     );
-  }
+  };
 
   const getChannelForm = () => {
     switch (channelType) {
@@ -479,10 +479,10 @@ export const AddDestinationChannelForm = (props) => {
     props.type === 'edit' ? 'Edit alert channel' : 'Create new alert channel';
   const validationSchema =
     channelType === 'email' ? validationSchemaEmail :
-    channelType === 'slack' ? validationSchemaSlack :
-    channelType === 'pagerduty' ? validationSchemaPagerDuty :
-    channelType === 'webhook' ? validationSchemaWebHook :
-    null;
+      channelType === 'slack' ? validationSchemaSlack :
+        channelType === 'pagerduty' ? validationSchemaPagerDuty :
+          channelType === 'webhook' ? validationSchemaWebHook :
+            null;
   return (
     <YBModalForm
       formName="alertDestinationForm"

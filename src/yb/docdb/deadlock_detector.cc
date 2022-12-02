@@ -514,7 +514,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         return;
       }
       is_probe_scan_active_ = true;
-      // TODO(pessimistic): Trigger probes only for waiters which which have
+      // TODO(wait-queues): Trigger probes only for waiters which which have
       // wait_start_time > Now() - N seconds
       probes_to_send = GetProbesToSend(waiters_);
     }

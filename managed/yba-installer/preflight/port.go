@@ -7,31 +7,33 @@
  import (
 	 "net"
 	 "fmt"
+
+     log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
   )
- 
+
  var port = Port{"port", "warning"}
- 
+
  type Port struct {
-	 Name string
+	 name string
 	 WarningLevel string
  }
- 
- func (p Port) GetName() string {
-	 return p.Name
+
+ func (p Port) Name() string {
+	 return p.name
  }
- 
+
  func (p Port) GetWarningLevel() string {
 	 return p.WarningLevel
  }
- 
+
  func (p Port) Execute() {
- 
+
 	for _, port := range ports {
         _, err := net.Listen("tcp", ":" + port)
         if err != nil {
-            LogError(fmt.Sprintf("Connecting error: ", err))
+            log.Fatal(fmt.Sprintf("Connecting error: ", err))
         } else {
-            LogInfo("Connection to port: " + port + " successful.")
+            log.Info("Connection to port: " + port + " successful.")
         }
     }
  }

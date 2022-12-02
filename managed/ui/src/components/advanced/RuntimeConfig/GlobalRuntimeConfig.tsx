@@ -32,4 +32,4 @@ export const GlobalRuntimeConfig: FC<GlobalRuntimeConfigProps> = ({
       />
     </div>
   );
-}
+};

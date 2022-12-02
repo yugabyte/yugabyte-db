@@ -34,7 +34,7 @@ class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (vars(args), host_info["root_volume_device_name"])
+        return (vars(args), host_info.get("root_volume_device_name"))
 
 
 class GcpCreateInstancesMethod(CreateInstancesMethod):

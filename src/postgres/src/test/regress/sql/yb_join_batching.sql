@@ -79,6 +79,21 @@ DROP TABLE p2;
 DROP TABLE p3;
 DROP TABLE p4;
 
+CREATE TABLE s1(r1 int, r2 int, r3 int);
+CREATE TABLE s2(r1 int, r2 int, r3 int);
+CREATE TABLE s3(r1 int, r2 int);
+CREATE INDEX ON s3 (r1 asc, r2 asc);
+
+INSERT INTO s1 select i,i,i from generate_series(1,10) i;
+INSERT INTO s2 select i,i,i from generate_series(1,10) i;
+INSERT INTO s3 select i,i from generate_series(1,100) i;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+
+DROP TABLE s3;
+DROP TABLE s2;
+DROP TABLE s1;
+
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
 SET yb_bnl_batch_size = 3;

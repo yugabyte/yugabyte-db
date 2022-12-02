@@ -18,6 +18,8 @@
 
 #include "yb/gutil/bind.h"
 
+#include "yb/rpc/sidecars.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet.h"
@@ -463,7 +465,7 @@ bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
 Status ReadQuery::Complete() {
   for (;;) {
     resp_->Clear();
-    context_.ResetRpcSidecars();
+    context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
     const auto result = VERIFY_RESULT(DoRead());
     if (allow_retry_ && read_time_ && read_time_ == result) {
@@ -640,13 +642,13 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
           context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result,
-          &context_.StartRpcSidecar()));
+          &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
         return FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_.CompleteRpcSidecar()));
+          narrow_cast<int32_t>(context_.sidecars().Complete()));
       resp_->add_ql_batch()->Swap(&result.response);
     }
     return ReadHybridTime();
@@ -656,7 +658,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
     ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
     size_t total_num_rows_read = 0;
     for (PgsqlReadRequestPB& pgsql_read_req : *mutable_req->mutable_pgsql_batch()) {
-      tablet::PgsqlReadRequestResult result(&context_.StartRpcSidecar());
+      tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
           context_.GetClientDeadline(), read_time,
@@ -670,7 +672,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
         return FormRestartReadHybridTime(result.restart_read_ht);
       }
       result.response.set_rows_data_sidecar(
-          narrow_cast<int32_t>(context_.CompleteRpcSidecar()));
+          narrow_cast<int32_t>(context_.sidecars().Complete()));
       resp_->add_pgsql_batch()->Swap(&result.response);
     }
 

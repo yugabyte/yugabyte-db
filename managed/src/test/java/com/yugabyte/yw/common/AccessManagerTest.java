@@ -36,12 +36,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -658,9 +661,12 @@ public class AccessManagerTest extends FakeDBApplication {
               + com.yugabyte.yw.common.utils.FileUtils.getFileName(configName),
           configFile);
       List<String> lines = Files.readAllLines(Paths.get(configFile));
+      Set<PosixFilePermission> filePermissions =
+          Files.getPosixFilePermissions(Paths.get(configFile));
       assertEquals("hello world", lines.get(0));
       assertNull(config.get("KUBECONFIG_NAME"));
       assertNull(config.get("KUBECONFIG_CONTENT"));
+      assertEquals(filePermissions, PosixFilePermissions.fromString("rw-------"));
       List<FileData> fd = FileData.getAll();
       assertEquals(fd.size(), 1);
     } catch (IOException e) {

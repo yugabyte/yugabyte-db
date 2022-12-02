@@ -227,7 +227,7 @@ For applications that have writes happening from a single zone or region but wan
 
 **Deployment**
 
-You can add replicas to an existing primary cluster as needed. Contact {{% support-cloud %}} to add replicas.
+You can add replicas to an existing primary cluster as needed. Refer to [Read replicas](../../cloud-clusters/managed-read-replica/).
 
 **Learn more**
 

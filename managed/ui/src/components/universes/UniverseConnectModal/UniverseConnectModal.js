@@ -192,8 +192,8 @@ class UniverseConnectModal extends Component {
                   isEnabled(currentCustomer.data.features, 'universe.defaultYCQL')) && (
                   <tr>
                     <td>YCQL Shell</td>
-                  <td>: </td>
-                  <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
+                    <td>: </td>
+                    <td>{isTLSEnabled ? yCqlTLSConnection : ycqlConnection}</td>
                   </tr>
                 )}
                 {(userIntent.enableYEDIS ||

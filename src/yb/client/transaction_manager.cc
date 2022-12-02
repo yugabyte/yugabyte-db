@@ -244,9 +244,10 @@ class TransactionManager::Impl {
       : client_(client),
         clock_(clock),
         table_state_{std::move(local_tablet_filter)},
-        thread_pool_(
-            "TransactionManager", FLAGS_transaction_manager_queue_limit,
-            FLAGS_transaction_manager_workers_limit),
+        thread_pool_(rpc::ThreadPoolOptions {
+          .name = "TransactionManager",
+          .max_workers = FLAGS_transaction_manager_workers_limit,
+        }),
         tasks_pool_(FLAGS_transaction_manager_queue_limit),
         invoke_callback_tasks_(FLAGS_transaction_manager_queue_limit) {
     CHECK(clock);

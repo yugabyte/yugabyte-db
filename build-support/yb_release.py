@@ -27,7 +27,7 @@ import ruamel.yaml
 from yb.library_packager import LibraryPackager, add_common_arguments
 from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
-from yb.common_util import init_env, get_build_type_from_build_root, set_thirdparty_dir
+from yb.common_util import init_logging, get_build_type_from_build_root, set_thirdparty_dir
 from yb.linuxbrew import set_build_root
 
 
@@ -76,7 +76,7 @@ def main():
     # ---------------------------------------------------------------------------------------------
     # Processing the arguments
     # ---------------------------------------------------------------------------------------------
-    init_env(args.verbose)
+    init_logging(verbose=args.verbose)
 
     if not args.build_target and not args.build_archive:
         logging.info("Implying --build_archive (build package) because --build_target "

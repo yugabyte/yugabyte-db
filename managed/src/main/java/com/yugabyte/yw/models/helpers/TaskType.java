@@ -218,6 +218,8 @@ public enum TaskType {
   DeleteTablesFromUniverse(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse.class),
 
+  DeleteKeyspace(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace.class),
+
   LoadBalancerStateChange(
       com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange.class),
 
@@ -283,6 +285,9 @@ public enum TaskType {
 
   UpdateUniverseAccessKey(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey.class),
+
+  ManageLoadBalancerGroup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup.class),
 
   // Tasks belonging to subtasks.xcluster classpath
   BootstrapProducer(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer.class),
@@ -457,7 +462,9 @@ public enum TaskType {
 
   InstanceExistCheck(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck.class),
 
-  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class);
+  AddGFlagMetadata(com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata.class),
+
+  DeleteRootVolumes(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes.class);
 
   private final Class<? extends ITask> taskClass;
 

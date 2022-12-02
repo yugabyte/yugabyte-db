@@ -43,7 +43,6 @@
 # prometheus
 prometheus:
     scrapeInterval: 15
-    evaluationInterval: 15
     scrapeTimeout: 10
     externalPort: 9090
     maxConcurrency: 20

@@ -10,37 +10,42 @@
 	 "strings"
 	 "regexp"
 	 "os"
+
+	 log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	 "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
   )
- 
+
  var root = Root{"root", "warning"}
- 
+
  type Root struct {
-	 Name string
+	 name string
 	 WarningLevel string
  }
- 
- func (r Root) GetName() string {
-	 return r.Name
+
+ func (r Root) Name() string {
+	 return r.name
  }
- 
+
  func (r Root) GetWarningLevel() string {
 	 return r.WarningLevel
  }
- 
+
  func (r Root) Execute() {
- 
-	if _, existsErr := os.Stat(INSTALL_ROOT); existsErr == nil {
-		err := fileutil.IsDirWriteable(INSTALL_ROOT)
+
+	if _, existsErr := os.Stat(common.InstallRoot); existsErr == nil {
+		err := fileutil.IsDirWriteable(common.InstallRoot)
 		if err != nil {
-			LogError(INSTALL_ROOT + " is not writeable.")
+			log.Fatal(common.InstallRoot + " is not writeable.")
 		} else {
-			LogInfo(INSTALL_ROOT + " is writeable.")
+			log.Info(common.InstallRoot + " is writeable.")
 		}
 		command := "bash"
-		args := []string{"-c", "df --output=avail -h \"" + INSTALL_ROOT+ "\" | tail -n 1"}
-		output, err := ExecuteBashCommand(command, args)
+		// TODO: Also duplicated some df code in ssd.go.
+		// Should resolve with https://yugabyte.atlassian.net/browse/PLAT-6177
+		args := []string{"-c", "df --output=avail -h \"" + common.InstallRoot+ "\" | tail -n 1"}
+		output, err := common.ExecuteBashCommand(command, args)
 		if err != nil {
-			LogError(err.Error())
+			log.Fatal(err.Error())
 		} else {
 			outputTrimmed := strings.ReplaceAll(strings.TrimSuffix(output, "\n"), " ", "")
 			re := regexp.MustCompile("[0-9]+")
@@ -48,9 +53,9 @@
 			freeSpaceString := freeSpaceArray[0]
 			freeSpace, _ := strconv.Atoi(freeSpaceString)
 			if freeSpace == 0 {
-				LogError(INSTALL_ROOT + " does not have free space.")
+				log.Fatal(common.InstallRoot + " does not have free space.")
 			} else {
-				LogInfo(INSTALL_ROOT + " has free space.")
+				log.Info(common.InstallRoot + " has free space.")
 			}
 		}
 	  }

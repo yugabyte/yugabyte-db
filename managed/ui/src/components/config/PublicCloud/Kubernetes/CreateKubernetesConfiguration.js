@@ -92,8 +92,8 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_PROVIDER: vals.providerType
             ? vals.providerType.value
             : providerTypeMetadata
-            ? providerTypeMetadata.code
-            : 'gke',
+              ? providerTypeMetadata.code
+              : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };

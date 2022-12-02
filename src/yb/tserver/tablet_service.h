@@ -166,6 +166,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                     GetTserverCatalogVersionInfoResponsePB* resp,
                                     rpc::RpcContext context) override;
 
+  void ListMasterServers(const ListMasterServersRequestPB* req,
+                         ListMasterServersResponsePB* resp,
+                         rpc::RpcContext context) override;
   void Shutdown() override;
 
  private:

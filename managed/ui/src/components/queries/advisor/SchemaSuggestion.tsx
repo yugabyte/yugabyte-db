@@ -77,5 +77,5 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
         </BootstrapTable>
       </div>
     </div>
-  )
-}
+  );
+};

@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "boost/function/function_fwd.hpp"
+
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -26,6 +28,9 @@ namespace yb {
 class Slice;
 
 namespace docdb {
+
+YB_STRONGLY_TYPED_BOOL(ContinueScan);
+using YQLScanCallback = boost::function<Result<ContinueScan>(const QLTableRow& row)>;
 
 class YQLRowwiseIteratorIf {
  public:
@@ -76,6 +81,11 @@ class YQLRowwiseIteratorIf {
   Status NextRow(const Schema& projection, QLTableRow* table_row);
 
   Status NextRow(QLTableRow* table_row);
+
+  // Iterates over the rows until --
+  //  - callback fails or returns false.
+  //  - Iterator reaches end of iteration.
+  virtual Status Iterate(const YQLScanCallback& callback);
 
  private:
   virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;

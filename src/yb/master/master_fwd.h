@@ -96,7 +96,6 @@ using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
 
 class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;
-using TableInfoMap = std::map<TableId, TableInfoPtr>;
 
 class TabletInfo;
 using TabletInfoPtr = scoped_refptr<TabletInfo>;

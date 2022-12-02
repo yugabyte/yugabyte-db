@@ -351,13 +351,14 @@ class AddRegionList extends Component {
                                         {typeof getIn(
                                           formik.errors,
                                           `regionList[${regionIndex}].zoneList`
-                                        ) === 'string' ? (
-                                          <div className="input-feedback">
-                                            <ErrorMessage
-                                              name={`regionList[${regionIndex}].zoneList`}
-                                            />
-                                          </div>
-                                        ) : null}
+                                        ) === 'string' ?
+                                          (
+                                            <div className="input-feedback">
+                                              <ErrorMessage
+                                                name={`regionList[${regionIndex}].zoneList`}
+                                              />
+                                            </div>
+                                          ) : null}
                                       </Col>
                                     </Row>
                                     <Row className="config-provider-row">

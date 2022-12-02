@@ -30,7 +30,6 @@ import shlex
 import pathlib
 
 from yugabyte_pycommon import (  # type: ignore
-    init_logging,
     run_program,
     WorkDirContext,
     mkdir_p,
@@ -50,6 +49,7 @@ from yb.common_util import (
     shlex_join,
     check_arch,
     is_macos_arm64,
+    init_logging,
 )
 from yb import compile_commands
 from yb.compile_commands import (
@@ -242,7 +242,7 @@ class PostgresBuilder(YbBuildToolBase):
         parser.add_argument('--ldflags_ex', help='Linker flags for executables')
         parser.add_argument('--cppflags', help='C/C++ preprocessor flags')
 
-        parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
+        parser.add_argument('--include_dirs', help='Space-separated list of include directories')
         parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
         parser.add_argument('--run_tests',
                             action='store_true',
@@ -280,7 +280,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
         self.pg_config_path = os.path.join(self.build_root, 'postgres', 'bin', 'pg_config')
         self.compiler_type = self.args.compiler_type
-        self.openssl_include_dir = self.args.openssl_include_dir
+        self.include_dirs = self.args.include_dirs
         self.openssl_lib_dir = self.args.openssl_lib_dir
 
         if not self.compiler_type:
@@ -514,7 +514,7 @@ class PostgresBuilder(YbBuildToolBase):
                 # (libuuid-based for Unix/Mac).
                 '--with-uuid=e2fs',
                 '--with-libedit-preferred',
-                '--with-includes=' + self.openssl_include_dir,
+                '--with-includes=' + self.include_dirs,
                 '--with-libraries=' + self.openssl_lib_dir,
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
@@ -918,7 +918,7 @@ class PostgresBuilder(YbBuildToolBase):
 
 
 def main() -> None:
-    init_logging()
+    init_logging(verbose=False)
     check_arch()
     if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
         logging.info("Skipping PostgreSQL build (YB_SKIP_POSTGRES_BUILD is set)")

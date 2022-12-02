@@ -2,10 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -36,7 +32,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
@@ -45,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
@@ -97,6 +96,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -115,6 +115,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -128,10 +129,30 @@ import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
+
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -147,22 +168,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import javax.annotation.Nullable;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
+
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -292,6 +300,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           && !universeDetails.updateSucceeded
           && taskParams().getPreviousTaskUUID() != null
           && !Objects.equal(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
+        // else throw error.
         String msg = "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
         log.error(msg);
         throw new RuntimeException(msg);
@@ -608,7 +617,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             log.error(msg);
             throw new RuntimeException(msg);
           }
-          // Persist the updated information about the universe. Mark it as being edited.
+          // Persist the updated information about the universe. Mark it as being not edited.
           universeDetails.updateInProgress = false;
           universeDetails.updatingTask = null;
           universeDetails.errorString = err;
@@ -1003,6 +1012,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task to delete unused root volumes matching the tags for both the nodes and the
+   * universe. If volumeIds is not set or empty, all the matching volumes are deleted, else only the
+   * specified matching volumes are deleted.
+   *
+   * @param universe the universe to which the nodes belong.
+   * @param nodes the nodes to which the volumes were attached before.
+   * @param volumeIds the volume IDs.
+   * @return SubTaskGroup.
+   */
+  public SubTaskGroup createDeleteRootVolumesTasks(
+      Universe universe, Collection<NodeDetails> nodes, Set<String> volumeIds) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteRootVolumes", executor);
+    for (NodeDetails node : nodes) {
+      if (node.cloudInfo == null || CloudType.onprem.name().equals(node.cloudInfo.cloud)) {
+        continue;
+      }
+      Cluster cluster = universe.getCluster(node.placementUuid);
+      DeleteRootVolumes.Params params = new DeleteRootVolumes.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+      params.azUuid = node.azUuid;
+      params.nodeName = node.nodeName;
+      params.nodeUuid = node.nodeUuid;
+      params.universeUUID = taskParams().universeUUID;
+      params.volumeIds = volumeIds;
+      params.isForceDelete = true;
+      DeleteRootVolumes task = createTask(DeleteRootVolumes.class);
+      task.initialize(params);
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1465,6 +1509,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Create a subtask to delete a database/keyspace if it exists.
+   *
+   * @param keyspaceName : name of the database/keyspace to delete.
+   * @param tableType : Type of the Table YSQL/ YCQL
+   */
+  public SubTaskGroup createDeleteKeySpaceTask(String keyspaceName, TableType tableType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteKeyspace", executor);
+    // Create required params for this subtask.
+    DeleteKeyspace.Params params = new DeleteKeyspace.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.setKeyspace(keyspaceName);
+    params.backupType = tableType;
+    // Create the task.
+    DeleteKeyspace task = createTask(DeleteKeyspace.class);
+    // Initialize the task.
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
     return createWaitForServersTasks(
         nodes, type, config.getDuration("yb.wait_for_server_timeout") /* default timeout */);
@@ -1767,7 +1835,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes set of nodes to be stopped as master
    */
   public SubTaskGroup createStopServerTasks(
-      Collection<NodeDetails> nodes, String serverType, boolean isForceDelete) {
+      Collection<NodeDetails> nodes, String serverType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
@@ -1784,7 +1852,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.command = "stop";
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
-      params.isForceDelete = isForceDelete;
+      params.isIgnoreError = isIgnoreError;
       // Set the systemd parameter.
       params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
@@ -2485,6 +2553,77 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Creates a task list to add/remove nodes from load balancer.
+   *
+   * @param lbMap The mapping for each cluster (Provider UUID + Region + LB Name) -> List of nodes
+   *     per AZ
+   */
+  public void createManageLoadBalancerTasks(Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap) {
+    if (MapUtils.isNotEmpty(lbMap)) {
+      SubTaskGroup subTaskGroup =
+          getTaskExecutor().createSubTaskGroup("ManageLoadBalancerGroup", executor);
+      for (Map.Entry<LoadBalancerPlacement, LoadBalancerConfig> lb : lbMap.entrySet()) {
+        LoadBalancerPlacement lbPlacement = lb.getKey();
+        LoadBalancerConfig lbConfig = lb.getValue();
+        ManageLoadBalancerGroup.Params params = new ManageLoadBalancerGroup.Params();
+        // Add the universe uuid.
+        params.universeUUID = taskParams().universeUUID;
+        // Add the provider uuid.
+        params.providerUUID = lbPlacement.getProviderUUID();
+        // Add the region for this load balancer
+        params.regionCode = lbPlacement.getRegionCode();
+        // Add the load balancer nodes to be added/removed
+        params.lbConfig = lbConfig;
+        // Create and add a task for this load balancer
+        ManageLoadBalancerGroup task = createTask(ManageLoadBalancerGroup.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+  /**
+   * Create Load Balancer map to add nodes to load balancer.
+   *
+   * @param taskParams The universe task params
+   */
+  public Map<LoadBalancerPlacement, LoadBalancerConfig> createLoadBalancerMap(
+      UniverseDefinitionTaskParams taskParams, List<NodeDetails> nodesToIgnore) {
+    // Prov1 + Reg1 + LB1 -> AZ1 (n1, n2, n3,...), AZ2 (n4, n5), AZ3(nX)
+    Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap = new HashMap<>();
+    // Get load balancers for each cluster
+    List<Cluster> clusters = taskParams.clusters;
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent.enableLB) {
+        // Map AZ -> nodes for each cluster
+        Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
+        Set<NodeDetails> nodes = taskParams.getNodesInCluster(cluster.uuid);
+        if (nodesToIgnore != null) {
+          nodes =
+              nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
+        }
+        for (NodeDetails node : nodes) {
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+          azNodes.computeIfAbsent(az, v -> new HashSet<>()).add(node);
+        }
+        PlacementInfo.PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(0);
+        UUID providerUUID = placementCloud.uuid;
+        List<PlacementInfo.PlacementAZ> azList =
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+        for (PlacementInfo.PlacementAZ placementAZ : azList) {
+          String lbName = placementAZ.lbName;
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          LoadBalancerPlacement lbPlacement =
+              new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+          LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
+          loadBalancerMap.computeIfAbsent(lbPlacement, v -> lbConfig).addNodes(az, azNodes.get(az));
+        }
+      }
+    }
+    return loadBalancerMap;
+  }
+
   // Subtask to update gflags in memory.
   public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
@@ -2621,25 +2760,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (jsonNode.isArray()) {
       jsonNode = jsonNode.get(0);
     }
-    long matchCount =
+    Map<String, JsonNode> properties =
         Streams.stream(jsonNode.fields())
-            .filter(
-                e -> {
-                  String expectedTagValue = expectedTags.get(e.getKey());
-                  if (expectedTagValue == null) {
-                    return false;
-                  }
-                  log.info(
-                      "Node: {}, Key: {}, Value: {}, Expected: {}",
-                      taskParams.nodeName,
-                      e.getKey(),
-                      e.getValue(),
-                      expectedTagValue);
-                  return expectedTagValue.equals(e.getValue().asText());
-                })
-            .limit(expectedTags.size())
-            .count();
-    return Optional.of(matchCount == expectedTags.size());
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
+    int unmatchedCount = 0;
+    for (Map.Entry<String, String> entry : expectedTags.entrySet()) {
+      JsonNode node = properties.get(entry.getKey());
+      if (node == null || node.isNull()) {
+        continue;
+      }
+      String value = node.asText();
+      log.info(
+          "Node: {}, Key: {}, Value: {}, Expected: {}",
+          taskParams.nodeName,
+          entry.getKey(),
+          value,
+          entry.getValue());
+      if (!entry.getValue().equals(value)) {
+        unmatchedCount++;
+      }
+    }
+    // Old nodes don't have tags. So, unmatched count is 0.
+    // New nodes must have unmatched count = 0.
+    return Optional.of(unmatchedCount == 0);
   }
 
   // Perform preflight checks on the given node.
@@ -2755,41 +2898,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  // Update the Universe's 'backupInProgress' flag to new state.
-  private void updateBackupState(boolean state) {
-    UniverseUpdater updater =
-        universe -> {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.backupInProgress = state;
-          universe.setUniverseDetails(universeDetails);
-        };
-    if (state) {
-      // New state is to set backupInProgress to true.
-      // This method increments universe version if HA is enabled.
-      saveUniverseDetails(updater);
-    } else {
-      // New state is to set backupInProgress to false.
-      // This method simply updates the backupInProgress without changing the universe version.
-      // This is called at the end of backup to release the universe for other tasks.
-      Universe.saveDetails(taskParams().universeUUID, updater, false);
-    }
-  }
-
-  // Update the Universe's 'backupInProgress' flag to new state.
-  // It throws exception if the universe is already being locked by another task.
-  public void lockedUpdateBackupState(boolean newState) {
-    checkNotNull(taskParams().universeUUID, "Universe UUID must be set.");
-    if (Universe.getOrBadRequest(taskParams().universeUUID).getUniverseDetails().backupInProgress
-        == newState) {
-      if (newState) {
-        throw new IllegalStateException("A backup for this universe is already in progress.");
-      } else {
-        return;
-      }
-    }
-    updateBackupState(newState);
   }
 
   /**

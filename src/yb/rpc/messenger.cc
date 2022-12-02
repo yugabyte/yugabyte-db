@@ -111,7 +111,6 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       coarse_timer_granularity_(100ms),
       listen_protocol_(TcpStream::StaticProtocol()),
-      queue_limit_(FLAGS_rpc_queue_limit),
       workers_limit_(FLAGS_rpc_workers_limit),
       num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
@@ -395,8 +394,10 @@ rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
         return *high_priority_thread_pool;
       }
       const ThreadPoolOptions& options = normal_thread_pool_->options();
-      high_priority_thread_pool_.reset(new rpc::ThreadPool(
-          name_ + "-high-pri", options.queue_limit, options.max_workers));
+      high_priority_thread_pool_.reset(new rpc::ThreadPool(rpc::ThreadPoolOptions {
+        .name = name_ + "-high-pri",
+        .max_workers = options.max_workers
+      }));
       return *high_priority_thread_pool_.get();
   }
   FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
@@ -552,7 +553,10 @@ Messenger::Messenger(const MessengerBuilder &bld)
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()),
-      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
+      normal_thread_pool_(new rpc::ThreadPool(rpc::ThreadPoolOptions {
+        .name = name_,
+        .max_workers = bld.workers_limit_,
+      })),
       resolver_(new DnsResolver(&io_thread_pool_.io_service())),
       rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
