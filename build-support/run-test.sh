@@ -130,6 +130,7 @@ fi
 
 yb_ninja_executable_not_needed=true
 if [[ -z ${BUILD_ROOT:-} ]]; then
+  # shellcheck disable=SC2119
   set_build_root
 fi
 readonly BUILD_ROOT
