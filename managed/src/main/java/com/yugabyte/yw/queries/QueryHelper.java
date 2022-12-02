@@ -33,7 +33,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
-import play.Configuration;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -50,6 +49,9 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
+  public static final String SET_YB_BNL_BATCH_SIZE_STATEMENT = "/*+Set(yb_bnl_batch_size 1024)*/";
+  public static final String SET_BATCH_NESTED_LOOP_KEY =
+      "yb.query_stats.slow_queries.set_batch_nested_loop";
 
   public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
 
@@ -143,7 +145,7 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = slowQuerySqlWithLimit(config);
+                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe);
                     ysqlQuery.db_name = "postgres";
                     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
                   };
@@ -326,22 +328,37 @@ public class QueryHelper {
   }
 
   @VisibleForTesting
-  public String slowQuerySqlWithLimit(Config config) {
+  public String slowQuerySqlWithLimit(Config config, Universe universe) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
+    String setYbBnlBatchSizeStatementOptional =
+        supportsBatchedNestedLoop(universe) ? SET_YB_BNL_BATCH_SIZE_STATEMENT : "";
     return String.format(
-        "%s ORDER BY t.%s DESC LIMIT %d", SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+        "%s%s ORDER BY t.%s DESC LIMIT %d",
+        setYbBnlBatchSizeStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
   }
 
   private boolean isExcluded(String queryStatement, Config config) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
     return excludedQueries.contains(queryStatement)
-        || queryStatement.startsWith(SLOW_QUERY_STATS_UNLIMITED_SQL);
+        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {
     for (JsonNode node : source) {
       destination.add(node);
     }
+  }
+
+  private boolean supportsBatchedNestedLoop(Universe universe) {
+    if (!runtimeConfigFactory.forUniverse(universe).getBoolean(SET_BATCH_NESTED_LOOP_KEY)) {
+      return false;
+    }
+    // The minimum YBDB version that supports Batched Nested Loop is 2.17.1.0-b12.
+    return Util.compareYbVersions(
+            "2.17.1.0-b12",
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true /* suppressFormatError */)
+        < 0;
   }
 }
