@@ -51,7 +51,7 @@ export const getTabContent = (
               uniqueOperations.add(metricItem.name);
             });
           }
-          uniqueOperations = Array.from(uniqueOperations)?.sort();
+          uniqueOperations = Array.from(uniqueOperations);
 
           return isNonEmptyObject(metric) && !metric?.error ? (
             <MetricsPanel
