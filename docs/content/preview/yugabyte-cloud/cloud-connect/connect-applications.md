@@ -35,7 +35,7 @@ To enable inbound network access from your application environment to a cluster,
 
 If your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
-By default, multi-region clusters, which must be deployed in a VPC, do not expose any publicly-accessible IP addresses. To add public IP addresses, enable Public Access.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings** tab.
 
 For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
 

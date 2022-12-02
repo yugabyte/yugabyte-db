@@ -40,7 +40,7 @@ The IP allow lists assigned to a cluster are listed under **Network Access** on 
 
 By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses, and you can only connect from applications that reside in a peered network with an active peering connection.
 
-If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable Public Access on the cluster **Settings** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable **Public Access** on the cluster **Settings** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
 
 Public access isn't available for read replicas.
 
