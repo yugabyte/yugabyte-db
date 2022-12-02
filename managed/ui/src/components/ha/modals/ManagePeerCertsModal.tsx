@@ -36,14 +36,14 @@ const formatYBHAWebSerivceConfigValue = (peerCerts: CertFormItem[]) =>
     ssl {
       trustManager = {
         ${peerCerts
-          .map(
-            (peerCert) => `stores += {
+    .map(
+      (peerCert) => `stores += {
           type = "PEM"
           data = """${peerCert.data}"""
         }
         `
-          )
-          .join('')}
+    )
+    .join('')}
       }
     }  
   }`;

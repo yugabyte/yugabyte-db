@@ -145,7 +145,8 @@ public class UniverseSpec {
     return universeSpecObj;
   }
 
-  public static UniverseSpec importSpec(File tarFile, String storagePath) throws IOException {
+  public static UniverseSpec importSpec(File tarFile, String storagePath, Customer customer)
+      throws IOException {
     String specBasePath = storagePath + "/universe-specs/import";
     String specName = UniverseSpec.generateSpecName(false);
     String specFolderPath = specBasePath + "/" + specName;
@@ -155,6 +156,9 @@ public class UniverseSpec {
 
     // Retrieve universe spec.
     UniverseSpec universeSpec = UniverseSpec.importUniverseSpec(specFolderPath);
+
+    // Update spec with new customer information.
+    universeSpec.updateUniverseCustomerDetails(customer);
 
     // Copy access keys to correct location if existing provider does not exist.
     universeSpec.importAccessKeys(specFolderPath, storagePath);
@@ -195,6 +199,11 @@ public class UniverseSpec {
       org.apache.commons.io.FileUtils.copyDirectory(srcKeyMasterDir, destKeyMasterDir);
       log.debug("Saved access keys to {}", destKeyMasterDir.getPath());
     }
+  }
+
+  public void updateUniverseCustomerDetails(Customer customer) {
+    Long customerId = customer.getCustomerId();
+    universe.customerId = customerId;
   }
 
   @Transactional

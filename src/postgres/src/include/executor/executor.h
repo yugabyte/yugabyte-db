@@ -141,6 +141,7 @@ extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
 						 MemoryContext metacxt,
 						 MemoryContext tablecxt,
 						 MemoryContext tempcxt,
+						 ExprContext *expr_cxt,
 						 bool use_variable_hash_iv);
 extern TupleHashTable BuildTupleHashTableExt(PlanState *parent,
 					TupleDesc inputDesc,

@@ -182,7 +182,7 @@ TcpStream::FillIovResult TcpStream::FillIov(iovec* out) {
         continue;
       }
 
-      out[index].iov_base = bytes.data() + offset;
+      out[index].iov_base = const_cast<char*>(bytes.data()) + offset;
       out[index].iov_len = bytes.size() - offset;
       offset = 0;
       if (++index == kMaxIov) {

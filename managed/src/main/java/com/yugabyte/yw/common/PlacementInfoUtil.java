@@ -996,8 +996,10 @@ public class PlacementInfoUtil {
   // are the same.
   public static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
-
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
@@ -2668,7 +2670,7 @@ public class PlacementInfoUtil {
       Provider provider,
       int masterRpcPort,
       boolean newNamingStyle) {
-    List<String> masters = new ArrayList<String>();
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {

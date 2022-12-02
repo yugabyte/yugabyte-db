@@ -36,10 +36,13 @@ fabric==2.2.1
 google-api-python-client==1.10.0
 google-api-core==1.22.0
 google-auth==1.19.2
+grpcio==1.33.2
+grpcio-tools==1.33.2
 ipaddr==2.1.11
 mitogen==0.2.9
 oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
 paramiko==2.4.2
+protobuf==3.19.6
 pycryptodome==3.6.1
 python-dateutil==2.5.3
 PyYAML==5.1

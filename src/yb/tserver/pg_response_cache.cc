@@ -28,6 +28,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tserver/pg_client.pb.h"
 
@@ -36,6 +37,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/metrics.h"
+#include "yb/util/write_buffer.h"
 
 METRIC_DEFINE_counter(server, pg_response_cache_hits,
                       "PgClientService Response Cache Hits",
@@ -109,9 +111,11 @@ void FillResponse(PgPerformResponsePB* response,
                   const PgResponseCache::Response& value) {
   *response = value.response;
   auto rows_data_it = value.rows_data.begin();
+  auto& sidecars = context->sidecars();
   for (auto& op : *response->mutable_responses()) {
     if (op.has_rows_data_sidecar()) {
-      op.set_rows_data_sidecar(narrow_cast<int>(context->AddRpcSidecar(rows_data_it->data)));
+      sidecars.Start().Append(rows_data_it->AsSlice());
+      op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
     }
     ++rows_data_it;
   }

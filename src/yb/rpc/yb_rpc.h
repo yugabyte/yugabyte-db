@@ -30,10 +30,12 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/ev_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/write_buffer.h"
 
 namespace yb {
 namespace rpc {
@@ -138,13 +140,9 @@ class YBInboundCall : public InboundCall {
 
   Slice method_name() const override;
 
-  // See RpcContext::AddRpcSidecar()
-  virtual size_t AddRpcSidecar(Slice car);
-
-  // See RpcContext::ResetRpcSidecars()
-  void ResetRpcSidecars();
-
-  void ReserveSidecarSpace(size_t space);
+  Sidecars& sidecars() {
+    return sidecars_;
+  }
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
@@ -174,7 +172,7 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(ByteBlocks* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -195,12 +193,9 @@ class YBInboundCall : public InboundCall {
   }
 
  protected:
-  // Fields to store sidecars state. See rpc/rpc_sidecar.h for more info.
-  size_t num_sidecars_ = 0;
-  size_t filled_bytes_in_last_sidecar_buffer_ = 0;
-  size_t total_sidecars_size_ = 0;
-  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecar_buffers_;
-  google::protobuf::RepeatedField<uint32_t> sidecar_offsets_;
+  ScopedTrackedConsumption consumption_;
+
+  Sidecars sidecars_;
 
   // Serialize and queue the response.
   virtual void Respond(AnyMessageConstPtr response, bool is_success);
@@ -220,8 +215,6 @@ class YBInboundCall : public InboundCall {
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   RefCntBuffer response_buf_;
-
-  ScopedTrackedConsumption consumption_;
 
   // Cache of result of YBInboundCall::ToString().
   mutable std::string cached_to_string_;

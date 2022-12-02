@@ -524,7 +524,7 @@ class TransactionParticipant::Impl
   }
 
   void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
-    // TODO(pessimistic) optimize locking
+    // TODO(wait-queues) optimize locking
     std::vector<boost::optional<TabletId>> status_tablet_opts;
     for (auto& blocker : *inout) {
       blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");

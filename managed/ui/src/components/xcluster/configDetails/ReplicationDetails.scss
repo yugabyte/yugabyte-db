@@ -140,6 +140,15 @@
   }
 }
 
+.xCluster-details-error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  .delete-config-button {
+    margin-top: 24px;
+  }
+}
+
 .alertMsg {
   * {
     margin-right: 5px;

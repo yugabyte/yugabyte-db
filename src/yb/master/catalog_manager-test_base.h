@@ -58,8 +58,9 @@ inline scoped_refptr<TabletInfo> CreateTablet(
   return tablet;
 }
 
-void CreateTable(const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
-                 TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
+void CreateTable(
+    const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
+    TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
   const size_t kNumSplits = split_keys.size();
   for (size_t i = 0; i <= kNumSplits; i++) {
     const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
@@ -160,12 +161,12 @@ class TestLoadBalancerBase {
         ts_descs_(cb->ts_descs_),
         affinitized_zones_(cb->affinitized_zones_),
         tablet_map_(cb->tablet_map_),
-        table_map_(cb->table_map_),
+        tables_(cb->tables_),
         replication_info_(cb->replication_info_),
         pending_add_replica_tasks_(cb->pending_add_replica_tasks_),
         pending_remove_replica_tasks_(cb->pending_remove_replica_tasks_),
         pending_stepdown_leader_tasks_(cb->pending_stepdown_leader_tasks_) {
-    scoped_refptr<TableInfo> table(new TableInfo(table_id));
+    scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
     std::vector<scoped_refptr<TabletInfo>> tablets;
 
     // Generate 12 tablets total: 4 splits and 3 replicas each.
@@ -176,9 +177,8 @@ class TestLoadBalancerBase {
     CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
     tablets_ = std::move(tablets);
-
-    table_map_[table_id] = table;
     cur_table_uuid_ = table_id;
+    tables_.AddTable(std::move(table));
   }
 
   void TestAlgorithm() {
@@ -247,9 +247,10 @@ class TestLoadBalancerBase {
     cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
     cb_->SetBlacklistAndPendingDeleteTS();
 
+    const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
     const auto& replication_info =
-        VERIFY_RESULT(cb_->GetTableReplicationInfo(table_map_[cur_table_uuid_]));
-    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table_map_[cur_table_uuid_], replication_info));
+        VERIFY_RESULT(cb_->GetTableReplicationInfo(table));
+    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table, replication_info));
 
     cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
@@ -1120,7 +1121,7 @@ class TestLoadBalancerBase {
   TSDescriptorVector& ts_descs_;
   std::vector<AffinitizedZonesSet>& affinitized_zones_;
   TabletInfoMap& tablet_map_;
-  TableInfoMap& table_map_;
+  TableIndex& tables_;
   ReplicationInfoPB& replication_info_;
   std::vector<TabletId>& pending_add_replica_tasks_;
   std::vector<TabletId>& pending_remove_replica_tasks_;

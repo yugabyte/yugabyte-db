@@ -39,13 +39,13 @@ const DEFAULT_CONTAINER_WIDTH = 1200;
 
 export default class MetricsPanel extends Component {
   constructor(props) {
-    super(props)
+    super(props);
     this.outlierButtonsRef = React.createRef();
     this.state = {
       outlierButtonsWidth: null,
       focusedButton: null,
       isItemInDropdown: false
-    }
+    };
   }
 
   static propTypes = {
@@ -288,7 +288,7 @@ export default class MetricsPanel extends Component {
       </Tooltip>
     );
     const getMetricsUrl = (internalUrl) => {
-      var url = new URL(internalUrl);
+      const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
     };
@@ -324,7 +324,7 @@ export default class MetricsPanel extends Component {
                   )}
                   key={idx}
                   active={operation === focusedButton}
-                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>)
+                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>);
             })
           }
           {showDropdown && metricOperationsDropdown.length >= 1 &&
@@ -341,7 +341,7 @@ export default class MetricsPanel extends Component {
                     // className='outlier-button'
                     key={idx}
                     active={operation === focusedButton}
-                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>)
+                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>);
                 })
               }
             </DropdownButton>

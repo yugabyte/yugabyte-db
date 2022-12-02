@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) YugaByte, Inc.
 
-set -e
+set -euo pipefail
 
 export GO111MODULE=on
 
@@ -25,6 +25,8 @@ if [[ ! -d $build_output_dir ]]; then
     mkdir $build_output_dir
 fi
 readonly grpc_output_dir="${project_dir}/generated"
+# Python does not support package option for protobuf.
+readonly grpc_python_output_dir="${grpc_output_dir}/ybops/node_agent"
 readonly grpc_proto_dir=${project_dir}/proto
 readonly grpc_proto_files="${grpc_proto_dir}/*.proto"
 
@@ -66,12 +68,31 @@ setup_protoc() {
     protoc-gen-go-grpc --version
 }
 
-generate_grpc_files() {
+generate_golang_grpc_files() {
     if [[ ! -d $grpc_output_dir ]]; then
         mkdir -p $grpc_output_dir
     fi
     protoc -I$grpc_proto_dir --go_out=$grpc_output_dir --go-grpc_out=$grpc_output_dir  \
     --go-grpc_opt=require_unimplemented_servers=false $grpc_proto_files
+}
+
+build_pymodule() {
+    if [[ ! -d $grpc_python_output_dir ]]; then
+        mkdir -p $grpc_python_output_dir
+    fi
+    pushd $grpc_output_dir
+    python3 -m grpc_tools.protoc -I$grpc_proto_dir --python_out=$grpc_python_output_dir \
+    --grpc_python_out=$grpc_python_output_dir $grpc_proto_files
+    # Python does not support custom package. Workaround to change the package name.
+    if [ $build_os == "darwin" ]; then
+        sed -i "" -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        $grpc_python_output_dir/*.py
+    else
+        sed -i -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        $grpc_python_output_dir/*.py
+    fi
+    cp -rf ../ybops $grpc_output_dir/
+    popd
 }
 
 get_executable_name() {
@@ -86,6 +107,7 @@ get_executable_name() {
 
 prepare() {
     setup_protoc
+    generate_golang_grpc_files
 }
 
 build_for_platform() {
@@ -201,16 +223,23 @@ update_dependencies() {
     go mod tidy -e
 }
 
+# Initialize the vars.
+fmt=false
+prepare=false
 build=false
 clean=false
+test=false
+package=false
+version=0
 update_dependencies=false
+build_pymodule=false
 
 
 show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies>
+./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies|build-pymodule>
 EOT
 exit 1
 }
@@ -247,6 +276,9 @@ while [[ $# -gt 0 ]]; do
     update-dependencies)
       update_dependencies=true
       ;;
+    build-pymodule)
+      build_pymodule=true
+      ;;
     *)
       echo "Unknown option $1"
       exit 1
@@ -257,12 +289,13 @@ while [[ $# -gt 0 ]]; do
   fi
 done
 
+NODE_AGENT_PLATFORMS="${NODE_AGENT_PLATFORMS:=}"
 # Release build passes the platforms in the environment.
 if [ -z "${NODE_AGENT_PLATFORMS}" ]; then
     PLATFORMS=("${default_platforms[@]}")
     echo "Using default platforms ${PLATFORMS[@]}"
 else
-    PLATFORMS=($echo ${NODE_AGENT_PLATFORMS})
+    PLATFORMS=($(echo "${NODE_AGENT_PLATFORMS}"))
     echo "Using environment platforms ${PLATFORMS[@]}"
 fi
 
@@ -299,7 +332,6 @@ if [ "$build" == "true" ]; then
     fi
     format
     prepare
-    generate_grpc_files
     build_for_platforms "${PLATFORMS[@]}"
 fi
 
@@ -318,6 +350,12 @@ if [ "$package" == "true" ]; then
         echo "Packaging..."
         package_for_platforms $version "${PLATFORMS[@]}"
     fi
+fi
+
+if [ "$build_pymodule" == "true" ]; then
+    help_needed=false
+    echo "Installing python module..."
+    build_pymodule
 fi
 
 if [ "$help_needed" == "true" ]; then

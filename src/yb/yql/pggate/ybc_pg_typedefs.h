@@ -338,6 +338,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
+  const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
@@ -393,20 +394,6 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
-typedef struct YbTserverCatalogVersion {
-  uint32_t db_oid;
-  uint64_t current_version;
-  int shm_index;
-} YbTserverCatalogVersion;
-
-// Used to map a database OID to its catalog version info fetched from the local tserver.
-typedef struct YbTserverCatalogInfoData {
-  uint32_t num_databases;
-  YbTserverCatalogVersion* versions;
-} YbTserverCatalogInfoData;
-
-typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
-
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
 typedef struct YbTcmallocStats {
@@ -421,6 +408,10 @@ typedef struct YbTcmallocStats {
   // "tcmalloc.pageheap_unmapped_bytes"
   int64_t pageheap_unmapped_bytes;
 } YbTcmallocStats;
+
+// In per database catalog version mode, this puts a limit on the maximum
+// number of databases that can exist in a cluster.
+static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
 #ifdef __cplusplus
 }  // extern "C"

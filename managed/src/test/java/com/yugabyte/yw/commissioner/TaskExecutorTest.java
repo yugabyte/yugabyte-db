@@ -83,7 +83,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
-          TaskType.RebootNodeInUniverse);
+          TaskType.RebootNodeInUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.BackupUniverse);
 
   @Override
   protected Application provideApplication() {

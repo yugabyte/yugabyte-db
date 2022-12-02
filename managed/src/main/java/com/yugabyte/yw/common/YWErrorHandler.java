@@ -22,6 +22,7 @@ import com.typesafe.config.Config;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import javax.inject.Provider;
+import javax.persistence.OptimisticLockException;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,12 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
       if (cause instanceof PlatformServiceException) {
         return CompletableFuture.completedFuture(
             ((PlatformServiceException) cause).buildResult(request.method(), request.uri()));
+      }
+      if (cause instanceof OptimisticLockException) {
+        return CompletableFuture.completedFuture(
+            new PlatformServiceException(
+                    BAD_REQUEST, "Data has changed, please refresh and try again")
+                .buildResult(request.method(), request.uri()));
       }
     }
     return super.onServerError(request, exception);

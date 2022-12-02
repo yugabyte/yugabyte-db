@@ -20,6 +20,8 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/lock_batch.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver.fwd.h"
@@ -35,6 +37,7 @@ class WriteQuery {
              CoarseTimePoint deadline,
              WriteQueryContext* context,
              TabletPtr tablet,
+             rpc::RpcContext* rpc_context,
              tserver::WriteResponsePB *response = nullptr,
              docdb::OperationKind kind = docdb::OperationKind::kWrite);
 
@@ -197,6 +200,7 @@ class WriteQuery {
   ScopedRWOperation submit_token_;
   const CoarseTimePoint deadline_;
   WriteQueryContext* const context_;
+  rpc::RpcContext* const rpc_context_;
 
   // Pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the

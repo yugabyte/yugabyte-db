@@ -50,7 +50,7 @@ const getTabTitle = (configName: IStorageProviders) => {
         </span>
       );
     default:
-      throw new Error('Undefined storage')
+      throw new Error('Undefined storage');
   }
 };
 

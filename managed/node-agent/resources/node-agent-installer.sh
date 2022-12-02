@@ -143,6 +143,9 @@ install_systemd_service(){
   [Service]
   User=$YUGABYTE_USER
   WorkingDirectory=$ROOT_DIR
+  LimitCORE=infinity
+  LimitNOFILE=1048576
+  LimitNPROC=12000
   ExecStart=$NODE_AGENT_PKG_DIR/bin/node-agent server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC

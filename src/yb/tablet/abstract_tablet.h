@@ -24,6 +24,9 @@
 #include "yb/util/result.h"
 
 namespace yb {
+
+class WriteBuffer;
+
 namespace tablet {
 
 class TabletRetentionPolicy;
@@ -57,7 +60,8 @@ class AbstractTablet {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      QLReadRequestResult* result) = 0;
+      QLReadRequestResult* result,
+      WriteBuffer* rows_data) = 0;
 
   virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
@@ -92,8 +96,7 @@ class AbstractTablet {
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
-      PgsqlReadRequestResult* result,
-      size_t* number_rows_read) = 0;
+      PgsqlReadRequestResult* result) = 0;
 
   virtual Result<IsolationLevel> GetIsolationLevel(const LWTransactionMetadataPB& transaction) = 0;
   virtual Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) = 0;
@@ -107,7 +110,8 @@ class AbstractTablet {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContext& txn_op_context,
-      QLReadRequestResult* result);
+      QLReadRequestResult* result,
+      WriteBuffer* rows_data);
 
   virtual Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                   const size_t row_count,
@@ -119,8 +123,7 @@ class AbstractTablet {
                                  const PgsqlReadRequestPB& pgsql_read_request,
                                  const std::shared_ptr<TableInfo>& table_info,
                                  const TransactionOperationContext& txn_op_context,
-                                 PgsqlReadRequestResult* result,
-                                 size_t* num_rows_read);
+                                 PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;
 

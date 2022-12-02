@@ -61,5 +61,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    init_logging()
+    init_logging(verbose=False)
     main()

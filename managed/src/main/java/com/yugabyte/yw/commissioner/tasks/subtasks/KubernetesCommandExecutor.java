@@ -440,6 +440,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
+            nodeDetail.cloudInfo.instance_type =
+                taskParams().isReadOnlyCluster
+                    ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
+                    : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;

@@ -45,7 +45,7 @@ const PanelBody = ({
   let result = null;
 
   if (isTopKMetricsEnabled) {
-    let invalidTabType = [];
+    const invalidTabType = [];
     // List of default tabs to display based on metrics origin
     let defaultTabToDisplay = MetricTypes.YSQL_OPS;
     if (origin === MetricOrigin.TABLE) {

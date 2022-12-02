@@ -1918,10 +1918,11 @@ void verifyJson(std::shared_ptr<QLRowBlock> row_block) {
   common::Jsonb jsonb(row.column(1).jsonb_value());
   ASSERT_OK(jsonb.ToJsonString(&json));
   EXPECT_EQ("{\"a\":1,\"b\":2}", json);
-  faststring buffer;
+  WriteBuffer buffer(1024);
   SerializeValue(QLType::Create(DataType::JSONB), YQL_CLIENT_CQL, row.column(1).value(), &buffer);
   int32_t len = 0;
-  Slice data(buffer);
+  auto data_str = buffer.ToBuffer();
+  Slice data(data_str);
   ASSERT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, &data, &len));
   string val;
   ASSERT_OK(CQLDecodeBytes(len, &data, &val));

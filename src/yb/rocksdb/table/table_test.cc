@@ -2028,6 +2028,229 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   }
 }
 
+std::string GenerateKey(int primary_key, int secondary_key, int padding_size, Random* rnd) {
+  char buf[50];
+  char* p = &buf[0];
+  snprintf(buf, sizeof(buf), "%6d%4d", primary_key, secondary_key);
+  std::string k(p);
+  if (padding_size) {
+    k += RandomString(rnd, padding_size);
+  }
+
+  return k;
+}
+
+void RunPerformanceTest(
+    size_t block_size,
+    const IndexType& idx_type,
+    bool run_scan_test,  // if false, runs seek tests.
+    int restart_interval = 1,
+    int num_keys = 10000,
+    bool use_delta_encoding = false,
+    KeyValueEncodingFormat encoding_format =
+        KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix) {
+  BlockBasedTableOptions table_options;
+  table_options.index_type = idx_type;
+  table_options.block_size = block_size;
+  table_options.block_cache = NewLRUCache(1 * 1024 * 1024);
+  table_options.index_block_restart_interval = restart_interval;
+  table_options.min_keys_per_index_block = 100;
+  table_options.use_delta_encoding = use_delta_encoding;
+  table_options.data_block_key_value_encoding_format = encoding_format;
+
+  TableConstructor table_constructor(BytewiseComparator());
+  Random rnd(test::RandomSeed());
+  Slice value_slice;
+  for (int i = 0; i < num_keys; i++) {
+    /*10 digits value is generated for primary and secondary key by GenerateKey*/
+    auto key = GenerateKey(i, i + 1000, 32 - 10, &rnd);
+    table_constructor.Add(key, value_slice);
+  }
+
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  options.prefix_extractor.reset(NewFixedPrefixTransform(3));
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  auto comparator = std::make_shared<InternalKeyComparator>(BytewiseComparator());
+  const ImmutableCFOptions ioptions(options);
+  table_constructor.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
+
+  auto* reader = down_cast<BlockBasedTable*>(table_constructor.GetTableReader());
+  LOG(INFO) << "IndexType: " << idx_type << ", KeyCount: " << num_keys
+            << ", BlockSize: " << block_size << ", RestartInterval: " << restart_interval
+            << ", UseDeltaEncoding: " << use_delta_encoding << ", Encoding: " << encoding_format;
+  if (run_scan_test) {
+    LOG(INFO) << "Result order: Next, Prev in nanosecond";
+  } else {
+    LOG(INFO) << "Result order: Incr order, Incr order with gaps, Decr order, Decr order with "
+                 "gaps, Random seek, Random seek with gaps";
+  }
+
+  unique_ptr<InternalIterator> iter;
+  std::stringstream result;
+  auto run_benchmark = [&](std::function<void()>&& callback, int multiplier = 1) {
+    iter.reset(table_constructor.NewIterator());
+
+    auto start = Env::Default()->NowNanos();
+    callback();
+    auto time_taken = (Env::Default()->NowNanos() - start);
+    auto per_key_ns = (time_taken * multiplier) / num_keys;
+    result << per_key_ns << ", ";
+  };
+
+  if (run_scan_test) {
+    // Next scan text.
+    run_benchmark([&]() {
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        /*const auto k =*/ iter->key();
+        /*const auto v =*/ iter->value();
+      }
+      return;
+    });
+
+    // Prev scan text.
+    run_benchmark([&]() {
+      for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+        /*const auto k =*/ iter->key();
+        /*const auto v =*/ iter->value();
+      }
+      return;
+    });
+  } else {
+    // Increasing order.
+    run_benchmark([&]() {
+      for (size_t k = 0; k < keys.size(); k++) {
+        iter->Seek(keys[k]);
+      }
+      return;
+    });
+
+    // Increasing order with gaps.
+    run_benchmark(
+        [&]() {
+          for (size_t k = 0; k < keys.size(); k += 5) {
+            iter->Seek(keys[k]);
+          }
+          return;
+        },
+        5);
+
+    // Decreasing order.
+    run_benchmark([&]() {
+      for (int k = static_cast<int>(keys.size()) - 1; k >= 0; k--) {
+        iter->Seek(keys[k]);
+      }
+    });
+
+    // Decreasing order with gaps.
+    run_benchmark(
+        [&]() {
+          for (int k = static_cast<int>(keys.size()) - 1; k >= 0; k -= 5) {
+            iter->Seek(keys[k]);
+          }
+        },
+        5);
+
+    // Build the order.
+    std::vector<std::string> keys_random(keys.size());
+    for (size_t k = 0; k < keys.size(); k++) {
+      keys_random[k] = keys[rand() % keys.size()];
+    }
+
+    // Random seek.
+    run_benchmark([&]() {
+      for (size_t k = 0; k < keys.size(); k++) {
+        iter->Seek(keys_random[k]);
+      }
+    });
+
+    // Random seek with gaps.
+    run_benchmark(
+        [&]() {
+          for (size_t k = 0; k < keys.size(); k += 5) {
+            iter->Seek(keys_random[k]);
+          }
+        },
+        5);
+  }
+
+  LOG(INFO) << result.str();
+}
+
+void TestSeekPerformance(
+    size_t block_size, const IndexType& idx_type, int restart_interval = 1, int num_keys = 10000) {
+  // Run every test 2 times.
+  RunPerformanceTest(block_size, idx_type, false /*run_scan_test*/, restart_interval, num_keys);
+  RunPerformanceTest(block_size, idx_type, false /*run_scan_test*/, restart_interval, num_keys);
+}
+
+void TestScanPerformance(
+    size_t block_size,
+    bool use_delta_encoding = false,
+    KeyValueEncodingFormat encoding_format =
+        KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix) {
+  IndexType idx_type = IndexType::kBinarySearch;
+  // Run every test 2 times.
+  RunPerformanceTest(
+      block_size, IndexType::kBinarySearch, true /*run_scan_test*/, 1 /*restart_interval*/,
+      10000 /*num_keys*/, use_delta_encoding, encoding_format);
+  RunPerformanceTest(
+      block_size, IndexType::kBinarySearch, true /*run_scan_test*/, 1 /*restart_interval*/,
+      10000 /*num_keys*/, use_delta_encoding, encoding_format);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_ScanPerformanceTest) {
+  bool use_delta_encoding = true;
+  KeyValueEncodingFormat encoding_format =
+      KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
+  TestScanPerformance(8_KB, use_delta_encoding, encoding_format);
+  TestScanPerformance(16_KB, use_delta_encoding, encoding_format);
+  TestScanPerformance(32_KB, use_delta_encoding, encoding_format);
+  TestScanPerformance(64_KB, use_delta_encoding, encoding_format);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_IndexTypeSeekPerformanceTest) {
+  TestSeekPerformance(8_KB, IndexType::kBinarySearch);
+  TestSeekPerformance(16_KB, IndexType::kBinarySearch);
+  TestSeekPerformance(32_KB, IndexType::kBinarySearch);
+  TestSeekPerformance(64_KB, IndexType::kBinarySearch);
+
+  TestSeekPerformance(8_KB, IndexType::kMultiLevelBinarySearch);
+  TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch);
+  TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch);
+  TestSeekPerformance(64_KB, IndexType::kMultiLevelBinarySearch);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_RestartPointsSeekPerformanceTest) {
+  // 1 restart point.
+  TestSeekPerformance(16_KB, IndexType::kBinarySearch, 1);
+  TestSeekPerformance(32_KB, IndexType::kBinarySearch, 1);
+  TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch, 1);
+  TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch, 1);
+
+  // 16 restart point.
+  TestSeekPerformance(16_KB, IndexType::kBinarySearch, 16);
+  TestSeekPerformance(32_KB, IndexType::kBinarySearch, 16);
+  TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch, 16);
+  TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch, 16);
+}
+
+TEST_F(BlockBasedTableTest, DISABLED_KeysCountSeekPerformanceTest) {
+  // 10k keys.
+  TestSeekPerformance(16_KB, IndexType::kBinarySearch, 1);
+  TestSeekPerformance(32_KB, IndexType::kBinarySearch, 1);
+  TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch, 1);
+  TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch, 1);
+
+  // 100k keys.
+  TestSeekPerformance(16_KB, IndexType::kBinarySearch, 1, 100000);
+  TestSeekPerformance(32_KB, IndexType::kBinarySearch, 1, 100000);
+  TestSeekPerformance(16_KB, IndexType::kMultiLevelBinarySearch, 1, 100000);
+  TestSeekPerformance(32_KB, IndexType::kMultiLevelBinarySearch, 1, 100000);
+}
+
 TEST_F(PlainTableTest, BasicPlainTableProperties) {
   PlainTableOptions plain_table_options;
   plain_table_options.user_key_len = 8;

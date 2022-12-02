@@ -255,5 +255,15 @@ bool SchemaPackingStorage::HasVersionBelow(SchemaVersion version) const {
   return false;
 }
 
+std::string SchemaPackingStorage::VersionsToString() const {
+  std::vector<SchemaVersion> versions;
+  versions.reserve(version_to_schema_packing_.size());
+  for (const auto& [version, schema] : version_to_schema_packing_) {
+    versions.push_back(version);
+  }
+  std::sort(versions.begin(), versions.end());
+  return AsString(versions);
+}
+
 } // namespace docdb
 } // namespace yb

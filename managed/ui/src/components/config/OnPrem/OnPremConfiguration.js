@@ -81,10 +81,10 @@ export default class OnPremConfiguration extends Component {
     this.setState({ isEditingProvider: true });
   };
   toggleCreateProviderForm = (flag) => {
-    this.setState({isCreatingProvider: flag})
+    this.setState({isCreatingProvider: flag});
   }
   setSelectedProvider = (providerUUID) => {
-    this.setState({selectedProviderUUID: providerUUID})
+    this.setState({selectedProviderUUID: providerUUID});
   }
   UNSAFE_componentWillReceiveProps(nextProps) {
     const {
@@ -363,7 +363,7 @@ export default class OnPremConfiguration extends Component {
             )}
             <OnPremSuccessContainer
               showEditProviderForm={this.showEditProviderForm}
-              setCreateProviderView={()=>{this.toggleCreateProviderForm(true)}}
+              setCreateProviderView={()=>{this.toggleCreateProviderForm(true);}}
               selectedProviderUUID={selectedProviderUUID || providerFound.uuid}
               params={params}
               setSelectedProvider={this.setSelectedProvider}

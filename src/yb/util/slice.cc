@@ -184,6 +184,14 @@ char Slice::consume_byte() {
   return *begin_++;
 }
 
+void Slice::AppendTo(std::string* out) const {
+  out->append(cdata(), size());
+}
+
+void Slice::AssignTo(std::string* out) const {
+  out->assign(cdata(), size());
+}
+
 std::string SliceParts::ToDebugHexString() const {
   std::string result;
   for (int i = 0; i != num_parts; ++i) {

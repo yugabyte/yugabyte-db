@@ -130,8 +130,8 @@ const mapDispatchToProps = (dispatch) => {
               dispatch(listAccessKeysResponse(response.payload));
             });
           })).then(() => {
-            dispatch(listAccessKeysReqCompleted())
-          })
+            dispatch(listAccessKeysReqCompleted());
+          });
         }
         dispatch(getProviderListResponse(response.payload));
       });

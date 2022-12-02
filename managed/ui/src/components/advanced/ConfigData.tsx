@@ -45,10 +45,10 @@ export const ConfigData: FC<GlobalConfigProps> = ({
   });
 
   if (runtimeConfigs?.data && getPromiseState(runtimeConfigs).isLoading()) {
-    return <YBLoading />
+    return <YBLoading />;
   } else if (runtimeConfigs?.error) {
-    return <YBErrorIndicator
-      customErrorMessage={t('admin.advanced.globalConfig.GlobalConfigReqFailed')} />
+    return (<YBErrorIndicator
+      customErrorMessage={t('admin.advanced.globalConfig.GlobalConfigReqFailed')} />);
   }
 
   const globalConfigEntries = runtimeConfigs?.data?.configEntries;
@@ -84,7 +84,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
       >
         <MenuItem
           onClick={() => {
-            openEditConfig(row)
+            openEditConfig(row);
           }}
         >
           {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
@@ -92,7 +92,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
 
         {(!row.isConfigInherited) && <MenuItem
           onClick={() => {
-            openResetConfig(row)
+            openResetConfig(row);
           }}
         >
           {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
@@ -103,7 +103,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
 
   const rowClassNameFormat = (row: any) => {
     return row.isConfigInherited ? "config-inherited-row" : "config-non-inherited-row";
-  }
+  };
 
   return (
     <div className="runtime-config-data-container">
@@ -115,7 +115,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
             </span>}
           input={{
             onChange: (e: any) => {
-              setShowOverridenValues(e.target.checked)
+              setShowOverridenValues(e.target.checked);
             }
           }}
         />
@@ -175,4 +175,4 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         />}
     </div>
   );
-}
+};

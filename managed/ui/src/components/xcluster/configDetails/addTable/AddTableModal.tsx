@@ -107,14 +107,14 @@ export const AddTableModal = ({
       const bootstrapParams =
         bootstrapRequiredTableUUIDs.length > 0
           ? {
-              tables: bootstrapRequiredTableUUIDs,
-              backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig.value,
-                parallelism: formValues.parallelThreads,
-                sse: formValues.storageConfig.name === 'S3',
-                universeUUID: null
-              }
+            tables: bootstrapRequiredTableUUIDs,
+            backupRequestParams: {
+              storageConfigUUID: formValues.storageConfig.value,
+              parallelism: formValues.parallelThreads,
+              sse: formValues.storageConfig.name === 'S3',
+              universeUUID: null
             }
+          }
           : undefined;
       const tableUUIDs = Array.from(new Set(formValues.tableUUIDs.concat(xClusterConfig.tables)));
       return editXClusterConfigTables(xClusterConfig.uuid, tableUUIDs, bootstrapParams);
@@ -309,8 +309,13 @@ export const AddTableModal = ({
       }}
       footerAccessory={<YBButton btnClass="btn" btnText={'Cancel'} onClick={closeModal} />}
       render={(formikProps: FormikProps<AddTableFormValues>) => {
+        if (!xClusterConfig.sourceUniverseUUID || !xClusterConfig.targetUniverseUUID) {
+          // We can't show anything meaningful if either source or target universe UUID is not a non-empty string.
+          return null;
+        }
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
+
         switch (currentStep) {
           case FormStep.SELECT_TABLES:
             // Casting because FormikValues and FormikError have different types.

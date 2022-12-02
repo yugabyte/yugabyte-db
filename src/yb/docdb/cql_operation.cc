@@ -46,6 +46,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
@@ -1527,6 +1528,10 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const Schema& projection,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
+  auto se = ScopeExit([resultset] {
+    resultset->Complete();
+  });
+
   const auto& schema = doc_read_context.schema;
   SimulateTimeoutIfTesting(&deadline);
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
@@ -1729,8 +1734,9 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
     pair->dup_key(doc_key.Encode().AsSlice());
   }
   pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
-  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
-  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  // Wait policies make sense only for YSQL to support different modes like waiting, skipping, or
+  // failing on detecting intent conflicts. YCQL behaviour matches Fail-on-Conflict always (see
+  // proto for details).
   out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }
@@ -1785,14 +1791,14 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
     RETURN_NOT_OK(spec->Match(row, &match));
     if (match) {
       if (*num_rows_skipped >= offset) {
-        (*match_count)++;
+        ++*match_count;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(spec, row, resultset));
         }
       } else {
-        (*num_rows_skipped)++;
+        ++*num_rows_skipped;
       }
     }
   }

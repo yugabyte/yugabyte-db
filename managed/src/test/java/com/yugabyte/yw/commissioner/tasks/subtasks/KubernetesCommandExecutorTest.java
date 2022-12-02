@@ -88,7 +88,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   String ybSoftwareVersion = "1.0.0";
   int numNodes = 3;
   String namespace = "demo-ns";
-  Map<String, String> config = new HashMap<String, String>();
+  Map<String, String> config = new HashMap<>();
 
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
@@ -203,20 +203,18 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Yaml yaml = new Yaml();
     Map<String, Object> expectedOverrides = new HashMap<>();
     if (exposeAll) {
-      expectedOverrides =
-          (HashMap<String, Object>)
-              yaml.load(provideApplication().resourceAsStream("k8s-expose-all.yml"));
+      expectedOverrides = yaml.load(app.resourceAsStream("k8s-expose-all.yml"));
     }
     double burstVal = 1.2;
     Map<String, String> config = defaultProvider.getUnmaskedConfig();
 
     Map<String, Object> storageOverrides =
-        (HashMap) expectedOverrides.getOrDefault("storage", new HashMap<>());
+        (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
     if (defaultUserIntent.deviceInfo != null) {
       Map<String, Object> tserverDiskSpecs =
-          (HashMap) storageOverrides.getOrDefault("tserver", new HashMap<>());
+          (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
       Map<String, Object> masterDiskSpecs =
-          (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
+          (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
 
       if (defaultUserIntent.deviceInfo.numVolumes != null) {
         tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
@@ -237,7 +235,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         "replicas",
         ImmutableMap.of("tserver", numNodes, "master", defaultUserIntent.replicationFactor));
 
-    Map<String, Object> resourceOverrides = new HashMap();
+    Map<String, Object> resourceOverrides = new HashMap<>();
 
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
@@ -304,8 +302,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // All flags as overrides.
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Master flags.
-    Map<String, Object> masterOverrides =
-        new HashMap<String, Object>(defaultUserIntent.masterGFlags);
+    Map<String, Object> masterOverrides = new HashMap<>(defaultUserIntent.masterGFlags);
     masterOverrides.put("placement_cloud", defaultProvider.code);
     masterOverrides.put("placement_region", defaultRegion.code);
     masterOverrides.put("placement_zone", defaultAZ.code);
@@ -315,8 +312,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     gflagOverrides.put("master", masterOverrides);
 
     // Tserver flags.
-    Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(defaultUserIntent.tserverGFlags);
+    Map<String, Object> tserverOverrides = new HashMap<>(defaultUserIntent.tserverGFlags);
     tserverOverrides.put("placement_cloud", defaultProvider.code);
     tserverOverrides.put("placement_region", defaultRegion.code);
     tserverOverrides.put("placement_zone", defaultAZ.code);
@@ -331,7 +327,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> azConfig = defaultAZ.getUnmaskedConfig();
     Map<String, String> regionConfig = defaultRegion.getUnmaskedConfig();
 
-    Map<String, Object> annotations = new HashMap<String, Object>();
     String overridesYAML = null;
     if (!azConfig.containsKey("OVERRIDES")) {
       if (!regionConfig.containsKey("OVERRIDES")) {
@@ -346,7 +341,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     }
 
     if (overridesYAML != null) {
-      annotations = (HashMap<String, Object>) yaml.load(overridesYAML);
+      Map<String, Object> annotations = yaml.load(overridesYAML);
       if (annotations != null) {
         expectedOverrides.putAll(annotations);
       }
@@ -737,7 +732,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallForAnnotations() throws IOException {
-    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
@@ -780,7 +775,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallForAnnotationsRegion() throws IOException {
-    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
@@ -823,7 +818,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallForAnnotationsAZ() throws IOException {
-    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
         "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
@@ -866,7 +861,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallForAnnotationsPrecendence() throws IOException {
-    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "foo: bar");
     defaultProvider.setConfig(defaultAnnotations);
     defaultProvider.save();
@@ -911,7 +906,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallResourceOverrideMerge() throws IOException {
-    Map<String, String> defaultAnnotations = new HashMap<String, String>();
+    Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put("OVERRIDES", "resource:\n  master:\n    limits:\n      cpu: 650m");
     defaultAZ.updateConfig(defaultAnnotations);
     defaultAZ.save();
