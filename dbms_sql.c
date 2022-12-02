@@ -13,7 +13,6 @@
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
-#include "nodes/pg_list.h"
 #include "parser/parse_coerce.h"
 #include "parser/scansup.h"
 #include "utils/array.h"
@@ -122,9 +121,9 @@ typedef struct
 	TupleDesc	coltupdesc;
 	TupleDesc	tupdesc;
 	CastCacheData *casts;
-	int			processed;
-	int			nread;
-	int			start_read;
+	uint64		processed;
+	uint64		nread;
+	uint64		start_read;
 	bool		assigned;
 	bool		executed;
 	Bitmapset  *array_columns;		/* set of array columns */
@@ -145,9 +144,9 @@ typedef enum
 	TOKEN_DOUBLE_COLON,
 	TOKEN_OTHER,
 	TOKEN_NONE
-} TokenType;
+} orafceTokenType;
 
-static char *next_token(char *str, char **start, size_t *len, TokenType *typ, char **sep, size_t *seplen);
+static char *next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **sep, size_t *seplen);
 
 PG_FUNCTION_INFO_V1(dbms_sql_is_open);
 PG_FUNCTION_INFO_V1(dbms_sql_open_cursor);
@@ -169,7 +168,7 @@ PG_FUNCTION_INFO_V1(dbms_sql_describe_columns);
 PG_FUNCTION_INFO_V1(dbms_sql_describe_columns_f);
 PG_FUNCTION_INFO_V1(dbms_sql_debug_cursor);
 
-static int last_row_count = 0;
+static uint64 last_row_count = 0;
 static MemoryContext	persist_cxt = NULL;
 static CursorData		cursors[MAX_CURSORS];
 
@@ -209,7 +208,7 @@ dbms_sql_open_cursor(PG_FUNCTION_ARGS)
 		{
 			open_cursor(&cursors[i], i);
 
-			return i;
+			PG_RETURN_INT32(i);
 		}
 	}
 
@@ -218,6 +217,9 @@ dbms_sql_open_cursor(PG_FUNCTION_ARGS)
 			 errmsg("too many opened cursors"),
 			 errdetail("There is not free slot for new dbms_sql's cursor."),
 			 errhint("You should to close unused cursors")));
+
+	/* be msvc quiet */
+	return (Datum) 0;
 }
 
 static CursorData *
@@ -388,6 +390,9 @@ get_var(CursorData *c, char *refname, int position, bool append)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_PARAMETER),
 				 errmsg("variable \"%s\" doesn't exists", refname)));
+
+	/* be msvc quite */
+	return NULL;
 }
 
 /*
@@ -400,7 +405,7 @@ dbms_sql_parse(PG_FUNCTION_ARGS)
 			   *ptr;
 	char	   *start;
 	size_t		len;
-	TokenType	typ;
+	orafceTokenType	typ;
 	StringInfoData	sinfo;
 	CursorData *c;
 	MemoryContext oldcxt;
@@ -442,8 +447,8 @@ dbms_sql_parse(PG_FUNCTION_ARGS)
 			}
 			else if (typ == TOKEN_BIND_VAR)
 			{
-				char	   *name = downcase_identifier(start, len, false, true);
-				VariableData *var = get_var(c, name, ptr - query, true);
+				char	   *name = downcase_identifier(start, (int) len, false, true);
+				VariableData *var = get_var(c, name, (int) (ptr - query), true);
 
 				appendStringInfo(&sinfo, "$%d", var->varno);
 
@@ -506,7 +511,7 @@ bind_variable(PG_FUNCTION_ARGS)
 	if (*varname == ':')
 		varname += 1;
 
-	varname_downcase = downcase_identifier(varname, strlen(varname), false, true);
+	varname_downcase = downcase_identifier(varname, (int) strlen(varname), false, true);
 	var = get_var(c, varname_downcase, -1, false);
 
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
@@ -594,7 +599,7 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 	if (*varname == ':')
 		varname += 1;
 
-	varname_downcase = downcase_identifier(varname, strlen(varname), false, true);
+	varname_downcase = downcase_identifier(varname, (int) strlen(varname), false, true);
 	var = get_var(c, varname_downcase, -1, false);
 
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
@@ -717,6 +722,9 @@ get_col(CursorData *c, int position, bool append)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("column no %d is not defined", position)));
+
+	/* be msvc quite */
+	return NULL;
 }
 
 /*
@@ -885,7 +893,7 @@ cursor_xact_cxt_deletion_callback(void *arg)
 	cur->array_columns = NULL;
 }
 
-static long
+static uint64
 execute(CursorData *c)
 {
 	last_row_count = 0;
@@ -1080,7 +1088,7 @@ execute(CursorData *c)
 		int			max_index1 = -1;
 		int			min_index2 = -1;
 		int			max_rows = -1;
-		long		result = 0;
+		uint64		result = 0;
 		ListCell   *lc;
 		int			i;
 
@@ -1292,13 +1300,13 @@ dbms_sql_execute(PG_FUNCTION_ARGS)
 
 	c = get_cursor(fcinfo, true);
 
-	PG_RETURN_INT64(execute(c));
+	PG_RETURN_INT64((int64) execute(c));
 }
 
-static int
+static uint64
 fetch_rows(CursorData *c, bool exact)
 {
-	int		can_read_rows;
+	uint64		can_read_rows;
 
 	if (!c->executed)
 		ereport(ERROR,
@@ -1608,7 +1616,7 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 	if (ccast->is_array)
 	{
 		ArrayBuildState *abs;
-		int		idx;
+		uint64	idx;
 		int		i;
 
 		abs = initArrayResult(columnTypeId, CurrentMemoryContext, false);
@@ -1790,7 +1798,7 @@ is_identif(unsigned char c)
  * simple parser to detect :identif symbols in query
  */
 static char *
-next_token(char *str, char **start, size_t *len, TokenType *typ, char **sep, size_t *seplen)
+next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **sep, size_t *seplen)
 {
 	if (*str == '\0')
 	{
@@ -1848,7 +1856,7 @@ next_token(char *str, char **start, size_t *len, TokenType *typ, char **sep, siz
 
 		/* try to find second instance */
 		buffer = palloc(*seplen + 1);
-		strncpy(buffer, *sep, *seplen);
+		memcpy(buffer, *sep, *seplen);
 		buffer[*seplen] = '\0';
 
 		endstr = strstr(aux, buffer);
