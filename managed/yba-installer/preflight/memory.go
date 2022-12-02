@@ -8,39 +8,45 @@
 	 "strconv"
 	 "strings"
 	 "fmt"
+
+     log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+     "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
   )
- 
+
  var memory = Memory{"memory", "warning"}
- 
+
  type Memory struct {
-	 Name string
+	 name string
 	 WarningLevel string
  }
- 
- 
- func (m Memory) GetName() string {
-	 return m.Name
+
+
+ func (m Memory) Name() string {
+	 return m.name
  }
- 
+
  func (m Memory) GetWarningLevel() string {
 	 return m.WarningLevel
  }
- 
+
  func (m Memory) Execute() {
- 
+
 	command := "grep"
     args := []string{"MemTotal", "/proc/meminfo"}
-    output, err := ExecuteBashCommand(command, args)
+    output, err := common.ExecuteBashCommand(command, args)
     if err != nil {
-        LogError(err.Error())
+        log.Fatal(err.Error())
     } else {
         field1 := strings.Fields(output)[1]
         availableMemoryKB, _ := strconv.Atoi(strings.Split(field1, " ")[0])
         availableMemoryGB := float64(availableMemoryKB) / 1e6
         if availableMemoryGB < defaultMinMemoryLimit {
-            LogError(fmt.Sprintf("System does not meet the minimum memory limit of %v GB.", defaultMinMemoryLimit))
+            log.Fatal(
+                fmt.Sprintf(
+                    "System does not meet the minimum memory limit of %v GB.",
+                    defaultMinMemoryLimit))
         } else {
-            LogInfo(fmt.Sprintf("System meets the requirement of %v GB.", defaultMinMemoryLimit))
+            log.Info(fmt.Sprintf("System meets the requirement of %v GB.", defaultMinMemoryLimit))
         }
     }
  }

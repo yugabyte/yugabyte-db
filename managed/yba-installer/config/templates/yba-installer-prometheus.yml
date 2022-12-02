@@ -7,7 +7,7 @@
       global:
         # By default, scrape targets every 15 seconds.
         scrape_interval:     {{ yamlPath "prometheus.scrapeInterval" }}s
-        evaluation_interval: {{ yamlPath "prometheus.evaluationInterval" }}s
+        evaluation_interval: {{ yamlPath "prometheus.scrapeInterval" }}s
         # scrape_timeout is set to the global default (10s).
 
         # The labels to add to any time series or alerts when communicating with
@@ -23,15 +23,12 @@
       scrape_configs:
 
       - job_name: 'prometheus'
-        scrape_interval: 10s
+        scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}s
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         static_configs:
           - targets: ['127.0.0.1:{{ yamlPath "prometheus.externalPort" }}']
 
       - job_name: 'platform'
-        scheme: https
-        tls_config:
-            insecure_skip_verify: true
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
@@ -122,6 +119,8 @@
           replacement: "$1"
 
       - job_name: "yugabyte"
+        tls_config:
+            insecure_skip_verify: true
         metrics_path: "/prometheus-metrics"
         params:
           # Enable priority regex on all tables

@@ -2,14 +2,20 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package cmd
+package common
 
 import ()
 
 // Component interface used by all services and
 // the Common class (general operations not performed
 // specific to a service).
-type component interface {
-	getTemplateFile() string
+type Component interface {
+	TemplateFile() string
+	Name() string
 	Uninstall(cleanData bool)
+	Status()
+	Start()
+	Stop()
+	Restart()
+	Install()
 }

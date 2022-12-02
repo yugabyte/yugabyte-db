@@ -12,9 +12,6 @@
               "scrapeInterval": {
                 "type": "integer"
               },
-              "evaluationInterval": {
-                "type": "integer"
-              },
               "scrapeTimeout": {
                 "type": "integer"
               },
@@ -31,9 +28,8 @@
                 "type": "integer"
               }
             },
-            "required": ["scrapeInterval", "evaluationInterval",
-          "scrapeTimeout", "externalPort", "maxConcurrency", "maxSamples",
-          "timeout"]
+            "required": ["scrapeInterval", "scrapeTimeout", "externalPort", "maxConcurrency",
+              "maxSamples", "timeout"]
         },
         "platform": {
           "description": "Platform Config Parameters",
