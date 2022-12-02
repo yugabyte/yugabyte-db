@@ -546,8 +546,8 @@ _ora_date_round(DateADT day, int f)
 			if (isoyear > (DATE2J(y+1,1,1)-1))
 				if (day > isoyear - 7)
 				{
-					int d = J2DAY(day);
-					result -= (d == 0 || d > 4?7:0);
+					int _d = J2DAY(day);
+					result -= (_d == 0 || _d > 4?7:0);
 				}
 		}
 		break;
