@@ -199,9 +199,6 @@ public class UserTaskDetails {
     // Running custom hooks
     RunningHooks,
 
-    // Updating Packages
-    UpdatePackage,
-
     // Upgrading Yb-Controller
     UpgradingYbc,
 
@@ -479,10 +476,6 @@ public class UserTaskDetails {
       case RunningHooks:
         title = "Running Hooks";
         description = "Run custom hooks";
-        break;
-      case UpdatePackage:
-        title = "Update Packages";
-        description = "Updating packages installed on the nodes";
         break;
       case UpgradingYbc:
         title = "Upgrading Yb-controller";
