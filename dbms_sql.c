@@ -45,7 +45,7 @@ typedef struct
 	int16		typlen;
 
 	bool		isnull;
-	int			varno;		/* number of assigned placeholder of parsed query */
+	unsigned int varno;		/* number of assigned placeholder of parsed query */
 	bool		is_array;	/* true, when a value is assigned via bind_array */
 	Oid			typelemid;	/* Oid of element of a array */
 	bool		typelembyval;
@@ -67,7 +67,7 @@ typedef struct
 	int32		typmod;
 	bool		typisstr;
 	Oid			typarrayoid;		/* oid of requested array output value */
-	int			rowcount;			/* maximal rows of requested array */
+	uint64		rowcount;			/* maximal rows of requested array */
 	int			index1;				/* output array should be rewrited from this index */
 } ColumnData;
 
@@ -106,7 +106,7 @@ typedef struct
 	int16		cid;
 	char	   *parsed_query;
 	char	   *original_query;
-	int			nvariables;
+	unsigned int nvariables;
 	int			max_colpos;
 	List	   *variables;
 	List	   *columns;
@@ -127,7 +127,7 @@ typedef struct
 	bool		assigned;
 	bool		executed;
 	Bitmapset  *array_columns;		/* set of array columns */
-	int			batch_rows;			/* how much rows should be fetched to fill target arrays */
+	uint64		batch_rows;			/* how much rows should be fetched to fill target arrays */
 } CursorData;
 
 typedef enum
@@ -783,6 +783,8 @@ dbms_sql_define_column(PG_FUNCTION_ARGS)
 
 	get_typlenbyval(basetype, &col->typlen, &col->typbyval);
 
+	col->rowcount = 1;
+
 	return (Datum) 0;
 }
 
@@ -851,7 +853,7 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("cnt is less or equal to zero")));
 
-	col->rowcount = rowcount;
+	col->rowcount = (uint64) rowcount;
 
 	if (PG_ARGISNULL(4))
 		ereport(ERROR,
@@ -944,11 +946,11 @@ execute(CursorData *c)
 	{
 		Datum	   *values;
 		Oid		   *types;
-		char *nulls;
+		char	   *nulls;
 		ListCell   *lc;
-		int		i;
+		int			i;
 		MemoryContext oldcxt;
-		int			batch_rows = -1;
+		uint64		batch_rows = 0;
 
 		oldcxt = MemoryContextSwitchTo(c->cursor_xact_cxt);
 
@@ -1007,10 +1009,13 @@ execute(CursorData *c)
 
 			snprintf(genname, 32, "col%d", i);
 
+			Assert(col->rowcount > 0);
+
 			if (col->typarrayoid)
 			{
-				if (batch_rows != -1)
-					batch_rows = batch_rows > col->rowcount ? col->rowcount : batch_rows;
+
+				if (batch_rows != 0)
+					batch_rows = col->rowcount < batch_rows ? col->rowcount : batch_rows;
 				else
 					batch_rows = col->rowcount;
 
@@ -1026,7 +1031,8 @@ execute(CursorData *c)
 		}
 
 		c->batch_rows = batch_rows;
-		c->casts = palloc0(sizeof(CastCacheData) * c->coltupdesc->natts);
+		Assert(c->coltupdesc->natts >= 0);
+		c->casts = palloc0(sizeof(CastCacheData) * ((unsigned int) c->coltupdesc->natts));
 
 		MemoryContextSwitchTo(oldcxt);
 
@@ -1037,7 +1043,7 @@ execute(CursorData *c)
 
 		c->portal = SPI_cursor_open_with_args(c->cursorname,
 											  c->parsed_query,
-											  c->nvariables,
+											  (int) c->nvariables,
 											  types,
 											  values,
 											  nulls,
@@ -1116,7 +1122,7 @@ execute(CursorData *c)
 				types[i++] = var->is_array ? var->typelemid : var->typoid;
 			}
 
-			plan = SPI_prepare(c->parsed_query, c->nvariables, types);
+			plan = SPI_prepare(c->parsed_query, (int) c->nvariables, types);
 
 			if (!plan)
 				/* internal error */
@@ -1616,8 +1622,8 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 	if (ccast->is_array)
 	{
 		ArrayBuildState *abs;
-		uint64	idx;
-		int		i;
+		uint64		idx;
+		uint64		i;
 
 		abs = initArrayResult(columnTypeId, CurrentMemoryContext, false);
 
@@ -1813,12 +1819,14 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 		while (*str == ' ')
 			str++;
 
-		*typ = TOKEN_SPACES; *len = 1;
+		*typ = TOKEN_SPACES;
+		*len = 1;
 		return str;
 	}
 
 	/* Postgres's dolar strings */
-	if (*str == '$' && (str[1] == '$' || is_identif(str[1]) || str[1] == '_'))
+	if (*str == '$' && (str[1] == '$' ||
+		is_identif((unsigned char) str[1]) || str[1] == '_'))
 	{
 		char	   *aux = str + 1;
 		char	   *endstr;
@@ -1834,7 +1842,7 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 				aux++;
 				break;
 			}
-			else if (is_identif(*aux) ||
+			else if (is_identif((unsigned char) *aux) ||
 					 isdigit(*aux) ||
 					 *aux == '_')
 			{
@@ -1846,13 +1854,17 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 
 		if (!is_valid)
 		{
-			*typ = TOKEN_OTHER; *len = 1;
+			*typ = TOKEN_OTHER;
+			*len = 1;
 			*start = str;
 			return str + 1;
 		}
 
 		/* now it looks like correct $ separator */
-		*start = aux; *sep = str; *seplen = aux - str; *typ = TOKEN_DOLAR_STR;
+		*start = aux; *sep = str;
+		Assert(aux >= str);
+		*seplen = (size_t) (aux - str);
+		*typ = TOKEN_DOLAR_STR;
 
 		/* try to find second instance */
 		buffer = palloc(*seplen + 1);
@@ -1862,14 +1874,17 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 		endstr = strstr(aux, buffer);
 		if (endstr)
 		{
-			*len = endstr - *start;
+			Assert(endstr >= *start);
+			*len = (size_t) (endstr - *start);
 			return endstr + *seplen;
 		}
 		else
 		{
 			while (*aux)
 				aux++;
-			*len = aux - *start;
+
+			Assert(aux >= *start);
+			*len = (size_t) (aux - *start);
 			return aux;
 		}
 
@@ -1889,7 +1904,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			}
 			str++;
 		}
-		*typ = TOKEN_COMMENT; *len = str - *start;
+		*typ = TOKEN_COMMENT;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
@@ -1910,32 +1927,38 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			else
 				break;
 		}
-		*typ = TOKEN_NUMBER; *len = str - *start;
+		*typ = TOKEN_NUMBER;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
 	/* Double colon :: */
 	if (*str == ':' && str[1] == ':')
 	{
-		*start = str; *typ = TOKEN_DOUBLE_COLON; *len = 2;
+		*start = str;
+		*typ = TOKEN_DOUBLE_COLON;
+		*len = 2;
 		return str + 2;
 	}
 
 	/* Bind variable placeholder */
 	if (*str == ':' &&
-		(is_identif(str[1]) || str[1] == '_'))
+		(is_identif((unsigned char) str[1]) || str[1] == '_'))
 	{
 		*start = &str[1]; str += 2;
 		while (*str)
 		{
-			if (is_identif(*str) ||
+			if (is_identif((unsigned char) *str) ||
 				isdigit(*str) ||
 				*str == '_')
 				str++;
 			else
 				break;
 		}
-		*typ = TOKEN_BIND_VAR; *len = str - *start;
+		*typ = TOKEN_BIND_VAR;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
@@ -1947,7 +1970,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 		{
 			if (*str == '\'')
 			{
-				*typ = TOKEN_EXT_STR; *len = str - *start;
+				*typ = TOKEN_EXT_STR;
+				Assert(str >= *start);
+				*len = (size_t) (str - *start);
 				return str + 1;
 			}
 			if (*str == '\\' && str[1] == '\'')
@@ -1958,7 +1983,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 				str += 1;
 		}
 
-		*typ = TOKEN_EXT_STR; *len = str - *start;
+		*typ = TOKEN_EXT_STR;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
@@ -1972,7 +1999,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			{
 				if (str[1] != '\'')
 				{
-					*typ = TOKEN_STR; *len = str - *start;
+					*typ = TOKEN_STR;
+					Assert(str >= *start);
+					*len = (size_t) (str - *start);
 					return str + 1;
 				}
 				str += 2;
@@ -1980,7 +2009,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			else
 				str += 1;
 		}
-		*typ = TOKEN_STR; *len = str - *start;
+		*typ = TOKEN_STR;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
@@ -1994,7 +2025,9 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			{
 				if (str[1] != '"')
 				{
-					*typ = TOKEN_QIDENTIF; *len = str - *start;
+					*typ = TOKEN_QIDENTIF;
+					Assert(str >= *start);
+					*len = (size_t) (str - *start);
 					return str + 1;
 				}
 				str += 2;
@@ -2002,29 +2035,35 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 			else
 				str += 1;
 		}
-		*typ = TOKEN_QIDENTIF; *len = str - *start;
+		*typ = TOKEN_QIDENTIF;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
 	/* Identifiers */
-	if (is_identif(*str) || *str == '_')
+	if (is_identif((unsigned char) *str) || *str == '_')
 	{
 		*start = str++;
 		while (*str)
 		{
-			if (is_identif(*str) ||
+			if (is_identif((unsigned char) *str) ||
 				isdigit(*str) ||
 				*str == '_')
 				str++;
 			else
 				break;
 		}
-		*typ = TOKEN_IDENTIF; *len = str - *start;
+		*typ = TOKEN_IDENTIF;
+		Assert(str >= *start);
+		*len = (size_t) (str - *start);
 		return str;
 	}
 
 	/* Others */
-	*typ = TOKEN_OTHER; *start = str; *len = 1;
+	*typ = TOKEN_OTHER;
+	*start = str;
+	*len = 1;
 	return str + 1;
 }
 
@@ -2101,7 +2140,7 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 	if ((rc = SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0)) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
-	plan = SPI_prepare(c->parsed_query, c->nvariables, types);
+	plan = SPI_prepare(c->parsed_query, (int) c->nvariables, types);
 	if (!plan || plan->magic != _SPI_PLAN_MAGIC)
 		elog(ERROR, "plan is not valid");
 

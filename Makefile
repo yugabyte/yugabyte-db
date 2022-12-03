@@ -79,7 +79,7 @@ REGRESS = orafce\
 #REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
 
-#override CFLAGS += -Wextra -Wimplicit-fallthrough=0
+# override CFLAGS += -Wextra -Wimplicit-fallthrough=0
 
 ifdef NO_PGXS
 subdir = contrib/$(MODULE_big)

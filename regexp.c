@@ -404,7 +404,7 @@ orafce_replace_text_regexp(text *src_text, text *pattern_text,
 	int			nmatch = lengthof(pmatch);
 	pg_wchar   *data;
 	size_t		data_len;
-	int			data_pos;
+	size_t		data_pos;
 	char	   *start_ptr;
 	int			escape_status;
 
@@ -438,7 +438,7 @@ orafce_replace_text_regexp(text *src_text, text *pattern_text,
 	start_ptr = (char *) VARDATA_ANY(src_text);
 	data_pos = 0;
 
-	while (search_start <= data_len)
+	while (search_start <= (int) data_len)
 	{
 		int			regexec_result;
 
@@ -714,7 +714,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 			while (array_idx + matchctx->npatterns * 2 + 1 > array_len)
 			{
 				array_len += array_len + 1; /* 2^n-1 => 2^(n+1)-1 */
-				if (array_len > MaxAllocSize / sizeof(int))
+				if (array_len > (int) (MaxAllocSize / sizeof(int)))
 					ereport(ERROR,
 							(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 							 errmsg("too many regular expression matches")));
