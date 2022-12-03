@@ -94,6 +94,7 @@ class SystemTablet : public tablet::AbstractTablet {
       tablet::RequireLease require_lease, HybridTime min_allowed,
       CoarseTimePoint deadline) const override;
 
+  const std::string log_prefix_;
   docdb::DocReadContextPtr doc_read_context_;
   std::unique_ptr<YQLVirtualTable> yql_virtual_table_;
   TabletId tablet_id_;

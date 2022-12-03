@@ -232,7 +232,7 @@ void DocRowwiseIteratorTest::InsertTestRangeData() {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
   InsertTestRangeData();
-  DocReadContext doc_read_context(test_range_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(test_range_schema);
 
   DocRowwiseIterator iter(
       test_range_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -281,7 +281,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -364,7 +364,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterHybridScanTest) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest) {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -490,7 +490,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest2) {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -570,7 +570,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterSubsetColTest2) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterMultiInTest) {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -658,7 +658,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterMultiInTest) {
 
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -693,7 +693,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterEmptyInTest) {
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterDiscreteScanTest) {
   FLAGS_disable_hybrid_scan = true;
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -777,7 +777,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterDiscreteScanTest) {
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeScanTest) {
   FLAGS_disable_hybrid_scan = true;
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -904,7 +904,7 @@ TEST_F(DocRowwiseIteratorTest, ClusteredFilterRangeScanTest) {
 TEST_F(DocRowwiseIteratorTest, SimpleRangeScanTest) {
   FLAGS_disable_hybrid_scan = true;
   InsertPopulationData();
-  DocReadContext doc_read_context(population_schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   DocRowwiseIterator iter(
       population_schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -1024,7 +1024,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   const Schema &projection = kProjectionForIteratorTests;
   QLTableRow row;
   QLValue value;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1138,7 +1138,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1196,7 +1196,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1412,7 +1412,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1462,7 +1462,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1524,7 +1524,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = kSchemaForIteratorTests;
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
-  DocReadContext doc_read_context(schema_copy, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
 
   // Read should have results before delete...
   {
@@ -1596,7 +1596,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1663,7 +1663,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1720,7 +1720,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
       &projection, 2));
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   {
     DocRowwiseIterator iter(
@@ -1880,7 +1880,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
       TransactionId::GenerateRandom(), &txn_status_manager);
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
 
   LOG(INFO) << "=============================================== ReadTime-2000";
   {
@@ -2131,7 +2131,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
 
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
   const Schema &projection = kProjectionForIteratorTests;
-  DocReadContext doc_read_context(kSchemaForIteratorTests, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(kSchemaForIteratorTests);
 
   DocRowwiseIterator iter(
       projection, doc_read_context, txn_context, doc_db(),

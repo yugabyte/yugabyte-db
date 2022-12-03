@@ -181,9 +181,9 @@ class DocOperationTest : public DocDBTestBase {
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
-    QLWriteOperation ql_write_op(ql_writereq_pb,
-                                 std::make_shared<DocReadContext>(schema, 1),
-                                 index_map, nullptr /* unique_index_key_schema */, txn_op_context);
+    QLWriteOperation ql_write_op(
+        ql_writereq_pb, std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)),
+        index_map, nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
@@ -327,7 +327,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     faststring rows_data;
     QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
-    DocReadContext doc_read_context(schema, 1);
+    auto doc_read_context = DocReadContext::TEST_Create(schema);
     EXPECT_OK(read_op.Execute(
         ql_storage, CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(read_time),
         doc_read_context, projection, &resultset, &read_restart_ht));
@@ -559,7 +559,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   Schema schema = CreateSchema();
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
   DocRowwiseIterator iter(schema, doc_read_context, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
@@ -785,7 +785,8 @@ class DocOperationScanTest : public DocOperationTest {
     ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
     ColumnSchema value_column("v", INT32, false, false);
     auto columns = { hash_column, range_column, value_column };
-    doc_read_context_ = DocReadContext(Schema(columns, CreateColumnIds(columns.size()), 2), 1);
+    doc_read_context_ = DocReadContext::TEST_Create(
+        Schema(columns, CreateColumnIds(columns.size()), 2));
   }
 
   void InsertRows(const size_t num_rows_per_key,
@@ -935,7 +936,7 @@ class DocOperationScanTest : public DocOperationTest {
 
   std::mt19937_64 rng_;
   SortingType range_column_sorting_type_;
-  DocReadContext doc_read_context_{Schema(), 1};
+  DocReadContext doc_read_context_ = DocReadContext::TEST_Create(Schema());
   int32_t h_key_;
   std::vector<RowDataWithHt> rows_;
 };

@@ -208,7 +208,8 @@ Status PopulateBeforeImage(
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
 
-  docdb::DocReadContext doc_read_context(schema, schema_version);
+  const auto log_prefix = tablet->LogPrefix();
+  docdb::DocReadContext doc_read_context(log_prefix, schema, schema_version);
   docdb::DocRowwiseIterator iter(
       schema, doc_read_context, TransactionOperationContext(), docdb,
       CoarseTimePoint::max() /* deadline */, read_time);

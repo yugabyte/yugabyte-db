@@ -777,6 +777,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // critical failures.
   Status ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config);
 
+  std::string LogPrefix() const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -832,8 +834,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
 
   Status DoEnableCompactions();
-
-  std::string LogPrefix() const;
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
