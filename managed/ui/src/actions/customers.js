@@ -170,6 +170,8 @@ export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
 export const UPDATE_TLS = 'UPDATE_TLS';
 
+export const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
+
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
   if (cUUID) {
@@ -899,7 +901,7 @@ export function fetchCustomerConfigsResponse(response) {
 }
 
 export function fetchRunTimeConfigs(
-  scope = '00000000-0000-0000-0000-000000000000',
+  scope = DEFAULT_RUNTIME_GLOBAL_SCOPE,
   includeInherited = false
 ) {
   const cUUID = localStorage.getItem('customerId');
@@ -919,7 +921,7 @@ export function fetchRunTimeConfigsResponse(response) {
   };
 }
 
-export function setRunTimeConfig({ key, value, scope = '00000000-0000-0000-0000-000000000000' }) {
+export function setRunTimeConfig({ key, value, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }) {
   const cUUID = localStorage.getItem('customerId');
   const headers = {
     'Content-Type': 'text/plain'
@@ -944,7 +946,7 @@ export function setRunTimeConfigResponse(response) {
   };
 }
 
-export function deleteRunTimeConfig({ key, scope = '00000000-0000-0000-0000-000000000000' }) {
+export function deleteRunTimeConfig({ key, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`);
   return {
