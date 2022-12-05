@@ -14,7 +14,7 @@ type: docs
 
 Use the YugabyteDB `yb_pg_stat_get_queries` function to see terminated queries and the reason for their termination.
 
-When a query quits for unexpected reasons, information about the query information and the responsible backend is stored and you can access it using yb_pg_stat_get_queries. Calling the module returns queries using the following criteria:
+When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using yb_pg_stat_get_queries. Calling the function returns queries using the following criteria:
 
 - Temporary file size exceeds temp_file_limit.
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
@@ -26,7 +26,7 @@ The function takes a single argument, the Object identifier (OID) of the databas
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by yb_pg_stat_get_queries:
+At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_pg_stat_get_queries`:
 
 ```sql
 yugabyte=# \x
@@ -63,7 +63,7 @@ The following table describes the arguments and their values:
 
 To simulate a crash in the PostgreSQL process, send a SIGSEGV signal to the backend process.
 
-In a ysqlsh session, get the backend pid.
+In a ysqlsh session, get the backend `pid`:
 
 ```sql
 yugabyte=# SELECT pg_backend_pid();
@@ -76,19 +76,19 @@ yugabyte=# SELECT pg_backend_pid();
 (1 row)
 ```
 
-In the same session, start a long-running query, so that you have time to send a signal while the query is running.
+In the same session, start a long-running query, so that you have time to send a signal while the query is running:
 
 ```sql
 yugabyte=# SELECT * FROM generate_series(1, 123456789);
 ```
 
-In another shell, send the terminating signal to the backend process.
+In another shell, send the terminating signal to the backend process:
 
 ```sh
 $ kill -SIGSEGV 4650 # the pid of the backend process
 ```
 
-Verify that the query is listed as a terminated query.
+Verify that the query is listed as a terminated query:
 
 ```sql
 yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
@@ -103,13 +103,13 @@ yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_ge
 
 ### Exceed the temporary file limit
 
-To simulate a query termination, set `temp_file_limit` to 0kB.
+To simulate a query termination, set `temp_file_limit` to 0KB:
 
 ```sql
 yugabyte=# SET temp_file_limit TO 0;
 ```
 
-Now any query that requires a temporary file will error.
+Now any query that requires a temporary file will result in an error.
 
 To ensure failure, run a query that generates hundreds of millions of rows as follows:
 
@@ -157,7 +157,7 @@ In the same session, start a long-running query so that you have time to send a 
 yugabyte=# SELECT * FROM generate_series(1, 123456789);
 ```
 
-In another shell, send the terminating signal to the backend process.
+In another session, send the terminating signal to the backend process:
 
 ```sh
 $ kill -KILL 4801 # the pid of the backend process
@@ -199,7 +199,7 @@ new_db=# SET temp_file_limit TO 0;
 new_db=# SELECT 'db2' FROM generate_series(1, 123456789);
 ```
 
-Running yb_pg_stat_get_queries without providing an OID returns both queries:
+Running `yb_pg_stat_get_queries` without providing an OID returns both queries:
 
 ```sql
 new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL);
