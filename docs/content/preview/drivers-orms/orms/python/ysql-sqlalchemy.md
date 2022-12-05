@@ -30,31 +30,19 @@ This SQLAlchemy ORM example, running on Python, implements a basic REST API serv
 
 The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 
-## Before you begin
+## Prerequisites
 
-To configure and run this application, make sure that you've completed these prerequisites.
+This tutorial assumes that you have:
 
-### YugabyteDB
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+- Python 3 is installed
+- the Python packages (dependencies) : [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/), [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/) and [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/) installed:
 
-YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+    To install these three packages, run the following command:
 
-### Python
-
-Python 3 is installed
-
-### Python packages (dependencies)
-
-Python packages (dependencies) are installed
-
-- [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/)
-- [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/)
-- [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/)
-
-To quickly install these three packages, run the following command.
-
-```sh
-$ pip3 install psycopg2-binary sqlalchemy jsonpickle
-```
+    ```sh
+    $ pip3 install psycopg2-binary sqlalchemy jsonpickle
+    ```
 
 ## Clone the "orm-examples" repository
 

@@ -1,8 +1,9 @@
 ---
-title: Build REST API apps with ORMs
-headerTitle: Build REST API apps with ORMs
-linkTitle: REST apps with ORMs
+title: Build applications using ORMs
+headerTitle: Build applications using ORMs
+linkTitle: Build apps using ORMs
 description: Build a REST application using ORMs with YugabyteDB
+headcontent: Learn how to use your favorite ORM with YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -12,6 +13,8 @@ menu:
 type: indexpage
 showRightNav: true
 ---
+
+An ORM tool is used to store the domain objects of an application into the database tables, handle database access, and map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and allows the evolution of domain objects to be applied to the database tables.
 
 The examples in this section illustrate how you can build a basic online e-commerce store application that connects to YugabyteDB by implementing a REST API server using the ORM of your choice.
 

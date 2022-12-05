@@ -34,7 +34,7 @@ The source for the above application can be found in the `python/django` directo
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - [Python 3](https://www.python.org/downloads/) or later is installed.
 - [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
@@ -48,38 +48,38 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 
 - Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
 
-```python
-DATABASES =
-{
-    'default':
+    ```python
+    DATABASES =
     {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ysql_django',
-        'USER': 'yugabyte',
-        'PASSWORD': '',
-        'HOST': '127.0.0.1',
-        'PORT': '5433',
+        'default':
+        {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'ysql_django',
+            'USER': 'yugabyte',
+            'PASSWORD': '',
+            'HOST': '127.0.0.1',
+            'PORT': '5433',
+        }
     }
-}
-```
+    ```
 
 - Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
 
-```python
-SECRET_KEY = 'YOUR-SECRET-KEY'
-```
+    ```python
+    SECRET_KEY = 'YOUR-SECRET-KEY'
+    ```
 
 - Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local YugabyteDB cluster, run the following shell command:
 
-```sh
-bin/ysqlsh -c "CREATE DATABASE ysql_django"
-```
+    ```sh
+    bin/ysqlsh -c "CREATE DATABASE ysql_django"
+    ```
 
 - From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
 
-```sh
-python3 manage.py makemigrations && python3 manage.py migrate
-```
+    ```sh
+    python3 manage.py makemigrations && python3 manage.py migrate
+    ```
 
 ## Start the REST API server
 

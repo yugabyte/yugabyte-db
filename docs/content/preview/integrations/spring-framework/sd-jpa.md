@@ -19,7 +19,7 @@ This document describes the fundamentals of using Spring Data JPA with YugabyteD
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Java ORM example application](../../../drivers-orms/orms/ysql-spring-data/).
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Java ORM example application](../../../drivers-orms/orms/java/ysql-spring-data/).
 
 ## Project dependencies
 

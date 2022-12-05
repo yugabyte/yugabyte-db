@@ -48,9 +48,9 @@ The project definition includes the following dependencies:
 
 ## Examples
 
-### 1. Build a Java application
+### Spring Data YugabyteDB application
 
-The following tutorial illustrates how to build a Java application with Spring Data YugabyteDB and use the YSQL API to connect to and interact with YugabyteDB.
+The following tutorial illustrates how to build a Java application with Spring Data YugabyteDB and use the YSQL API to connect to and interact with YugabyteDB. The application connects to a YugabyteDB cluster and performs basic SQL operations, including creating an employees table, adding an employee, and querying the database.
 
 #### Prerequisites
 
@@ -60,7 +60,7 @@ This tutorial assumes that:
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
-#### Create the Spring Data YugabyteDB app using Spring Boot
+#### Create a project using Spring Boot
 
 The Spring Boot project provides the [Spring Initializr](https://start.spring.io/) utility for generating dependencies for Spring Boot applications.
 
@@ -74,18 +74,18 @@ The Spring Boot project provides the [Spring Initializr](https://start.spring.io
 
 1. Add the following dependencies to `pom.xml` of the Spring Boot application:
 
-```xml
-<dependency>
-  <groupId>com.yugabyte</groupId>
-  <artifactId>spring-data-yugabytedb-ysql</artifactId>
-  <version>2.3.0</version>
-</dependency>
-<dependency>
-  <groupId>com.zaxxer</groupId>
-  <artifactId>HikariCP</artifactId>
-</dependency>
+    ```xml
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>spring-data-yugabytedb-ysql</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+    </dependency>
 
-```
+    ```
 
 #### Create the sample Spring Data YugabyteDB application
 

@@ -84,36 +84,19 @@ db := pg.Connect(opt)
 
 #### Use SSL
 
-You can choose to enable or disable SSL for your local YugabyteDB cluster. To configure SSL/TLS for your YugabyteDB cluster, refer to [Enable client-to-server encryption](../../../secure/tls-encryption/client-to-server/). YugabyteDB Managed requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
-#### CA certificate
+```sh
+$ export PGSSLMODE=verify-ca
+$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+```
 
-Use the [CA certificate](../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) generated above as part of the SSL/TLS configuration of your cluster.
+| Environment Variable | Description |
+| :---------- | :---------- |
+| PGSSLMODE |  SSL mode used for the connection |
+| PGSSLROOTCERT | Path to the root certificate on your computer |
 
-In case of a YugabyteDB Managed cluster, to download the CA certificate for your cluster in YugabyteDB Managed, do the following:
-
-1. On the **Clusters** tab, select a cluster.
-
-1. Click **Connect**.
-
-1. Click **Connect to your application** and download the CA cert.
-
-#### OpenSSL
-
-Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Managed clusters are always SSL/TLS enabled.
-
-The following table summarizes the SSL modes and their support in the driver:
-
-| SSL Mode | Client driver behavior |
-| :------- | :--------------------- |
-| disable | Supported |
-| allow | Supported |
-| prefer | Supported |
-| require | Supported |
-| verify-ca | Supported |
-| verify-full | Supported |
-
-YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
+The driver supports all the SSL modes. YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 ### Step 3: Write your application
 
@@ -333,14 +316,7 @@ func main() {
 }
 ```
 
-#### Enable SSL/TLS
-
-For a YugabyteDB Managed cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
-
-```sh
-$ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
-```
+#### Run the application
 
 Run the application using the following command:
 

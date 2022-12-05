@@ -38,7 +38,7 @@ Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites).
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 
 ## Clone the orm-examples repository
 

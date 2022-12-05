@@ -24,17 +24,12 @@ The following tutorial implements an ORM example using [GORM](https://gorm.io/),
 
 The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
 
-## Before you begin
+## Prerequisites
 
-This tutorial assumes that you have satisfied the following prerequisites.
+This tutorial assumes that you have:
 
-### YugabyteDB
-
-YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running in five minutes by following the steps in [Quick start](../../../quick-start/).
-
-### Go
-
-Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
 
 ### Go dependencies
 
