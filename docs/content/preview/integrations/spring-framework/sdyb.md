@@ -295,7 +295,7 @@ Created table employee
 Query returned: name = User One, email = user@one.com
 ```
 
-### 2. Example to create a basic shopping cart
+### Shopping cart application
 
 The following example demonstrates how to create a basic shopping cart using Spring data YugabyteDB:
 
