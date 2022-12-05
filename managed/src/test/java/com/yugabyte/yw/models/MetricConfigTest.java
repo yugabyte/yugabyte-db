@@ -13,12 +13,9 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.metrics.MetricLabelFilter;
-import com.yugabyte.yw.metrics.MetricLabelFilters;
 import com.yugabyte.yw.metrics.MetricQueryContext;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricSettings;
@@ -203,67 +200,6 @@ public class MetricConfigTest extends FakeDBApplication {
                     + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
                     + "service_method=~\"Read|Write\"}[60s])) by"
                     + " (service_method, exported_instance))) by (service_method)")));
-  }
-
-  @Test
-  public void testOrFilterQuery() {
-    JsonNode configJson =
-        Json.parse(
-            "{\"metric\": \"rpc_latency.avg\", \"function\": \"irate|sum\","
-                + "\"range\": true,"
-                + "\"filters\": {\"export_type\": \"tserver_export\","
-                + "\"service_type\": \"TabletServerService\","
-                + "\"service_method\": \"Read|Write\"},"
-                + "\"group_by\": \"service_method\"}");
-    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
-    metricConfig.save();
-    MetricLabelFilters readFilters =
-        MetricLabelFilters.builder()
-            .filters(
-                ImmutableList.of(
-                    new MetricLabelFilter("service_method", "Read"),
-                    new MetricLabelFilter(
-                        MetricQueryHelper.EXPORTED_INSTANCE, "instance1|instance2")))
-            .build();
-    MetricLabelFilters writeFilters =
-        MetricLabelFilters.builder()
-            .filters(
-                ImmutableList.of(
-                    new MetricLabelFilter("service_method", "Write"),
-                    new MetricLabelFilter(
-                        MetricQueryHelper.EXPORTED_INSTANCE, "instance3|instance4")))
-            .build();
-    String query =
-        metricConfig
-            .getConfig()
-            .getSingleMetricQuery(
-                MetricSettings.defaultSettings("rpc_latency.avg").setSplitCount(2),
-                MetricQueryContext.builder()
-                    .metricOrFilters(
-                        ImmutableMap.of(
-                            "rpc_latency.avg", ImmutableList.of(readFilters, writeFilters)))
-                    .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
-                    .queryRangeSecs(DEFAULT_RANGE_SECS)
-                    .build());
-    assertThat(
-        query,
-        allOf(
-            notNullValue(),
-            equalTo(
-                "((sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
-                    + "service_type=\"TabletServerService\", "
-                    + "exported_instance=~\"instance1|instance2\", service_method=\"Read\"}[60s]))"
-                    + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
-                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
-                    + "exported_instance=~\"instance1|instance2\", service_method=\"Read\"}[60s]))"
-                    + " by (service_method, exported_instance))) or "
-                    + "((sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
-                    + "service_type=\"TabletServerService\", "
-                    + "exported_instance=~\"instance3|instance4\", service_method=\"Write\"}[60s]))"
-                    + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
-                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
-                    + "exported_instance=~\"instance3|instance4\", service_method=\"Write\"}[60s]))"
-                    + " by (service_method, exported_instance)))")));
   }
 
   @Test
