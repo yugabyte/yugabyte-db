@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB `yb_pg_stat_get_queries` view to see terminated queries and the reason for their termination.
+Use the YugabyteDB `yb_pg_stat_get_queries` function to see terminated queries and the reason for their termination.
 
 When a query quits for unexpected reasons, information about the query information and the responsible backend is stored and you can access it using yb_pg_stat_get_queries. Calling the module returns queries using the following criteria:
 
@@ -45,7 +45,7 @@ Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer,
 Type                | func
 ```
 
-The following table describes the fields and their values:
+The following table describes the arguments and their values:
 
 | Field | Type | Description |
 | :---- | :--- | :---------- |
@@ -57,6 +57,48 @@ The following table describes the fields and their values:
 | query_end | Timestampz | Time at which the query was terminated. |
 
 ## Examples
+
+### PostgreSQL crash
+
+To simulate a crash in the PostgreSQL process, send a SIGSEGV signal to the backend process.
+
+In a ysqlsh session, get the backend pid.
+
+```sql
+yugabyte=# SELECT pg_backend_pid();
+```
+
+```output
+ pg_backend_pid
+----------------
+           4650
+(1 row)
+```
+
+In the same session, start a long-running query, so that you have time to send a signal while the query is running.
+
+```sql
+yugabyte=# SELECT * FROM generate_series(1, 123456789);
+```
+
+In another shell, send the terminating signal to the backend process.
+
+```sh
+$ kill -SIGSEGV 4650 # the pid of the backend process
+```
+
+Verify that the query is listed as a terminated query.
+
+```sql
+yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
+```
+
+```output
+ backend_pid |                  query_text                  |  termination_reason
+-------------+----------------------------------------------+-----------------------
+        4650 | SELECT * FROM generate_series(1, 123456789); | Terminated by SIGSEGV
+(1 row)
+```
 
 ### Exceed the temporary file limit
 
@@ -91,48 +133,6 @@ yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_ge
 (1 row)
 ```
 
-### PostgreSQL crash
-
-To simulate a crash in the PostgreSQL process, send a SIGSEGV signal to the backend process.
-
-In a ysqlsh session, get the backend pid.
-
-```sql
-yugabyte=# SELECT pg_backend_pid();
-```
-
-```output
- pg_backend_pid
-----------------
-           4650
-(1 row)
-```
-
-In the same session, start a long-running query, so that you have time to send a signal while the query is running.
-
-```sql
-yugabyte=# SELECT * FROM generate_series(1, 123456789);
-```
-
-In another shell, send the terminating signal to the backend process.
-
-```sql
-kill -SIGSEGV 4650 # the pid of the backend process
-```
-
-Verify that the query is listed as a terminated query.
-
-```sql
-yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
-```
-
-```output
- backend_pid |                  query_text                  |  termination_reason
--------------+----------------------------------------------+-----------------------
-        4650 | SELECT * FROM generate_series(1, 123456789); | Terminated by SIGSEGV
-(1 row)
-```
-
 ### Out of memory
 
 When a system is running critically low on memory, the out of memory killer will begin force killing processes. To simulate this, send a KILL signal to the backend process.
@@ -159,7 +159,7 @@ yugabyte=# SELECT * FROM generate_series(1, 123456789);
 In another shell, send the terminating signal to the backend process.
 
 ```sh
-kill -KILL 4801 # the pid of the backend process
+$ kill -KILL 4801 # the pid of the backend process
 ```
 
 Verify that the query is listed as a terminated query as follows:
@@ -201,7 +201,7 @@ new_db=# SELECT 'db2' FROM generate_series(1, 123456789);
 Running yb_pg_stat_get_queries without providing an OID returns both queries:
 
 ```sql
-new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL)
+new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL);
 ```
 
 ```output

@@ -58,7 +58,7 @@ type: indexpage
         <div class="title">View termintated queries with yb_pg_stat_get_queries</div>
       </div>
       <div class="body">
-        Identify terminated queries with the get queries view.
+        Identify terminated queries with the get queries function.
       </div>
     </a>
   </div>
