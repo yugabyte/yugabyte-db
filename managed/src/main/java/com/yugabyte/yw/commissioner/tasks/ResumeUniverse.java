@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -69,6 +71,10 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       List<NodeDetails> tserverNodeList = universe.getTServers();
       List<NodeDetails> masterNodeList = universe.getMasters();
 
+      if (universeDetails.getPrimaryCluster().userIntent.providerType == CloudType.azu) {
+        createServerInfoTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      }
+
       // Optimistically rotate node-to-node server certificates before starting DB processes
       // Also see CertsRotate
       if (universeDetails.rootCA != null) {
@@ -105,6 +111,15 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       }
       createWaitForServersTasks(masterNodeList, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcTasks(tserverNodeList)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for yb-controller to be responsive on each node.
+        createWaitForYbcServerTask(new HashSet<>(tserverNodeList))
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Set the node state to live.
       Set<NodeDetails> nodesToMarkLive =
