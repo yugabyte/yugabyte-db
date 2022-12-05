@@ -90,8 +90,7 @@ public class TlsToggle extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
-          DEFAULT_CONTEXT,
-          false);
+          DEFAULT_CONTEXT);
     } else {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
@@ -125,8 +124,7 @@ public class TlsToggle extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
-          DEFAULT_CONTEXT,
-          false);
+          DEFAULT_CONTEXT);
     } else if (getNodeToNodeChange() < 0) {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
@@ -146,10 +144,13 @@ public class TlsToggle extends UpgradeTaskBase {
     }
 
     if (taskParams().ybcInstalled) {
-      createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop");
+      createStopYbControllerTasks(nodes.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       createYbcFlagsUpdateTasks(nodes.getRight());
-      createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "start");
-      createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes.getRight()));
+      createStartYbcTasks(nodes.getRight())
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      // Wait for yb-controller to be responsive on each node.
+      createWaitForYbcServerTask(null).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
 

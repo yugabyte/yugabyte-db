@@ -88,6 +88,12 @@ public class PauseUniverse extends UniverseTaskBase {
         }
       }
 
+      // Stop yb-controller processes on nodes
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(tserverNodes)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
+
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
