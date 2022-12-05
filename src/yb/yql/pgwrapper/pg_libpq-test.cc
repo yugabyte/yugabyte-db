@@ -28,6 +28,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
@@ -83,18 +84,18 @@ using master::GetTablegroupParentTableId;
 using master::GetColocationParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Let colocated database related tests cover new Colocation GA implementation instead of legacy
-    // colocated database.
-    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
-  }
-
  protected:
   typedef std::function<Result<master::TabletLocationsPB>(client::YBClient* client,
                                                           std::string database_name,
                                                           PGConn* conn,
                                                           MonoDelta timeout)>
                                                           GetParentTableTabletLocation;
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Let colocated database related tests cover new Colocation GA implementation instead of legacy
+    // colocated database.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
+  }
 
   void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
@@ -134,6 +135,9 @@ class PgLibPqTest : public LibPqTestBase {
   void TestLoadBalanceSingleColocatedDB(GetParentTableTabletLocation getParentTableTabletLocation);
 
   void TestLoadBalanceMultipleColocatedDB(
+      GetParentTableTabletLocation getParentTableTabletLocation);
+
+  void TestTableColocationEnabledByDefault(
       GetParentTableTabletLocation getParentTableTabletLocation);
 };
 
@@ -1354,15 +1358,16 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
 }
 
 class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
     // Enable colocation by default on the cluster.
     options->extra_tserver_flags.push_back("--ysql_colocate_database_by_default=true");
   }
 };
 
-TEST_F_EX(
-    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
-    PgLibPqTableColocationEnabledByDefaultTest) {
+void PgLibPqTest::TestTableColocationEnabledByDefault(
+    GetParentTableTabletLocation getParentTableTabletLocation) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseNameColocatedByDefault = "test_db_colocated_by_default";
   const string kDatabaseNameColocatedExplicitly = "test_db_colocated_explicitly";
@@ -1376,16 +1381,16 @@ TEST_F_EX(
   // Database without specifying colocation value must be created with colocation = true.
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseNameColocatedByDefault));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedByDefault));
-
-  // A parent table with one tablet should be created when the database is created.
-  auto colocated_tablet_locations = ASSERT_RESULT(
-      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedByDefault, nullptr,
-                                          30s));
-  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
-  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
-
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+
+  // A parent table with one tablet should be created.
+  auto colocated_tablet_locations = ASSERT_RESULT(
+      getParentTableTabletLocation(client.get(), kDatabaseNameColocatedByDefault, &conn, 30s));
+  auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+  ASSERT_TRUE(colocated_table->colocated());
+
   auto table_id =
       ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
@@ -1406,7 +1411,7 @@ TEST_F_EX(
   table_id = ASSERT_RESULT(
       GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
-  for (auto& tablet : bar_tablets) {
+  for (auto& tablet : tablets) {
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
   }
 
@@ -1414,16 +1419,16 @@ TEST_F_EX(
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE DATABASE $0 WITH colocation = true", kDatabaseNameColocatedExplicitly));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
-
-  // A parent table with one tablet should be created when the database is created.
-  colocated_tablet_locations = ASSERT_RESULT(
-      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, nullptr,
-                                          30s));
-  colocated_tablet_id = colocated_tablet_locations.tablet_id();
-  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
-
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
+
+  // A parent table with one tablet should be created.
+  colocated_tablet_locations = ASSERT_RESULT(
+      getParentTableTabletLocation(client.get(), kDatabaseNameColocatedExplicitly, &conn, 30s));
+  colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
+  ASSERT_TRUE(colocated_table->colocated());
+
   table_id =
       ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseNameColocatedExplicitly,
       "foo"));
@@ -1450,6 +1455,12 @@ TEST_F_EX(
   for (auto& tablet : bar_tablets) {
     ASSERT_NE(tablet.tablet_id(), foo_tablets[0].tablet_id());
   }
+}
+
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocationEnabledByDefault),
+    PgLibPqTableColocationEnabledByDefaultTest) {
+  TestTableColocationEnabledByDefault(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
@@ -3630,6 +3641,20 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleLegacyColocatedD
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleLegacyColocatedDB),
     PgLibPqLegecyColocatedDBTest) {
   TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
+}
+
+class PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest
+    : public PgLibPqTableColocationEnabledByDefaultTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTableColocationEnabledByDefaultTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocationEnabledByDefault),
+    PgLibPqLegacyColocatedDBTableColocationEnabledByDefaultTest) {
+  TestTableColocationEnabledByDefault(GetLegacyColocatedDBTabletLocations);
 }
 
 } // namespace pgwrapper
