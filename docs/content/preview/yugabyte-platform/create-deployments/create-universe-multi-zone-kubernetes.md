@@ -99,13 +99,30 @@ Optionally, use the **Helm Overrides** section as follows:
 
   ![img](/images/yb-platform/kubernetes-config66.png)
 
-- Using the sample format, specify the universe-level overrides for YB-Master and YB-TServer, as well as availability zone overrides.
+- Using the YAML format, which is sensitive to spacing and indentation, specify the universe-level overrides for YB-Master and YB-TServer, as per the following example:
+
+  ```yaml
+  master:
+    podLabels:
+      service-type: 'database'
+  ```
+
+- Add availability zone overrides, which only apply to pods that are deployed in that specific availability zone. For example, to define overrides for the availability zone us-west-2a, you would click **Add Availability Zone** and use the text area to insert YAML in the following form:
+
+  ```yaml
+  us-west-2a:
+    master:
+      podLabels:
+         service-type: 'database'
+  ```
+
+  If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
 
 - Select **Force Apply** if you want to override any previous overrides.
 
 - Click **Validate & Save**. 
 
-  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again.
+  If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**. 
 
 The final step is to click **Create** and wait for the YugabyteDB cluster to appear.
 
@@ -120,6 +137,8 @@ The universe view consists of several tabs that provide different information ab
 The following illustration shows the **Overview** tab of a newly-created universe:
 
 ![img](/images/yb-platform/kubernetes-config11.png)
+
+If you have defined Helm overrides for your universe, you can modify them at any time through **Overview** by clicking **Actions > Edit Kubernetes Overrides**.
 
 The following illustration shows the **Nodes** tab that allows you to see a list of nodes with their addresses:
 
