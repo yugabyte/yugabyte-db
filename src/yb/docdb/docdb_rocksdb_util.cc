@@ -972,9 +972,8 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
-  rocksdb::CompactRangeOptions options;
-  options.skip_flush = skip_flush;
+Status ForceRocksDBCompact(rocksdb::DB* db,
+    const rocksdb::CompactRangeOptions& options) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed");

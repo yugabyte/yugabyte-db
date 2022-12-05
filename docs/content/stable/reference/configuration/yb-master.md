@@ -262,7 +262,7 @@ For a typical deployment, values used for Raft and the write ahead log (WAL) fla
 
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
 
 Default: `900` (15 minutes)
 

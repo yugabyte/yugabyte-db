@@ -273,6 +273,7 @@ class ColumnFamilyData {
       uint32_t output_path_id,
       const InternalKey* begin,
       const InternalKey* end,
+      CompactionReason compaction_reason,
       InternalKey** compaction_end,
       bool* manual_conflict);
 

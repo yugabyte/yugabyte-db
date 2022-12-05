@@ -1624,16 +1624,26 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
   CountDownLatch latch(tablets.size());
   auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+  std::vector<TabletId> tablet_ids;
+  auto start_time = CoarseMonoClock::Now();
+  uint64_t total_size = 0U;
   for (auto tablet : tablets) {
     RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to submit compaction for tablet.");
+      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
+          "Failed to submit compaction for tablet.");
       latch.CountDown();
     }));
+    tablet_ids.push_back(tablet->tablet_id());
+    total_size += tablet->GetCurrentVersionSstFilesSize();
   }
+  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
+      tablet_ids, total_size);
   latch.Wait();
+  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
+      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
   return Status::OK();
 }
 
