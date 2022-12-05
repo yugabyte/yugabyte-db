@@ -19,7 +19,7 @@
   },
   "engines": {
     "node": ">=16.x.x",
-    "npm": ">=6.1x.x"
+    "npm": ">=7.1x.x"
   },
   "prettier": {
     "printWidth": 100,
