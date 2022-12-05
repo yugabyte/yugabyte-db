@@ -48,7 +48,7 @@
       <ul class="navbar-nav right-nav">
         {{ range .Site.Menus.top_nav }}
           <li class="nav-item">
-            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}"{{ if .URL }} href="{{ .URL }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+            <a class="{{- if .Params.classes }} {{ .Params.classes }}{{- end }}"{{ if .URL }} href="{{ .URL }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
               <span>{{ .Name }}</span>
               {{ .Post }}
             </a>
@@ -71,7 +71,7 @@
                         {{ if .Params.tagLine }}
                           <span class="tag-line">{{ .Params.tagLine }}</span>
                         {{ end }}
-                        <span class="btn">{{ .Params.buttonText }}</span>
+                        <span class="{{- if .Params.classes }}{{ .Params.classes }}{{- end }}">{{ .Params.buttonText }}</span>
                       </div>
                     </a>
                   </li>
@@ -116,8 +116,8 @@
     </ul>
     {{ if .Site.Params.versions }}
       <div class="header-version-dropdown main-heading-with-version">
-        <ul class="navbar-nav- mt-2 mt-lg-0">
-          <li class="nav-item dropdown mr-4- d-none d-lg-block">
+        <ul class="mt-2 mt-lg-0">
+          <li class="nav-item dropdown d-none d-lg-block">
             {{ partial "navbar-version-selector.html" . }}
           </li>
         </ul>

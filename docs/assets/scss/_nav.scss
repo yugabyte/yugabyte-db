@@ -145,15 +145,13 @@ body {
             li {
               display: flex;
               align-items: center;
-              margin-right: 15px;
+              margin-right: 16px;
 
-              @media (max-width: 767px) {
+              @media (max-width: 991px) {
+                margin-right: 0;
+                margin-bottom: 20px;
                 flex-flow: column;
                 align-items: flex-start;
-              }
-
-              &:first-child {
-                margin-right: 45px;
               }
 
               .header-submenu {
@@ -202,9 +200,8 @@ body {
 
                       .title {
                         span {
-                          display: block;
-
                           &.desc {
+                            display: block;
                             margin: 4px 0 8px;
                             font-weight: 400;
                             font-size: 13px;
@@ -219,38 +216,6 @@ body {
                             line-height: 14px;
                             color: #6d7c88;
                             display: block;
-                          }
-
-                          &.btn {
-                            height: 24px;
-                            background: #7879f1;
-                            border: 1px solid #7879f1;
-                            color: #fff;
-                            border-radius: 8px;
-                            font-weight: 600;
-                            font-size: 11.5px;
-                            line-height: 16px;
-                            display: inline-flex;
-                            align-items: center;
-                            padding: 3px 11px;
-
-                            &:hover {
-                              background: #5d5fef;
-                              color: #fff;
-                              border: 1px solid #5d5fef;
-                            }
-
-                            &.white {
-                              background: #fff;
-                              color: #5d5fef;
-                              border: 1px solid #5d5fef;
-
-                              &:hover {
-                                background: #fff;
-                                border: 1px solid #7879f1;
-                                color: #7879f1;
-                              }
-                            }
                           }
                         }
                       }
@@ -274,88 +239,15 @@ body {
                     &:hover {
                       background: #f2f6ff;
                     }
-
-                    &:not(:first-child) > a {
-                      .title {
-                        span.btn {
-                          background: #fff;
-                          color: #5d5fef;
-                          border: 1px solid #5d5fef;
-
-                          &:hover {
-                            background: #fff;
-                            border: 1px solid #7879f1;
-                            color: #7879f1;
-                          }
-                        }
-                      }
-                    }
                   }
                 }
               }
 
-              .nav-link {
-                font-weight: 600;
-                font-size: 13px;
-                line-height: 16px;
-                display: flex;
-                align-items: center;
-                padding: 0;
-                color: #2b59c3;
-
-                span {
-                  display: inline-block;
-                  margin-right: 10px;
-                }
-              }
-
-              &:last-child {
-                margin-right: 0;
-                margin-left: 15px;
-
-                @media (max-width: 1199px) {
-                  margin-left: 10px;
-                }
-
-                @media (max-width: 991px) {
-                  margin-left: 0;
-                }
-
-                .nav-link {
-                  color: #fff;
-                  background: #7879f1;
-                  border-radius: 8px;
-                  border: none;
-                  padding: 8px 15px;
-                  font-weight: 600;
-                  font-size: 13px;
-                  line-height: 16px;
-                  display: flex;
-                  align-items: center;
-                  transition: all 150ms linear;
-
-                  span {
-                    margin: 0;
-                  }
-
-                  &.open,
-                  &:hover {
-                    background: #5d5fef;
-                  }
-                }
-
-                a.open-dd + .header-submenu,
-                a.open + .header-submenu {
-                  opacity: 1;
-                  visibility: visible;
-                  height: auto;
-                  overflow: visible;
-                }
-              }
-
-              @media (max-width: 991px) {
-                margin-bottom: 20px;
-                //margin-left: 20px !important;
+              a.open + .header-submenu {
+                opacity: 1;
+                visibility: visible;
+                height: auto;
+                overflow: visible;
               }
             }
           }
@@ -489,7 +381,6 @@ body {
 
             .search-container-wrap {
               z-index: 1;
-              padding-top: 0;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -531,7 +422,6 @@ body {
               @media (min-width: 992px) {
                 .header-submenu {
                   display: block;
-                  //position: absolute;
                 }
               }
             }
@@ -824,14 +714,8 @@ body {
   }
 
   aside.td-sidebar {
-    //top: 4.7rem !important;
     .left-sidebar-wrap {
       height: calc(100vh - 76px);
-      //top: calc(8rem + 0px) !important;
-    }
-
-    .left-sidebar-wrap-inner {
-      //height: calc(100vh - 129px) !important;
     }
 
     .side-nav-collapse-toggle-2 {
@@ -1069,7 +953,6 @@ body {
                   top: 0;
                   position: static;
                   margin-top: 20px;
-                  //border: 0;
                   box-shadow: none;
                   width: 100%;
                   max-width: calc(100%);
@@ -1095,6 +978,29 @@ body {
 
   body > header {
     padding: 0;
+  }
+
+  body > header .td-navbar.navbar-expand .page-header.open .navbar-nav.right-nav {
+    padding: 0 20px;
+    padding-bottom: 20px;
+    justify-content: center;
+    display: flex;
+    flex-flow: column !important;
+
+    li {
+      width: 100%;
+    }
+
+    a.primary-btn {
+      width: 100%;
+      display: flex;
+    }
+
+    a.tritiery-btn {
+      border: 1px solid #2b59c3;
+      width: 100%;
+      display: flex;
+    }
   }
 }
 

@@ -6,6 +6,7 @@
   url = "https://github.com/yugabyte/yugabyte-db"
   post = "<img width='24' height='24' src='/icons/github.svg' alt='YugabyteDB Github' />"
   [top_nav.params]
+    classes = "tritiery-btn"
     newTab = true
 
 [[top_nav]]
@@ -14,12 +15,15 @@
   url = "https://communityinviter.com/apps/yugabyte-db/register"
   post = "<img width='24' height='24' src='/icons/slack.svg' alt='YugabyteDB Community Slack' />"
   [top_nav.params]
+    classes = "tritiery-btn"
     newTab = true
 
 [[top_nav]]
   name = "Start Now"
   weight = 3
   identifier = "start_now"
+  [top_nav.params]
+    classes = "primary-btn start-now-popup"
 
 [[start_now]]
   name = "YugabyteDB Managed"
@@ -27,6 +31,7 @@
   url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [start_now.params]
     buttonText = "Sign up"
+    classes = "primary-btn sm-btn"
     description = "Try our fully managed cloud DBaaS for free."
     imageUrl = "/icons/cloud.svg"
     newTab = true
@@ -38,6 +43,7 @@
   url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [start_now.params]
     buttonText = "Request a free trial"
+    classes = "secondary-btn sm-btn"
     description = "Self-managed cloud DBaaS"
     imageUrl = "/icons/server.svg"
     newTab = true
@@ -48,6 +54,7 @@
   url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [start_now.params]
     buttonText = "Download"
+    classes = "secondary-btn sm-btn"
     description = "Try our open source distributed SQL database on your laptop."
     imageUrl = "/icons/database.svg"
     newTab = true
