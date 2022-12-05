@@ -1,9 +1,5 @@
 /******* Container Styling **********/
 .left-menu-scrolling .td-main {
-  .td-sidebar:not(.close-bar) {
-    left: 300px;
-  }
-
   aside.td-sidebar .left-sidebar-wrap {
     transition: none !important;
   }
@@ -14,8 +10,13 @@
   background: #fff;
   display: flex;
   position: relative;
-  padding-left: 300px;
   transition: padding-left 500ms ease-in-out;
+  overflow: hidden;
+
+  > * {
+    display: flex;
+    align-items: stretch;
+  }
 
   #dragbar {
     background-color: #b2ccdd00;
@@ -23,41 +24,38 @@
     width: 10px;
     cursor: e-resize;
     position: absolute;
-    left: 300px;
+    right: 0;
     top: 0;
     margin-left: -10px;
-
-    @media (max-width: 1445px) {
-      display: none;
-    }
   }
 
   .td-sidebar:not(.close-bar) {
+    flex: 1 1 60%;
     transition: none;
     border-right: 1px solid #e9eef2;
     max-width: 300px;
-    margin-left: -300px;
     min-width: 300px;
     z-index: 999;
-    @media(max-width:767px){
+
+    @media (max-width: 767px) {
       z-index: 10000;
+    }
+
+    > div {
+      width: 100%;
     }
   }
 
   .content-parent {
+    flex: 1 1 40%;
     justify-content: center;
-    width: calc(100% - 300px);
-    max-width: 1080px;
-    margin-left: auto;
-    margin-right: auto;
-    min-width: 1080px;
-    &.no-right-sidebar {
-      overflow: hidden;
-    }
-    
-    @media(max-width:767px){
-      &:hover{
-        z-index:1000;
+    margin-left: 0;
+    padding: 0 50px;
+    overflow: auto;
+
+    @media (max-width: 767px) {
+      &:hover {
+        z-index: 1000;
       }
     }
 
@@ -76,10 +74,11 @@
       max-width: 100%;
       display: flex;
       min-height: 100vh;
-      flex-flow:row wrap;
-      >div{
-        display:flex;
-        max-width:100%;
+      flex-flow: row wrap;
+
+      >div {
+        display: flex;
+        max-width: 100%;
         min-height: calc(100vh - 170px);
       }
     }
@@ -105,12 +104,12 @@
     main {
       padding-left: 0;
       padding-right: 0;
+      max-width: 100%;
     }
 
     .td-sidebar:not(.close-bar) {
       width: 300px;
       margin-right: 0;
-      flex: none;
 
       @media (max-width: 1380px) {
         width: 280px;
@@ -126,11 +125,11 @@
       }
     }
 
-    .td-sidebar-toc {
+    .td-sidebar-toc.d-xl-block {
       max-width: 100%;
-      width: 252px !important;
+      width: 200px !important;
       padding: 0;
-      padding-left: 40px;
+      padding-left: 24px;
       padding-top: 80px;
       background: transparent;
       border: 0;
@@ -139,10 +138,25 @@
         main {
           flex: none;
           width: 828px;
-          max-width: calc(100% - 252px) !important;
+          max-width: calc(100% - 200px) !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
+      }
+    }
+  }
+}
+
+@media (min-width: 1380px) {
+  .td-main {
+    .td-sidebar-toc.d-xl-block {
+      width: 252px !important;
+      padding-left: 40px;
+    }
+
+    + {
+      main {
+        max-width: calc(100% - 252px) !important;
       }
     }
   }
@@ -160,28 +174,14 @@
   }
 }
 
-@media (max-width: 1380px) and (min-width: 1200px) {
-  .td-main {
-    .content-child {
-      justify-content: flex-end;
-
-      .td-sidebar-toc {
-        width: 25% !important;
-        padding: 50px 20px 0;
-      }
-
-      .td-sidebar-toc + main {
-        width: 75%;
-        max-width: 100%;
-      }
-    }
-  }
-}
-
 @media (max-width: 1380px) {
   .td-main {
     justify-content: space-between;
     padding-left: 0;
+
+    .content-parent {
+      padding: 0 20px;
+    }
 
     .td-sidebar:not(.close-bar) {
       margin-left: 0;
@@ -232,6 +232,7 @@
       max-width: 100%;
       border-right: 0 solid;
       padding: 0 !important;
+      flex: none;
     }
 
     .content-parent {
@@ -240,7 +241,6 @@
       margin: 0;
       padding: 0 15px;
       justify-content: flex-start;
-      overflow: hidden;
 
       .content-child {
         padding-left: 0;
