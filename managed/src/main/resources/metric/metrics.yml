@@ -129,8 +129,8 @@ disk_iops:
       type: "date"
     yaxis:
       alias:
-          "node_disk_writes_irate": "Writes"
-          "node_disk_reads_irate": "Reads"
+        "node_disk_reads_irate": "Read"
+        "node_disk_writes_irate": "Write"
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_irate_rps"
@@ -1069,8 +1069,8 @@ tserver_consensus_rpcs_per_sec:
       type: "date"
     yaxis:
       alias:
-        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "RequestConsensusVote": "RequestConsensusVote"
 
 tserver_change_config:
@@ -1122,6 +1122,10 @@ tserver_consensus_rpcs_latency:
     xaxis:
       type: "date"
     yaxis:
+      alias:
+        "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
+        "RequestConsensusVote": "RequestConsensusVote"
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_change_config_latency:
@@ -1726,8 +1730,8 @@ ysql_server_rpc_per_second:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
 
@@ -1748,8 +1752,8 @@ ysql_sql_latency:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
@@ -1769,8 +1773,8 @@ ysql_connections:
       type: "date"
     yaxis:
       alias:
-        "yb_ysqlserver_connection_total": "Total"
         "yb_ysqlserver_active_connection_total": "Active"
+        "yb_ysqlserver_connection_total": "Total"
 
 ysql_server_advanced_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -1837,8 +1841,8 @@ ysql_server_rpc_p95:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
@@ -1860,8 +1864,8 @@ ysql_server_rpc_p99:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
@@ -1884,8 +1888,8 @@ cql_server_rpc_per_second:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -1908,8 +1912,8 @@ cql_sql_latency:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
@@ -1932,8 +1936,8 @@ cql_server_rpc_p95:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -1956,8 +1960,8 @@ cql_server_rpc_p99:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -2426,8 +2430,8 @@ master_table_ops:
       type: "date"
     yaxis:
       alias:
-        "DeleteTable": "Delete Table"
         "CreateTable": "Create Table"
+        "DeleteTable": "Delete Table"
 
 master_cpu_util_secs:
   metric: ""
@@ -2539,9 +2543,9 @@ master_log_latency:
       type: "date"
     yaxis:
       alias:
+        "log_append_latency.avg": "Append"
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
-        "log_append_latency.avg": "Append"
       ticksuffix: "&nbsp;\u00B5s"
 
 master_log_bytes_written:
@@ -2881,9 +2885,9 @@ table_log_latency:
       type: "date"
     yaxis:
       alias:
+        "log_append_latency.avg": "Append"
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
-        "log_append_latency.avg": "Append"
       ticksuffix: "&nbsp;\u00B5s"
 
 table_log_ops_second:
@@ -2900,9 +2904,9 @@ table_log_ops_second:
       type: "date"
     yaxis:
       alias:
-        "log_group_commit_latency_count": "Commit"
         "log_append_latency_count": "Append"
         "log_sync_latency_count": "Sync"
+        "log_group_commit_latency_count": "Commit"
 
 table_log_bytes_written:
   metric: "log_bytes_logged"

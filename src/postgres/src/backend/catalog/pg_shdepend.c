@@ -70,6 +70,9 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 typedef enum
 {
 	LOCAL_OBJECT,
@@ -1180,8 +1183,9 @@ storeObjectDescription(StringInfo descs,
 static bool
 isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 {
-	if (YbIsPinnedObjectsCacheAvailable())
-		return YbIsSharedObjectPinned(classId, objectId);
+	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
+		return YbIsObjectPinned(classId, objectId,
+								true /* shared_dependency */);
 
 	bool		result = false;
 	ScanKeyData key[2];

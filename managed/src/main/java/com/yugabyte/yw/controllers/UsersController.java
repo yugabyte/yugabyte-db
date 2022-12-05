@@ -293,7 +293,8 @@ public class UsersController extends AuthenticatedController {
       }
       user.setPassword(formData.getPassword());
     }
-    if (formData.getTimezone() != user.getTimezone()) {
+    if (StringUtils.isNotEmpty(formData.getTimezone())
+        && !formData.getTimezone().equals(user.getTimezone())) {
       user.setTimezone(formData.getTimezone());
     }
     if (formData.getRole() != user.getRole()) {

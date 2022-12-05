@@ -3,7 +3,7 @@ Description=Yugabyte logs
 Wants=yb-zip_purge_yb_logs.timer
 
 [Service]
-{% if ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7' %}
+{% if ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')) %}
 User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
