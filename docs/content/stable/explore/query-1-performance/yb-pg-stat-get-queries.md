@@ -26,9 +26,10 @@ The function takes a single argument, the Object identifier (OID) of the databas
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-command to return the fields supported by yb_pg_stat_get_queries:
+At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by yb_pg_stat_get_queries:
 
 ```sql
+yugabyte=# \x
 yugabyte=# \df yb_pg_stat_get_queries
 ```
 
