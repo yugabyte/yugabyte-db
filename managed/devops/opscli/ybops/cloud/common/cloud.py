@@ -245,8 +245,11 @@ class AbstractCloud(AbstractCommandParser):
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port
         # Reboot instance
-        host_info = self.get_host_info(args)
-        self.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+        remote_exec_command(
+            extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
+            args.private_key_file, 'sudo reboot', ssh2_enabled=args.ssh2_enabled)
+        self.wait_for_ssh_ports(
+            extra_vars["ssh_host"], args.search_pattern, [extra_vars["ssh_port"]])
         # Make sure we can ssh into the node after the reboot as well.
         if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
                         extra_vars["ssh_user"], args.private_key_file, num_retries=120,
