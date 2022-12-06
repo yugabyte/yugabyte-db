@@ -277,6 +277,17 @@ public class TaskExecutor {
   }
 
   /**
+   * Instantiates the task for the task class.
+   *
+   * @param taskClass the task class.
+   * @return the task.
+   */
+  public <T extends ITask> T createTask(Class<T> taskClass) {
+    checkNotNull(taskClass, "Task class must be set");
+    return taskClass.cast(taskTypeMap.get(getTaskType(taskClass)).get());
+  }
+
+  /**
    * Creates a RunnableTask instance for a task with the given parameters.
    *
    * @param taskType the task type.

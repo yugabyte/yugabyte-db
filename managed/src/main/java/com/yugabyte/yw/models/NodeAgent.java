@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -24,6 +25,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -158,6 +160,14 @@ public class NodeAgent extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot find node agent " + nodeAgentUuid);
     }
     return nodeAgent;
+  }
+
+  public static Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp /* Optional */) {
+    ExpressionList<NodeAgent> expr = finder.query().where().eq("customer_uuid", customerUuid);
+    if (StringUtils.isNotBlank(nodeAgentIp)) {
+      expr = expr.eq("ip", nodeAgentIp);
+    }
+    return expr.findList();
   }
 
   public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
