@@ -223,6 +223,26 @@ Suggested workaround is as follows:
 
 ---
 
+### Issue #137: [MYSQL] Spatial datatype migration is not yet supported
+
+**GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
+
+**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. This will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
+
+**Workaround** : None. A workaround is currently being explored.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+CREATE TABLE address (
+     address_id int,
+     add point,
+     location GEOMETRY NOT NULL
+);
+
+---
+
 ### Issue #207: [Oracle] Some numeric types are not exported
 
 **GitHub link**: [Issue #207](https://github.com/yugabyte/yb-voyager/issues/207)
@@ -317,6 +337,32 @@ ALTER TABLE test_timezone ADD CONSTRAINT test_cc1 CHECK ((dtts = date_trunc('day
 
 ---
 
+### Issue #571: [Oracle] A unique index which is also a primary key is not migrated
+
+**GitHub link**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
+
+**Description**: If your Oracle schema contains a unique index and a primary key on the same set of columns, the unique index does not get exported.
+
+**Workaround**: Manual intervention needed. You have to manually add the unique index to the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE employees(employee_id NUMBER(6),email VARCHAR2(25));
+CREATE UNIQUE INDEX EMAIL_UNIQUE ON employees (email) ;
+ALTER TABLE employees ADD ( CONSTRAINT email_pk PRIMARY KEY (email));
+```
+
+Suggested change to the schema is to manually add the unique index to the exported files as follows:
+
+```sql
+CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
+```
+
+---
+
 ### Issue #334: [MySQL, Oracle] Importing case-sensitive schema names
 
 **GitHub link**: [Issue #334](https://github.com/yugabyte/yb-voyager/issues/334)
@@ -365,7 +411,7 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 ---
 
-### Issue #578: [MySQL/Oracle] Partition key column not part of primary key columns
+### Issue #578: [MySQL, Oracle] Partition key column not part of primary key columns
 
 **GitHub link**: [Issue #578](https://github.com/yugabyte/yb-voyager/issues/578)
 
@@ -413,52 +459,6 @@ salary double precision,
 part_name varchar(25),
 PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 ```
-
----
-
-### Issue #571: [ORACLE] A unique index which is also a primary key is not migrated
-
-**GitHub link**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
-
-**Description**: If your Oracle schema contains a unique index and a primary key on the same set of columns, the unique index does not get exported.
-
-**Workaround**: Manual intervention needed. You have to manually add the unique index to the exported files.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE employees(employee_id NUMBER(6),email VARCHAR2(25));
-CREATE UNIQUE INDEX EMAIL_UNIQUE ON employees (email) ;
-ALTER TABLE employees ADD ( CONSTRAINT email_pk PRIMARY KEY (email));
-```
-
-Suggested change to the schema is to manually add the unique index to the exported files as follows:
-
-```sql
-CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
-```
-
----
-
-### Issue #137: [MYSQL] Spatial datatype migration is not yet supported
-
-**GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
-
-**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. This will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
-
-**Workaround** : None. A workaround is currently being explored.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-CREATE TABLE address (
-     address_id int,
-     add point,
-     location GEOMETRY NOT NULL
-);
 
 ---
 
