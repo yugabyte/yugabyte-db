@@ -7,8 +7,9 @@ import java.util.concurrent.CancellationException;
 import com.google.api.client.util.Throwables;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YbcBackupUtil;
 import com.yugabyte.yw.common.YbcManager;
@@ -35,15 +36,18 @@ public class RestoreBackupYbc extends YbcTaskBase {
 
   private YbcClient ybcClient;
   private YbcManager ybcManager;
+  private TaskExecutor taskExecutor;
 
   @Inject
   public RestoreBackupYbc(
       BaseTaskDependencies baseTaskDependencies,
       YbcClientService ybcService,
       YbcBackupUtil ybcBackupUtil,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      TaskExecutor taskExecutor) {
     super(baseTaskDependencies, ybcService, ybcBackupUtil);
     this.ybcManager = ybcManager;
+    this.taskExecutor = taskExecutor;
   }
 
   public static class Params extends RestoreBackupParams {
@@ -162,6 +166,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
         Throwables.propagate(e);
       }
     } catch (CancellationException ce) {
+      if (!taskExecutor.isShutdown()) {
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId, ybcClient);
+      }
+      Throwables.propagate(ce);
     } catch (Throwable e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
       if (StringUtils.isNotBlank(taskId)) {

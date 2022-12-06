@@ -250,6 +250,10 @@ public class TaskExecutor {
     return TASK_TYPE_TO_CLASS_MAP.inverse().get(taskClass);
   }
 
+  public boolean isShutdown() {
+    return isShutdown.get();
+  }
+
   @Inject
   public TaskExecutor(
       Provider<Application> application,
