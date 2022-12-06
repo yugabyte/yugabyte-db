@@ -20,14 +20,14 @@
  *        function.
  *
  *	static functions:
- *	   set_rel_pathlist()
  *	   set_plain_rel_pathlist()
- *	   set_tablesample_rel_pathlist
+ *	   set_tablesample_rel_pathlist()
  *	   set_foreign_pathlist()
- *	   set_append_rel_pathlist()
  *	   set_function_pathlist()
  *	   set_values_pathlist()
  *	   set_tablefunc_pathlist()
+ *	   set_rel_pathlist()
+ *	   set_append_rel_pathlist()
  *	   create_plain_partial_paths()
  *
  * src/backend/optimizer/path/joinrels.c
@@ -47,7 +47,7 @@
  *     compute_partition_bounds()
  *     try_partitionwise_join()
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -56,6 +56,7 @@
 #include "access/tsmapi.h"
 #include "catalog/pg_operator.h"
 #include "foreign/fdwapi.h"
+
 
 /*
  * set_plain_rel_pathlist
@@ -238,6 +239,7 @@ set_values_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	add_path(rel, create_valuesscan_path(root, rel, required_outer));
 }
 
+
 /*
  * set_tablefunc_pathlist
  *		Build the (single) access path for a table func RTE
@@ -348,12 +350,11 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * its own pool of workers.  Instead, we'll consider gathering partial
 	 * paths for the parent appendrel.
 	 *
-	 * Also, if this is the topmost scan/join rel (that is, the only baserel),
-	 * we postpone gathering until the final scan/join targetlist is available
-	 * (see grouping_planner).
+	 * Also, if this is the topmost scan/join rel, we postpone gathering until
+	 * the final scan/join targetlist is available (see grouping_planner).
 	 */
 	if (rel->reloptkind == RELOPT_BASEREL &&
-		bms_membership(root->all_baserels) != BMS_SINGLETON)
+		!bms_equal(rel->relids, root->all_baserels))
 		generate_useful_gather_paths(root, rel, false);
 
 	/* Now find the cheapest of the paths for this rel */
@@ -517,7 +518,7 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 			 * partial paths.  We'll do the same for the topmost scan/join rel
 			 * once we know the final targetlist (see grouping_planner).
 			 */
-			if (lev < levels_needed)
+			if (!bms_equal(rel->relids, root->all_baserels))
 				generate_useful_gather_paths(root, rel, false);
 
 			/* Find and save the cheapest paths for this rel */
@@ -1447,9 +1448,9 @@ compute_partition_bounds(PlannerInfo *root, RelOptInfo *rel1,
 
 		/*
 		 * See if the partition bounds for inputs are exactly the same, in
-		 * which case we don't need to work hard: the join rel have the same
-		 * partition bounds as inputs, and the partitions with the same
-		 * cardinal positions form the pairs.
+		 * which case we don't need to work hard: the join rel will have the
+		 * same partition bounds as inputs, and the partitions with the same
+		 * cardinal positions will form the pairs.
 		 *
 		 * Note: even in cases where one or both inputs have merged bounds, it
 		 * would be possible for both the bounds to be exactly the same, but
@@ -1719,6 +1720,7 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 												 child_sjinfo,
 												 child_sjinfo->jointype);
 			joinrel->part_rels[cnt_parts] = child_joinrel;
+			joinrel->live_parts = bms_add_member(joinrel->live_parts, cnt_parts);
 			joinrel->all_partrels = bms_add_members(joinrel->all_partrels,
 													child_joinrel->relids);
 		}
