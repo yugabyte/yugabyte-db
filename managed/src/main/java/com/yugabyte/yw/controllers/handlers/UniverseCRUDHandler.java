@@ -496,6 +496,23 @@ public class UniverseCRUDHandler {
     if (taskParams.getPrimaryCluster() != null) {
       UniverseDefinitionTaskParams.UserIntent userIntent =
           taskParams.getPrimaryCluster().userIntent;
+
+      if (taskParams.enableYbc) {
+        if (Util.compareYbVersions(
+                userIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+            < 0) {
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
+                  + Util.YBC_COMPATIBLE_DB_VERSION);
+        } else {
+          taskParams.ybcSoftwareVersion =
+              StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+                  ? taskParams.ybcSoftwareVersion
+                  : ybcManager.getStableYbcVersion();
+        }
+      }
+
       if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
         taskParams.setTxnTableWaitCountFlag = true;
       }
@@ -551,26 +568,11 @@ public class UniverseCRUDHandler {
 
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
-      if (taskParams.enableYbc) {
-        taskParams.ybcSoftwareVersion =
-            StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
-                ? taskParams.ybcSoftwareVersion
-                : ybcManager.getStableYbcVersion();
-      }
-
       if (primaryCluster != null) {
         UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
-        if (taskParams.enableYbc
-            && Util.compareYbVersions(
-                    primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
-                < 0) {
-          taskParams.enableYbc = false;
-          LOG.error(
-              "Ybc installation is skipped on universe with DB version lower than "
-                  + Util.YBC_COMPATIBLE_DB_VERSION);
-        }
+
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
