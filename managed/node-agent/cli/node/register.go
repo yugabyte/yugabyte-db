@@ -29,16 +29,29 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 	registerCmd.PersistentFlags().
 		StringP("api_token", "t", "", "API token for registering the node.")
 	registerCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
+	registerCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
 	registerCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	registerCmd.MarkPersistentFlagRequired("api_token")
 	unregisterCmd.PersistentFlags().
 		StringP("api_token", "t", "", "Optional API token for unregistering the node.")
+	unregisterCmd.PersistentFlags().StringP("node_id", "i", "", "Node ID")
 	parentCmd.AddCommand(registerCmd)
 	parentCmd.AddCommand(unregisterCmd)
 }
 
 func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
+	config := util.CurrentConfig()
 	apiToken, _ := cmd.Flags().GetString("api_token")
+	_, err := config.StoreCommandFlagString(
+		cmd,
+		"node_id",
+		util.NodeAgentIdKey,
+		false, /* isRequired */
+		nil,   /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node agent ID - %s", err.Error())
+	}
 	// API token is optional.
 	return unregisterHandler(apiToken)
 }
@@ -79,6 +92,16 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Unable to store node IP - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		cmd,
+		"node_port",
+		util.NodePortKey,
+		false, /* isRequired */
+		nil,   /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Unable to store node port - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
 		cmd,
