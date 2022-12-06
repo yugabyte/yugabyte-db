@@ -1701,7 +1701,7 @@ void TSTabletManager::StartShutdown() {
           }
         }
         LOG_WITH_PREFIX(DFATAL)
-            << "Waited for " << waited << "ms. Still had "
+            << "Waited for " << waited.ToMilliseconds() << "ms. Still had "
             << remaining_rbs << " pending remote bootstraps: " + addr;
       } else {
         LOG_WITH_PREFIX(WARNING)
