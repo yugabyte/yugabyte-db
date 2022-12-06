@@ -118,25 +118,14 @@ function yugabyteActiveLeftNav() {
         leftNavLink += '/';
       }
 
-      if ($(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).length > 0) {
-        $(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).addClass('current');
-        $(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).parents('li.submenu').addClass('open');
+      if ($(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).length > 0) {
+        $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).addClass('current');
+        $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).parents('li.submenu').addClass('open');
         return false;
       }
     }
   });
 }
-
-$(document).on('click', '.header-menu li.dropdown', (event) => {
-  if ($(window).width() < 992) {
-    if ($(event.currentTarget).hasClass('active')) {
-      $('.header-menu li.dropdown.active').removeClass('active');
-    } else {
-      $('.header-menu li.dropdown.active').removeClass('active');
-      $(event.currentTarget).addClass('active');
-    }
-  }
-});
 
 /**
  * Left Nav expansion.
@@ -181,7 +170,7 @@ $(document).ready(() => {
   /**
    * Main (Header) Nav.
    */
-  (function () {
+  (() => {
     // Active main Nav.
     yugabyteActiveMainNav();
 
@@ -197,6 +186,17 @@ $(document).ready(() => {
         });
       }
     }
+
+    $(document).on('click', '.header-menu li.dropdown', (event) => {
+      if ($(window).width() < 992) {
+        if ($(event.currentTarget).hasClass('active')) {
+          $('.header-menu li.dropdown.active').removeClass('active');
+        } else {
+          $('.header-menu li.dropdown.active').removeClass('active');
+          $(event.currentTarget).addClass('active');
+        }
+      }
+    });
 
     $(document).on('click', '#main_navbar .start-now-popup, .right-nav .start-now-popup', (event) => {
       $(event.currentTarget).toggleClass('open');
@@ -230,14 +230,12 @@ $(document).ready(() => {
         $('.page-header').append('<div class="navbar-nav search-container-wrap">' + $('.search-container-wrap').html() + '</div>');
       }
     });
-
-    rightnavAppend();
   })();
 
   /**
    * Left sidebar nav.
    */
-  (function () {
+  (() => {
     // Open current page menu in sidebar.
     if ($(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).length > 0) {
       $(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
@@ -292,7 +290,6 @@ $(document).ready(() => {
         });
 
         $('aside.td-sidebar').animate({
-          minwidth: '300px',
           width: '300px',
         });
       }
@@ -310,33 +307,7 @@ $(document).ready(() => {
   /**
    * Right sidebar.
    */
-  (function () {
-    // Scroll to the content from the page hash link.
-    if (window.location.hash && $(`.td-content ${window.location.hash} a`)) {
-      $(`.td-content ${window.location.hash} a`).click();
-    }
-
-    // Scroll to the content on clicking a link from the toc.
-    $(document).on('click', '.td-toc #TableOfContents a:not(.dropdown-toggle),.td-content a:not(.dropdown-toggle)', (event) => {
-      const linkHref = $(event.currentTarget).attr('href');
-      if (!linkHref.startsWith('#')) {
-        return;
-      }
-
-      if ($(event.currentTarget).hasClass('nav-link') && $(event.currentTarget).attr('role') === 'tab') {
-        return;
-      }
-
-      window.location.hash = linkHref;
-      if ($(window).width() > 767) {
-        $('html, body').scrollTop(($(linkHref).offset().top) - 70);
-      } else {
-        $('html, body').scrollTop(($(linkHref).offset().top) - 140);
-      }
-
-      return false;
-    });
-  })();
+  rightnavAppend();
 
   ((document) => {
     const $codes = document.querySelectorAll('pre');
@@ -417,7 +388,29 @@ $(document).ready(() => {
     }
   })(document);
 
-  $('ul.nav.yb-pills li').each(function () {
+  $('.content-parent').on('scroll', () => {
+    // Active TOC link on scroll.
+    if ($('.td-toc #TableOfContents').length > 0) {
+      let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
+      if ($('.td-toc').hasClass('hide-h3')) {
+        rightMenuSelector = '.td-content > h2';
+      } else if ($('.td-toc').hasClass('hide-h4')) {
+        rightMenuSelector = '.td-content > h2,.td-content > h3';
+      }
+
+      $(rightMenuSelector).each((index, element) => {
+        const offsetTop = $(element).offset().top;
+        const scrollTop = $(window).scrollTop();
+        const headingId = $(element).attr('id');
+        if (offsetTop - 75 <= scrollTop) {
+          $('.td-toc #TableOfContents a').removeClass('active-scroll');
+          $(`.td-toc #TableOfContents a[href="#${headingId}"]`).addClass('active-scroll');
+        }
+      });
+    }
+  });
+
+  $('ul.nav.yb-pills li').each(() => {
     const innertext = $(this).find('a').text().trim();
     if (innertext.length >= 29 && ($(this).find('a').find('i').length > 0 || $(this).find('a').find('img').length > 0)) {
       $(this).append(`<span class="tooltip">${innertext}</span>`);
@@ -442,28 +435,6 @@ $(document).ready(() => {
       window.location.href = `/search/?q=${searchValue}`;
     }
   });
-});
-
-$(window).scroll(() => {
-  // Right sidebar inpage link active on scroll.
-  if ($('.td-toc #TableOfContents').length > 0) {
-    let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
-    if ($('.td-toc').hasClass('hide-h3')) {
-      rightMenuSelector = '.td-content > h2';
-    } else if ($('.td-toc').hasClass('hide-h4')) {
-      rightMenuSelector = '.td-content > h2,.td-content > h3';
-    }
-
-    $(rightMenuSelector).each((index, element) => {
-      const offsetTop = $(element).offset().top;
-      const scrollTop = $(window).scrollTop();
-      const headingId = $(element).attr('id');
-      if (offsetTop - 75 <= scrollTop) {
-        $('.td-toc #TableOfContents a').removeClass('active-scroll');
-        $(`.td-toc #TableOfContents a[href="#${headingId}"]`).addClass('active-scroll');
-      }
-    });
-  }
 });
 
 $(window).resize(() => {
