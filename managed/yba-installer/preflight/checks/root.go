@@ -2,9 +2,10 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package preflight
+package checks
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -16,27 +17,27 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var root = Root{"root", "warning"}
+var Root = &rootCheck{"root", "warning"}
 
-type Root struct {
+type rootCheck struct {
 	name         string
 	warningLevel string
 }
 
-func (r Root) Name() string {
+func (r rootCheck) Name() string {
 	return r.name
 }
 
-func (r Root) WarningLevel() string {
+func (r rootCheck) WarningLevel() string {
 	return r.warningLevel
 }
 
-func (r Root) Execute() {
+func (r rootCheck) Execute() error {
 
 	if _, existsErr := os.Stat(common.InstallRoot); existsErr == nil {
 		err := fileutil.IsDirWriteable(common.InstallRoot)
 		if err != nil {
-			log.Fatal(common.InstallRoot + " is not writeable.")
+			return fmt.Errorf(common.InstallRoot + " is not writeable.")
 		} else {
 			log.Info(common.InstallRoot + " is writeable.")
 		}
@@ -46,22 +47,19 @@ func (r Root) Execute() {
 		args := []string{"-c", "df --output=avail -h \"" + common.InstallRoot + "\" | tail -n 1"}
 		output, err := common.ExecuteBashCommand(command, args)
 		if err != nil {
-			log.Fatal(err.Error())
+			return err
+		}
+
+		outputTrimmed := strings.ReplaceAll(strings.TrimSuffix(output, "\n"), " ", "")
+		re := regexp.MustCompile("[0-9]+")
+		freeSpaceArray := re.FindAllString(outputTrimmed, 1)
+		freeSpaceString := freeSpaceArray[0]
+		freeSpace, _ := strconv.Atoi(freeSpaceString)
+		if freeSpace == 0 {
+			return fmt.Errorf(common.InstallRoot + " does not have free space.")
 		} else {
-			outputTrimmed := strings.ReplaceAll(strings.TrimSuffix(output, "\n"), " ", "")
-			re := regexp.MustCompile("[0-9]+")
-			freeSpaceArray := re.FindAllString(outputTrimmed, 1)
-			freeSpaceString := freeSpaceArray[0]
-			freeSpace, _ := strconv.Atoi(freeSpaceString)
-			if freeSpace == 0 {
-				log.Fatal(common.InstallRoot + " does not have free space.")
-			} else {
-				log.Info(common.InstallRoot + " has free space.")
-			}
+			log.Info(common.InstallRoot + " has free space.")
 		}
 	}
-}
-
-func init() {
-	RegisterPreflightCheck(root)
+	return nil
 }

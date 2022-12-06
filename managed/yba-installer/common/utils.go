@@ -148,12 +148,11 @@ func IndexOf(arr []string, val string) int {
 	return -1
 }
 
-// Contains checks an array s for the presence of str.
-func Contains(s []string, str string) bool {
-
-	for _, v := range s {
-
-		if v == str {
+// Contains checks an array values for the presence of target.
+// Type must be a comparable
+func Contains[T comparable](values []T, target T) bool {
+	for _, v := range values {
+		if v == target {
 			return true
 		}
 	}
