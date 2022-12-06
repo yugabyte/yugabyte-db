@@ -38,10 +38,9 @@ const PanelBody = ({
   nodePrefixes,
   width,
   tableName,
-  featureFlags,
-  graph
+  graph,
+  isTopKMetricsEnabled
 }) => {
-  const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
   let result = null;
 
   if (isTopKMetricsEnabled) {
@@ -206,9 +205,12 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin } = this.props;
+    const { origin, isTopKMetricsEnabled } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin}>
+      <GraphPanelHeaderContainer
+        origin={origin}
+        isTopKMetricsEnabled={!!isTopKMetricsEnabled}
+      >
         <PanelBody {...this.props} />
       </GraphPanelHeaderContainer>
     );
