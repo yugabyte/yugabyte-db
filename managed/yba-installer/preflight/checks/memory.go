@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package preflight
+package checks
 
 import (
 	"fmt"
@@ -13,22 +13,24 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var memory = Memory{"memory", "warning"}
+var defaultMinMemoryLimit float64 = 15
 
-type Memory struct {
+var Memory = &memoryCheck{"memory", "warning"}
+
+type memoryCheck struct {
 	name         string
 	warningLevel string
 }
 
-func (m Memory) Name() string {
+func (m memoryCheck) Name() string {
 	return m.name
 }
 
-func (m Memory) WarningLevel() string {
+func (m memoryCheck) WarningLevel() string {
 	return m.warningLevel
 }
 
-func (m Memory) Execute() {
+func (m memoryCheck) Execute() error {
 
 	command := "grep"
 	args := []string{"MemTotal", "/proc/meminfo"}
@@ -40,16 +42,11 @@ func (m Memory) Execute() {
 		availableMemoryKB, _ := strconv.Atoi(strings.Split(field1, " ")[0])
 		availableMemoryGB := float64(availableMemoryKB) / 1e6
 		if availableMemoryGB < defaultMinMemoryLimit {
-			log.Fatal(
-				fmt.Sprintf(
-					"System does not meet the minimum memory limit of %v GB.",
-					defaultMinMemoryLimit))
+			return fmt.Errorf("System does not meet the minimum memory limit of %v GB.",
+				defaultMinMemoryLimit)
 		} else {
 			log.Info(fmt.Sprintf("System meets the requirement of %v GB.", defaultMinMemoryLimit))
 		}
 	}
-}
-
-func init() {
-	RegisterPreflightCheck(memory)
+	return nil
 }

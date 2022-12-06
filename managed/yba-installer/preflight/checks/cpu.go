@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package preflight
+package checks
 
 import (
 	"fmt"
@@ -11,31 +11,30 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var cpu = Cpu{"cpu", "warning"}
+var defaultMinCPUs int = 4
 
-type Cpu struct {
+var Cpu = &cpuCheck{"cpu", "warning"}
+
+type cpuCheck struct {
 	name         string
 	warningLevel string
 }
 
-func (c Cpu) Name() string {
+func (c cpuCheck) Name() string {
 	return c.name
 }
 
-func (c Cpu) WarningLevel() string {
+func (c cpuCheck) WarningLevel() string {
 	return c.warningLevel
 }
 
-func (c Cpu) Execute() {
+func (c cpuCheck) Execute() error {
 
 	if runtime.NumCPU() < defaultMinCPUs {
-		log.Fatal(fmt.Sprintf("System currently has %v CPU but requires %v CPUs.",
-			runtime.NumCPU(), defaultMinCPUs))
+		return fmt.Errorf("System currently has %v CPU but requires %v CPUs.",
+			runtime.NumCPU(), defaultMinCPUs)
 	} else {
 		log.Info(fmt.Sprintf("System meets the requirement of %v Virtual CPUs!", defaultMinCPUs))
 	}
-}
-
-func init() {
-	RegisterPreflightCheck(cpu)
+	return nil
 }
