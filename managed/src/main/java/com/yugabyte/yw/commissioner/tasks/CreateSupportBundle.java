@@ -148,6 +148,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
         TarArchiveOutputStream tarOS = new TarArchiveOutputStream(gos)) {
 
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+      tarOS.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
       Util.addFilesToTarGZ(bundlePath.toString(), "", tarOS);
       FileUtils.deleteDirectory(new File(bundlePath.toAbsolutePath().toString()));
     }
