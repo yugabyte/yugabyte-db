@@ -63,7 +63,7 @@ The following table provides information on the expected behavior when a read ha
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
-| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest tablet. |
+| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest replica of the tablet, which could be leader or follower. |
 | yb_read_from_followers is false OR transaction or statement is not read-only | Read happens from the leader. |
 
 ### Read from follower conditions
