@@ -3372,8 +3372,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
           << s.ToString();
       std::regex pattern(
           "("
-              "because replica is either leader or "
-              "believes a valid leader to be alive"
+              "because replica believes a valid leader to be alive"
           "|"
               "because replica is already servicing an update "
               "from a current leader or another vote"
