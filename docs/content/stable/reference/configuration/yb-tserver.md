@@ -37,10 +37,6 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 $ ./bin/yb-tserver --help
 ```
 
----
-
-### Help flags
-
 ##### --help
 
 Displays help on all flags.
@@ -51,7 +47,7 @@ Displays help on modules named by the specified flag value.
 
 ---
 
-### General flags
+## General flags
 
 ##### --flagfile
 
@@ -117,6 +113,12 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 Default: `""`
 
+##### --tablet_server_svc_queue_length
+
+Specifies the queue size for the tablet server to serve reads and writes from applications.
+
+Default: `5000`
+
 ##### --dns_cache_expiration_ms
 
 Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
@@ -179,7 +181,7 @@ Default: `""`
 
 ---
 
-### Logging flags
+## Logging flags
 
 ##### --log_dir
 
@@ -219,7 +221,7 @@ Default: `false`
 
 ---
 
-### Raft flags
+## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
@@ -266,7 +268,7 @@ The heartbeat interval, in milliseconds (ms), for Raft replication. The leader p
 
 Default: `500`
 
-#### Write ahead log (WAL) flags
+### Write ahead log (WAL) flags
 
 {{< note title="Note" >}}
 
@@ -318,7 +320,7 @@ Default: `64`
 
 ---
 
-### Sharding flags
+## Sharding flags
 
 ##### --yb_num_shards_per_tserver
 
@@ -382,7 +384,7 @@ Default: `50`
 
 ---
 
-### Geo-distribution flags
+## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters.
 
@@ -422,7 +424,7 @@ Avoid setting this flag when possible. All distributed transactions _can_ run wi
 
 Default: `false`
 
-#### --auto-create-local-transaction-tables
+##### --auto-create-local-transaction-tables
 
 If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
 
@@ -436,7 +438,21 @@ Default: `true`
 
 ---
 
-### YSQL flags
+## xCluster flags
+
+Settings related to managing xClusters.
+
+##### --xcluster_svc_queue_size
+
+The RPC queue size of the xCluster service. Should match the size of [tablet_server_svc_queue_length](#tablet-server-svc-queue-length) used for read and write requests.
+
+Default: `5000`
+
+---
+
+## API flags
+
+### YSQL
 
 The following flags support the use of the [YSQL API](../../../api/ysql/).
 
@@ -596,9 +612,7 @@ Specifies the lowest YSQL message level to log.
 
  Default: `1GB`
 
----
-
-### YCQL flags
+### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/).
 
@@ -646,9 +660,7 @@ Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
 
----
-
-### YEDIS flags
+### YEDIS
 
 The following flags support the use of the YEDIS API.
 
@@ -666,7 +678,7 @@ Default: `11000`
 
 ---
 
-### Performance flags
+## Performance flags
 
 Use the following two flags to select the SSTable compression type.
 
@@ -736,7 +748,7 @@ Default: `256MB` (256 MB/second)
 
 ---
 
-### Network compression
+## Network compression flags
 
 Use the following two gflags to configure RPC compression.
 
@@ -765,14 +777,13 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 
 1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
 
-    \
     **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
 
 {{< /note >}}
 
-### Security flags
+## Security flags
 
 For details on enabling client-server encryption, see [Client-server encryption](../../../secure/tls-encryption/client-to-server/).
 
@@ -874,7 +885,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ---
 
-### Change data capture (CDC) flags
+## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
@@ -964,7 +975,7 @@ Default: `false`
 
 ---
 
-### File expiration based on TTL flags
+## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
 
