@@ -41,7 +41,7 @@ Read committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possib
 Repeatable read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-<sup>$</sup> Read Committed Isolation is supported only if the YB-Tserver flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-Tserver flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 {{< note title="Note" >}}
 The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API's (and also PostgreSQL's) syntactic default, maps to Snapshot Isolation (unless the YB-Tserver flag `yb_enable_read_committed_isolation` is set to `true`).
@@ -50,15 +50,15 @@ To set the transaction isolation level of a transaction, use the command `SET TR
 
 {{< /note >}}
 
-As seen from the preceding table, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial (one transaction at a time) order. The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the various transaction anomalies are described briefly below:
+As seen from the preceding table, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial (one transaction at a time) order. The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the various transaction anomalies are as follows:
 
-* `Dirty read`: A transaction reads data written by a concurrent uncommitted transaction.
+* **Dirty read**: A transaction reads data written by a concurrent uncommitted transaction.
 
-* `Nonrepeatable read`: A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed after the initial read).
+* **Nonrepeatable read**: A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed after the initial read).
 
-* `Phantom read`: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
+* **Phantom read**: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
 
-* `Serialization anomaly`: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
+* **Serialization anomaly**: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
 
 ## Serializable isolation
 
@@ -66,7 +66,7 @@ The *Serializable* isolation level provides the strictest transaction isolation.
 
 ### Example
 
-The following bank overdraft protection example illustrates this case. The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank will later automatically transfer funds as needed to close the day with a positive balance in each account. Within a single transaction they check that the total of all accounts exceeds the amount requested.
+The following bank overdraft protection example illustrates this case. The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank will later automatically transfer funds as needed to close the day with a positive balance in each account. In a single transaction they check that the total of all accounts exceeds the amount requested.
 
 {{% explore-setup-single %}}
 

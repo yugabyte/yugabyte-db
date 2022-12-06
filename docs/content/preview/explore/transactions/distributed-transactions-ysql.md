@@ -90,54 +90,62 @@ The following table explains what happens at each step.
 
 <table>
   <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">Command</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">Description</span></td>
+   <th>Command</th>
+   <th>Description</th>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+```sql
 BEGIN TRANSACTION;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the <code>transaction status</code> table for the current transaction. It has a unique transaction id with the state <code>PENDING</code>. Note that in practice, these records are pre-created to achieve high performance.
+```
+
+  </td>
+  <td>
+    The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the <code>transaction status</code> table for the current transaction. It has a unique transaction id with the state <code>PENDING</code>. Note that in practice, these records are pre-created to achieve high performance.
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+```sql
 UPDATE accounts SET balance = balance - 200
   WHERE account_name='John'
   AND account_type='savings';
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
+```
+
+  </td>
+    <td>
       The transaction coordinator writes a <i>provisional record</i> to the tablet that contains this row. The provisional record consists of the transaction ID, so the state of the transaction can be determined. If a provisional record written by another transaction already exists, then the current transaction would use the transaction ID that is present in the provisional record to fetch details and check if there is a potential conflict.
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+```sql
 UPDATE accounts SET balance = balance + 200
   WHERE account_name='John'
   AND account_type='checking';
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
+```
+
+  </td>
+    <td>
       This step is largely the same as the previous step. Note that the rows being accessed can live on different nodes. The transaction coordinator would need to perform a provisional write RPC to the appropriate node for each row.
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+```sql
 COMMIT;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
+```
+
+  </td>
+    <td>
       Note that to <code>COMMIT</code>, all the provisional writes must have successfully completed. The <code>COMMIT</code> statement causes the transaction coordinator to update the transaction status in the <code>transaction status</code> table to <code>COMMITED</code>, at which point it is assigned the commit timestamp (which is a <i>hybrid timestamp</i> to be precise). At this point, the transaction is completed. In the background, the <code>COMMIT</code> record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
     </td>
   </tr>
@@ -201,7 +209,7 @@ where transaction_mode is one of:
   [ NOT ] DEFERRABLE
 ```
 
-### `transaction_mode`
+### transaction_mode
 
 The `transaction_mode` can be set to one of the following options:
 
@@ -226,7 +234,7 @@ yugabyte=# CREATE TABLE example(k INT PRIMARY KEY);
 ERROR: cannot execute CREATE TABLE in a read-only transaction
 ```
 
-### `DEFERRABLE` transactions
+### DEFERRABLE transactions
 
 The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 
