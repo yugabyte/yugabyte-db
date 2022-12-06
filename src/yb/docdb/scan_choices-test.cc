@@ -41,6 +41,43 @@ const Schema test_range_schema(
      ColumnSchema("payload", DataType::INT32, true)},
     {10_ColId, 11_ColId, 12_ColId}, 2);
 
+const Schema test_range_schema_3col(
+    {ColumnSchema(
+         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r3", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     // Non-key columns
+     ColumnSchema("payload", DataType::INT32, true)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId}, 3);
+
+const Schema test_range_schema_6col(
+    {ColumnSchema(
+         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r3", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r4", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r5", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kAscending),
+     ColumnSchema(
+         "r6", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
+         SortingType::kDescending),
+     // Non-key columns
+     ColumnSchema("payload", DataType::INT32, true)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId, 14_ColId, 15_ColId, 16_ColId}, 6);
+
 class TestCondition {
  public:
   TestCondition(std::vector<ColumnId> &&lhs, yb::QLOperator op, std::vector<std::vector<int>> &&rhs)
@@ -110,17 +147,40 @@ void ScanChoicesTest::SetupCondition(
     auto &lhs = it.lhs_;
     auto &rhs = it.rhs_;
 
-    ASSERT_EQ(lhs.size(), 1);
-    cond1->add_operands()->set_column_id(lhs[0]);
+    auto lhs_operand = cond1->add_operands();
+    lhs_operand->set_column_id(lhs[0]);
+    if (lhs.size() > 1) {
+      lhs_operand->Clear();
+      auto lhs_tup = lhs_operand->mutable_tuple();
+      for (auto lhs_col : lhs) {
+        lhs_tup->add_elems()->set_column_id(lhs_col);
+      }
+    }
+
+    auto rhs_op = cond1->add_operands();
 
     if (rhs.size() > 1) {
-      auto options = cond1->add_operands()->mutable_value()->mutable_list_value();
+      auto options = rhs_op->mutable_value()->mutable_list_value();
       for (auto rhs_opt : rhs) {
-        ASSERT_EQ(rhs_opt.size(), 1);
-        options->add_elems()->set_int32_value(rhs_opt[0]);
+        if (rhs_opt.size() == 1) {
+          options->add_elems()->set_int32_value(rhs_opt[0]);
+        } else {
+          auto tup = options->add_elems()->mutable_tuple_value();
+          for (auto opt_val : rhs_opt) {
+            tup->add_elems()->set_int32_value(opt_val);
+          }
+        }
       }
     } else {
-      cond1->add_operands()->mutable_value()->set_int32_value(rhs[0][0]);
+      auto rhs_opt = rhs[0];
+      if (rhs_opt.size() == 1) {
+        rhs_op->mutable_value()->set_int32_value(rhs[0][0]);
+      } else {
+        auto tup = rhs_op->mutable_value()->mutable_tuple_value();
+        for (auto rhs_opt_val : rhs_opt) {
+          tup->add_elems()->set_int32_value(rhs_opt_val);
+        }
+      }
     }
   }
 }
@@ -130,7 +190,7 @@ void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlC
   current_schema_ = &schema;
   std::vector<KeyEntryValue> empty_components;
   DocPgsqlScanSpec spec(
-      test_range_schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
+      schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
       boost::none, boost::none, nullptr, DocKey(), true);
   const auto &lower_bound = spec.LowerBound();
   EXPECT_OK(lower_bound);
@@ -151,7 +211,7 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
     auto cur_opts = choices_->TEST_GetCurrentOptions();
     AssertChoicesEqual(*expected_it, cur_opts);
     for (auto opt : cur_opts) {
-      choices_->AppendToKey(opt.upper(), &target);
+      opt.upper().AppendToKey(&target);
     }
     EXPECT_OK(choices_->SkipTargetsUpTo(target));
     EXPECT_OK(choices_->DoneWithCurrentTarget());
@@ -184,8 +244,13 @@ void ScanChoicesTest::CheckSkipTargetsUpTo(
     std::vector<KeyEntryValue> target_keyentries;
     std::vector<KeyEntryValue> expected_keyentries;
     for (size_t i = 0; i < target.size(); i++) {
-      target_keyentries.push_back(KeyEntryValue::Int32(target[i]));
-      expected_keyentries.push_back(KeyEntryValue::Int32(expected[i]));
+      SortingType sorttype = schema.column(i).sorting_type();
+      SortOrder sortorder = (sorttype == SortingType::kAscending ||
+          sorttype == SortingType::kAscendingNullsLast) ? SortOrder::kAscending :
+          SortOrder::kDescending;
+
+      target_keyentries.push_back(KeyEntryValue::Int32(target[i], sortorder));
+      expected_keyentries.push_back(KeyEntryValue::Int32(expected[i], sortorder));
     }
 
     KeyBytes target_keybytes = DocKey(target_keyentries).Encode();
@@ -227,6 +292,62 @@ TEST_F(ScanChoicesTest, SimpleMixedFilterHybridScan) {
 
   TestOptionIteration(schema, conds, {{{21, true}, {5}}, {{21, true}, {6}}});
   CheckSkipTargetsUpTo(schema, conds, {{{10, 4}, {10, 5}}, {{11, 6}, {11, 6}}});
+}
+
+TEST_F(ScanChoicesTest, SimpleTupleFilterHybridScan) {
+  std::vector<TestCondition> conds =
+      {{{10_ColId, 12_ColId}, QL_OP_IN, {{10, 21}, {11, 9}, {11, 18}, {12, 4}}},
+       {{11_ColId}, QL_OP_IN, {{5}, {6}}}};
+  const Schema &schema = test_range_schema_3col;
+
+  TestOptionIteration(
+      schema,
+      conds,
+      {{{10}, {5}, {21}},
+       {{10}, {6}, {21}},
+       {{11}, {5}, {9}},
+       {{11}, {5}, {18}},
+       {{11}, {6}, {9}},
+       {{11}, {6}, {18}},
+       {{12}, {5}, {4}},
+       {{12}, {6}, {4}}});
+  CheckSkipTargetsUpTo(
+      schema,
+      conds,
+      {{{10, 6, 22}, {11, 5, 9}},
+       {{11, 7, 18}, {12, 5, 4}}});
+}
+
+TEST_F(ScanChoicesTest, MixedTupleFilterHybridScan) {
+  std::vector<TestCondition> conds =
+      {{{10_ColId, 12_ColId, 13_ColId}, QL_OP_IN, {{10, 21, 11},
+                                                   {11, 9, 3},
+                                                   {11, 18, 4},
+                                                   {12, 4, 23}}},
+       {{14_ColId}, QL_OP_GREATER_THAN_EQUAL, {{10}}},
+       {{11_ColId, 15_ColId}, QL_OP_IN, {{11, 12}, {11, 23}, {14, 10}}}};
+  const Schema &schema = test_range_schema_6col;
+
+  TestOptionIteration(
+      schema,
+      conds,
+      {{{10}, {11}, {21}, {11}, {10, false}, {23, SortOrder::kDescending}},
+       {{10}, {11}, {21}, {11}, {10, false}, {12, SortOrder::kDescending}},
+       {{10}, {14}, {21}, {11}, {10, false}, {10, SortOrder::kDescending}},
+       {{11}, {11}, {9}, {3}, {10, false}, {23, SortOrder::kDescending}},
+       {{11}, {11}, {9}, {3}, {10, false}, {12, SortOrder::kDescending}},
+       {{11}, {11}, {18}, {4}, {10, false}, {23, SortOrder::kDescending}},
+       {{11}, {11}, {18}, {4}, {10, false}, {12, SortOrder::kDescending}},
+       {{11}, {14}, {9}, {3}, {10, false}, {10, SortOrder::kDescending}},
+       {{11}, {14}, {18}, {4}, {10, false}, {10, SortOrder::kDescending}},
+       {{12}, {11}, {4}, {23}, {10, false}, {23, SortOrder::kDescending}},
+       {{12}, {11}, {4}, {23}, {10, false}, {12, SortOrder::kDescending}},
+       {{12}, {14}, {4}, {23}, {10, false}, {10, SortOrder::kDescending}}});
+  CheckSkipTargetsUpTo(
+      schema,
+      conds,
+      {{{11, 13, 9, 3, 12, 11}, {11, 14, 9, 3, 10, 10}},
+       {{12, 11, 4, 23, 14, 22}, {12, 11, 4, 23, 14, 12}}});
 }
 
 }  // namespace docdb
