@@ -3,7 +3,7 @@
  * pg_hint_plan.c
  *		  hinting on how to execute a query for PostgreSQL
  *
- * Copyright (c) 2012-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Copyright (c) 2012-2022, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  *
  *-------------------------------------------------------------------------
  */

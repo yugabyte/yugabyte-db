@@ -12,7 +12,7 @@
  *     make_join_rel()
  *     populate_joinrel_with_paths()
  *
- * Portions Copyright (c) 2013-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Portions Copyright (c) 2013-2022, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
