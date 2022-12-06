@@ -16,7 +16,7 @@ REGRESS_OPTS = --encoding=UTF8
 EXTENSION = pg_hint_plan
 DATA = pg_hint_plan--*.sql
 
-EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out RPMS
+EXTRA_CLEAN = RPMS
 
 # Switch environment between standalone make and make check with
 # EXTRA_INSTALL from PostgreSQL tree
