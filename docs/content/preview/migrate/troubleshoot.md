@@ -416,6 +416,119 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 
 ---
 
+### Issue #571: [ORACLE] A unique index which is also a primary key is not migrated
+
+**GitHub link**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
+
+**Description**: If your Oracle schema contains a unique index and a primary key on the same set of columns, the unique index does not get exported.
+
+**Workaround**: Manual intervention needed. You have to manually add the unique index to the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE employees(employee_id NUMBER(6),email VARCHAR2(25));
+CREATE UNIQUE INDEX EMAIL_UNIQUE ON employees (email) ;
+ALTER TABLE employees ADD ( CONSTRAINT email_pk PRIMARY KEY (email));
+```
+
+Suggested change to the schema is to manually add the unique index to the exported files as follows:
+
+```sql
+CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
+```
+
+---
+
+### Issue #137: [MYSQL] Spatial datatype migration is not yet supported
+
+**GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
+
+**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. This will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
+
+**Workaround** : None. A workaround is currently being explored.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+CREATE TABLE address (
+     address_id int,
+     add point,
+     location GEOMETRY NOT NULL
+);
+
+---
+
+### Issue #612: [PostgreSQL] Adding primary key to a partitioned table results in an error
+
+**GitHub link**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
+
+**Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then it fails with the following error:
+
+```output
+ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTATE XX000)
+```
+
+**Workaround**: Add primary key in the `CREATE TABLE` statement.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.sales_region (
+    id integer NOT NULL,
+    amount integer,
+    branch text,
+    region text NOT NULL
+)
+PARTITION BY LIST (region);
+
+ALTER TABLE ONLY public.sales_region ADD CONSTRAINT sales_region_pkey PRIMARY KEY (id, region);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+CREATE TABLE public.sales_region (
+    id integer NOT NULL,
+    amount integer,
+    branch text,
+    region text NOT NULL,
+    PRIMARY KEY(id, region)
+)
+PARTITION BY LIST (region);
+```
+
+---
+
+### Issue #49: Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+
+**GitHub link**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+
+**Description**: If there is an index on a timestamp column, those indexes should be imported as a range index as most queries relying on such columns will be using the range predicates. So sequential scans will be avoided and indexed scans will be accessible.
+
+**Workaround**: Manually add the ASC (range) clause to the exported files.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+create index ON timestamp_demo (ts);
+```
+
+Suggested change to the schema is to add the `asc` clause as follows:
+
+```sql
+create index ON timestamp_demo (ts asc);
+```
+
+---
+
 ## Unsupported features
 
 Currently, yb-voyager doesn't support the following features:
