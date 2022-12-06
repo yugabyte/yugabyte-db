@@ -1,12 +1,14 @@
-import React, { useContext, useSelector } from 'react';
+import React, { useContext } from 'react';
 import './MetricsComparisonModal.scss';
 import { NodeSelector } from './NodeSelector';
 import { FilterContext } from './ComparisonFilterContextProvider';
 
-export const NodeSelectorHeader = ({ universe, selectedRegionClusterUUID }) => {
+export const NodeSelectorHeader = ({
+  universe,
+  selectedRegionClusterUUID,
+  isTopKMetricsEnabled
+}) => {
   const [state, dispatch] = useContext(FilterContext);
-  const featureFlags = useSelector((state) => state.featureFlags);
-  const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
 
   const handleNodeChange = (type, event) => {
     const nodeName = event.target.value;

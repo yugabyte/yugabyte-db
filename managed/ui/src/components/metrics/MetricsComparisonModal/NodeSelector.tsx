@@ -12,7 +12,7 @@ interface NodeSelectorData {
   otherSelectedNode?: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
-  enableTopKMetrics: boolean;
+  isTopKMetricsEnabled: boolean;
   selectedRegionCode: string;
 }
 
@@ -24,7 +24,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   otherSelectedNode,
   selectedRegionClusterUUID,
   selectedZoneName,
-  enableTopKMetrics,
+  isTopKMetricsEnabled,
   selectedRegionCode
 }) => {
   let nodeItems: any[] = [];
@@ -50,7 +50,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     });
   }
 
-  if (enableTopKMetrics) {
+  if (isTopKMetricsEnabled) {
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
       nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionCode ? selectedRegionClusterUUID === nodeItem.placementUuid
