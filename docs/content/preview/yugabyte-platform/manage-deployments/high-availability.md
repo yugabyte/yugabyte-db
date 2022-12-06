@@ -58,8 +58,6 @@ You can configure the active instance as follows:
 
     The address for this instance should be the only information under **Instances**.
 
-
-
 Your active instance is now configured.
 
 Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and clicking **Add a peer certificate**, as per the following illustration:
@@ -119,11 +117,55 @@ During a high-availability backup, the entire YugabyteDB Anywhere state is copie
 
 All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
-Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these guidelines: 
+Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines: 
 
 - Start an upgrade with an active instance.
 - After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
 - Proceed with upgrading standby instances. 
+
+The following is the detailed upgrade procedure:
+
+1. Stop the high-availability synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
+
+2. Upgrade the active instance. 
+
+   Expect a momentary lapse in availability for the duration of the upgrade.
+
+3. If upgrade completes, proceed to step 4. Otherwise, proceed to step 9.
+
+4. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on. If validation is successful, proceed to step 5. Otherwise, proceed to step 9.
+
+5. Perform upgrade of the standby instance.
+
+6. Enable high-availability synchronization.
+
+7. Optionally, perform promotion of the standby instance to the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
+
+8. Expect the process to be completed.
+
+9. Decommission the faulty active instance in the active-standby pair.
+
+10. Promote the standby instance.
+
+11. Do not attempt to upgrade until the root cause of the upgrade failure is determined.
+
+12. Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
+
+13. Once the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
+
+The following diagram provides a graphical representation of the upgrade procedure:
+
+![img](/images/yp/ha-upgrade.png)
+
+The following table provides the terminology mapping between the upgrade diagram and the upgrade procedure description:
+
+| Diagram        | Procedure description                                        |
+| -------------- | ------------------------------------------------------------ |
+| HA             | High availability                                            |
+| Sync           | Synchronization                                              |
+| Primary system | Active instance                                              |
+| Version A      | Original YugabyteDB Anywhere version that is subject to upgrade |
+| Version B      | Newer YugabyteDB Anywhere version to which to upgrade        |
 
 ## Remove a standby instance
 
