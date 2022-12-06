@@ -2660,35 +2660,36 @@ export default class ClusterFields extends Component {
                 />
                 {clusterType === 'async'
                   ? [
-                      <Field
-                        key="numNodes"
-                        name={`${clusterType}.numNodes`}
-                        type="text"
-                        component={YBControlledNumericInputWithLabel}
-                        className={
-                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
-                            ? 'readonly'
-                            : ''
-                        }
-                        data-yb-field="nodes"
-                        label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
-                        onInputChanged={this.numNodesChanged}
-                        onLabelClick={this.numNodesClicked}
-                        val={this.state.numNodes}
-                        minVal={Number(this.state.replicationFactor)}
-                      />,
-                      <Field
-                        key="replicationFactor"
-                        name={`${clusterType}.replicationFactor`}
-                        type="text"
-                        component={YBRadioButtonBarWithLabel}
-                        options={[1, 2, 3, 4, 5, 6, 7]}
-                        label="Replication Factor"
-                        initialValue={this.state.replicationFactor}
-                        onSelect={this.replicationFactorChanged}
-                        isReadOnly={isReadOnlyOnEdit}
-                      />
-                    ]
+                    <Field
+                      key="numNodes"
+                      name={`${clusterType}.numNodes`}
+                      type="text"
+                      component={YBControlledNumericInputWithLabel}
+                      className={
+                        getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
+                          ? 'readonly'
+                          : ''
+                      }
+                      data-yb-field="nodes"
+                      label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
+                      onInputChanged={this.numNodesChanged}
+                      onLabelClick={this.numNodesClicked}
+                      val={this.state.numNodes}
+                      minVal={Number(this.state.replicationFactor)}
+                    />,
+                    <Field
+                      key="replicationFactor"
+                      name={`${clusterType}.replicationFactor`}
+                      type="text"
+                      component={YBControlledNumericInputWithLabel}
+                      label="Replication Factor"
+                      minVal={1}
+                      maxVal={15}
+                      onInputChanged={this.replicationFactorChanged}
+                      val={Number(this.state.replicationFactor)}
+                      disabled={isReadOnlyOnEdit}
+                    />
+                  ]
                   : null}
               </div>
 
