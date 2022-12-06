@@ -2684,12 +2684,13 @@ export default class ClusterFields extends Component {
                       key="replicationFactor"
                       name={`${clusterType}.replicationFactor`}
                       type="text"
-                      component={YBRadioButtonBarWithLabel}
-                      options={[1, 2, 3, 4, 5, 6, 7]}
+                      component={YBControlledNumericInputWithLabel}
                       label="Replication Factor"
-                      initialValue={this.state.replicationFactor}
-                      onSelect={this.replicationFactorChanged}
-                      isReadOnly={isReadOnlyOnEdit}
+                      minVal={1}
+                      maxVal={15}
+                      onInputChanged={this.replicationFactorChanged}
+                      val={Number(this.state.replicationFactor)}
+                      disabled={isReadOnlyOnEdit}
                     />
                   ]
                   : null}
