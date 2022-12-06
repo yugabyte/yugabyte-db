@@ -1153,7 +1153,6 @@ set max_parallel_workers_per_gather to DEFAULT;
 
 -- hint error level
 set client_min_messages to 'DEBUG1';
-set pg_hint_plan.debug_level to 'verbose';
 /*+ SeqScan( */ SELECT 1;
 /*+ SeqScan(t1) */ SELECT * FROM t1 LIMIT 0;
 set pg_hint_plan.message_level to 'DEBUG1';
