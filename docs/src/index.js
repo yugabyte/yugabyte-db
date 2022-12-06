@@ -259,9 +259,7 @@ $(document).ready(() => {
     }
 
     // Left Nav draggabble.
-    if ($(window).width() > 1445) {
-      yugabyteDraggabbleSideNav();
-    }
+    yugabyteDraggabbleSideNav();
 
     // For Section nav.
     $(document).on('click', '.docs-menu', () => {
