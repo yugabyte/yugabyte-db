@@ -35,13 +35,11 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/tserver/pg_client.messages.h"
-#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
@@ -283,7 +281,6 @@ PgSession::PgSession(
     const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock,
-    const tserver::TServerSharedObject* tserver_shared_object,
     const YBCPgCallbacks& pg_callbacks)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
@@ -291,7 +288,6 @@ PgSession::PgSession(
       buffer_(std::bind(
           &PgSession::FlushOperations, this, std::placeholders::_1, std::placeholders::_2),
           buffering_settings_),
-      tserver_shared_object_(tserver_shared_object),
       pg_callbacks_(pg_callbacks) {
       Update(&buffering_settings_);
 }
@@ -596,35 +592,6 @@ void PgSession::ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
   const auto& read_time = std::get<0>(last_perform_on_txn_serial_no_).read_time;
   if (ensure_read_time_set_for_current_txn_serial_no && read_time && !options->has_read_time()) {
     read_time.ToPB(options->mutable_read_time());
-  }
-}
-
-Result<uint64_t> PgSession::GetSharedCatalogVersion() {
-  if (tserver_shared_object_) {
-    return (**tserver_shared_object_).ysql_catalog_version();
-  } else {
-    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
-  }
-}
-
-Result<uint64_t> PgSession::GetSharedDBCatalogVersion(int db_oid_shm_index) {
-  if (tserver_shared_object_) {
-    return (**tserver_shared_object_).ysql_db_catalog_version(db_oid_shm_index);
-  } else {
-    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
-  }
-}
-
-Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
-PgSession::GetTserverCatalogVersionInfo() {
-  return VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
-}
-
-Result<uint64_t> PgSession::GetSharedAuthKey() {
-  if (tserver_shared_object_) {
-    return (**tserver_shared_object_).postgres_auth_key();
-  } else {
-    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }
 }
 

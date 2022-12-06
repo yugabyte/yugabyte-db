@@ -68,14 +68,12 @@ class TServerSharedData {
     return catalog_version_.load(std::memory_order_acquire);
   }
 
-  void SetYsqlDbCatalogVersion(int index, uint64_t version) {
-    DCHECK_GE(index, 0);
+  void SetYsqlDbCatalogVersion(size_t index, uint64_t version) {
     DCHECK_LT(index, kMaxNumDbCatalogVersions);
     db_catalog_versions_[index].store(version, std::memory_order_release);
   }
 
-  uint64_t ysql_db_catalog_version(int index) const {
-    DCHECK_GE(index, 0);
+  uint64_t ysql_db_catalog_version(size_t index) const {
     DCHECK_LT(index, kMaxNumDbCatalogVersions);
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }

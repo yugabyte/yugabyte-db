@@ -22,7 +22,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
-
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/flag_tags.h"
@@ -423,6 +423,18 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   }
 
   return Status::OK();
+}
+
+uint64_t CatalogVersionChecker::GetLastBreakingVersion(DbOid db_oid) const {
+  uint64_t last_breaking_catalog_version;
+  if (db_oid) {
+    tablet_server_.get_ysql_db_catalog_version(
+        *db_oid, nullptr /* current_version */, &last_breaking_catalog_version);
+  } else {
+    tablet_server_.get_ysql_catalog_version(
+        nullptr /* current_version */, &last_breaking_catalog_version);
+  }
+  return last_breaking_catalog_version;
 }
 
 } // namespace tserver

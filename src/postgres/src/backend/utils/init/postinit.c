@@ -95,9 +95,6 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
-static void YbReleaseTserverCatalogInfo();
-static void YbResolveDBTserverCatalogVersion(const char* dbname);
-
 /*** InitPostgres support ***/
 
 
@@ -686,18 +683,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
-		/*
-		 * If per database catalog version mode is enabled, pre-load catalog version
-		 * info from the local tserver. The idea is that we take a snapshot of db
-		 * catalog version before start loading catalog objects. The snapshot ideally
-		 * would be taken from master, but that will require a RPC call that can
-		 * involve network cost. So we use tserver's view which does a local RPC but
-		 * could be stale. However, most likely tserver's view isn't stale, and
-		 * staleness doesn't break correctness.
-		 */
-		if (YBIsDBCatalogVersionMode())
-			yb_tserver_catalog_info = YbGetTserverCatalogVersionInfo();
-
 		YBCPgResetCatalogReadTime();
 		YBCStartSysTablePrefetching();
 		*yb_sys_table_prefetching_started = true;
@@ -931,8 +916,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		MyDatabaseTableSpace = dbform->dattablespace;
 		/* take database name from the caller, just for paranoia */
 		strlcpy(dbname, in_dbname, sizeof(dbname));
-		if (YBIsDBCatalogVersionMode())
-			YbResolveDBTserverCatalogVersion(dbname);
 	}
 	else if (OidIsValid(dboid))
 	{
@@ -953,8 +936,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		/* pass the database name back to the caller */
 		if (out_dbname)
 			strcpy(out_dbname, dbname);
-		if (YBIsDBCatalogVersionMode())
-			YbResolveDBTserverCatalogVersion(dbname);
 	}
 	else
 	{
@@ -970,6 +951,25 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 			CommitTransactionCommand();
 		}
 		return;
+	}
+
+	if (MyDatabaseId != TemplateDbOid && YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * Rather than fetching the current DB catalog version for MyDatabaseId
+		 * from master which requires another RPC that can cause the connection
+		 * establishment to slow down, we just set yb_catalog_cache_version from
+		 * that in the local tserver's catalog version ver. We expect in most
+		 * cases it will be identical to what we would get from master. However
+		 * it may be stale because of the heartbeat delay between the tserver
+		 * and master. If in rare cases we have set yb_catalog_cache_version to
+		 * a stale version, a future tserver to master hearbeat response will
+		 * bring the newer version and cause a cache refresh.
+		 * TODO: It is possible that catalog cache was changed on a master
+		 *       at this point (due to concurrent DDL). Cache refresh is
+		 *       required in this case. GH #14741 is created to handle this.
+		 */
+		yb_catalog_cache_version = YbGetSharedCatalogVersion();
 	}
 
 	/*
@@ -1151,44 +1151,6 @@ YbEnsureSysTablePrefetchingStopped(bool sys_table_prefetching_started)
 {
 	if (sys_table_prefetching_started)
 		YBCStopSysTablePrefetching();
-}
-
-static void
-YbReleaseTserverCatalogInfo()
-{
-	if (!yb_tserver_catalog_info)
-		return;
-	if (yb_tserver_catalog_info->versions)
-		pfree(yb_tserver_catalog_info->versions);
-	pfree(yb_tserver_catalog_info);
-	yb_tserver_catalog_info = NULL;
-}
-
-static void
-YbResolveDBTserverCatalogVersion(const char* dbname)
-{
-	YbTserverCatalogVersion *ver = YbGetTserverCatalogVersion();
-	if (ver == NULL)
-		ereport(FATAL,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("database \"%s\" is not ready in YugaByte shared memory",
-						dbname)));
-	yb_my_database_id_shm_index = ver->shm_index;
-	Assert(yb_my_database_id_shm_index >= 0);
-	Assert(MyDatabaseId == ver->db_oid);
-	/*
-	 * Rather than fetching the current DB catalog version for MyDatabaseId
-	 * from master which requires another RPC that can cause the connection
-	 * establishment to slow down, we just set yb_catalog_cache_version from
-	 * that in the local tserver's catalog version ver. We expect in most
-	 * cases it will be identical to what we would get from master. However
-	 * it may be stale because of the heartbeat delay between the tserver
-	 * and master. If in rare cases we have set yb_catalog_cache_version to
-	 * a stale version, a future tserver to master hearbeat response will
-	 * bring the newer version and cause a cache refresh.
-	 */
-	yb_catalog_cache_version = ver->current_version;
-	YbReleaseTserverCatalogInfo();
 }
 
 void

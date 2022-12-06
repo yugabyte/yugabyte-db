@@ -16,6 +16,8 @@
 #ifndef YB_TSERVER_SERVICE_UTIL_H
 #define YB_TSERVER_SERVICE_UTIL_H
 
+#include <functional>
+
 #include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
@@ -30,11 +32,14 @@
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_error.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
+
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace tserver {
@@ -225,6 +230,70 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     AllowSplitTablet allow_split_tablet);
 
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
+
+class CatalogVersionChecker {
+ public:
+  explicit CatalogVersionChecker(std::reference_wrapper<TabletServerIf> tablet_server)
+      : tablet_server_(tablet_server.get()) {}
+
+  template<class PB>
+  Status operator()(const PB& request) {
+    if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version())) {
+      return Status::OK();
+    }
+    SCHECK(!(request.has_ysql_db_catalog_version() && request.has_ysql_catalog_version()),
+          InvalidArgument,
+          "Both fields ysql_db_catalog_version and ysql_catalog_version are set");
+    auto version_info = VERIFY_RESULT(FetchVersionInfo(request));
+    if (!tserver_version_info_) {
+      tserver_version_info_.emplace(
+          version_info.db_oid, GetLastBreakingVersion(version_info.db_oid));
+    }
+
+    if (*tserver_version_info_ != version_info) {
+      SCHECK_EQ(
+          tserver_version_info_->db_oid, version_info.db_oid,
+          InvalidArgument, "Different db_oid values are not expected");
+      if (version_info.version < tserver_version_info_->version) {
+        return STATUS(
+            QLError, "The catalog snapshot used for this transaction has been invalidated",
+            TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  using DbOid = boost::optional<uint32_t>;
+
+  struct VersionInfo {
+    DbOid db_oid;
+    uint64_t version;
+
+    VersionInfo(DbOid db_oid_, uint64_t version_)
+        : db_oid(db_oid_), version(version_) {}
+
+    friend bool operator==(const VersionInfo&, const VersionInfo&) = default;
+  };
+
+  template<class PB>
+  Result<VersionInfo> FetchVersionInfo(const PB& request) const {
+    if (request.has_ysql_catalog_version()) {
+      return VersionInfo(boost::none, request.ysql_catalog_version());
+    }
+    DCHECK(request.has_ysql_db_catalog_version());
+    SCHECK(FLAGS_TEST_enable_db_catalog_version_mode,
+           InvalidArgument,
+           "enable_db_catalog_version_mode is not enabled");
+    SCHECK(request.has_ysql_db_oid(), InvalidArgument, "ysql_db_oid is not specified");
+    return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version());
+  }
+
+  [[nodiscard]] uint64_t GetLastBreakingVersion(DbOid db_oid) const;
+
+  TabletServerIf& tablet_server_;
+  boost::optional<VersionInfo> tserver_version_info_;
+};
 
 }  // namespace tserver
 }  // namespace yb

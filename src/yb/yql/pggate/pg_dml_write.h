@@ -42,14 +42,9 @@ class PgDmlWrite : public PgDml {
     write_req_->set_is_ysql_catalog_change(true);
   }
 
-  void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
-    write_req_->set_ysql_catalog_version(catalog_cache_version);
-  }
-
-  void SetDBCatalogCacheVersion(const uint32_t db_oid,
-                                const uint64_t catalog_cache_version) override {
-    write_req_->set_ysql_db_oid(db_oid);
-    write_req_->set_ysql_db_catalog_version(catalog_cache_version);
+  void SetCatalogCacheVersion(std::optional<PgOid> db_oid,
+                              uint64_t catalog_cache_version) override {
+    DoSetCatalogCacheVersion(write_req_.get(), db_oid, catalog_cache_version);
   }
 
   int32_t GetRowsAffectedCount() {
