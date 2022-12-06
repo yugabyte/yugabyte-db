@@ -176,6 +176,7 @@ SELECT * FROM settings;
  jit                            | on        | Query Tuning / Other Planner Options
  join_collapse_limit            | 8         | Query Tuning / Other Planner Options
  plan_cache_mode                | auto      | Query Tuning / Other Planner Options
+ recursive_worktable_factor     | 10        | Query Tuning / Other Planner Options
  cpu_index_tuple_cost           | 0.005     | Query Tuning / Planner Cost Constants
  cpu_operator_cost              | 0.0025    | Query Tuning / Planner Cost Constants
  cpu_tuple_cost                 | 0.01      | Query Tuning / Planner Cost Constants
@@ -209,6 +210,6 @@ SELECT * FROM settings;
  enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
  enable_sort                    | on        | Query Tuning / Planner Method Configuration
  enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
-(48 rows)
+(49 rows)
 
 ANALYZE;

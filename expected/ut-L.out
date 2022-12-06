@@ -3773,9 +3773,9 @@ error hint:
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
-         Merge Cond: (t1.c1 = t3.c1)
-         ->  Index Scan using t1_i1 on t1
+         Merge Cond: (t3.c1 = t1.c1)
          ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
