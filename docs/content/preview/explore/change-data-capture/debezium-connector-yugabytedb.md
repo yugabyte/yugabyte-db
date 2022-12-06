@@ -594,12 +594,6 @@ The fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. The source field structure has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
-{{< note title="Note" >}}
-
-Currently, YugabyteDB doesn't support the `before` image of the row (in other words, the values before the change was made). This will be enabled in a future release.
-
-{{< /note >}}
-
 #### Primary key updates
 
 An UPDATE operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an UPDATE event record, the connector sends a DELETE event record for the old key and a CREATE event record for the new (updated) key. These events have the usual structure and content, and in addition, each one has a message header related to the primary key change:
@@ -678,6 +672,75 @@ Whether you enable the connector to emit tombstones depends on how topics are co
 By default, a connector's `tombstones.on.delete` property is set to `true` so that the connector generates a tombstone after each delete event.
 
 If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
+
+## Before image
+
+Before image refers to the state of the row before the change event occurred. The YugabyteDB connector will send the before image of the row when it will be configured using a stream ID enabled with before image, to know more about how to create stream ID for before image, see [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+
+
+{{< note title="Note" >}}
+
+We recommend adding a transformer in the source connector while using with before image, the below property can be added to your configuration directly:
+
+```
+...
+"transforms":"unwrap",
+"transforms.unwrap.type":"io.debezium.connector.yugabytedb.transforms.PGCompatible",
+"transforms.unwrap.drop.tombstones":"",
+...
+```
+
+{{< /note >}}
+
+Once before image is enabled and the mentioned transformer is used, the effect of an update statement with the record structure would be:
+
+```sql
+UPDATE customers SET email = 'service@example.com' WHERE id = 1;
+```
+
+```output.json
+{
+  "schema": {...},
+  "payload": {
+    "before": { --> 1
+      "id": 1,
+      "name": "Vaibhav Kushwaha",
+      "email": "vaibhav@example.com"
+    }
+    "after": { --> 2
+      "id": 1,
+      "name": "Vaibhav Kushwaha",
+      "email": "service@example.com"
+    },
+    "source": { --> 3
+      "version": "1.7.0-SNAPSHOT",
+      "connector": "yugabytedb",
+      "name": "dbserver1",
+      "ts_ms": -8881476960074,
+      "snapshot": "false",
+      "db": "yugabyte",
+      "sequence": "[null,\"1:5::0:0\"]",
+      "schema": "public",
+      "table": "customers",
+      "txId": "",
+      "lsn": "1:5::0:0",
+      "xmin": null
+    },
+    "op": "u", --> 4
+    "ts_ms": 1646149134341,
+    "transaction": null
+  }
+}
+```
+
+The fields in the update event are:
+
+| Item | Field name | Description |
+| :--- | :--------- | :---------- |
+| 1 | before | The value of the row before the update operation. |
+| 2 | after | Specifies the state of the row after the change event happened. In this example, the value of `email` has now changed to `service@example.com`. |
+| 3 | source | Mandatory field that describes the source metadata for the event. The source field structure has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
+| 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
 ## Datatype mappings
 
@@ -964,7 +1027,7 @@ The following properties are _required_ unless a default value is available:
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
-| table.max.num.tablets | 100 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
+| table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
@@ -999,7 +1062,8 @@ Advanced connector configuration properties:
 
 | Property | Default | Description |
 | :------- | :------ | :---------- |
-| snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started |
+| snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started <br/><br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
+| snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (<schemaName>.<tableName>) of the tables to include in a snapshot. The specified items must also be named in the connector’s `table.include.list` property. This property takes effect only if the connector’s `snapshot.mode` property is set to a value other than `never`. |
 | cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
@@ -1018,6 +1082,8 @@ Advanced connector configuration properties:
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
 | ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
+| auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
+| new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
 
 ## Troubleshooting
 

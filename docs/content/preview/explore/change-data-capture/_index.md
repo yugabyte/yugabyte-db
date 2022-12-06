@@ -128,6 +128,26 @@ Initially, if you create a stream for a particular table that already contains s
 
 The snapshot feature uses the `cdc_snapshot_batch_size` GFlag. This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../change-data-capture/debezium-connector-yugabytedb/) configuration.
 
+If the snapshot fails due to some reasons, then you will need to restart the connector. Upon restart, if the connector detects that snapshot has been completed for a given tablet, then the tablet will be skipped in the snapshot process and the connector will resume streaming the changes for that tablet.
+
+{{< note title="Note" >}}
+
+In case there is a need to forecefully take the snapshot again, then the recommended way of doing it is to clean up the Kafka topics manually and delete all the contents, create a new stream ID and then deploy the connector again with the newly created stream ID.
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+It is not possible to take a snapshot of the table again using an existing stream ID i.e. if for a given stream ID, the snapshot process is completed successfully, then the snapshot cannot be taken again using the same stream ID.
+
+{{< /note >}}
+
+## Before image
+
+This refers to the state of the row before the change event occurred. This will only be populated in case of UPDATE and DELETE event as in case of INSERT and READ (Snapshot) events, the change is for the creation of new content.
+
+You will need to create a CDC DB stream indicating the server to send the before image of the changed rows with the streams. To know more on how to create streams with before image enabled, see [yb-admin](../../admin/yb-admin/#change-data-capture-cdc-commands).
+
 ## Limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
@@ -142,7 +162,6 @@ In the current implementation, information related to the columns for the UDTs w
 * Enabling CDC on tables created using previous versions of YugabyteDB is not supported, even after YugabyteDB is upgraded to version 2.13 or higher.
   * Also, CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
 * DROP and TRUNCATE commands aren't supported. If a user tries to issue these commands on a table while a stream ID is there for the table, the server might crash, the behaviour is unstable. Issues for TRUNCATE [10010](https://github.com/yugabyte/yugabyte-db/issues/10010) and DROP [10069](https://github.com/yugabyte/yugabyte-db/issues/10069).
-* If a stream ID is created, and after that a new table is created, the existing stream ID is not able to stream data from the newly created table. The user needs to create a new stream ID. Issue [10921](https://github.com/yugabyte/yugabyte-db/issues/10921).
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 * Support for DDL commands is incomplete.
 * A single stream can only be used to stream data from one namespace only.
@@ -150,8 +169,6 @@ In the current implementation, information related to the columns for the UDTs w
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
-* Support for tablet splitting is tracked in issue [10935](https://github.com/yugabyte/yugabyte-db/issues/10935).
 * Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
 * Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
-* Support for enabling CDC on Colocated Tables is tracked in issue [11830](https://github.com/yugabyte/yugabyte-db/issues/11830).
