@@ -57,7 +57,7 @@ func cleanCmd() *cobra.Command {
 func preflightCmd() *cobra.Command {
 	var skippedPreflightChecks []string
 	preflight := &cobra.Command{
-		Use: "preflight [list]",
+		Use: "preflight",
 		Short: "The preflight command checks makes sure that your system is ready to " +
 			"install Yugabyte Anywhere.",
 		Long: `
@@ -66,10 +66,21 @@ func preflightCmd() *cobra.Command {
         Operating System.`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			// Print all known checks
+			// TODO: make the user specify which type of preflight list to specify
 			if len(args) == 1 && args[0] == "list" {
-				preflight.PreflightList()
+				fmt.Println("Known preflight install checks:")
+				for _, check := range preflight.InstallChecksWithPostgres {
+					fmt.Println("  " + check.Name())
+				}
 			} else {
-				preflight.Run(common.InputFile, skippedPreflightChecks...)
+				// TODO: We should allow the user to better specify which checks to run.
+				// Will do this as we implement a set of upgrade preflight checks
+				errs := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+				if len(errs) > 0 {
+					preflight.PrintPreflightErrors(errs)
+					log.Fatal("preflight failed")
+				}
 			}
 		},
 	}
@@ -262,31 +273,11 @@ func installCmd() *cobra.Command {
         `,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-
-			bringPostgres := viper.GetBool("postgres.bringOwn")
-			bringPython := viper.GetBool("python.bringOwn")
-
-			if bringPostgres {
-
-				if !preflight.ValidateUserPostgres(common.InputFile) {
-					log.Fatal("User Postgres not correctly configured! " +
-						"Check settings and the above logging message.")
-				}
-
+			errs := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+			if len(errs) > 0 {
+				preflight.PrintPreflightErrors(errs)
+				log.Fatal("all preflight checks must pass to install")
 			}
-
-			if bringPython {
-
-				if !preflight.ValidateUserPython(common.InputFile) {
-
-					log.Fatal("User Python not correctly configured! " +
-						"Check settings.")
-				}
-			}
-
-			preflight.Run(common.InputFile, skippedPreflightChecks...)
-
-			// Common install steps
 			common.Install(common.GetVersion())
 
 			for _, name := range serviceOrder {
@@ -321,16 +312,13 @@ var upgradeCmd = &cobra.Command{
    `,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		errors := preflight.Run(preflight.UpgradeChecks)
+		if len(errors) > 0 {
+			preflight.PrintPreflightErrors(errors)
+			log.Fatal("all preflight checks must pass to upgrade")
+		}
 
-		// // Making sure that an installation has already taken place before an upgrade.
-		// if _, err := os.Stat(common.InstallRoot); err != nil {
-		// 	if os.IsNotExist(err) {
-		// 		log.Fatal(common.InstallRoot + " doesn't exist, did you mean to run sudo ./yba-ctl upgrade?")
-		// 	}
-		// }
-
-		log.Info("Upgrade command not implemented yet.")
-
+		log.Fatal("Upgrade command not implemented yet.")
 	},
 }
 
