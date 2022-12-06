@@ -92,4 +92,4 @@ export const EditConfig: FC<EditConfigData> = ({
       }}
     />
   );
-}
+};

@@ -67,16 +67,29 @@ class RemoteShell(object):
         return result
 
     def run_command(self, command, **kwargs):
-        result = self.run_command_raw(command, **kwargs)
+        result = self.run_command_raw(command)
 
         if result.exited:
+            cmd = ' '.join(command).encode('utf-8') if isinstance(command, list) else command
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
-                "return code '{}' and error '{}'".format(command.encode('utf-8'),
+                "return code '{}' and error '{}'".format(cmd,
                                                          result.stderr,
                                                          result.exited)
             )
         return result
+
+    def exec_command(self, command, **kwargs):
+        output_only = kwargs.get('output_only', False)
+        if output_only:
+            result = self.run_command(command, **kwargs)
+            return result.stdout
+        else:
+            # This returns rc, stdout, stderr.
+            return self.ssh_conn.exec_command(command, **kwargs)
+
+    def exec_script(self, local_script_name, params):
+        return self.ssh_conn.exec_script(local_script_name, params)
 
     def put_file(self, local_path, remote_path, **kwargs):
         self.ssh_conn.upload_file_to_remote_server(local_path, remote_path, **kwargs)
@@ -125,14 +138,40 @@ class RpcRemoteShell(object):
 
     def run_command(self, command, **kwargs):
         result = self.run_command_raw(command, **kwargs)
+
         if result.exited:
+            cmd = ' '.join(command).encode('utf-8') if isinstance(command, list) else command
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
-                "return code '{}' and error '{}'".format(' '.join(command).encode('utf-8'),
+                "return code '{}' and error '{}'".format(cmd,
                                                          result.stderr,
                                                          result.exited)
             )
         return result
+
+    def exec_command(self, command, **kwargs):
+        output_only = kwargs.get('output_only', False)
+        if output_only:
+            result = self.run_command(command, **kwargs)
+            return result.stdout
+        else:
+            result = self.client.exec_command(command, **kwargs)
+            return result.rc, result.stdout, result.stderr
+
+    def exec_script(self, local_script_name, params):
+        # Copied from exec_script of ssh.py to run a shell script.
+        if not isinstance(params, str):
+            params = ' '.join(params)
+
+        with open(local_script_name, "r") as f:
+            local_script = f.read()
+
+        # Heredoc syntax for input redirection from a local shell script.
+        command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
+        bash_command = ["/bin/bash", "-c", command]
+
+        kwargs = {"output_only": True}
+        return self.exec_command(bash_command, **kwargs)
 
     def put_file(self, local_path, remote_path, **kwargs):
         self.client.put_file(local_path, remote_path, **kwargs)

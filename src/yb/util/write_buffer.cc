@@ -154,13 +154,14 @@ void WriteBuffer::AssignTo(size_t begin, size_t end, std::string* out) const {
   if (!left) {
     return;
   }
+  out->reserve(left);
   EnumerateBlocks(
       blocks_, begin, left, [out](const char* data, size_t size, const RefCntBuffer&, bool) {
     out->append(data, size);
   });
 }
 
-void WriteBuffer::CopyTo(size_t begin, size_t end, char* out) const {
+void WriteBuffer::CopyTo(size_t begin, size_t end, std::byte* out) const {
   EnumerateBlocks(blocks_, begin, end - begin,
       [&out](const char* data, size_t size, const RefCntBuffer&, bool) {
     memcpy(out, data, size);

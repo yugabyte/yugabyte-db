@@ -26,7 +26,7 @@ extern void assign_transaction_read_only(bool newval, void *extra);
 extern bool check_XactIsoLevel(char **newval, void **extra, GucSource source);
 extern void assign_XactIsoLevel(const char *newval, void *extra);
 extern const char *show_XactIsoLevel(void);
-extern const char *show_yb_effective_transaction_isolation_level(void);
+extern const char *yb_fetch_effective_transaction_isolation_level(void);
 extern bool check_transaction_deferrable(bool *newval, void **extra, GucSource source);
 extern void assign_transaction_deferrable(bool newval, void *extra);
 extern bool check_random_seed(double *newval, void **extra, GucSource source);

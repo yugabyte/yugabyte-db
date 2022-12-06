@@ -60,7 +60,7 @@ class TestLoadBalancerCommunity : public TestLoadBalancerBase<ClusterLoadBalance
 // interval on the end key (non-inclusive).
 TEST(TableInfoTest, TestAssignmentRanges) {
   const string table_id = CURRENT_TEST_NAME();
-  scoped_refptr<TableInfo> table(new TableInfo(table_id));
+  scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
   vector<scoped_refptr<TabletInfo>> tablets;
 
   // Define & create the splits.
@@ -361,7 +361,7 @@ void SplitAndDeleteTablets(const TabletInfos& tablets_to_split, TabletInfos* pos
 
 TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   const string table_id = CURRENT_TEST_NAME();
-  scoped_refptr<TableInfo> table(new TableInfo(table_id));
+  scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
   TabletInfos pre_split_tablets;
 
   const std::vector<std::string> pre_split_keys = {"a", "b", "c"};

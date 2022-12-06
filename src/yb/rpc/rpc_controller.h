@@ -144,7 +144,7 @@ class RpcController {
   Status AssignSidecarTo(int idx, std::string* out) const;
 
   // Transfer all sidecars to specified context.
-  size_t TransferSidecars(RpcContext* dest);
+  size_t TransferSidecars(Sidecars* dest);
 
   int32_t call_id() const;
 

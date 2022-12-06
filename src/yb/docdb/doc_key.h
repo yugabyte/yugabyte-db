@@ -13,7 +13,25 @@
 
 #pragma once
 
-#include "yb/docdb/doc_key_base.h"
+#include <ostream>
+#include <vector>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/constants.h"
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/primitive_value.h"
+
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
@@ -59,6 +77,10 @@ class DocKeyDecoder;
 
 YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 
+// Whether to allow parts of the range component of a doc key that should not be present in stored
+// doc key, but could be used during read, for instance kLowest and kHighest.
+YB_STRONGLY_TYPED_BOOL(AllowSpecial)
+
 // Key in DocDB is named - SubDocKey. It consist of DocKey (i.e. row identifier) and
 // subkeys (i.e. column id + possible sub values).
 // DocKey consists of hash part followed by range part.
@@ -69,7 +91,7 @@ struct DocKeySizes {
   size_t doc_key_size;
 };
 
-class DocKey : public DocKeyBase {
+class DocKey {
  public:
   // Constructs an empty document key with no hash component.
   DocKey();
@@ -104,15 +126,28 @@ class DocKey : public DocKeyBase {
 
   // Constructors to create a DocKey for the given schema to support co-located tables.
   explicit DocKey(const Schema& schema);
+  DocKey(const Schema& schema, DocKeyHash hash);
   DocKey(const Schema& schema, std::vector<KeyEntryValue> range_components);
   DocKey(const Schema& schema, DocKeyHash hash,
          std::vector<KeyEntryValue> hashed_components,
          std::vector<KeyEntryValue> range_components = std::vector<KeyEntryValue>());
 
-  void AppendTo(KeyBytes* out) const override;
+  KeyBytes Encode() const;
+  void AppendTo(KeyBytes* out) const;
 
   // Encodes DocKey to binary representation returning result as RefCntPrefix.
   RefCntPrefix EncodeAsRefCntPrefix() const;
+
+  // Resets the state to an empty document key.
+  void Clear();
+
+  // Clear the range components of the document key only.
+  void ClearRangeComponents();
+
+  // Resize the range components:
+  //  - drop elements (primitive values) from the end if new_size is smaller than the old size.
+  //  - append default primitive values (kNullLow) if new_size is bigger than the old size.
+  void ResizeRangeComponents(int new_size);
 
   const Uuid& cotable_id() const {
     return cotable_id_;
@@ -128,6 +163,26 @@ class DocKey : public DocKeyBase {
 
   bool has_colocation_id() const {
     return colocation_id_ != kColocationIdNotSet;
+  }
+
+  DocKeyHash hash() const {
+    return hash_;
+  }
+
+  const std::vector<KeyEntryValue>& hashed_group() const {
+    return hashed_group_;
+  }
+
+  const std::vector<KeyEntryValue>& range_group() const {
+    return range_group_;
+  }
+
+  std::vector<KeyEntryValue>& hashed_group() {
+    return hashed_group_;
+  }
+
+  std::vector<KeyEntryValue>& range_group() {
+    return range_group_;
   }
 
   // Decodes a document key from the given RocksDB key.
@@ -167,14 +222,25 @@ class DocKey : public DocKeyBase {
   Status FullyDecodeFrom(const Slice& slice);
 
   // Converts the document key to a human-readable representation.
-  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const override;
+  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
   static std::string DebugSliceToString(Slice slice);
+
+  // Check if it is an empty key.
+  bool empty() const {
+    return !hash_present_ && range_group_.empty();
+  }
 
   bool operator ==(const DocKey& other) const;
 
   bool operator !=(const DocKey& other) const {
     return !(*this == other);
   }
+
+  bool HashedComponentsEqual(const DocKey& other) const;
+
+  void AddRangeComponent(const KeyEntryValue& val);
+
+  void SetRangeComponent(const KeyEntryValue& val, int idx);
 
   int CompareTo(const DocKey& other) const;
 
@@ -210,6 +276,15 @@ class DocKey : public DocKeyBase {
     colocation_id_ = colocation_id;
   }
 
+  void set_hash(DocKeyHash hash) {
+    hash_ = hash;
+    hash_present_ = true;
+  }
+
+  bool has_hash() const {
+    return hash_present_;
+  }
+
   // Converts a redis string key to a doc key
   static DocKey FromRedisKey(uint16_t hash, const std::string& key);
   static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
@@ -224,7 +299,6 @@ class DocKey : public DocKeyBase {
                                  AllowSpecial allow_special,
                                  const Callback& callback);
 
- protected:
   // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
   // primary or single-tenant table.
   Uuid cotable_id_;
@@ -232,6 +306,74 @@ class DocKey : public DocKeyBase {
   // Colocation ID used to distinguish a table within a colocation group.
   // kColocationIdNotSet for a primary or single-tenant table.
   ColocationId colocation_id_;
+
+  // TODO: can we get rid of this field and just use !hashed_group_.empty() instead?
+  bool hash_present_;
+
+  DocKeyHash hash_;
+  std::vector<KeyEntryValue> hashed_group_;
+  std::vector<KeyEntryValue> range_group_;
+};
+
+template <class Collection>
+void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes* result) {
+  for (const auto& item : doc_key_items) {
+    item.AppendToKey(result);
+  }
+  result->AppendGroupEnd();
+}
+
+class DocKeyEncoderAfterHashStep {
+ public:
+  explicit DocKeyEncoderAfterHashStep(KeyBytes* out) : out_(out) {}
+
+  template <class Collection>
+  void Range(const Collection& range_group) {
+    AppendDocKeyItems(range_group, out_);
+  }
+
+ private:
+  KeyBytes* out_;
+};
+
+class DocKeyEncoderAfterTableIdStep {
+ public:
+  explicit DocKeyEncoderAfterTableIdStep(KeyBytes* out) : out_(out) {
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(
+      bool hash_present, uint16_t hash, const Collection& hashed_group) {
+    if (!hash_present) {
+      return DocKeyEncoderAfterHashStep(out_);
+    }
+
+    return Hash(hash, hashed_group);
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(uint16_t hash, const Collection& hashed_group) {
+    // We are not setting the "more items in group" bit on the hash field because it is not part
+    // of "hashed" or "range" groups.
+    AppendHash(hash, out_);
+    AppendDocKeyItems(hashed_group, out_);
+
+    return DocKeyEncoderAfterHashStep(out_);
+  }
+
+  template <class HashCollection, class RangeCollection>
+  void HashAndRange(uint16_t hash, const HashCollection& hashed_group,
+                    const RangeCollection& range_collection) {
+    Hash(hash, hashed_group).Range(range_collection);
+  }
+
+  void HashAndRange(uint16_t hash, const std::initializer_list<KeyEntryValue>& hashed_group,
+                    const std::initializer_list<KeyEntryValue>& range_collection) {
+    Hash(hash, hashed_group).Range(range_collection);
+  }
+
+ private:
+  KeyBytes* out_;
 };
 
 class DocKeyEncoder {
@@ -248,14 +390,45 @@ class DocKeyEncoder {
   KeyBytes* out_;
 };
 
-class DocKeyDecoder : public DocKeyBaseDecoder {
+class DocKeyDecoder {
  public:
-  explicit DocKeyDecoder(const Slice& input) : DocKeyBaseDecoder(input) {}
+  explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
   Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
-  Status DecodeToRangeGroup() override;
+  Result<bool> HasPrimitiveValue(AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  Result<bool> DecodeHashCode(
+      uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  Result<bool> DecodeHashCode(AllowSpecial allow_special);
+
+  Status DecodeKeyEntryValue(
+      KeyEntryValue* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  Status DecodeKeyEntryValue(AllowSpecial allow_special);
+
+  Status ConsumeGroupEnd();
+
+  bool GroupEnded() const;
+
+  const Slice& left_input() const {
+    return input_;
+  }
+
+  size_t ConsumedSizeFrom(const uint8_t* start) const {
+    return input_.data() - start;
+  }
+
+  Slice* mutable_input() {
+    return &input_;
+  }
+
+  Status DecodeToRangeGroup();
+
+ private:
+  Slice input_;
 };
 
 // Clears range components from provided key. Returns true if they were exists.
@@ -266,6 +439,17 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = Al
 Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs);
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
+
+// Consumes single primitive value from start of slice.
+// Returns true when value was consumed, false when group end is found. The group end byte is
+// consumed in the latter case.
+Result<bool> ConsumePrimitiveValueFromKey(Slice* slice);
+
+// Consume a group of document key components, ending with ValueType::kGroupEnd.
+// @param slice - the current point at which we are decoding a key
+// @param result - vector to append decoded values to.
+Status ConsumePrimitiveValuesFromKey(Slice* slice,
+                                     std::vector<KeyEntryValue>* result);
 
 Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
 

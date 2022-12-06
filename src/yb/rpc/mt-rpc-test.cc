@@ -197,7 +197,10 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();
-  ThreadPool thread_pool("bogus_pool", kMaxConcurrency, 0UL);
+  ThreadPool thread_pool(ThreadPoolOptions {
+    .name = "bogus_pool",
+    .max_workers = 0UL,
+  });
   scoped_refptr<ServicePool> service_pool(new ServicePool(kMaxConcurrency,
                                                           &thread_pool,
                                                           &server_messenger->scheduler(),

@@ -8,22 +8,22 @@
     "strconv"
     "github.com/spf13/viper"
     "fmt"
+
+    log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+    "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
  )
 
  var defaultMinCPUs int = 4
  var defaultMinMemoryLimit float64 = 15
  var defaultMinSSDStorage float64 = 50
 
+ // TODO: This needs to be pulled from config.
  var ports = []string{"5432", "9000", "9090"}
-
- var INSTALL_ROOT = GetInstallRoot()
-
- var currentUser = GetCurrentUser()
 
  // Preflight Interface created for Preflight check
  // objects.
  type Preflight interface {
-    GetName() string
+    Name() string
     GetWarningLevel() string
 	Execute()
  }
@@ -32,9 +32,9 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
 
  // PreflightList lists all preflight checks currently conducted.
  func PreflightList() {
-    LogInfo("Preflight Check List:")
+    log.Info("Preflight Check List:")
     for _, check := range(preflightCheckObjects) {
-        LogInfo(check.GetName() + ": " + check.GetWarningLevel())
+        log.Info(check.Name() + ": " + check.GetWarningLevel())
     }
  }
 
@@ -45,7 +45,7 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
 
     for _, check := range(preflightCheckObjects) {
 
-        preflightChecksList = append(preflightChecksList, check.GetName())
+        preflightChecksList = append(preflightChecksList, check.Name())
 
     }
 
@@ -55,7 +55,7 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
     err := viper.ReadInConfig()
 
     if err != nil {
-        LogError("Error: " + err.Error() + ".")
+        log.Fatal("Error: " + err.Error() + ".")
     }
 
     preflight := viper.Get("preflight").(map[string]interface{})
@@ -64,9 +64,9 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
 
     for _, check := range(skipChecks) {
 
-        if !Contains(preflightChecksList, check) {
+        if !common.Contains(preflightChecksList, check) {
 
-            LogError(check + " is not a valid Preflight check! Please use the " +
+            log.Fatal(check + " is not a valid Preflight check! Please use the " +
             "Preflight list command to get all available Preflight checks.")
         }
     }
@@ -79,15 +79,15 @@ var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
 
     for _, check := range(preflightCheckObjects) {
 
-        if Contains(skipChecks, check.GetName()) {
+        if common.Contains(skipChecks, check.Name()) {
             if check.GetWarningLevel() == "critical" {
 
-                LogError("The " + check.GetName() + " preflight check is at a critical level " +
+                log.Fatal("The " + check.Name() + " preflight check is at a critical level " +
                 "and cannot be skipped.")
             }
         }
 
-        if !Contains(skipChecks, check.GetName()) {
+        if !common.Contains(skipChecks, check.Name()) {
             if !(overrideWarning && check.GetWarningLevel() == "warning") {
                 check.Execute()
             }

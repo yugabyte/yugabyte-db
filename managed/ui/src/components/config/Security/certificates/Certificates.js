@@ -269,29 +269,29 @@ class Certificates extends Component {
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data
-          .reduce((allCerts, cert) => {
-            const certInfo = {
-              type: cert.certType,
-              uuid: cert.uuid,
-              name: cert.label,
-              expiryDate: cert.expiryDate,
-              certificate: cert.certificate,
-              creationTime: cert.startDate,
-              privateKey: cert.privateKey,
-              customCertInfo: cert.customCertInfo,
-              inUse: cert.inUse,
-              universeDetails: cert.universeDetails,
-              hcVaultCertParams: cert.customHCPKICertInfo
-            };
+        .reduce((allCerts, cert) => {
+          const certInfo = {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDate,
+            certificate: cert.certificate,
+            creationTime: cert.startDate,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse,
+            universeDetails: cert.universeDetails,
+            hcVaultCertParams: cert.customHCPKICertInfo
+          };
 
-            const isVaultCert = cert.certType === 'HashicorpVault';
-            if (isVaultCert) {
-              isHCVaultEnabled && allCerts.push(certInfo);
-            } else allCerts.push(certInfo);
+          const isVaultCert = cert.certType === 'HashicorpVault';
+          if (isVaultCert) {
+            isHCVaultEnabled && allCerts.push(certInfo);
+          } else allCerts.push(certInfo);
 
-            return allCerts;
-          }, [])
-          .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
+          return allCerts;
+        }, [])
+        .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
     return (

@@ -25,6 +25,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Environment;
 import play.libs.Json;
+import org.apache.commons.lang.StringUtils;
 
 @Slf4j
 public class MetricGrafanaGen {
@@ -223,7 +224,7 @@ public class MetricGrafanaGen {
         if (layout.getYaxis() != null && layout.getYaxis().getAlias() != null) {
           legendFormat = layout.getYaxis().getAlias().get(filterValue);
         }
-        if (legendFormat == null || legendFormat == "") {
+        if (StringUtils.isBlank(legendFormat)) {
           legendFormat = filterValue;
         }
         targetVar.put("legendFormat", legendFormat);
@@ -256,14 +257,14 @@ public class MetricGrafanaGen {
   Map<String, Integer> getNextGridPos(int x, int y, String type) {
     Map<String, Integer> gridPos = new HashMap<String, Integer>();
     int h = 9, w = 12;
-    if (type == "panel") {
+    if (type.equals("panel")) {
       if (x == 0) {
         x = 12;
       } else {
         x = 0;
         y += 9;
       }
-    } else if (type == "header") {
+    } else if (type.equals("header")) {
       x = 0;
       y += 1;
       h = 1;

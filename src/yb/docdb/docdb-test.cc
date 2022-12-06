@@ -3837,7 +3837,8 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
     if (j == 0) {
       ASSERT_OK(FlushRocksDbAndWait());
     } else if (j == 1) {
-      ASSERT_OK(ForceRocksDBCompact(rocksdb()));
+      rocksdb::CompactRangeOptions options;
+      ASSERT_OK(ForceRocksDBCompact(rocksdb(), options));
     }
   }
 

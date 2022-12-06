@@ -35,12 +35,14 @@ import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
+import java.util.function.Function;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -49,6 +51,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.*;
@@ -62,16 +65,6 @@ import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 import org.yb.util.ServerInfo;
-
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -296,6 +289,17 @@ public class YBClient implements AutoCloseable {
   public CreateKeyspaceResponse createKeyspace(String keyspace, YQLDatabase databaseType)
       throws Exception {
     Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace, databaseType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Delete a keyspace(or namespace) on the cluster with the specified name.
+   * @param keyspaceName CQL keyspace to delete
+   * @return an rpc response object
+   */
+  public DeleteNamespaceResponse deleteNamespace(String keyspaceName)
+      throws Exception {
+    Deferred<DeleteNamespaceResponse> d = asyncClient.deleteNamespace(keyspaceName);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

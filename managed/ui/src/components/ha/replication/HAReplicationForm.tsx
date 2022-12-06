@@ -1,16 +1,27 @@
-import React, { FC, useRef } from 'react';
+import React, { FC, useEffect, useRef, useState } from 'react';
 import _ from 'lodash';
 import { useMutation, useQueryClient } from 'react-query';
 import { Alert, Col, Grid, Row } from 'react-bootstrap';
 import * as Yup from 'yup';
 import { Field, FieldProps, Form, Formik, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
+
 import { YBButton, YBFormInput, YBSegmentedButtonGroup, YBToggle } from '../../common/forms/fields';
 import { YBCopyButton, YBPasteButton } from '../../common/descriptors';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import {
+  getPeerCertIdentifier,
+  getPeerCerts,
+  YbHAWebService,
+  YB_HA_WS_RUNTIME_CONFIG_KEY,
+  EMPTY_YB_HA_WEBSERVICE
+} from './HAReplicationView';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+
 import './HAReplicationForm.scss';
+import { ManagePeerCertsModal } from '../modals/ManagePeerCertsModal';
 
 export enum HAInstanceTypes {
   Active = 'Active',
@@ -27,11 +38,25 @@ const INITIAL_VALUES = {
 };
 type FormValues = typeof INITIAL_VALUES;
 
-interface HAReplicationFormProps {
+interface HAReplicationFormDispatchProps {
+  fetchRuntimeConfigs: () => void;
+  setRuntimeConfig: (key: string, value: string) => void;
+}
+
+interface HAReplicationFormStateProps {
+  runtimeConfigs: any;
+}
+
+interface HAReplicationFormOwnProps {
+  backToViewMode(): void;
+
   config?: HAConfig;
   schedule?: HAReplicationSchedule;
-  backToViewMode(): void;
 }
+
+type HAReplicationFormProps = HAReplicationFormStateProps &
+  HAReplicationFormDispatchProps &
+  HAReplicationFormOwnProps;
 
 const validationSchema = Yup.object().shape({
   instanceAddress: Yup.string()
@@ -47,15 +72,17 @@ const validationSchema = Yup.object().shape({
   })
 });
 
-export const FREQUENCY_MULTIPLIER = 60000;
+export const FREQUENCY_MULTIPLIER = 60_000;
 
 export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   config,
+  runtimeConfigs,
   schedule,
-  backToViewMode
+  backToViewMode,
+  fetchRuntimeConfigs,
+  setRuntimeConfig
 }) => {
-  let initialValues = INITIAL_VALUES;
-  const isEditMode = !!config && !!schedule;
+  const [isAddPeerCertsModalVisible, setAddPeerCertsModalVisible] = useState(false);
 
   const formik = useRef({} as FormikProps<FormValues>);
   const queryClient = useQueryClient();
@@ -79,6 +106,27 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
       true
     )
   );
+
+  useEffect(() => {
+    fetchRuntimeConfigs();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fetch only specific key
+  const showAddPeerCertModal = () => {
+    fetchRuntimeConfigs();
+    setAddPeerCertsModalVisible(true);
+  };
+  const hideAddPeerCertModal = () => {
+    fetchRuntimeConfigs();
+    setAddPeerCertsModalVisible(false);
+  };
+
+  const setYBHAWebserviceRuntimeConfig = (value: string) => {
+    setRuntimeConfig(YB_HA_WS_RUNTIME_CONFIG_KEY, value);
+  };
+
+  let initialValues = INITIAL_VALUES;
+  const isEditMode = !!config && !!schedule;
 
   if (isEditMode && config && schedule) {
     const instance = config.instances.find((item) => item.is_local);
@@ -132,8 +180,34 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
     }
   };
 
+  const ybHAWebService: YbHAWebService =
+    runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
+      ? JSON.parse(
+          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+            .value
+        )
+      : EMPTY_YB_HA_WEBSERVICE;
+  const peerCerts = getPeerCerts(ybHAWebService);
   return (
     <div className="ha-replication-form" data-testid="ha-replication-config-form">
+      <ManagePeerCertsModal
+        visible={isAddPeerCertsModalVisible}
+        peerCerts={peerCerts}
+        setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
+        onClose={hideAddPeerCertModal}
+      />
+      <div className="ha-replication-form__action-bar">
+        <YBButton
+          btnText={`${
+            getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
+          } Peer Certificates`}
+          onClick={(e: any) => {
+            showAddPeerCertModal();
+            e.currentTarget.blur();
+          }}
+        />
+      </div>
+
       <Formik<FormValues>
         initialValues={initialValues}
         validationSchema={validationSchema}
@@ -183,7 +257,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                       type="text"
                       disabled={isEditMode}
                       component={YBFormInput}
-                      placeholder="http://"
+                      placeholder="https://"
                       className="ha-replication-form__input"
                     />
                     <YBInfoTip
@@ -280,11 +354,46 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                   </Row>
                 </div>
                 <Row className="ha-replication-form__row">
+                  <Col xs={2} className="ha-replication-form__label">
+                    Peer Certificates
+                  </Col>
+                  <Col xs={10} className="ha-replication-form__certs">
+                    {peerCerts.length === 0 ? (
+                      <button
+                        className="ha-replication-form__no-cert--add-button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          showAddPeerCertModal();
+                        }}
+                      >
+                        Add a peer certificate
+                      </button>
+                    ) : (
+                      peerCerts.map((peerCert) => {
+                        return (
+                          <>
+                            <div className="ha-replication-form__cert-container">
+                              <span className="ha-replication-form__cert-container--identifier">
+                                {getPeerCertIdentifier(peerCert)}
+                              </span>
+                              <span className="ha-replication-form__cert-container--ellipse">
+                                ( . . . )
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })
+                    )}
+                  </Col>
+                </Row>
+                <Row className="ha-replication-form__row">
                   <Col xs={12} className="ha-replication-form__footer">
                     {isEditMode && <YBButton btnText="Cancel" onClick={backToViewMode} />}
                     <YBButton
                       btnType="submit"
-                      disabled={formikProps.isSubmitting || !formikProps.isValid}
+                      disabled={
+                        formikProps.isSubmitting || !formikProps.isValid || peerCerts.length === 0
+                      }
                       loading={formikProps.isSubmitting}
                       btnClass="btn btn-orange"
                       btnText={isEditMode ? 'Save' : 'Create'}

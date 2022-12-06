@@ -19,6 +19,7 @@ import {
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseSupportBundle.scss';
 import {filterTypes} from "../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider";
+import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 
 const stepsObj = {
@@ -40,6 +41,8 @@ export const UniverseSupportBundle = (props) => {
   const [steps, setSteps] = useState(stepsObj.firstStep);
   const defaultOptions = updateOptions(filterTypes[0].value, [true, true, true, true, true, true, true, true, true], () =>{});
   const [payload, setPayload] = useState(defaultOptions);
+
+  const isK8sUniverse = isKubernetesUniverse(props.currentUniverse);
 
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
@@ -122,7 +125,7 @@ export const UniverseSupportBundle = (props) => {
         visible={showModal && visibleModal === 'supportBundleModal'}
         onHide={() => {
           resetSteps();
-          closeModal()
+          closeModal();
         }}
         cancelLabel="Close"
         showCancelButton
@@ -136,7 +139,7 @@ export const UniverseSupportBundle = (props) => {
         {steps === stepsObj.firstStep && (
           <FirstStep
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep)
+              handleStepChange(stepsObj.secondStep);
             }}
           />
         )}
@@ -146,9 +149,10 @@ export const UniverseSupportBundle = (props) => {
               if(selectedOptions) {
                 setPayload(selectedOptions);
               } else {
-                setPayload(defaultOptions)
+                setPayload(defaultOptions);
               }
             }}
+            isK8sUniverse={isK8sUniverse}
           />
         )}
         {steps === stepsObj.thirdStep && (
@@ -157,14 +161,14 @@ export const UniverseSupportBundle = (props) => {
             handleDeleteBundle={(bundleUUID) => handleDeleteBundle(universeDetails.universeUUID, bundleUUID)}
             supportBundles={supportBundles}
             onCreateSupportBundle={() => {
-              handleStepChange(stepsObj.secondStep)
+              handleStepChange(stepsObj.secondStep);
             }}
           />
         )}
       </YBModal>
     </Fragment>
   );
-}
+};
 
 export function getSupportBundle(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');

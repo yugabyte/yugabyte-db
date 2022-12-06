@@ -35,15 +35,12 @@ import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
-import { BackupAdvancedRestore } from './BackupAdvancedRestore';
 import clsx from 'clsx';
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
-import { BackupThrottleParameters } from './BackupThrottleParameters';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -133,8 +130,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
-  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
-  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
@@ -215,9 +210,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
 
-  const featureFlags = useSelector((reduxState: any) => reduxState.featureFlags);
-
-  const YBCEnabled = (featureFlags.test.enableYbc || featureFlags.released.enableYbc) && isYbcEnabledUniverse(currentUniverse.data.universeDetails);
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
   const [cancelBackupDetails, setCancelBackupDetails] = useState<IBackup | null>(null);
 
@@ -306,9 +298,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onActionButtonClick={() => {
             setShowBackupCreateModal(true);
           }}
-          onAdvancedRestoreButtonClick={() => {
-            setShowAdvancedRestore(true);
-          }}
           disabled={
             tablesInUniverse?.data.length === 0 ||
             currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
@@ -320,13 +309,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onHide={() => {
             setShowBackupCreateModal(false);
           }}
-          currentUniverseUUID={universeUUID}
-        />
-        <BackupAdvancedRestore
-          onHide={() => {
-            setShowAdvancedRestore(false);
-          }}
-          visible={showAdvancedRestore}
           currentUniverseUUID={universeUUID}
         />
       </>
@@ -455,35 +437,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                   currentUniverse?.data?.universeDetails?.universePaused
                 }
               />
-              <DropdownButton
-                className="actions-btn"
-                title="•••"
-                id="advanced-backup-dropdown"
-                noCaret
-                pullRight
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                    setShowAdvancedRestore(true);
-                  }}
-                  disabled={currentUniverse?.data?.universeDetails?.universePaused}
-                >
-                  Advanced Restore
-                </MenuItem>
-                {YBCEnabled && (
-                  <MenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowThrottleParametersModal(true);
-                    }}
-                  >
-                    Configure Throttle Parameters
-                  </MenuItem>
-                )}
-              </DropdownButton>
             </>
           )}
         </div>
@@ -675,22 +628,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(false);
         }}
       />
-      {allowTakingBackup && (
-        <BackupAdvancedRestore
-          onHide={() => {
-            setShowAdvancedRestore(false);
-          }}
-          visible={showAdvancedRestore}
-          currentUniverseUUID={universeUUID}
-        />
-      )}
-      {allowTakingBackup && YBCEnabled && (
-        <BackupThrottleParameters
-          visible={showThrottleParametersModal}
-          onHide={() => setShowThrottleParametersModal(false)}
-          currentUniverseUUID={universeUUID!}
-        />
-      )}
     </Row>
   );
 };
