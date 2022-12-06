@@ -55,6 +55,7 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);
@@ -779,6 +780,34 @@ TEST_F(TestEnv, TestRWFile) {
   ASSERT_OK(env_->NewRWFile(opts, GetTestPath("foo"), &file));
   ASSERT_OK(file->Read(0, kNewTestData.length(), &result, scratch2.get()));
   ASSERT_EQ(result, kNewTestData);
+}
+
+TEST_F(TestEnv, NonblockWritableFile) {
+  string path = GetTestPath("test_nonblock");
+  mkfifo(path.c_str(), 0644);
+
+  WritableFileOptions opts;
+  opts.mode = Env::CREATE_NONBLOCK_IF_NON_EXISTING;
+  std::shared_ptr<WritableFile> writer;
+  ASSERT_OK(env_util::OpenFileForWrite(opts, env_.get(), path, &writer));
+
+  TestThreadHolder threads;
+
+  auto read_data = [this, &path] {
+    std::shared_ptr<SequentialFile> reader;
+    ASSERT_OK(env_util::OpenFileForSequential(env_.get(), path, &reader));
+    Slice s;
+    std::vector<uint8_t> scratch(kOneMb);
+    ASSERT_OK(reader->Read(kOneMb, &s, scratch.data()));
+    ASSERT_EQ(s.size(), kOneMb);
+  };
+
+  threads.AddThreadFunctor(read_data);
+
+  // Write 1 MB
+  uint8_t scratch[kOneMb] = {};
+  Slice slice(scratch, kOneMb);
+  ASSERT_OK(writer->Append(slice));
 }
 
 TEST_F(TestEnv, TestCanonicalize) {
