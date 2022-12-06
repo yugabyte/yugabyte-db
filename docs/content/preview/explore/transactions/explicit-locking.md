@@ -3,7 +3,7 @@ title: Explicit locking
 headerTitle: Explicit locking
 linkTitle: Explicit locking
 description: Explicit locking in YugabyteDB.
-headcontent: Explore row locking in YugabyteDB
+headcontent: Learn how row locking works in YugabyteDB
 menu:
   preview:
     identifier: explore-transactions-explicit-locking-1-ysql

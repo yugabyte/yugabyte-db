@@ -50,7 +50,7 @@ The various features are explained in the following sections.
         <div class="title">Isolation levels</div>
       </div>
       <div class="body">
-        Details about isolation levels in YugabyteDB.
+        Serializable, Snapshot, and Read committed isolation in YugabyteDB.
       </div>
     </a>
   </div>
