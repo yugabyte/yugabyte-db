@@ -227,7 +227,7 @@ Suggested workaround is as follows:
 
 **GitHub link**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
 
-**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. This will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
+**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. Supporting spatial datatypes will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
 
 **Workaround** : None. A workaround is currently being explored.
 
@@ -466,13 +466,13 @@ PRIMARY KEY (employee_id, hire_date)) PARTITION BY RANGE (hire_date) ;
 
 **GitHub link**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
 
-**Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then it fails with the following error:
+**Description**: If you have a partitioned table in which primary key is added later using `ALTER TABLE`, then the table creation fails with the following error:
 
 ```output
 ERROR: adding primary key to a partitioned table is not yet implemented (SQLSTATE XX000)
 ```
 
-**Workaround**: Add primary key in the `CREATE TABLE` statement.
+**Workaround**: Manual intervention needed. Add primary key in the `CREATE TABLE` statement.
 
 **Example**
 
