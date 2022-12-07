@@ -17,27 +17,37 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var Root = &rootCheck{"root", "warning"}
+// Root is the check if we can do a root based install
+var Root = &rootCheck{"root", false}
 
 type rootCheck struct {
-	name         string
-	warningLevel string
+	name        string
+	skipAllowed bool
 }
 
+// Name gets the name of the check
 func (r rootCheck) Name() string {
 	return r.name
 }
 
-func (r rootCheck) WarningLevel() string {
-	return r.warningLevel
+// SkipAllowed returns if we are allowed to skip the check
+func (r rootCheck) SkipAllowed() bool {
+	return r.skipAllowed
 }
 
-func (r rootCheck) Execute() error {
-
+// Execute will run the root check.
+// Validates the root install directory is not used and has enough free space??
+func (r rootCheck) Execute() Result {
+	res := Result{
+		Check:  r.name,
+		Status: StatusPassed,
+	}
 	if _, existsErr := os.Stat(common.InstallRoot); existsErr == nil {
 		err := fileutil.IsDirWriteable(common.InstallRoot)
 		if err != nil {
-			return fmt.Errorf(common.InstallRoot + " is not writeable.")
+			res.Error = fmt.Errorf(common.InstallRoot + " is not writeable.")
+			res.Status = StatusCritical
+			return res
 		} else {
 			log.Info(common.InstallRoot + " is writeable.")
 		}
@@ -47,7 +57,9 @@ func (r rootCheck) Execute() error {
 		args := []string{"-c", "df --output=avail -h \"" + common.InstallRoot + "\" | tail -n 1"}
 		output, err := common.ExecuteBashCommand(command, args)
 		if err != nil {
-			return err
+			res.Error = err
+			res.Status = StatusCritical
+			return res
 		}
 
 		outputTrimmed := strings.ReplaceAll(strings.TrimSuffix(output, "\n"), " ", "")
@@ -56,10 +68,11 @@ func (r rootCheck) Execute() error {
 		freeSpaceString := freeSpaceArray[0]
 		freeSpace, _ := strconv.Atoi(freeSpaceString)
 		if freeSpace == 0 {
-			return fmt.Errorf(common.InstallRoot + " does not have free space.")
+			res.Error = fmt.Errorf(common.InstallRoot + " does not have free space.")
+			res.Status = StatusCritical
 		} else {
 			log.Info(common.InstallRoot + " has free space.")
 		}
 	}
-	return nil
+	return res
 }
