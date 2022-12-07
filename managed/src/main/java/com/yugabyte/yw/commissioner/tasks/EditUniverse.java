@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -402,6 +403,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
     }
 
+    // Add new nodes to load balancer.
+    createManageLoadBalancerTasks(
+        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null));
+
     if (cluster.clusterType == ClusterType.PRIMARY
         && PlacementInfoUtil.didAffinitizedLeadersChange(
             universe.getUniverseDetails().getPrimaryCluster().placementInfo,
@@ -482,6 +487,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Remove nodes from load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved));
+
       // Set the node states to Removing.
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
