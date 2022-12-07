@@ -1,100 +1,85 @@
 ---
-title: Build a Go application that uses GORM and YSQL
-headerTitle: Build a Go application
-linkTitle: More examples
-description: Build an Go application that uses GORM and YSQL.
+title: Node.js ORM example application that uses Sequelize ORM and YSQL
+headerTitle: Node.js ORM example application
+linkTitle: Node.js
+description: Node.js ORM example application that uses Sequelize ORM and YSQL.
 menu:
   preview:
-    parent: cloud-go
-    identifier: go-5
-    weight: 552
+    identifier: nodejs-sequelize
+    parent: orm-tutorials
+    weight: 690
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-pg/" class="nav-link">
+    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG ORM
+      Sequelize ORM
     </a>
   </li>
-  <li >
-    <a href="../ysql-gorm/" class="nav-link active">
+  <li>
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      GORM
+      Prisma ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
+The following tutorial implements a REST API server using the [Sequelize](https://sequelize.org/) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM.
 
-- `users` table — the users of the e-commerce site
-- `products` table — the products being sold
-- `orders` table — the orders placed by the users
-- `orderline` table — each line item of an order
+The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
 
-The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`.
+## Prerequisites
 
-## Before you begin
+This tutorial assumes that you have:
 
-This tutorial assumes that you have satisfied the following prerequisites.
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- [node.js](https://nodejs.org/en/) version 16 or later.
 
-### YugabyteDB
-
-YugabyteDB is up and running. If you are new to YugabyteDB, you can have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
-
-### Go
-
-Go 1.8, or later, is installed. The latest releases are available on the [Go Downloads page](https://golang.org/dl/).
-
-### Go dependencies
-
-To install the required Go dependencies, run the following commands.
-
-```sh
-go get github.com/jinzhu/gorm
-go get github.com/jinzhu/gorm/dialects/postgres
-go get github.com/google/uuid
-go get github.com/gorilla/mux
-go get github.com/lib/pq
-go get github.com/lib/pq/hstore
-```
-
-## Clone the "orm-examples" repository
-
-Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
+## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-Run the following `export` command to specify the `GOPATH` environment variable.
+## Build the application
 
 ```sh
-export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
+$ cd ./node/sequelize/
 ```
-
-## Build and run the application
-
-Change to the `gorm` directory.
 
 ```sh
-$ cd ./golang/gorm
+npm install
 ```
 
-Create the `ysql_gorm` database in YugabyteDB by running the following `ysqlsh` command from the YugabyteDB home directory.
+## Specify SSL configuration
+
+This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+
+Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
+
+```js
+sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+    dialect: 'postgres',
+    port: 5433,
+    host: "<host_name>",
+    dialectOptions: {
+        ssl: {
+            rejectUnauthorized: true,
+            ca: fs.readFileSync('<path_to_root_crt>').toString(),
+        }
+    }
+  });
+```
+
+## Run the application
+
+Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
 
 ```sh
-$ ./bin/ysqlsh -c "CREATE DATABASE ysql_gorm"
+$ DEBUG=sequelize:* npm start
 ```
-
-Build and start the REST API server by running the following shell script.
-
-```sh
-$ ./build-and-run.sh
-```
-
-The REST API server will start and listen for requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
@@ -140,7 +125,7 @@ $ curl \
 
 ## Query results
 
-### Using the YSQL shell
+### Using ysqlsh
 
 ```sh
 $ ./bin/ysqlsh
@@ -273,7 +258,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-As mentioned earlier, the source for this application can be found in the Yugabyte [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/golang/gorm) repository.

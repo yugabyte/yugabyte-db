@@ -1,108 +1,87 @@
 ---
-title: Build a Python application that uses YSQL and Django
-headerTitle: Build a Python application
-linkTitle: More examples
-description: Build a Python application with Django that uses YSQL.
+title: Python ORM example application that uses SQLAlchemy and YSQL
+headerTitle: Python ORM example application
+linkTitle: Python
+description: Python ORM example application that uses SQLAlchemy and YSQL.
 menu:
   preview:
-    parent: cloud-python
-    identifier: python-4
-    weight: 553
+    identifier: python-sqlalchemy
+    parent: orm-tutorials
+    weight: 670
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
+    <a href="../ysql-sqlalchemy/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      SQL Alchemy ORM
+      SQLAlchemy ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link active">
+    <a href="../ysql-django/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
 </ul>
 
-The following tutorial creates an e-commerce application running in Python, connects to a YugabyteDB cluster, and performs REST API calls to send requests and query the results.
+This SQLAlchemy ORM example, running on Python, implements a basic REST API server for an e-commerce application scenario. Database access in this application is managed through [SQL Alchemy ORM](https://docs.sqlalchemy.org/en/13/orm/).
 
-## Before you begin
+The source for this application can be found in the [`python/sqlalchemy` directory](https://github.com/yugabyte/orm-examples/tree/master/python/sqlalchemy) of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) GitHub repository.
 
-This tutorial assumes that you have satisfied the following prerequisites.
+## Prerequisites
 
-### YugabyteDB
+This tutorial assumes that you have:
 
-YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
+- Python 3 is installed
+- the Python packages (dependencies) : [SQLAlchemy (`SQLAlchemy`)](https://www.sqlalchemy.org/), [psycopg2 (`psycopg2-binary`)](https://pypi.org/project/psycopg2/) and [JSONpickle (`jsonpickle`)](https://jsonpickle.github.io/) installed:
 
-### Python
+    To install these three packages, run the following command:
 
-[Python 3](https://www.python.org/downloads/) or later is installed.
+    ```sh
+    $ pip3 install psycopg2-binary sqlalchemy jsonpickle
+    ```
 
-### Django
+## Clone the "orm-examples" repository
 
-[Django 2.2](https://www.djangoproject.com/download/) or later is installed.
-
-## Clone the orm-examples repository
+Clone the Yugabyte [`orm-examples` repository](https://github.com/yugabyte/orm-examples) by running the following command.
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-This repository has a Django ORM example that implements a basic REST API server. Database access in this application is managed through the Django ORM. The e-commerce database `ysql_django` includes the following tables:
+## Set up the database connection
 
-- `users` stores users of the e-commerce site.
-- `products` contains a list of products the e-commerce site sells.
-- `orders` contains orders placed by the users.
-- `orderline` stores multiple line items from an order.
-
-The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
-
-## Set up the application
-
-- Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
+Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
 
 ```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'ysql_django',
-        'USER': 'yugabyte',
-        'PASSWORD': '',
-        'HOST': '127.0.0.1',
-        'PORT': '5433',
-    }
-}
-```
+import logging
 
-- Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
+listen_port = 8080
+db_user = 'yugabyte'
+db_password = 'yugabyte'
+database = 'ysql_sqlalchemy'
+schema = 'ysql_sqlalchemy'
+db_host = 'localhost'
+db_port = 5433
 
-```python
-SECRET_KEY = 'YOUR-SECRET-KEY'
-```
-
-- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local [YugabyteDB](#yugabytedb) cluster, run the following shell command:
-
-```sh
-bin/ysqlsh -c "CREATE DATABASE ysql_django"
-```
-
-- From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
-
-```sh
-python3 manage.py makemigrations && python3 manage.py migrate
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s"
+    )
 ```
 
 ## Start the REST API server
 
-Run the following Python script to start the REST API server at port 8080, or specify a port of your own choice.
+Run the following Python script to start the server.
 
 ```sh
-python3 manage.py runserver 8080
+python3 ./src/rest-service.py
 ```
 
-The REST API server starts and listens for your requests at `http://localhost:8080`.
+The REST API server will start and listen for your requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
@@ -281,7 +260,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/python/django).

@@ -1,13 +1,13 @@
 ---
-title: Build a Node.js application that uses Sequelize ORM and YSQL
-headerTitle: Build a Node.js application
-linkTitle: More examples
-description: Build a Node.js application that uses Sequelize ORM and YSQL.
+title: Node.js ORM example application that uses Sequelize ORM and YSQL
+headerTitle: Node.js ORM example application
+linkTitle: Node.js
+description: Node.js ORM example application that uses Sequelize ORM and YSQL.
 menu:
   preview:
-    parent: cloud-node
-    identifier: nodejs-4
-    weight: 551
+    identifier: nodejs-prisma
+    parent: orm-tutorials
+    weight: 700
 type: docs
 ---
 
@@ -26,12 +26,7 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Prisma](https://prisma.io) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Prisma. It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the [Prisma](https://prisma.io) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Prisma.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/node/prisma) repository.
 
@@ -61,9 +56,9 @@ $ cd ./node/prisma/
 $ npm install
 ```
 
-## Create database
+## Set up the database connection
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using the following command:
 
 ```sh
 $ ./bin/ysqlsh
@@ -98,7 +93,7 @@ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 
 If you have a YugabyteDB Managed cluster, do the following:
 
-1. Download your [cluster certificate](../../cloud-add-ip/#download-your-cluster-certificate).
+1. Download your [cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 1. Install OpenSSL, if not present.
 
@@ -310,6 +305,7 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
+
 ### Use Prisma Studio
 
 Start Prisma Studio using the following command:
@@ -321,7 +317,3 @@ $ npx prisma studio
 To view the tables and data created, go to [http://localhost:5555](http://localhost:5555).
 
 ![Prisma studio](/images/develop/ecosystem-integrations/prisma-orm-nodejs.png)
-
-## Explore the source
-
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).

@@ -1,13 +1,13 @@
 ---
-title: Build a C# application that uses Entity Framework and YSQL
-headerTitle: Build a C# application
-linkTitle: More examples
-description: Build a C# application that uses Entity Framework and the YSQL API.
+title: C# ORM example application that uses Entity Framework and YSQL
+headerTitle: C# ORM example application
+linkTitle: C#
+description: C# ORM example application that uses Entity Framework and the YSQL API.
 menu:
   preview:
-    identifier: build-apps-csharp-1-ysql
-    parent: cloud-csharp
-    weight: 556
+    identifier: csharp-ef
+    parent: orm-tutorials
+    weight: 710
 type: docs
 ---
 
@@ -26,21 +26,15 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Entity Framework](https://docs.microsoft.com/en-us/ef/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/). It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the [Entity Framework](https://docs.microsoft.com/en-us/ef/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/).
 
 The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/entityframework) repository.
 
 ## Prerequisites
 
-The tutorial assumes that you have:
+This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
-
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 ## Clone the "orm-examples" repository
@@ -49,7 +43,7 @@ The tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/entityframework
 ```
 
-## Database configuration
+## Set up the database connection
 
 To modify the database connection settings, change the default `ConnectionStrings` in `appsettings.json` file which is in the following format:
 
@@ -272,7 +266,3 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/csharp/entityframework) repository.

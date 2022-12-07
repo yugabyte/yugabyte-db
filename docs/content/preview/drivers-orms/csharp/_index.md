@@ -24,7 +24,8 @@ The following projects can be used to implement C# applications using the Yugaby
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :---------- |
-| Entity Framework ORM | [Documentation](entityframework/) | [Hello World App](../../develop/build-apps/csharp/ysql-entity-framework/) |
+| Entity Framework | [Documentation](entityframework/) <br/> [Hello World](../orms/csharp/ysql-entity-framework/) | [Entity Framework ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/entityframework) |
+| Dapper | [Hello World](../orms/csharp/ysql-dapper/) | [Dapper ORM App](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/csharp/dapper/DapperORM) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](postgres-npgsql/) or [Use an ORM](entityframework/).
 
