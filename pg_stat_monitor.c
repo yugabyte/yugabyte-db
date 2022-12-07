@@ -36,7 +36,12 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "2.0.0-dev"
-#define PG_STAT_STATEMENTS_COLS         53	/* maximum of above */
+
+/* Number of output arguments (columns) for various API versions */
+#define PG_STAT_MONITOR_COLS_V1_0    52
+#define PG_STAT_MONITOR_COLS_V2_0    61
+#define PG_STAT_MONITOR_COLS         61	/* maximum of above */
+
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
 #define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
@@ -186,6 +191,7 @@ static void pgss_store(uint64 queryid,
 					   uint64 rows,
 					   BufferUsage *bufusage,
 					   WalUsage *walusage,
+					   const struct JitInstrumentation *jitusage,
 					   JumbleState *jstate,
 					   pgssStoreKind kind);
 
@@ -241,7 +247,7 @@ _PG_init(void)
 	 * In order to create our shared memory area, we have to be loaded via
 	 * shared_preload_libraries.  If not, fall out without hooking into any of
 	 * the main system.  (We don't throw error here because it seems useful to
-	 * allow the pg_stat_statements functions to be created even when the
+	 * allow the pg_stat_monitor functions to be created even when the
 	 * module isn't active.  The functions must protect themselves against
 	 * being called then, however.)
 	 */
@@ -432,6 +438,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 					0,                      /* rows */
 					NULL,                   /* bufusage */
 					NULL,                   /* walusage */
+					NULL,					/* jitusage */
 					jstate,                 /* JumbleState */
 					PGSS_PARSE);            /* pgssStoreKind */
 }
@@ -490,6 +497,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 							0,                  /* rows */
 							NULL,               /* bufusage */
 							NULL,               /* walusage */
+							NULL,				/* jitusage */
 							&jstate,            /* JumbleState */
 							PGSS_PARSE);        /* pgssStoreKind */
 }
@@ -662,6 +670,11 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 #else
 				   NULL,
 #endif
+#if PG_VERSION_NUM >= 150000
+				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
+#else
+				   NULL,
+#endif
 				   NULL,
 				   PGSS_FINISHED);	/* pgssStoreKind */
 	}
@@ -804,6 +817,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 				   &bufusage,	/* bufusage */
 				   &walusage,	/* walusage */
 				   NULL,		/* JumbleState */
+				   NULL,
 				   PGSS_PLAN);	/* pgssStoreKind */
 	}
 	else
@@ -993,6 +1007,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 #else
 				   NULL,		/* walusage, NULL for PG <= 12 */
 #endif
+				   NULL,
 				   NULL,		/* JumbleState */
 				   PGSS_FINISHED);	/* pgssStoreKind */
 	}
@@ -1139,7 +1154,7 @@ pg_get_client_addr(bool *ok)
 
 static void
 pgss_update_entry(pgssEntry *entry,
-				  int bucketid,
+				  uint64 bucketid,
 				  uint64 queryid,
 				  const char *query,
 				  const char *comments,
@@ -1151,6 +1166,7 @@ pgss_update_entry(pgssEntry *entry,
 				  uint64 rows,
 				  BufferUsage *bufusage,
 				  WalUsage *walusage,
+				  const struct JitInstrumentation *jitusage,
 				  bool reset,
 				  pgssStoreKind kind,
 				  const char *app_name,
@@ -1272,6 +1288,10 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.blocks.temp_blks_written += bufusage->temp_blks_written;
 			e->counters.blocks.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
 			e->counters.blocks.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+			#if PG_VERSION_NUM >= 150000
+				e->counters.blocks.temp_blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_read_time);
+				e->counters.blocks.temp_blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_write_time);
+			#endif
 		}
 		e->counters.calls.usage += USAGE_EXEC(total_time);
 		if (sys_info)
@@ -1284,6 +1304,23 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.walusage.wal_records += walusage->wal_records;
 			e->counters.walusage.wal_fpi += walusage->wal_fpi;
 			e->counters.walusage.wal_bytes += walusage->wal_bytes;
+		}
+		if (jitusage)
+		{
+			e->counters.jitinfo.jit_functions += jitusage->created_functions;
+			e->counters.jitinfo.jit_generation_time += INSTR_TIME_GET_MILLISEC(jitusage->generation_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter))
+				e->counters.jitinfo.jit_inlining_count++;
+			e->counters.jitinfo.jit_inlining_time += INSTR_TIME_GET_MILLISEC(jitusage->inlining_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter))
+				e->counters.jitinfo.jit_optimization_count++;
+			e->counters.jitinfo.jit_optimization_time += INSTR_TIME_GET_MILLISEC(jitusage->optimization_counter);
+
+			if (INSTR_TIME_GET_MILLISEC(jitusage->emission_counter))
+				e->counters.jitinfo.jit_emission_count++;
+			e->counters.jitinfo.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 		SpinLockRelease(&e->mutex);
 	}
@@ -1313,6 +1350,7 @@ pgss_store_error(uint64 queryid,
 			   NULL,			/* bufusage */
 			   NULL,			/* walusage */
 			   NULL,			/* JumbleState */
+			   NULL,
 			   PGSS_ERROR);		/* pgssStoreKind */
 }
 
@@ -1339,6 +1377,7 @@ pgss_store(uint64 queryid,
 		   uint64 rows,
 		   BufferUsage *bufusage,
 		   WalUsage *walusage,
+		   const struct JitInstrumentation *jitusage,
 		   JumbleState *jstate,
 		   pgssStoreKind kind)
 {
@@ -1553,6 +1592,7 @@ pgss_store(uint64 queryid,
 						  rows, /* rows */
 						  bufusage, /* bufusage */
 						  walusage, /* walusage */
+						  jitusage,
 						  reset,	/* reset */
 						  kind, /* kind */
 						  app_name_ptr,
@@ -1627,7 +1667,7 @@ IsBucketValid(uint64 bucketid)
 	return true;
 }
 
-/* Common code for all versions of pg_stat_statements() */
+/* Common code for all versions of pg_stat_monitor() */
 static void
 pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 						 pgsmVersion api_version,
@@ -1645,6 +1685,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	HTAB	   *pgss_hash = pgsm_get_hash();
 	char	   *query_txt = (char *) palloc0(PGSM_QUERY_MAX_LEN + 1);
 	char	   *parent_query_txt = (char *) palloc0(PGSM_QUERY_MAX_LEN + 1);
+	int        expected_columns = (api_version >= PGSM_V2_0)?PG_STAT_MONITOR_COLS_V2_0:PG_STAT_MONITOR_COLS_V1_0;
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1671,7 +1712,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 52)
+	if (tupdesc->natts != expected_columns)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1686,18 +1727,18 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
-		Datum		values[PG_STAT_STATEMENTS_COLS] = {0};
-		bool		nulls[PG_STAT_STATEMENTS_COLS] = {0};
+		Datum		values[PG_STAT_MONITOR_COLS] = {0};
+		bool		nulls[PG_STAT_MONITOR_COLS] = {0};
 		int			i = 0;
 		Counters	tmp;
 		double		stddev;
 		char		queryid_text[32] = {0};
 		char		planid_text[32] = {0};
 		uint64		queryid = entry->key.queryid;
-		uint64		bucketid = entry->key.bucket_id;
+		int64		bucketid = entry->key.bucket_id;
 		uint64		dbid = entry->key.dbid;
 		uint64		userid = entry->key.userid;
-		uint64		ip = entry->key.ip;
+		int64		ip = entry->key.ip;
 		uint64		planid = entry->key.planid;
 #if PG_VERSION_NUM < 140000
 		bool		toplevel = 1;
@@ -1816,8 +1857,9 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			values[i++] = CStringGetTextDatum("<insufficient privilege>");
 		}
 
-		/* state at column number 8 */
-		values[i++] = Int64GetDatumFast(tmp.state);
+		/* state at column number 8 for V1.0 API*/
+		if (api_version <= PGSM_V1_0)
+			values[i++] = Int64GetDatumFast(tmp.state);
 
 		/* parentid at column number 9 */
 		if (tmp.info.parentid != UINT64CONST(0))
@@ -1871,7 +1913,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		if (tmp.info.cmd_type == CMD_NOTHING)
 			nulls[i++] = true;
 		else
-			values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
+			values[i++] = Int64GetDatumFast((int64)tmp.info.cmd_type);
 
 		/* elevel at column number 12 */
 		values[i++] = Int64GetDatumFast(tmp.error.elevel);
@@ -1969,6 +2011,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_read_time);
 		values[i++] = Float8GetDatumFast(tmp.blocks.blk_write_time);
 
+		if (api_version >= PGSM_V2_0)
+		{
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_read_time);
+			values[i++] = Float8GetDatumFast(tmp.blocks.temp_blk_write_time);
+		}
+
 		/* resp_calls at column number 41 */
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, PGSM_HISTOGRAM_BUCKETS);
 
@@ -2002,6 +2050,19 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				values[i++] = CStringGetTextDatum(tmp.info.comments);
 			else
 				nulls[i++] = true;
+
+			if (api_version >= PGSM_V2_0)
+			{
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_functions);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_generation_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_inlining_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_inlining_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_optimization_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_optimization_time);
+				values[i++] = Int64GetDatumFast(tmp.jitinfo.jit_emission_count);
+				values[i++] = Float8GetDatumFast(tmp.jitinfo.jit_emission_time);
+			}
+
 		}
 		values[i++] = BoolGetDatum(toplevel);
 		values[i++] = BoolGetDatum(pg_atomic_read_u64(&pgss->current_wbucket) != bucketid);
@@ -3343,8 +3404,8 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			values[j++] = Int64GetDatumFast(get_conf(i)->guc_min);
-			values[j++] = Int64GetDatumFast(get_conf(i)->guc_max);
+			values[j++] = Int32GetDatum(get_conf(i)->guc_min);
+			values[j++] = Int32GetDatum(get_conf(i)->guc_max);
 		}
 
 		if (conf->type == PGC_ENUM)

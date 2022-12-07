@@ -31,6 +31,7 @@
 #include "catalog/pg_authid.h"
 #include "executor/instrument.h"
 #include "common/ip.h"
+#include "jit/jit.h"
 #include "funcapi.h"
 #include "access/twophase.h"
 #include "mb/pg_wchar.h"
@@ -255,7 +256,26 @@ typedef struct Blocks
 	int64		temp_blks_written;	/* # of temp blocks written */
 	double		blk_read_time;	/* time spent reading, in msec */
 	double		blk_write_time; /* time spent writing, in msec */
+
+	double      temp_blk_read_time; /* time spent reading temp blocks, in msec */
+	double      temp_blk_write_time;    /* time spent writing temp blocks, in
+                                          * msec */
 }			Blocks;
+
+typedef struct JitInfo
+{
+     int64       jit_functions;  /* total number of JIT functions emitted */
+     double      jit_generation_time;    /* total time to generate jit code */
+     int64       jit_inlining_count; /* number of times inlining time has been
+                                      * > 0 */
+     double      jit_inlining_time;  /* total time to inline jit code */
+     int64       jit_optimization_count; /* number of times optimization time
+                                          * has been > 0 */
+     double      jit_optimization_time;  /* total time to optimize jit code */
+     int64       jit_emission_count; /* number of times emission time has been
+                                      * > 0 */
+     double      jit_emission_time;  /* total time to emit jit code */
+}			JitInfo;
 
 typedef struct SysInfo
 {
@@ -283,11 +303,12 @@ typedef struct Counters
 
 	Blocks		blocks;
 	SysInfo		sysinfo;
+	JitInfo		jitinfo;
 	ErrorInfo	error;
 	Wal_Usage	walusage;
 	int			resp_calls[MAX_RESPONSE_BUCKET];	/* execution time's in
 													 * msec */
-	uint64		state;			/* query state */
+	int64		state;			/* query state */
 } Counters;
 
 /* Some global structure to get the cpu usage, really don't like the idea of global variable */
