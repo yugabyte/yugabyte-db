@@ -301,6 +301,7 @@ class CompactionTest : public YBTest {
       const size_t num_without_frontiers,
       const size_t num_with_frontiers,
       const bool trigger_manual_compaction);
+  void TestCompactionTaskMetrics(const int num_files, bool manual_compactions);
 
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
@@ -445,8 +446,7 @@ TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
   }
 }
 
-TEST_F(CompactionTest, CompactionTaskMetrics) {
-  const int kNumFilesTriggerCompaction = 5;
+void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_compaction) {
   // Create and instantiate metric entity.
   METRIC_DEFINE_entity(test_entity);
   yb::MetricRegistry registry;
@@ -465,16 +465,15 @@ TEST_F(CompactionTest, CompactionTaskMetrics) {
         priority_thread_pool_metrics;
   }
 
-  // Disable automatic compactions and write files.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
-      kNumFilesTriggerCompaction;
-
-  const auto& active = priority_thread_pool_metrics->active;
-  const auto& paused = priority_thread_pool_metrics->paused;
-  const auto& queued = priority_thread_pool_metrics->queued;
+  const auto& active = manual_compaction
+      ? priority_thread_pool_metrics->active.full
+      : priority_thread_pool_metrics->active.background;
+  const auto& nonactive = manual_compaction
+      ? priority_thread_pool_metrics->nonactive.full
+      : priority_thread_pool_metrics->nonactive.background;
 
   // Check counters pre-compaction. All should be zero.
-  for (const auto& state_metrics : {active, paused, queued}) {
+  for (const auto& state_metrics : {active, nonactive}) {
     ASSERT_EQ(state_metrics.compaction_tasks_added_->value(), 0);
     ASSERT_EQ(state_metrics.compaction_tasks_removed_->value(), 0);
     ASSERT_EQ(state_metrics.compaction_input_files_added_->value(), 0);
@@ -485,7 +484,10 @@ TEST_F(CompactionTest, CompactionTaskMetrics) {
 
   // Compact, then verify metrics match the original files and sizes.
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
-  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+  ASSERT_OK(WriteAtLeastFilesPerDb(num_files));
+  if (manual_compaction) {
+    ASSERT_OK(ExecuteManualCompaction());
+  }
   ASSERT_OK(WaitForNumCompactionsPerDb(1));
   auto dbs = GetAllRocksDbs(cluster_.get());
   // Wait until the metrics match the number of completed compactions.
@@ -522,7 +524,7 @@ TEST_F(CompactionTest, CompactionTaskMetrics) {
   ASSERT_EQ(active.compaction_input_bytes_added_->value(), input_bytes_compactions);
 
   // All added/removed metrics should be identical since the compaction has finished.
-  for (const auto& state_metrics : {active, paused, queued}) {
+  for (const auto& state_metrics : {active, nonactive}) {
     ASSERT_EQ(state_metrics.compaction_tasks_added_->value(),
       state_metrics.compaction_tasks_removed_->value());
     ASSERT_EQ(state_metrics.compaction_input_files_added_->value(),
@@ -530,6 +532,21 @@ TEST_F(CompactionTest, CompactionTaskMetrics) {
     ASSERT_EQ(state_metrics.compaction_input_bytes_added_->value(),
       state_metrics.compaction_input_bytes_removed_->value());
   }
+}
+
+TEST_F(CompactionTest, BackgroundCompactionTaskMetrics) {
+  const int kNumFilesTriggerCompaction = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      kNumFilesTriggerCompaction;
+
+  TestCompactionTaskMetrics(kNumFilesTriggerCompaction, /* manual_compaction */ false);
+}
+
+TEST_F(CompactionTest, ManualCompactionTaskMetrics) {
+  // Disable automatic compactions
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  TestCompactionTaskMetrics(/* num_files */ 5, /* manual_compaction */ true);
 }
 
 TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
@@ -919,7 +936,7 @@ TEST_F(ScheduledFullCompactionsTest, OldestTabletsAreScheduledFirst) {
 
   // Try to manually schedule one of the compactions. Should fail.
   ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerFullCompactionIfNeeded(
-        tablet::FullCompactionReason::Scheduled));
+        rocksdb::CompactionReason::kScheduledFullCompaction));
 
   // Let the compactions finish.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;

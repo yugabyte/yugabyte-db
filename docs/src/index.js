@@ -76,19 +76,14 @@ function activeLeftNav() {
   let element = '';
   let leftNavLink = '';
 
-  // Open left navigation w.r.t old tab
+  // Open left navigation w.r.t tabs.
   if ($('.td-content .nav-tabs-yb .active').length > 0 && $('.td-content .nav-tabs-yb .active').attr('href') !== '') {
     element = '.td-content .nav-tabs-yb li';
   }
 
-  // Open left navigation w.r.t new style2 tab
-  if ($('.td-content .tabs-style-2 .active').length > 0 && $('.td-content .tabs-style-2 .active').attr('href') !== '') {
-    element = '.td-content .tabs-style-2 li';
-  }
-
-  // Open left navigation w.r.t new style1 tab
-  if ($('.td-content .tabs-style-1 .active').length > 0 && $('.td-content .tabs-style-1 .active').attr('href') !== '') {
-    element = '.td-content .tabs-style-1 li';
+  // Open left navigation w.r.t pills.
+  if ($('.td-content .yb-pills .active').length > 0 && $('.td-content .yb-pills .active').attr('href') !== '') {
+    element = '.td-content .yb-pills li';
   }
 
   $(element).each(function () {

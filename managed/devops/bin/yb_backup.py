@@ -2698,6 +2698,22 @@ class YBBackup:
         del_cmd = self.storage.delete_obj_cmd(backup_path)
         if self.is_nfs():
             self.run_ssh_cmd(' '.join(del_cmd), self.get_leader_master_ip())
+
+            # Backup location of a keyspace is typically of the format
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-<keyspace>
+            # If there are 2 keyspaces keyspace1, keyspace2 in a universe, then the locations are
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace1 and
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace2.
+            # While deleting these backups we are deleting the directories multi-table-keyspace1
+            # and multi-table-keyspace2 but not deleting the empty directory backup-<backup_time>.
+            # The change here is to delete the backup-<backup_time> directory if empty.
+            del_dir_cmd = ["rm", "-df", pipes.quote(re.search('.*(?=/)', backup_path)[0])]
+            try:
+                self.run_ssh_cmd(' '.join(del_dir_cmd), self.get_leader_master_ip())
+            except Exception as ex:
+                if "Directory not empty" not in str(ex.output.decode('utf-8')):
+                    raise ex
+
         else:
             self.run_program(del_cmd)
 

@@ -143,21 +143,6 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
-  private void createPackageInstallTasks(Collection<NodeDetails> nodes) {
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
-    for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(
-              node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
   private void createXClusterSourceRootCertDirPathGFlagTasks() {
     Universe targetUniverse = getUniverse();
     UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();

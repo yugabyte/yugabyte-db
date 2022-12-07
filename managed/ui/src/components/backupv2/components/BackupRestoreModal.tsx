@@ -132,7 +132,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
       }
 
-      if (isYBCEnabledinTargetUniverse) {
+      if (isYBCEnabledinTargetUniverse && backup_details.category === 'YB_CONTROLLER') {
         values = omit(values, 'parallelThreads');
       }
       if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
@@ -397,12 +397,17 @@ function RestoreChooseUniverseForm({
   }
 
   let isYbcEnabledinCurrentUniverse = false;
-
+  let showParallelThread = true;
+  
   if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
     isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
       universeList,
       values['targetUniverseUUID']?.value
     );
+  }
+
+  if(isYbcEnabledinCurrentUniverse && backup_details.category === 'YB_CONTROLLER'){
+    showParallelThread = false;
   }
 
   return (
@@ -541,7 +546,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && backup_details.category !== 'YB_CONTROLLER' && (
+      {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field

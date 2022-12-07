@@ -90,8 +90,6 @@ YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(Abortable);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 
-YB_DEFINE_ENUM(FullCompactionReason, (PostSplit)(Scheduled));
-
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -573,7 +571,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  Status ForceFullRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
   docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
 
@@ -721,7 +720,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerFullCompactionIfNeeded(FullCompactionReason reason);
+  Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   bool HasActiveFullCompaction();
 
@@ -861,7 +860,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Creates a new client::YBMetaDataCache object and atomically assigns it to metadata_cache_.
   void CreateNewYBMetaDataCache();
 
-  void TriggerFullCompactionSync(FullCompactionReason reason);
+  void TriggerFullCompactionSync(rocksdb::CompactionReason reason);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);

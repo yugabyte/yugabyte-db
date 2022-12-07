@@ -122,9 +122,10 @@ extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCaches(void);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
-extern bool YbIsPinnedObjectsCacheAvailable();
-extern bool YbIsObjectPinned(Oid classId, Oid objectId);
-extern bool YbIsSharedObjectPinned(Oid classId, Oid objectId);
+extern void YbInitPinnedCacheIfNeeded();
+extern void YbResetPinnedCache();
+extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
+extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

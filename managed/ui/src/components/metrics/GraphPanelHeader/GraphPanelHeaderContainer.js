@@ -54,7 +54,7 @@ function mapStateToProps(state, ownProps) {
     customer: state.customer,
     visibleModal: state.modal.visibleModal,
     enableNodeComparisonModal: test.enableNodeComparisonModal || released.enableNodeComparisonModal,
-    enableTopKMetrics: test.enableTopKMetrics || released.enableTopKMetrics
+    isTopKMetricsEnabled: ownProps.isTopKMetricsEnabled
   };
 }
 

@@ -12,9 +12,11 @@ import (
 	"github.com/spf13/viper"
 
 	"path/filepath"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
 // Component 1: Postgres
@@ -24,11 +26,11 @@ type Postgres struct {
 	ConfFileLocation    string
 	templateFileName    string
 	version             string
-	MountPath						string
-	dataDir							string
-	PgBin								string
-	LogFile							string
-	cronScript					string
+	MountPath           string
+	dataDir             string
+	PgBin               string
+	LogFile             string
+	cronScript          string
 }
 
 // NewPostgres creates a new postgres service struct at installRoot with specific version.
@@ -164,11 +166,11 @@ func (pg Postgres) Uninstall(removeData bool) {
 func (pg Postgres) extractPostgresPackage() {
 
 	// TODO: Replace with tar package
-  command1 := "bash"
-  arg1 := []string{"-c", "tar -zvxf " + common.BundledPostgresName + " -C " +
-    common.InstallRoot}
+	command1 := "bash"
+	arg1 := []string{"-c", "tar -zvxf " + common.BundledPostgresName + " -C " +
+		common.InstallRoot}
 
-  common.ExecuteBashCommand(command1, arg1)
+	common.ExecuteBashCommand(command1, arg1)
 
 	log.Debug(common.BundledPostgresName + " successfully extracted.")
 
@@ -216,7 +218,7 @@ func (pg Postgres) modifyPostgresConf() {
 	}
 	defer confFile.Close()
 	if _, err := confFile.WriteString(
-			fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)); err != nil {
+		fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)); err != nil {
 		log.Fatal(fmt.Sprintf("Error: %s writing new data_directory to %s", err.Error(), pgConfPath))
 	}
 
@@ -279,52 +281,46 @@ func (pg Postgres) dropYugawareDatabase() {
 
 // TODO: replace with pg_ctl status
 // Status prints the status output specific to Postgres.
-func (pg Postgres) Status() {
+func (pg Postgres) Status() common.Status {
+	status := common.Status{
+		Service:   pg.Name(),
+		Port:      viper.GetInt("postgres.port"),
+		Version:   pg.version,
+		ConfigLoc: pg.ConfFileLocation,
+	}
 
-	name := "postgres"
-	port := config.GetYamlPathData("postgres.port")
-
-	runningStatus := ""
-
+	// Set the systemd service file location if one exists
 	if common.HasSudoAccess() {
-
-		args := []string{"is-active", name}
-		runningStatus, _ = common.ExecuteBashCommand(common.Systemctl, args)
-
-		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
-
-		// For display purposes.
-		if runningStatus != "active" {
-
-			runningStatus = "inactive"
-		}
-
+		status.ServiceFileLoc = pg.SystemdFileLocation
 	} else {
+		status.ServiceFileLoc = "N/A"
+	}
 
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
 		command := "bash"
-		args := []string{"-c", "pgrep " + name}
+		args := []string{"-c", "pgrep postgres"}
 		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
-			runningStatus = "active"
+			status.Status = common.StatusRunning
 		} else {
-			runningStatus = "inactive"
+			status.Status = common.StatusStopped
 		}
 	}
-
-	systemdLoc := "N/A"
-
-	if common.HasSudoAccess() {
-
-		systemdLoc = pg.SystemdFileLocation
-	}
-
-	outString := name + "\t" + pg.version + "\t" + port +
-		"\t" + pg.ConfFileLocation + "\t" +
-		systemdLoc + "\t" + runningStatus + "\t"
-
-	fmt.Fprintln(common.StatusOutput, outString)
-
+	return status
 }
 
 // CreateCronJob creates the cron job for managing postgres with cron script in non-root.

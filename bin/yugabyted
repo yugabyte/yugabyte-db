@@ -3108,7 +3108,7 @@ class ControlScript(object):
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--ui", choices=BOOL_CHOICES, default="true", metavar="",
-                help="Toggle enabling or disabling webserver UI. Default false.")
+                help="Toggle enabling or disabling webserver UI. Default true.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)

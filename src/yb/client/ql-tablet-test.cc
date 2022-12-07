@@ -1682,7 +1682,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
 
     auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
       RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact());
+      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction));
       return tablet->GetCurrentVersionSstFilesSize();
     };
 

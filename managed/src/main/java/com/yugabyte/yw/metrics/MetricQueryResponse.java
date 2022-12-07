@@ -14,9 +14,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
@@ -58,9 +61,9 @@ public class MetricQueryResponse {
    * @param metricSettings, metric query settings
    * @return JsonNode, Json data that plot.ly can understand
    */
-  public ArrayList<MetricGraphData> getGraphData(
+  public List<MetricGraphData> getGraphData(
       String metricName, MetricConfigDefinition config, MetricSettings metricSettings) {
-    ArrayList<MetricGraphData> metricGraphDataList = new ArrayList<>();
+    List<MetricGraphData> metricGraphDataList = new ArrayList<>();
 
     Layout layout = config.getLayout();
     // We should use instance name for aggregated graph in case it's grouped by instance.
@@ -153,7 +156,38 @@ public class MetricQueryResponse {
       metricGraphData.type = "scatter";
       metricGraphDataList.add(metricGraphData);
     }
-    return metricGraphDataList;
+    return sortGraphData(metricGraphDataList, config);
+  }
+
+  private List<MetricGraphData> sortGraphData(
+      List<MetricGraphData> graphData, MetricConfigDefinition configDefinition) {
+    Map<String, Integer> nameOrderMap = new HashMap<>();
+    if (configDefinition.getLayout().getYaxis() != null
+        && configDefinition.getLayout().getYaxis().getAlias() != null) {
+      int position = 1;
+      for (String alias : configDefinition.getLayout().getYaxis().getAlias().values()) {
+        nameOrderMap.put(alias, position++);
+      }
+    }
+    return graphData
+        .stream()
+        .sorted(
+            Comparator.comparing(
+                data -> {
+                  if (StringUtils.isEmpty(data.name)) {
+                    return Integer.MAX_VALUE;
+                  }
+                  if (StringUtils.isEmpty(data.instanceName)
+                      && StringUtils.isEmpty(data.namespaceName)) {
+                    return Integer.MAX_VALUE;
+                  }
+                  Integer position = nameOrderMap.get(data.name);
+                  if (position != null) {
+                    return position;
+                  }
+                  return Integer.MAX_VALUE - 1;
+                }))
+        .collect(Collectors.toList());
   }
 
   private String getAndRemoveLabelValue(ObjectNode metricInfo, String labelName) {

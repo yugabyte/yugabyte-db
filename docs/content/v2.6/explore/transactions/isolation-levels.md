@@ -42,7 +42,6 @@ Read <br/>committed   | Snapshot | Not possible | Allowed, but not in YSQL | All
 Repeatable <br/>read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-
 As seen from the table above, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial (one transaction at a time) order. The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the various transaction anomalies are described briefly below:
 
 * `Dirty read`: A transaction reads data written by a concurrent uncommitted transaction.
@@ -52,7 +51,6 @@ As seen from the table above, the most strict isolation level is `Serializable`,
 * `Phantom read`: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
 
 * `Serialization anomaly`: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
-
 
 {{< note title="Note" >}}
 The default isolation level for YSQL is Snapshot isolation, you can set this to Serializable using flags.
@@ -175,8 +173,6 @@ select type, balance from account
 
 </table>
 
-
-
 ## Snapshot Isolation
 
 The Snapshot isolation level only sees data committed before the transaction began (or in other words, it works on a "snapshot" of the table). Transactions running under Snapshot isolation do not see either uncommitted data or changes committed during transaction execution by other concurrently running transactions. Note that the query does see the effects of previous updates executed within its own transaction, even though they are not yet committed. This is a stronger guarantee than is required by the SQL standard for this isolation level
@@ -285,6 +281,5 @@ SELECT * FROM example;
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
     </td>
   </tr>
-
 
 </table>

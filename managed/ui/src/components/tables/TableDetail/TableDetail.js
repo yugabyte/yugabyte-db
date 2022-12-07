@@ -87,6 +87,9 @@ export default class TableDetail extends Component {
     ) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
       const tableName = currentTableDetail.tableDetails.tableName;
+      const isTopKMetricsEnabled = this.props.runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === 'yb.metrics.ui.topk.enable'
+      ).value === 'true';
       tableMetricsContent = (
         <CustomerMetricsPanel
           origin={'table'}
@@ -96,6 +99,7 @@ export default class TableDetail extends Component {
           nodePrefixes={nodePrefixes}
           visibleModal={visibleModal}
           featureFlags={featureFlags}
+          isTopKMetricsEnabled={isTopKMetricsEnabled}
         />
       );
     }

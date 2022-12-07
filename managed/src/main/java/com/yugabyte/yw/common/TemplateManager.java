@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -103,6 +105,19 @@ public class TemplateManager extends DevopsBase {
         execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
 
     if (result.get("error") == null) {
+      final Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
+      final ProviderDetails details = provider.details;
+      details.passwordlessSudoAccess = passwordlessSudoAccess;
+      details.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
+      details.airGapInstall = airGapInstall;
+      details.installNodeExporter = installNodeExporter;
+      details.nodeExporterPort = nodeExporterPort;
+      details.nodeExporterUser = nodeExporterUser;
+      details.setUpChrony = setUpChrony;
+      details.ntpServers = ntpServers;
+      provider.save();
+
+      // TODO: remove following redundant access_key data.
       keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
       keyInfo.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
       keyInfo.airGapInstall = airGapInstall;
@@ -112,7 +127,6 @@ public class TemplateManager extends DevopsBase {
       keyInfo.setUpChrony = setUpChrony;
       keyInfo.ntpServers = ntpServers;
       accessKey.setKeyInfo(keyInfo);
-      accessKey.save();
     } else {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, result);
     }
