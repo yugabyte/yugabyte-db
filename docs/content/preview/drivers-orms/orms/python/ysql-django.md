@@ -1,46 +1,42 @@
 ---
-title: Build a Node.js application that uses Sequelize ORM and YSQL
-headerTitle: Build a Node.js application
-linkTitle: More examples
-description: Build a Node.js application that uses Sequelize ORM and YSQL.
+title: Python ORM example application that uses YSQL and Django
+headerTitle: Python ORM example application
+linkTitle: Python
+description: Python ORM example application with Django that uses YSQL.
 menu:
   preview:
-    parent: cloud-node
-    identifier: nodejs-2
-    weight: 551
+    identifier: python-django
+    parent: orm-tutorials
+    weight: 680
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+    <a href="../ysql-sqlalchemy/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Sequelize ORM
+      SQLAlchemy ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="../ysql-django/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      Prisma ORM
+      Django ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Sequelize](https://sequelize.org/) ORM. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It includes the following tables:
+The following tutorial implements a REST API server using the [Django](https://www.djangoproject.com/) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
-
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
+The source for the above application can be found in the `python/django` directory of Yugabyte's [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples) repository.
 
 ## Prerequisites
 
-This tutorial assumes that you have installed:
+This tutorial assumes that you have:
 
-- YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
-- [node.js](https://nodejs.org/en/) version 16 or later.
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- [Python 3](https://www.python.org/downloads/) or later is installed.
+- [Django 2.2](https://www.djangoproject.com/download/) or later is installed.
 
 ## Clone the orm-examples repository
 
@@ -48,43 +44,52 @@ This tutorial assumes that you have installed:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-## Build the application
+## Set up the database connection
 
-```sh
-$ cd ./node/sequelize/
-```
+- Customize the database connection setting according to your environment in the `ybstore/settings.py` file. This file is in the `orm-examples/python/django` directory.
 
-```sh
-npm install
-```
-
-## Specify SSL configuration
-
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
-
-Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
-
-```js
-sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
-    dialect: 'postgres',
-    port: 5433,
-    host: "<host_name>",
-    dialectOptions: {
-        ssl: {
-            rejectUnauthorized: true,
-            ca: fs.readFileSync('<path_to_root_crt>').toString(),
+    ```python
+    DATABASES =
+    {
+        'default':
+        {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'ysql_django',
+            'USER': 'yugabyte',
+            'PASSWORD': '',
+            'HOST': '127.0.0.1',
+            'PORT': '5433',
         }
     }
-  });
-```
+    ```
 
-## Run the application
+- Generate a [Django secret key](https://docs.djangoproject.com/en/dev/ref/settings/#secret-key) and paste the generated key in the following line of the `settings.py` file:
 
-Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
+    ```python
+    SECRET_KEY = 'YOUR-SECRET-KEY'
+    ```
+
+- Create a database using the YugabyteDB YSQL shell (ysqlsh). From the location of your local YugabyteDB cluster, run the following shell command:
+
+    ```sh
+    bin/ysqlsh -c "CREATE DATABASE ysql_django"
+    ```
+
+- From the `orm-examples/python/django` directory, run the following command to create the migrations and migrate the changes to the database:
+
+    ```sh
+    python3 manage.py makemigrations && python3 manage.py migrate
+    ```
+
+## Start the REST API server
+
+Run the following Python script to start the REST API server at port 8080, or specify a port of your own choice.
 
 ```sh
-$ DEBUG=sequelize:* npm start
+python3 manage.py runserver 8080
 ```
+
+The REST API server starts and listens for your requests at `http://localhost:8080`.
 
 ## Send requests to the application
 
@@ -130,7 +135,7 @@ $ curl \
 
 ## Query results
 
-### Using ysqlsh
+### Using the YSQL shell
 
 ```sh
 $ ./bin/ysqlsh
@@ -263,7 +268,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).

@@ -1,30 +1,24 @@
 ---
-title: Build a Java application that uses Spring Boot and YSQL
-headerTitle: Build a Java application
-linkTitle: More examples
-description: Build a simple Java e-commerce application that uses Spring Boot and YSQL.
+title: Java ORM example application that uses YSQL
+headerTitle: Java ORM example application
+linkTitle: Java
+description: Java ORM example application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: cloud-java
-    identifier: java-3
-    weight: 550
+    identifier: java-hibernate
+    parent: orm-tutorials
+    weight: 620
 type: docs
 ---
 
-<ul class="nav yb-pills">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-hibernate/" class="nav-link">
+    <a href="../ysql-hibernate/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>
   </li>
   <li>
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data YugabyteDB
-    </a>
-  </li>
-  <li class="active">
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Spring Data JPA
@@ -38,14 +32,9 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using Java [Spring Boot](https://spring.io/projects/spring-boot). The scenario is that of an e-commerce application. Database access is managed through [Spring Data JPA](https://spring.io/projects/spring-data-jpa), which internally uses Hibernate as the JPA provider. It consists of the following:
+The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
 
-- The users of the e-commerce site, stored in the `users` table.
-- The `products` table, with a list of products the e-commerce site sells.
-- The orders placed by the users are populated in the `orders` table.
-- An order can consist of multiple line items, each of these are inserted in the `orderline` table.
-
-The source for this example application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repository.
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
 
 ## Prerequisites
 
@@ -61,12 +50,12 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
 
 ## Build the application
 
 ```sh
-$ cd orm-examples/java/spring
+$ cd orm-examples/java/hibernate
 ```
 
 ```sh
@@ -75,10 +64,10 @@ $ mvn -DskipTests package
 
 ## Run the application
 
-Start the Sprint Boot REST API server at `http://localhost:8080`.
+Start the Hibernate application's REST API server at `http://localhost:8080`.
 
 ```sh
-$ mvn spring-boot:run
+$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
 ```
 
 ## Send requests to the application
@@ -295,7 +284,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-As highlighted earlier, the source for the above application is available in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).

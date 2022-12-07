@@ -1,13 +1,13 @@
 ---
-title: Build a Rust application that uses Diesel and YSQL
-headerTitle: Build a Rust application
-linkTitle: More examples
-description: Build a sample Rust application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
+title: Rust ORM example application that uses Diesel and YSQL
+headerTitle: Rust ORM example application
+linkTitle: Rust
+description: Rust ORM example application that uses Diesel and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: cloud-rust
-    identifier: rust-1
-    weight: 950
+    identifier: rust-diesel
+    parent: orm-tutorials
+    weight: 730
 type: docs
 ---
 
@@ -22,12 +22,7 @@ type: docs
 
 </ul>
 
-The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/). The e-commerce database (ysql_diesel) includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the Rust [Diesel](https://diesel.rs) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/).
 
 The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
 
@@ -35,7 +30,7 @@ The source for the application can be found in the [Using ORMs with YugabyteDB](
 
 This tutorial assumes that you have:
 
-- YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - [Rust](https://www.rust-lang.org/tools/install) 1.31 or later.
 
 ## Clone the "orm-examples" repository
@@ -52,7 +47,7 @@ $ cargo build --release
 
 If you encounter a build failure, install [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq) and try again.
 
-## Configure the database
+## Set up the database connection
 
 The database connection settings are managed using the `DATABASE_URL` in the `.env` file, which is in the following format:
 
@@ -70,7 +65,7 @@ DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
 
 The default values are valid for a local YugabyteDB installation. If you are using a different configuration, change these values in the URL as required.
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using:
 
 ```sh
 $ ./bin/ysqlsh
@@ -320,7 +315,3 @@ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/rust/diesel) repository.
