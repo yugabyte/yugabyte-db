@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.scheduler;
 
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -41,6 +44,7 @@ import java.time.Duration;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -50,6 +54,7 @@ import play.libs.Json;
 public class Scheduler {
 
   private static final int YB_SCHEDULER_INTERVAL = Util.YB_SCHEDULER_INTERVAL;
+  private static final long RETRY_INTERVAL_SECONDS = 30;
 
   private final PlatformScheduler platformScheduler;
 
@@ -181,6 +186,18 @@ public class Scheduler {
                     taskType,
                     schedule.getScheduleUUID());
                 break;
+            }
+          }
+        } catch (PlatformServiceException pe) {
+          log.error("Error running schedule {} ", schedule.scheduleUUID, pe);
+          if (pe.getHttpStatus() == SERVICE_UNAVAILABLE) {
+            Date retryDate =
+                new Date(
+                    System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(RETRY_INTERVAL_SECONDS));
+            Date nextScheduleTime = schedule.getNextScheduleTaskTime();
+            if (nextScheduleTime.after(retryDate)) {
+              log.debug("Received 503, will retry at {}", retryDate);
+              schedule.updateNextScheduleTaskTime(retryDate);
             }
           }
         } catch (Exception e) {
