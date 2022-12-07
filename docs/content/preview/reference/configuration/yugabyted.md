@@ -345,7 +345,7 @@ Usage: yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.
 : The data directory for the yugabyted server.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server. 
+: The base directory for the yugabyted server.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
@@ -533,13 +533,13 @@ Usage: yugabyted connect ysql [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: The path to the configuration file of the yugabyted server to connect to.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
+: The data directory for the yugabyted server to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
@@ -560,13 +560,13 @@ Usage: yugabyted connect ycql [flags]
 : Print the command-line help and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: The path to the configuration file of the yugabyted server to connect to.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
+: The data directory for the yugabyted server to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
@@ -606,13 +606,13 @@ Usage: yugabyted demo connect [flags]
 : Print the help message and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: The path to the configuration file of the yugabyted server to connect to.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
+: The data directory for the yugabyted server to connect to.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
@@ -633,13 +633,13 @@ Usage: yugabyted demo destroy [flags]
 : Print the help message and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
+: The path to the configuration file of the yugabyted server to destroy.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server whose logs are desired.
+: The data directory for the yugabyted server to destroy.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The base directory for the yugabyted server to destroy.
 
 --log_dir *log-directory*
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
