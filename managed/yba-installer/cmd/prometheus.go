@@ -7,14 +7,16 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
 // Component 2: Prometheus
@@ -27,7 +29,7 @@ type Prometheus struct {
 	isUpgrade           bool
 	DataDir             string
 	PromDir             string
-	cronScript					string
+	cronScript          string
 }
 
 // NewPrometheus creates a new prometheus service struct.
@@ -75,7 +77,7 @@ func (prom Prometheus) Install() {
 	//have the necesary access.
 	if common.HasSudoAccess() {
 
-		common.Chown(common.InstallRoot + "/prometheus", "yugabyte", "yugabyte", true)
+		common.Chown(common.InstallRoot+"/prometheus", "yugabyte", "yugabyte", true)
 
 	}
 
@@ -235,52 +237,46 @@ func (prom Prometheus) createPrometheusSymlinks() {
 
 // Status prints out the header information for the
 // Prometheus service specifically.
-func (prom Prometheus) Status() {
+func (prom Prometheus) Status() common.Status {
+	status := common.Status{
+		Service:   prom.Name(),
+		Port:      viper.GetInt("prometheus.externalPort"),
+		Version:   prom.version,
+		ConfigLoc: prom.ConfFileLocation,
+	}
 
-	name := "prometheus"
-	port :=  config.GetYamlPathData("prometheus.externalPort")
-
-	runningStatus := ""
-
+	// Set the systemd service file location if one exists
 	if common.HasSudoAccess() {
-
-		args := []string{"is-active", name}
-		runningStatus, _ = common.ExecuteBashCommand(common.Systemctl, args)
-
-		runningStatus = strings.ReplaceAll(strings.TrimSuffix(runningStatus, "\n"), " ", "")
-
-		// For display purposes.
-		if runningStatus != "active" {
-
-			runningStatus = "inactive"
-		}
-
+		status.ServiceFileLoc = prom.SystemdFileLocation
 	} else {
+		status.ServiceFileLoc = "N/A"
+	}
 
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
 		command := "bash"
-		args := []string{"-c", "pgrep " + name}
+		args := []string{"-c", "pgrep prometheus"}
 		out0, _ := common.ExecuteBashCommand(command, args)
 
 		if strings.TrimSuffix(string(out0), "\n") != "" {
-			runningStatus = "active"
+			status.Status = common.StatusRunning
 		} else {
-			runningStatus = "inactive"
+			status.Status = common.StatusStopped
 		}
 	}
-
-	systemdLoc := "N/A"
-
-	if common.HasSudoAccess() {
-
-		systemdLoc = prom.SystemdFileLocation
-	}
-
-	outString := name + "\t" + prom.version + "\t" + port +
-		"\t" + prom.ConfFileLocation + "\t" + systemdLoc +
-		"\t" + runningStatus + "\t"
-
-	fmt.Fprintln(common.StatusOutput, outString)
-
+	return status
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.

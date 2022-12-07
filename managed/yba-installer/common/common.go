@@ -8,26 +8,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/fluxcd/pkg/tar"
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-
 )
-
-
-// StatusOutput is a tabwriter object used for all status output.
-var StatusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
-	tabwriter.Debug|tabwriter.AlignRight)
-// Status prints out the header information for the main
-// status command.
-func Status() {
-	outString := "Name" + "\t" + "Version" + "\t" + "Port" + "\t" +
-		"Config File Locations" + "\t" + "Systemd File Locations" +
-		"\t" + "Running Status" + "\t"
-	fmt.Fprintln(StatusOutput, outString)
-}
 
 // SetUpPrereqs performs the setup operations common to
 // all services.
@@ -286,5 +271,5 @@ func renameThirdPartyDependencies() {
 	//TODO: There is an error here because InstallRoot + "/yb-platform/third-party" does not exist
 	ExecuteBashCommand("bash",
 		[]string{"-c", "cp -R " + InstallVersionDir + "/third-party" + " " +
-		InstallRoot + "/yb-platform/third-party"})
+			InstallRoot + "/yb-platform/third-party"})
 }

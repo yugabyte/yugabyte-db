@@ -40,8 +40,6 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-## Help flags
-
 ##### --help
 
 Displays help on all flags.
@@ -113,6 +111,12 @@ Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) f
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `""`
+
+##### --tablet_server_svc_queue_length
+
+Specifies the queue size for the tablet server to serve reads and writes from applications.
+
+Default: `5000`
 
 ##### --dns_cache_expiration_ms
 
@@ -396,7 +400,19 @@ If true, local transactions using transaction status tables other than `system.t
 
 Default: `true`
 
-## YSQL flags
+## xCluster flags
+
+Settings related to managing xClusters.
+
+##### --xcluster_svc_queue_size
+
+The RPC queue size of the xCluster service. Should match the size of [tablet_server_svc_queue_length](#tablet-server-svc-queue-length) used for read and write requests.
+
+Default: `5000`
+
+## API flags
+
+### YSQL
 
 The following flags support the use of the [YSQL API](../../../api/ysql/):
 
@@ -500,7 +516,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-- Default: `READ COMMITTED`<sup>$</sup>
+Default: `READ COMMITTED`<sup>$</sup>
 
 <sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
@@ -552,7 +568,7 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes
 
 Default: `1GB`
 
-## YCQL flags
+### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
 
@@ -600,7 +616,7 @@ Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
 
-## YEDIS flags
+### YEDIS
 
 The following flags support the use of the YEDIS API:
 
@@ -676,7 +692,7 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB` (256 MB/second)
 
-## Network compression
+## Network compression flags
 
 Use the following two flags to configure RPC compression:
 
@@ -705,6 +721,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 - Rolling restart to upgrade YugabyteDB to a version that supports compression.
 
 - Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
+
   Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 - Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.

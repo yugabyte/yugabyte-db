@@ -2796,6 +2796,45 @@ TEST_F(PrefixTest, PrefixAndWholeKeyTest) {
   }
 }
 
+namespace {
+
+void GenerateSSTFile(rocksdb::DB* db, int start_index, int num_records) {
+  for (int j = start_index; j < start_index + num_records; j++) {
+    ASSERT_OK(db->Put(rocksdb::WriteOptions(), std::to_string(j), "1"));
+  }
+  ASSERT_OK(db->Flush(FlushOptions()));
+}
+
+} // namespace
+
+TEST_F(TableTest, MiddleOfMiddleKey) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  const std::string kDBPath = test::TmpDir() + "/mid_key";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  // Create two files with 200 and 300 records.
+  GenerateSSTFile(db, 0, 200);
+  GenerateSSTFile(db, 200, 300);
+
+  // Same as the midkey of the largest sst which has 300 records.
+  const auto mkey_first = ASSERT_RESULT(db->GetMiddleKey());
+  const auto tw = ASSERT_RESULT(db->TEST_GetLargestSstTableReader());
+  const auto mid_key_of_sst = ASSERT_RESULT(tw->GetMiddleKey());
+  ASSERT_EQ(mkey_first, mid_key_of_sst);
+
+  // Create a file with 400 records. This is largest sst.
+  GenerateSSTFile(db, 500, 400);
+
+  const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey());
+  // Still the same as the midkey of the previous largest sst.
+  ASSERT_EQ(mkey_second, mid_key_of_sst);
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

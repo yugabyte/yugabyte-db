@@ -216,6 +216,13 @@ public class BackupsController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     taskParams.customerUUID = customerUUID;
 
+    if (universe
+        .getConfig()
+        .getOrDefault(Universe.TAKE_BACKUPS, "true")
+        .equalsIgnoreCase("false")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Taking backups on the universe is disabled");
+    }
+
     if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           CONFLICT,
@@ -910,7 +917,7 @@ public class BackupsController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Get throttle params from YB-Controller",
-      nickname = "getThrottleparams",
+      nickname = "getThrottleParams",
       response = Map.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID

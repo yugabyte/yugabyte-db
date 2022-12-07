@@ -29,36 +29,6 @@ var rootCmd = &cobra.Command{
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
 }
 
-var statusCmd = &cobra.Command{
-	Use: "status",
-	Short: "The status command prints out the status of service(s) running as " +
-		"part of your Yugabyte Anywhere installation.",
-	Long: `
-    The status command is used to print out the information corresponding to the
-    status of all services related to Yugabyte Anywhere, or for just a particular service.
-    For each service, the status command will print out the name of the service, the version of the
-    service, the port the service is associated with, the location of any
-    applicable systemd and config files, and the running status of the service
-    (active or inactive)`,
-	// TODO: Validation does not work here?
-	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: serviceOrder,
-	Run: func(cmd *cobra.Command, args []string) {
-
-		common.Status()
-		if len(args) == 1 {
-			services[args[0]].Status()
-		} else {
-			for _, name := range serviceOrder {
-				services[name].Status()
-			}
-		}
-
-		common.StatusOutput.Flush()
-
-	},
-}
-
 func cleanCmd() *cobra.Command {
 	var removeData bool
 	clean := &cobra.Command{
@@ -70,10 +40,9 @@ func cleanCmd() *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 
-
 			// TODO: Only clean up per service.
 			// Clean up services in reverse order.
-			for i := len(serviceOrder) - 1; i >=0; i-- {
+			for i := len(serviceOrder) - 1; i >= 0; i-- {
 				services[serviceOrder[i]].Uninstall(removeData)
 			}
 
@@ -134,7 +103,7 @@ var startCmd = &cobra.Command{
     running of Yugabyte Anywhere. Can be invoked without any arguments to start all
     services, or invoked with a specific service name to start only that service.
     Valid service names: postgres, prometheus, yb-platform`,
-	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
@@ -156,7 +125,7 @@ var stopCmd = &cobra.Command{
     running of Yugabyte Anywhere. Can be invoked without any arguments to stop all
     services, or invoked with a specific service name to stop only that service.
     Valid service names: postgres, prometheus, yb-platform`,
-	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
@@ -178,7 +147,7 @@ var restartCmd = &cobra.Command{
     running of Yugabyte Anywhere. Can be invoked without any arguments to restart all
     services, or invoked with a specific service name to restart only that service.
     Valid service names: postgres, prometheus, yb-platform`,
-	Args: cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
+	Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: serviceOrder,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
@@ -261,7 +230,7 @@ func restoreBackupCmd() *cobra.Command {
 
 			inputPath := args[0]
 
-				// TODO: backupScript is the only reason we need to have this cast. Should probably refactor.
+			// TODO: backupScript is the only reason we need to have this cast. Should probably refactor.
 			if plat, ok := services["yb-platform"].(Platform); ok {
 				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat)
 			} else {
@@ -297,7 +266,7 @@ func installCmd() *cobra.Command {
 			bringPostgres := viper.GetBool("postgres.bringOwn")
 			bringPython := viper.GetBool("python.bringOwn")
 
-			if bringPostgres{
+			if bringPostgres {
 
 				if !pre.ValidateUserPostgres(common.InputFile) {
 					log.Fatal("User Postgres not correctly configured! " +
@@ -324,8 +293,14 @@ func installCmd() *cobra.Command {
 				services[name].Install()
 			}
 
-			statusCmd.Run(cmd, []string{})
+			for _, name := range serviceOrder {
+				status := services[name].Status()
+				if status.Status != common.StatusRunning {
+					log.Fatal(status.Service + " is not running! Install failed")
+				}
+			}
 
+			log.Info("Successfully installed Yugabyte Anywhere!")
 		},
 	}
 
@@ -356,7 +331,6 @@ var upgradeCmd = &cobra.Command{
 
 		log.Info("Upgrade command not implemented yet.")
 
-
 	},
 }
 
@@ -381,7 +355,6 @@ func init() {
 	viper.ReadInConfig()
 
 	log.Init(viper.GetString("logLevel"))
-
 
 }
 

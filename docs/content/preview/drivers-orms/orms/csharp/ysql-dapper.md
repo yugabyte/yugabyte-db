@@ -1,13 +1,13 @@
 ---
-title: Build a C# application that uses Dapper ORM and YSQL
-headerTitle: Build a C# application
-linkTitle: More examples
-description: Build a C# application that uses Dapper ORM and the YSQL API.
+title: C# ORM example application that uses Dapper ORM and YSQL
+headerTitle: C# ORM example application
+linkTitle: C#
+description: C# ORM example application that uses Dapper ORM and the YSQL API.
 menu:
   preview:
-    identifier: build-apps-csharp-2-ysql
-    parent: cloud-csharp
-    weight: 556
+    identifier: csharp-dapper
+    parent: orm-tutorials
+    weight: 720
 type: docs
 ---
 
@@ -26,14 +26,9 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM. It includes the following tables:
+The following tutorial implements a REST API server using the [Dapper](https://github.com/DapperLib/Dapper) ORM. The scenario is that of an e-commerce application where database access is managed using the ORM.
 
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
-
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
+The source for the application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
 
 ## Prerequisites
 
@@ -42,13 +37,13 @@ This tutorial assumes that you have:
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
-## Clone the "orm-examples" repository
+### Clone the "orm-examples" repository
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/csharp/dapper/DapperORM
 ```
 
-## Database configuration
+## Set up the database connection
 
 To modify the database connection settings, change the `DefaultConnection` field in `appsettings.json` file which is in the following format:
 
@@ -263,7 +258,3 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/csharp/dapper) repository.
