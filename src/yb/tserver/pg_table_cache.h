@@ -36,8 +36,8 @@ class PgTableCache {
 
   Status GetInfo(
       const TableId& table_id,
-      master::GetTableSchemaResponsePB* info,
-      PgTablePartitionsPB* partitions);
+      client::YBTablePtr* table,
+      master::GetTableSchemaResponsePB* schema);
 
   Result<client::YBTablePtr> Get(const TableId& table_id);
 

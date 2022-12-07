@@ -416,13 +416,24 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
-  VLOG(3) << "Loading table descriptor for " << table_id;
-
+Result<PgTableDescPtr> PgSession::DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit) {
   auto cached_table_it = table_cache_.find(table_id);
-  bool exists = cached_table_it != table_cache_.end();
-  if (exists && cached_table_it->second) {
-    return cached_table_it->second;
+  const auto exists = cached_table_it != table_cache_.end();
+  const auto cache_hit = exists && cached_table_it->second;
+  SCHECK(!(fail_on_cache_hit && cache_hit), IllegalState,
+        "Cache entry found while cache miss is expected.");
+  if (cache_hit) {
+    auto status = cached_table_it->second->EnsurePartitionListIsUpToDate(&pg_client_);
+    if (status.ok()) {
+      return cached_table_it->second;
+    }
+
+    // Failed to reload table partitions, let's try to reload the table.
+    LOG(WARNING) << Format(
+        "Partition list refresh failed for table \"$0\": $1. Invalidating table cache.",
+        cached_table_it->second->table_name(), status);
+    InvalidateTableCache(table_id, InvalidateOnPgClient::kFalse);
+    return DoLoadTable(table_id, /* fail_on_cache_hit */ true);
   }
 
   VLOG(4) << "Table cache MISS: " << table_id;
@@ -434,6 +445,11 @@ Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
     table_cache_.emplace(table_id, table);
   }
   return table;
+}
+
+Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
+  VLOG(3) << "Loading table descriptor for " << table_id;
+  return DoLoadTable(table_id, /* fail_on_cache_hit */ false);
 }
 
 void PgSession::InvalidateTableCache(

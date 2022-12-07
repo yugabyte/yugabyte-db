@@ -47,6 +47,8 @@ service PgClientService {
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
+  rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
+      returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
@@ -323,6 +325,15 @@ message PgOpenTableResponsePB {
 
   master.GetTableSchemaResponsePB info = 2;
   PgTablePartitionsPB partitions = 3;
+}
+
+message PgGetTablePartitionListRequestPB {
+  string table_id = 1;
+}
+
+message PgGetTablePartitionListResponsePB {
+  AppStatusPB status = 1;
+  PgTablePartitionsPB partitions = 2;
 }
 
 message PgPerformOpPB {

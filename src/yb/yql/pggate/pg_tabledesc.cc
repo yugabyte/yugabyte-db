@@ -27,6 +27,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pg_client.h"
+
 using std::string;
 
 namespace yb {
@@ -34,8 +36,9 @@ namespace pggate {
 
 PgTableDesc::PgTableDesc(
     const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
-    std::shared_ptr<client::VersionedTablePartitionList> partitions)
-    : id_(id), resp_(resp),  table_partitions_(std::move(partitions)) {
+    client::VersionedTablePartitionList partition_list)
+    : id_(id), resp_(resp),  table_partition_list_(std::move(partition_list)),
+      latest_known_table_partition_list_version_(table_partition_list_.version) {
   table_name_.GetFromTableIdentifierPB(resp.identifier());
 }
 
@@ -99,16 +102,44 @@ bool PgTableDesc::IsRangePartitioned() const {
   return schema().num_hash_key_columns() == 0;
 }
 
-const std::vector<std::string>& PgTableDesc::GetPartitions() const {
-  return table_partitions_->keys;
+const client::TablePartitionList& PgTableDesc::GetPartitionList() const {
+  return table_partition_list_.keys;
 }
 
-size_t PgTableDesc::GetPartitionCount() const {
-  return table_partitions_->keys.size();
+size_t PgTableDesc::GetPartitionListSize() const {
+  return table_partition_list_.keys.size();
 }
 
 client::PartitionListVersion PgTableDesc::GetPartitionListVersion() const {
-  return table_partitions_->version;
+  return table_partition_list_.version;
+}
+
+void PgTableDesc::SetLatestKnownPartitionListVersion(client::PartitionListVersion version) {
+  DCHECK(version >= latest_known_table_partition_list_version_);
+  if (version > latest_known_table_partition_list_version_) {
+    latest_known_table_partition_list_version_ = version;
+  }
+}
+
+Status PgTableDesc::EnsurePartitionListIsUpToDate(PgClient* client) {
+  if (table_partition_list_.version == latest_known_table_partition_list_version_) {
+    return Status::OK();
+  }
+  DCHECK(table_partition_list_.version < latest_known_table_partition_list_version_);
+
+  auto partition_list = VERIFY_RESULT(client->GetTablePartitionList(id()));
+  VLOG(1) << Format(
+      "Received partition list for table \"$0\", "
+      "new version: $1, old version: $2, latest known version: $3.",
+      table_name(), partition_list.version, table_partition_list_.version,
+      latest_known_table_partition_list_version_);
+
+  RSTATUS_DCHECK(latest_known_table_partition_list_version_ <= partition_list.version, IllegalState,
+      "Unexpected version of received partition list.");
+
+  table_partition_list_ = std::move(partition_list);
+  SetLatestKnownPartitionListVersion(table_partition_list_.version);
+  return Status::OK();
 }
 
 Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
@@ -135,7 +166,7 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   // - Hash Partition: ybctid -> hashcode -> key -> partition index.
   // - Range Partition: ybctid == key -> partition index.
   string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
-  return client::FindPartitionStartIndex(table_partitions_->keys, partition_key);
+  return client::FindPartitionStartIndex(table_partition_list_.keys, partition_key);
 }
 
 Status PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB *req,
