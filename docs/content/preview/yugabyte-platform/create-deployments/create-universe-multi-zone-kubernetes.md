@@ -27,7 +27,7 @@ Generic</a>
 
 </ul>
 
-<br>YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
+YugabyteDB Anywhere allows you to create a universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
 
 ## Prerequisites
 
