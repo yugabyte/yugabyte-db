@@ -29,8 +29,8 @@
     <item>
       <title>{{ .Title }}</title>
       <link>{{ .Permalink }}</link>
-      <pubDate>{{ .Date.UTC.Format "02-Jan-2006 15:04:05 -0700" | safeHTML }}</pubDate>
-      <lastBuildDate>{{ now.UTC.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</lastBuildDate>
+      <pubDate>{{ .Lastmod.UTC.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</pubDate>
+      <lastBuildDate>{{ .Lastmod.UTC.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</lastBuildDate>
       <guid>{{ .Permalink }}</guid>
       <description>{{ .Description | html }}</description>
     </item>

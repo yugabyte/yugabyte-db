@@ -10,8 +10,8 @@ resourceDir = 'docs/resources'
 enableGitInfo = true
 
 [frontmatter]
-  date = [ ':filename', 'date', 'lastmod' ]
-  lastmod = [ ':default' ]
+  date = [ "lastmod", ":default" ]
+# lastmod = [ ":git", ":default" ]
 
 [module]
   [module.hugoVersion]
