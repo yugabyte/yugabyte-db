@@ -509,7 +509,7 @@ PARTITION BY LIST (region);
 
 **GitHub link**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 
-**Description**: If there is an index on a timestamp column, those indexes should be imported as a range index as most queries relying on such columns will be using the range predicates. So sequential scans will be avoided and indexed scans will be accessible.
+**Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
 
 **Workaround**: Manually add the ASC (range) clause to the exported files.
 
