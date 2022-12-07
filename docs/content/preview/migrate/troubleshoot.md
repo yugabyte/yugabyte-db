@@ -137,7 +137,7 @@ Suggested changes to the schema can be done using one of the following options:
 
 **Description**: If your schema contains Functional/Expression indexes in MYSQL, the index creation fails with a syntax error during migration and doesn't get migrated.
 
-**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) or oblique quotes ("") from the exported schema files.
+**Workaround**: Manual intervention needed. You have to remove the back-ticks (``) from the exported schema files.
 
 **Example**
 
