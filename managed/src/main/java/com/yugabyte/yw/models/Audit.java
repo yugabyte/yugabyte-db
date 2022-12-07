@@ -28,6 +28,7 @@ import javax.persistence.Id;
 import javax.persistence.SequenceGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.perf_advisor.models.PerformanceRecommendation;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Audit logging for requests and responses")
@@ -140,7 +141,10 @@ public class Audit extends Model {
     NodeAgent,
 
     @EnumValue("CustomerLicense")
-    CustomerLicense
+    CustomerLicense,
+
+    @EnumValue("PerformanceRecommendation")
+    PerformanceRecommendation
   }
 
   public enum ActionType {
