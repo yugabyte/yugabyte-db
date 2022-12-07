@@ -34,12 +34,13 @@ namespace yb {
 namespace pggate {
 
 //--------------------------------------------------------------------------------------------------
+class PgClient;
 
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
   PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
-              std::shared_ptr<client::VersionedTablePartitionList> partitions);
+              client::VersionedTablePartitionList partition_list);
 
   Status Init();
 
@@ -65,11 +66,15 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsRangePartitioned() const;
 
-  const std::vector<std::string>& GetPartitions() const;
+  const client::TablePartitionList& GetPartitionList() const;
 
-  size_t GetPartitionCount() const;
+  size_t GetPartitionListSize() const;
 
   client::PartitionListVersion GetPartitionListVersion() const;
+
+  void SetLatestKnownPartitionListVersion(client::PartitionListVersion version);
+
+  Status EnsurePartitionListIsUpToDate(PgClient* client);
 
   // When reading a row given its associated ybctid, the ybctid value is decoded to the row.
   Result<std::string> DecodeYbctid(const Slice& ybctid) const;
@@ -77,12 +82,12 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Seek the tablet partition where the row whose "ybctid" value was given can be found.
   Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
-  // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  Status SetScanBoundary(LWPgsqlReadRequestPB *req,
-                         const std::string& partition_lower_bound,
-                         bool lower_bound_is_inclusive,
-                         const std::string& partition_upper_bound,
-                         bool upper_bound_is_inclusive);
+  // These values are set by PgGate to optimize query to narrow the scanning range of a query.
+  static Status SetScanBoundary(LWPgsqlReadRequestPB *req,
+                                const std::string& partition_lower_bound,
+                                bool lower_bound_is_inclusive,
+                                const std::string& partition_upper_bound,
+                                bool upper_bound_is_inclusive);
 
   const Schema& schema() const;
 
@@ -100,7 +105,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  private:
   PgObjectId id_;
   master::GetTableSchemaResponsePB resp_;
-  const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
+  client::VersionedTablePartitionList table_partition_list_;
+  client::PartitionListVersion latest_known_table_partition_list_version_;
 
   client::YBTableName table_name_;
   Schema schema_;

@@ -48,6 +48,7 @@ namespace tserver {
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
     (GetTableDiskSize) \
+    (GetTablePartitionList) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
