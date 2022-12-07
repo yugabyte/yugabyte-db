@@ -5,32 +5,41 @@
 package checks
 
 import (
+	"fmt"
+
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var Postgres = &postgresCheck{}
+// Postgres checks if we can connect to postgres
+var Postgres = &postgresCheck{"postgres", true}
 
 type postgresCheck struct {
-	name         string
-	warningLevel string
+	name        string
+	skipAllowed bool
 }
 
+// Name gets the name of the check
 func (p postgresCheck) Name() string {
 	return p.name
 }
 
-func (p postgresCheck) WarningLevel() string {
-	return p.warningLevel
+// SkipAllowed returns if the check can be skipped
+func (p postgresCheck) SkipAllowed() bool {
+	return p.skipAllowed
 }
 
 // ValidateUserPostgres validates if user postgres is initialized.
-func (p postgresCheck) Execute() error {
+func (p postgresCheck) Execute() Result {
+	res := Result{
+		Check:  p.name,
+		Status: StatusPassed,
+	}
 	if !viper.GetBool("postgres.bringOwn") {
 		log.Debug("skipping " + p.name + " as user we will provide postgres")
-		return nil
+		return res
 	}
 	port := config.GetYamlPathData("postgres.port")
 	username := config.GetYamlPathData(".postgres.username")
@@ -48,8 +57,9 @@ func (p postgresCheck) Execute() error {
 	if _, err := common.ExecuteBashCommand(command, args); err != nil {
 		log.Info("User provided Postgres not initialized properly! See the" +
 			" above error message for more details.")
-		return err
+		res.Error = fmt.Errorf("Could not connect to postgres")
+		res.Status = StatusCritical
 	}
 
-	return nil
+	return res
 }

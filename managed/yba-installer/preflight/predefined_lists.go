@@ -2,7 +2,8 @@ package preflight
 
 import "github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight/checks"
 
-var InstallChecks = []PreflightCheck{
+// InstallChecks is a base list of checks for install time
+var InstallChecks = []Check{
 	checks.User,
 	checks.Cpu,
 	checks.Memory,
@@ -12,8 +13,10 @@ var InstallChecks = []PreflightCheck{
 	checks.Ssd,
 }
 
+// InstallChecksWithPostgres adds onto the base list with postgres checks
 var InstallChecksWithPostgres = append(InstallChecks, checks.Postgres)
 
-var UpgradeChecks = []PreflightCheck{
+// UpgradeChecks is the base list of checks for upgrade
+var UpgradeChecks = []Check{
 	checks.InstallExists,
 }

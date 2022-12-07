@@ -13,28 +13,37 @@ import (
 
 var defaultMinCPUs int = 4
 
-var Cpu = &cpuCheck{"cpu", "warning"}
+// The CPU check
+var Cpu = &cpuCheck{"cpu", true}
 
 type cpuCheck struct {
-	name         string
-	warningLevel string
+	name        string
+	skipAllowed bool
 }
 
+// Name gets the Name of the check.
 func (c cpuCheck) Name() string {
 	return c.name
 }
 
-func (c cpuCheck) WarningLevel() string {
-	return c.warningLevel
+// SkipAllowed returns if the user can specify to skip the check (not if they have specified)
+func (c cpuCheck) SkipAllowed() bool {
+	return c.skipAllowed
 }
 
-func (c cpuCheck) Execute() error {
-
+// Execute validates there are enough cpu resources.
+func (c cpuCheck) Execute() Result {
+	res := Result{
+		Check:  c.name,
+		Status: StatusPassed,
+	}
 	if runtime.NumCPU() < defaultMinCPUs {
-		return fmt.Errorf("System currently has %v CPU but requires %v CPUs.",
+		err := fmt.Errorf("System currently has %v CPU but requires %v CPUs.",
 			runtime.NumCPU(), defaultMinCPUs)
+		res.Error = err
+		res.Status = StatusCritical
 	} else {
 		log.Info(fmt.Sprintf("System meets the requirement of %v Virtual CPUs!", defaultMinCPUs))
 	}
-	return nil
+	return res
 }
