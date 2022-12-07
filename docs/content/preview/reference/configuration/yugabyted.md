@@ -451,10 +451,10 @@ Usage: yugabyted status [flags]
 : The data directory for the yugabyted server whose status is desired.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that whose status is desired.
+: The base directory for the yugabyted server whose status is desired.
 
 --log_dir *log-directory*
-: The log directory for the yugabyted server that whose status is desired.
+: The log directory for the yugabyted server whose status is desired.
 
 -----
 
@@ -480,10 +480,10 @@ Usage: yugabyted version [flags]
 : The data directory for the yugabyted server whose version is desired.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that whose version is desired.
+: The base directory for the yugabyted server whose version is desired.
 
 --log_dir *log-directory*
-: The log directory for the yugabyted server that whose version is desired.
+: The log directory for the yugabyted server whose version is desired.
 
 -----
 
