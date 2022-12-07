@@ -89,7 +89,7 @@ Examples:
   yugabyted start
   ```
 
-- Create a secure local single-node cluster:
+- Create a local single-node cluster with encryption-in-transit and authentication:
 
   ```sh
   yugabyted start --secure
@@ -113,7 +113,7 @@ Examples:
 : The IP address of the existing yugabyted server to which the new yugabyted server will join.
 
 --config *config-file*
-: Yugabyted configuration file path.
+: Yugabyted configuration file path. Refer to [Advanced Flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
