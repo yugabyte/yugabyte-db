@@ -123,6 +123,10 @@
 # Build an app was in quick-start, now in develop
 
 [[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
+  force = true
+[[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
   to = "/preview/develop/build-apps/c/cloud-ysql-c/"
   force = true
