@@ -84,6 +84,8 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
   Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
