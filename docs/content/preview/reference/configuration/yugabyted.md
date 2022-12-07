@@ -743,9 +743,7 @@ The following are combinations of environment variables and their uses:
 
 ## Examples
 
-{{< note title="Note" >}}
-To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed.
-{{< /note >}}
+To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
 ### Create a single-node cluster
 
@@ -765,7 +763,7 @@ When authentication is enabled, the default user and password is `yugabyte` and 
 
 ### Create certificates for a secure local multi-node cluster
 
-Secure clusters use [encryption in transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the cluster. Generate the SSL/TLS certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
+Secure clusters use [encryption in transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the cluster. Generate the certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
 
 Create the certificates for SSL and TLS connection:
 
@@ -785,7 +783,7 @@ cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="
 
 ### Create a local multi-node cluster
 
-To create a secure multi-node cluster, ensure you have generated and copied the certificates for each node.
+To create a secure multi-node cluster, ensure you have [generated and copied the certificates](#create-certificates-for-a-secure-local-multi-node-cluster) for each node.
 
 To create a cluster without encryption and authentication, omit the `--secure` flag.
 
@@ -877,7 +875,7 @@ Start the second and the third node on two separate VMs as follows:
 
 {{< /tabpane >}}
 
-After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster:
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the cluster as follows:
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=zone
