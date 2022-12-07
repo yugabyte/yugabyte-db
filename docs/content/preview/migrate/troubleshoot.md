@@ -417,7 +417,7 @@ ALTER SCHEMA "test" RENAME TO "Test";
 
 **Description**:  In YugabyteDB, if a table is partitioned on a column, then that column needs to be a part of the primary key columns. Creating a table where the partition key column is not part of the primary key columns results in an error.
 
-**Workaround**: Add all Partition columns to the Primary key columns
+**Workaround**: Add all Partition columns to the Primary key columns.
 
 **Example**
 
