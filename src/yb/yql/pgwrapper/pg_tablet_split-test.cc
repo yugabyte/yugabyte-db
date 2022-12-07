@@ -41,6 +41,7 @@
 
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 
@@ -49,10 +50,66 @@ DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(TEST_partitioning_version);
 
+using yb::test::Partitioning;
 using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
+
+// SQL helpers
+namespace {
+
+// Another name as YbTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
+using PgYbTableProperties = YBCPgTableProperties;
+
+// Returns cell value or default value in case of null.
+template<typename T>
+Result<T> GetValueOrDefault(PGresult* result, int row, int column,
+    typename Result<T>::ValueType default_value = {}) {
+  return PQgetisnull(result, row, column) ? default_value : GetValue<T>(result, row, column);
+}
+
+// Fetches rows count with a simple request.
+Result<int64_t> FetchTableRowsCount(
+    PGConn* conn, const std::string& table_name,
+    const std::string& where_clause = std::string()) {
+  return conn->FetchValue<int64_t>(Format(
+      "SELECT COUNT(*) FROM $0$1",
+      table_name, where_clause.empty() ? where_clause : Format(" WHERE $0", where_clause)));
+}
+
+// Fetches table rel oid.
+Result<int32_t> FetchTableRelOid(PGConn* conn, const std::string& table_name) {
+  return conn->FetchValue<int32_t>(Format(
+      "SELECT oid from pg_class WHERE relname='$0'", table_name));
+}
+
+// Fetch table's yb-specific properties.
+Result<PgYbTableProperties> FetchYbTableProperties(PGConn* conn, Oid table_oid) {
+  auto res = VERIFY_RESULT(conn->FetchMatrix(Format(
+      "SELECT num_tablets, num_hash_key_columns, is_colocated, tablegroup_oid, colocation_id "
+      "FROM yb_table_properties($0)", table_oid), 1, 5));
+  PgYbTableProperties props;
+  props.num_tablets = VERIFY_RESULT(GetInt64(res.get(), 0, 0));
+  props.num_hash_key_columns = VERIFY_RESULT(GetInt64(res.get(), 0, 1));
+  props.is_colocated = VERIFY_RESULT(GetBool(res.get(), 0, 2));
+  props.tablegroup_oid = VERIFY_RESULT(GetValueOrDefault<int32_t>(res.get(), 0, 3));
+  props.colocation_id = VERIFY_RESULT(GetValueOrDefault<int32_t>(res.get(), 0, 4));
+  return props;
+}
+
+Result<PgYbTableProperties> FetchYbTableProperties(PGConn* conn, const std::string& table_name) {
+  const auto table_oid = VERIFY_RESULT(FetchTableRelOid(conn, table_name));
+  return FetchYbTableProperties(conn, table_oid);
+}
+
+// Specify indexscan_condition to force enable_indexscan.
+Status SetEnableIndexScan(PGConn* conn, bool indexscan) {
+  return conn->ExecuteFormat("SET enable_indexscan = $0", indexscan ? "on" : "off");
+}
+
+} // namespace
+
 
 using TabletRecordsInfo =
     std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
@@ -131,12 +188,12 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   // Setting table's partitioning explicitly to have one of bounds be specified for each tablet.
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t(k1 INT, k2 INT, v TEXT, PRIMARY KEY (k1 HASH, k2 ASC))"
-      "  SPLIT INTO 2 TABLETS;"));
+      "  SPLIT INTO 2 TABLETS"));
 
   // Make a special structure of records: it has the same HASH but different DocKey, thus from
   // tablet splitting perspective it should give middle split key that matches the partition bound.
   ASSERT_OK(conn.Execute(
-      "INSERT INTO t SELECT 13402, i, i::text FROM generate_series(1, 200) as i;"));
+      "INSERT INTO t SELECT 13402, i, i::text FROM generate_series(1, 200) as i"));
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -153,7 +210,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   auto peer = *peer_it;
 
   // Make sure SST files appear to be able to split.
-  ASSERT_OK(WaitForAnySstFiles(peer));
+  ASSERT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto result = peer->tablet()->GetEncodedMiddleSplitKey();
@@ -174,21 +231,6 @@ class PgPartitioningVersionTest :
     // test with TEST_P and calling path cannot reach test body due to initdb timeout in TSAN mode.
     YB_SKIP_TEST_IN_TSAN();
     PgTabletSplitTest::SetUp();
-  }
-
-  // Specify indexscan_condition to force enable_indexscan
-  static Status SetEnableIndexScan(PGConn* conn, bool indexscan) {
-    return conn->ExecuteFormat("SET enable_indexscan = $0;", indexscan ? "on" : "off");
-  }
-
-  static Result<int64_t> FetchTableRowsCount(PGConn* conn, const std::string& table_name,
-      const std::string& where_clause = std::string()) {
-    auto res = VERIFY_RESULT(conn->Fetch(Format(
-        "SELECT COUNT(*) FROM $0;",
-        where_clause.empty() ? table_name : Format("$0 WHERE $1", table_name, where_clause))));
-    SCHECK_EQ(1, PQnfields(res.get()), IllegalState, "");
-    SCHECK_EQ(1, PQntuples(res.get()), IllegalState, "");
-    return GetInt64(res.get(), 0, 0);
   }
 
   Status SplitTableWithSingleTablet(
@@ -355,12 +397,12 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
 
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0(k INT PRIMARY KEY, v TEXT);", kTableName)));
-  ASSERT_OK(conn.Execute(Format("CREATE INDEX $0 on $1(v ASC);", kIdx1Name, kTableName)));
-  ASSERT_OK(conn.Execute(Format("CREATE INDEX $0 on $1(v HASH);", kIdx2Name, kTableName)));
+  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0(k INT PRIMARY KEY, v TEXT)", kTableName)));
+  ASSERT_OK(conn.Execute(Format("CREATE INDEX $0 on $1(v ASC)", kIdx1Name, kTableName)));
+  ASSERT_OK(conn.Execute(Format("CREATE INDEX $0 on $1(v HASH)", kIdx2Name, kTableName)));
 
   ASSERT_OK(conn.Execute(Format(
-      "INSERT INTO $0 SELECT i, i::text FROM (SELECT generate_series(1, $1) i) t2;",
+      "INSERT INTO $0 SELECT i, i::text FROM (SELECT generate_series(1, $1) i) t2",
       kTableName, kNumRows)));
 
   ASSERT_OK(cluster_->FlushTablets());
@@ -428,14 +470,14 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       const std::string table_name = ToLowerCase(Format("table_$0_$1idx", sort_order, idx_type));
       const std::string index_name = ToLowerCase(Format("index_$0_$1idx", sort_order, idx_type));
       ASSERT_OK(conn.Execute(Format(
-          "CREATE TABLE $0(k INT, i0 INT, t0 TEXT, t1 TEXT, PRIMARY KEY(k ASC));",
+          "CREATE TABLE $0(k INT, i0 INT, t0 TEXT, t1 TEXT, PRIMARY KEY(k ASC))",
           table_name)));
       ASSERT_OK(conn.Execute(Format(
-          "CREATE $0 INDEX $1 on $2(t0 $3, t1 $3, i0 $3);",
+          "CREATE $0 INDEX $1 on $2(t0 $3, t1 $3, i0 $3)",
           idx_type, index_name, table_name, sort_order)));
 
       ASSERT_OK(conn.Execute(Format(
-        "INSERT INTO $0 SELECT i, i, i::text, i::text FROM (SELECT generate_series(1, $1) i) t2;",
+        "INSERT INTO $0 SELECT i, i, i::text, i::text FROM (SELECT generate_series(1, $1) i) t2",
         table_name, kNumRows)));
 
       // Check rows count.
@@ -472,10 +514,10 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 
       // Simulate leading nulls for the index table
       ASSERT_OK(conn.Execute(
-          Format("INSERT INTO $0 VALUES($1, $1, $2, $2);",
+          Format("INSERT INTO $0 VALUES($1, $1, $2, $2)",
                  table_name, kNumRows + 1, "NULL")));
       ASSERT_OK(conn.Execute(
-          Format("INSERT INTO $0 VALUES($1, $1, $2, $3);",
+          Format("INSERT INTO $0 VALUES($1, $1, $2, $3)",
                  table_name, kNumRows + 2, "NULL", "'T'")));
 
       // Validate insert operation is forwarded correctly (assuming NULL LAST approach is used):
@@ -537,12 +579,12 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     const std::string index_name = ToLowerCase(Format("index_$0", sort_order));
 
     ASSERT_OK(conn.Execute(
-        Format("CREATE TABLE $0(k INT, i0 INT, t0 TEXT, PRIMARY KEY(k ASC));", table_name)));
+        Format("CREATE TABLE $0(k INT, i0 INT, t0 TEXT, PRIMARY KEY(k ASC))", table_name)));
     ASSERT_OK(conn.Execute(
-        Format("CREATE UNIQUE INDEX $0 on $1(t0 $2, i0 $2);", index_name, table_name, sort_order)));
+        Format("CREATE UNIQUE INDEX $0 on $1(t0 $2, i0 $2)", index_name, table_name, sort_order)));
 
     ASSERT_OK(conn.Execute(Format(
-        "INSERT INTO $0 SELECT i, i, i::text FROM (SELECT generate_series(1, $1) i) t2;",
+        "INSERT INTO $0 SELECT i, i, i::text FROM (SELECT generate_series(1, $1) i) t2",
         table_name, kNumRows)));
 
     ASSERT_OK(cluster_->FlushTablets());
@@ -585,7 +627,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
 
     // Delete all rows to make the table empty to be able to insert unique values and analyze where.
     // the row is being forwarded.
-    ASSERT_OK(conn.Execute(Format("DELETE FROM $0 WHERE k > 0;", table_name)));
+    ASSERT_OK(conn.Execute(Format("DELETE FROM $0 WHERE k > 0", table_name)));
     ASSERT_EQ(0, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Keep current numbers of records persisted in tablets for further analyses.
@@ -593,7 +635,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
 
     // Insert values that match the partition bound.
     ASSERT_OK(conn.Execute(Format(
-        "INSERT INTO $0 VALUES($1, $1, $2);", table_name, idx1_i0, idx1_t0)));
+        "INSERT INTO $0 VALUES($1, $1, $2)", table_name, idx1_i0, idx1_t0)));
     ASSERT_EQ(1, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Validate insert operation is forwarded correctly (assuming NULL LAST approach is used):
@@ -639,14 +681,14 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(Format(
-      "CREATE TABLE t1(k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((500));")));
+      "CREATE TABLE t1(k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((500))")));
   ASSERT_OK(conn.Execute(
-      "CREATE INDEX idx1 on t1(v ASC) SPLIT AT VALUES (('301'), ('601'));"));
+      "CREATE INDEX idx1 on t1(v ASC) SPLIT AT VALUES (('301'), ('601'))"));
   ASSERT_OK(conn.Execute(
-      "CREATE UNIQUE INDEX idx2 on t1(v DESC) SPLIT AT VALUES(('800'), ('600'), ('400'));"));
+      "CREATE UNIQUE INDEX idx2 on t1(v DESC) SPLIT AT VALUES(('800'), ('600'), ('400'))"));
 
   ASSERT_OK(conn.Execute(Format(
-      "INSERT INTO t1 SELECT i, i::text FROM (SELECT generate_series(1, $0) i) t2;", kNumRows)));
+      "INSERT INTO t1 SELECT i, i::text FROM (SELECT generate_series(1, $0) i) t2", kNumRows)));
 
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, "t1")));
@@ -828,6 +870,71 @@ TEST_F(PgRangePartitionedTableSplitTest,
   }
 }
 
+
+class PgPartitioningTest :
+    public PgTabletSplitTest,
+    public testing::WithParamInterface<Partitioning> {
+ protected:
+  void SetUp() override {
+    // Additional disabling is required as YB_DISABLE_TEST_IN_TSAN is not allowed in parameterized
+    // test with TEST_P and calling path cannot reach test body due to initdb timeout in TSAN mode.
+    YB_SKIP_TEST_IN_TSAN();
+    PgTabletSplitTest::SetUp();
+  }
+};
+
+TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
+  YB_SKIP_TEST_IN_TSAN();
+
+  constexpr auto kNumRows = 2000U;
+  constexpr auto kSplitsNumber = 3U;
+  const std::string table_name = "test";
+  const auto partitioning = GetParam();
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create table and insert data.
+  ASSERT_OK(conn.Execute(Format(
+      "CREATE TABLE $0(k INT, v INT, PRIMARY KEY (k$1))",
+      table_name, partitioning == Partitioning::kHash ? "" : " ASC")));
+  ASSERT_OK(conn.Execute(Format(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 2000) as i", table_name)));
+
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(DoLastTabletSplitForTableWithSingleTablet(table_name, kSplitsNumber));
+
+  // We need two read request to updated PG cache. As a result of first request, PG layer will be
+  // aware of stale partitions due to new version is returned via response. And the cache update
+  // will happen with the second request, before it's been executed.
+  auto count = ASSERT_RESULT(FetchTableRowsCount(&conn, table_name));
+  ASSERT_EQ(count, kNumRows);
+
+  count = ASSERT_RESULT(FetchTableRowsCount(&conn, table_name));
+  ASSERT_EQ(count, kNumRows);
+
+  // Get number of tablets from PG layer.
+  PgYbTableProperties props = ASSERT_RESULT(FetchYbTableProperties(&conn, table_name));
+  ASSERT_EQ(props.num_tablets, (kSplitsNumber + 1));
+
+  // Unfortunately num_range_key_columns is not set because `yb_table_properties` does not return
+  // this value.
+  ASSERT_EQ(props.num_hash_key_columns, (partitioning == Partitioning::kHash));
+}
+
+namespace {
+
+template <typename T>
+std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
+  return ToString(param_info.param);
+}
+
+} // namespace
+
+INSTANTIATE_TEST_CASE_P(
+    PgTabletSplitTest,
+    PgPartitioningTest,
+    ::testing::ValuesIn(test::kPartitioningArray),
+    TestParamToString<test::Partitioning>);
 
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,

@@ -92,6 +92,9 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
+using yb::test::Partitioning;
+using yb::test::kPartitioningArray;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 

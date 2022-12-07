@@ -59,11 +59,10 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
-using client::kv_table_test::Partitioning;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TableIdentifierPB;
-
+using test::Partitioning;
 
 template <class TabletSplitBase>
 class XClusterTabletSplitITestBase : public TabletSplitBase {
@@ -466,7 +465,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
     SetNumTablets(producer_tablet_count);
     Schema schema;
-    BuildSchema(GetParam(), &schema);
+    client::kv_table_test::BuildSchema(GetParam(), &schema);
     schema.mutable_table_properties()->SetTransactional(
         GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
     ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
@@ -1099,7 +1098,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 INSTANTIATE_TEST_CASE_P(
     xClusterTabletMapTestITest,
     xClusterTabletMapTest,
-    ::testing::ValuesIn(client::kv_table_test::kPartitioningArray),
+    ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<Partitioning>);
 
 }  // namespace yb

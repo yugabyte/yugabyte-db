@@ -399,6 +399,11 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
     if (!op_response) {
       continue;
     }
+
+    if (op_response->has_partition_list_version()) {
+      table_->SetLatestKnownPartitionListVersion(op_response->partition_list_version());
+    }
+
     // Get total number of rows that are operated on.
     rows_affected_count_ += op_response->rows_affected_count();
 
@@ -567,7 +572,7 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   //
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   // Begin a batch of ybctids.
   end_of_data_ = false;
   // Assign ybctid values.
@@ -634,7 +639,7 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
 }
 
 Status PgDocReadOp::InitializeYbctidOperators() {
-  auto op_count = table_->GetPartitionCount();
+  auto op_count = table_->GetPartitionListSize();
 
   if (batch_row_orders_.size() == 0) {
     // First batch:
@@ -647,7 +652,6 @@ Status PgDocReadOp::InitializeYbctidOperators() {
     // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
     // in the batch and then order them before returning result to Postgres layer.
     wait_for_batch_completion_ = true;
-
   } else {
     // Second and later batches: Reuse all state variables.
     // - Clear row orders for this batch to be set later.
@@ -747,7 +751,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
+  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionListSize()));
   // Set "pararallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
@@ -766,7 +770,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   }
 
   // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -796,11 +800,11 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
 
 Result<bool> PgDocReadOp::PopulateSamplingOps() {
   // Create one PgsqlOp per partition
-  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
+  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionListSize()));
   // Partitions are sampled sequentially, one at a time
   parallelism_level_ = 1;
   // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
@@ -856,7 +860,7 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   // Seek the tablet of the given key.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  const std::vector<std::string>& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   const auto& partition_key = std::find(
       partition_keys.begin(),
       partition_keys.end(),

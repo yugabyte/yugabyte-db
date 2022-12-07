@@ -46,6 +46,8 @@
 
 DECLARE_bool(enable_ysql);
 
+using yb::test::Partitioning;
+
 using namespace std::literals;
 
 namespace yb {

@@ -342,6 +342,7 @@ struct PerformData {
       if (op_resp.has_rows_data_sidecar()) {
         op_resp.set_rows_data_sidecar(narrow_cast<int>(context.AddRpcSidecar(op->rows_data())));
       }
+      op_resp.set_partition_list_version(op->table()->GetPartitionListVersion());
     }
 
     return Status::OK();

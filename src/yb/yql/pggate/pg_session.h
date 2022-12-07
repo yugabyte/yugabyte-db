@@ -323,6 +323,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<bool> CheckIfPitrActive();
 
  private:
+  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(
       BufferableOperations ops, bool transactional);
 

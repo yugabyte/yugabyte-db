@@ -534,7 +534,7 @@ YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
 
 YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
                                       YBCPgTableProperties *properties) {
-  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionListSize();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
   properties->tablegroup_oid = 0; /* Isn't set here. */
