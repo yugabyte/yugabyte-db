@@ -75,6 +75,8 @@ The following commands are available:
 
 Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../architecture/layered-architecture/#yugabyte-sql-ysql) and [YCQL](../../../architecture/layered-architecture/#yugabyte-cloud-ql-ycql) workloads in your local environment.
 
+Note that to use encryption in transit, OpenSSL must be installed on the nodes.
+
 #### Syntax
 
 ```text
@@ -89,7 +91,7 @@ Examples:
   yugabyted start
   ```
 
-- Create a local single-node cluster with encryption-in-transit and authentication:
+- Create a local single-node cluster with encryption in transit and authentication:
 
   ```sh
   yugabyted start --secure
@@ -137,8 +139,8 @@ Examples:
 : Enable or disable the webserver UI. Default: `false`
 
 --secure
-: Enable [encryption-in-transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
-: Encryption-in-transit requires SSL/TLS certificates for each node in the cluster.
+: Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
+: Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
 : When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
@@ -268,6 +270,8 @@ yugabyted configure data_placement --fault_tolerance=zone
 
 Use the `yugabyted configure encrypt_at_rest` subcommand to enable or disable [encryption at rest](../../../secure/encryption-at-rest/) for the deployed cluster.
 
+To use encryption at rest, OpenSSL must be installed on the nodes.
+
 #### Syntax
 
 ```text
@@ -315,7 +319,7 @@ Examples:
 
 ### cert
 
-Use the `yugabyted cert` command to create TLS or SSL certificates for deploying a secure YugabyteDB cluster.
+Use the `yugabyted cert` command to create TLS/SSL certificates for deploying a secure YugabyteDB cluster.
 
 #### Commands
 
@@ -751,7 +755,7 @@ Create a single-node cluster with a given base directory. Note the need to provi
 ./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-To create secure single-node cluster with [encryption-in-transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) enabled, add the `--secure` flag as follows:
+To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) enabled, add the `--secure` flag as follows:
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
@@ -761,7 +765,7 @@ When authentication is enabled, the default user and password is `yugabyte` and 
 
 ### Create certificates for a secure local multi-node cluster
 
-Secure clusters use [encryption-in-transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the cluster. Generate the SSL/TLS certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
+Secure clusters use [encryption in transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the cluster. Generate the SSL/TLS certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
 
 Create the certificates for SSL and TLS connection:
 
@@ -851,7 +855,7 @@ Start the second and the third node on two separate VMs, as follows:
 
   {{% /tab %}}
 
-  {{% tab header="Basic" lang="basic" %}}
+  {{% tab header="Insecure" lang="basic" %}}
 
 To create a multi-zone cluster, start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
@@ -930,7 +934,7 @@ Start the second and the third node on two separate VMs, as follows:
 
   {{% /tab %}}
 
-  {{% tab header="Basic" lang="basic-2" %}}
+  {{% tab header="Insecure" lang="basic-2" %}}
 
 To create a multi-region cluster, start the first yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
