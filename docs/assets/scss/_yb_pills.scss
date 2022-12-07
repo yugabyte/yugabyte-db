@@ -17,6 +17,7 @@ ul.nav.yb-pills {
     margin: 0;
     height: 56px;
     position: relative;
+    min-width: 222px;
 
     @media (max-width: 991px) {
       max-width: calc(50% - 10px);

@@ -1,3 +1,7 @@
+html {
+  scroll-behavior: smooth;
+}
+
 /******* Container Styling **********/
 .left-menu-scrolling .td-main {
   aside.td-sidebar .left-sidebar-wrap {
@@ -76,7 +80,7 @@
       min-height: 100vh;
       flex-flow: row wrap;
 
-      >div {
+      > div {
         display: flex;
         max-width: 100%;
         min-height: calc(100vh - 170px);
@@ -244,4 +248,18 @@
       }
     }
   }
+}
+
+.dragging {
+  .td-main .content-parent .content-child,
+  .td-main aside.td-sidebar .left-sidebar-wrap,
+  .unselect-able {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+body:not(.dragging) .td-main aside.td-sidebar:not(.toggled-sidebar) {
+  transition: max-width 2s ease-in-out !important;
 }

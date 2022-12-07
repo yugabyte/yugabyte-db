@@ -598,17 +598,23 @@
       }
 
       .docs-menu.desktop-hide::after {
-        border: 2px solid #000 !important;
+        border: 2px solid #000;
         width: 10px;
         min-height: 10px;
         position: absolute;
         content: "";
         line-height: normal;
         transform: rotate(45deg);
-        border-top: 0 !important;
-        border-left: 0 !important;
+        border-top: 0;
+        border-left: 0;
         right: 20px;
         top: 17px;
+        transition: 200ms linear;
+      }
+
+      .docs-menu.menu-open::after {
+        transform: rotate(-135deg);
+        top: 21px;
       }
 
       .left-sidebar-wrap-inner {

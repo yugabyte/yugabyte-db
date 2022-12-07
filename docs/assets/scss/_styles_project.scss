@@ -13,6 +13,7 @@
 @import "./_yb_page_style.scss";
 @import "./_yb_resources.scss";
 @import "./_yb_container.scss";
+@import "./_yb_responsive_container.scss";
 
 * body {
   background: #fff;
@@ -103,11 +104,13 @@
     padding-left: 1.5rem !important;
   }
 }
+
 @media (max-width: 991px) {
   .td-main main {
     padding-top: 65px;
   }
 }
+
 .heading-image {
   background-color: transparent;
   box-shadow: none;
@@ -371,6 +374,7 @@ body:not(.td-home) .td-main main {
 
   .main-heading-with-version {
     margin-top: 16px;
+
     @media (max-width: 991px) {
       margin-top: 0;
     }

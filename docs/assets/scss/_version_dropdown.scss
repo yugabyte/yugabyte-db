@@ -112,3 +112,26 @@
 .heading-content .navbar-nav {
   display: none;
 }
+
+.main-heading-with-version {
+  &.dd-chang-showmobile {
+    display: flex;
+    margin: 20px 0 0 32px;
+    width: calc(100% - 49px);
+
+    ul {
+      width: 100%;
+      margin: 0;
+      padding-left: 0;
+      list-style: none;
+
+      .dropdown-menu {
+        width: 100%;
+      }
+    }
+
+    @media (min-width: 992px) {
+      display: none;
+    }
+  }
+}

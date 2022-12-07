@@ -1,0 +1,45 @@
+
+.td-main {
+  container-type: inline-size;
+  container-name: maincontainer;
+
+  .content-parent {
+    container-type: inline-size;
+    container-name: sidebar;
+  }
+
+  @container mainContainer (min-width: 768px) {
+    .td-sidebar:not(.close-bar) {
+      flex: 1 1 80%;
+    }
+
+    .content-parent {
+      flex: 1 1 20%;
+    }
+
+    .content-parent {
+      padding: 0 30px;
+    }
+  }
+
+  @container sidebar (max-width: 500px) {
+    .td-content [class^=col] {
+      width: auto;
+      flex: 0 0 100%;
+      max-width: none;
+    }
+
+    ul.nav.yb-pills li {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    footer .footer-top {
+      justify-content: center;
+
+      .footer-socials {
+        display: none;
+      }
+    }
+  }
+}
