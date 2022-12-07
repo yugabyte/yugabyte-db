@@ -88,24 +88,24 @@ Examples:
 - Create a local single-node cluster:
 
   ```sh
-  yugabyted start
+  ./bin/yugabyted start
   ```
 
 - Create a local single-node cluster with encryption in transit and authentication:
 
   ```sh
-  yugabyted start --secure
+  ./bin/yugabyted start --secure
   ```
 
 - Create a single-node locally and join other nodes that are part of the same cluster:
 
   ```sh
-  yugabyted start --join=host:port,[host:port]
+  ./bin/yugabyted start --join=host:port,[host:port]
   ```
 
 #### Flags
 
--h, --help
+-h | --help
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
@@ -211,6 +211,12 @@ Use the `yugabyted configure` command to do the following:
 - Configure the data placement policy of the cluster.
 - Enable or disable encryption at rest.
 
+#### Syntax
+
+```sh
+Usage: yugabyted configure [command] [flags]
+```
+
 #### Commands
 
 The following subcommands are available for `yugabyted configure` command:
@@ -218,29 +224,17 @@ The following subcommands are available for `yugabyted configure` command:
 - [data_placement](#data-placement)
 - [encrypt_at_rest](#encrypt-at-rest)
 
-#### Syntax
-
-```sh
-Usage: yugabyted configure [command] [flags]
-```
-
 #### data_placement
 
 Use the `yugabyted configure data_placement` subcommand to set or modify placement policy of the nodes of the deployed cluster.
 
-#### Syntax
-
-```sh
-Usage: yugabyted configure data_placement [flags]
-```
-
 For example, you would use the following command to create a multi-zone YugabyteDB cluster:
 
 ```sh
-yugabyted configure data_placement --fault_tolerance=zone
+./bin/yugabyted configure data_placement --fault_tolerance=zone
 ```
 
-#### Flags
+#### data_placement Flags
 
 -h | --help
 : Print the command-line help and exit.
@@ -272,27 +266,19 @@ Use the `yugabyted configure encrypt_at_rest` subcommand to enable or disable [e
 
 To use encryption at rest, OpenSSL must be installed on the nodes.
 
-#### Syntax
+For example, to enable encryption at rest for a deployed YugabyteDB cluster, execute the following:
 
-```text
-Usage: yugabyted configure encrypt_at_rest [flags]
+```sh
+./bin/yugabyted configure encrypt_at_rest --enable
 ```
 
-Examples:
+To disable encryption at rest for a YugabyteDB cluster which has encryption at rest enabled, execute the following:
 
-- To enable encryption at rest for a deployed YugabyteDB cluster, execute the following:
+```sh
+./bin/yugabyted configure encrypt_at_rest --disable
+```
 
-  ```sh
-  yugabyted configure encrypt_at_rest --enable
-  ```
-
-- To disable encryption at rest for a YugabyteDB cluster which has encryption at rest enabled, execute the following:
-
-  ```sh
-  yugabyted configure encrypt_at_rest --disable
-  ```
-
-#### Flags
+#### encrypt_at_rest Flags
 
 -h | --help
 : Print the command-line help and exit.
@@ -321,32 +307,26 @@ Examples:
 
 Use the `yugabyted cert` command to create TLS/SSL certificates for deploying a secure YugabyteDB cluster.
 
-#### Commands
-
-The following subcommands are available for the `yugabyted cert` command:
-
-- [generate_server_certs](#generate-server-certs)
-
 #### Syntax
 
 ```text
 Usage: yugabyted cert [command] [flags]
 ```
 
+#### Commands
+
+The following subcommands are available for the `yugabyted cert` command:
+
+- [generate_server_certs](#generate-server-certs)
+
 #### generate_server_certs
 
 Use the `yugabyted cert generate_server_certs` subcommand to generate keys and certificates for the specified hostnames.
 
-#### Syntax
-
-```text
-Usage: yugabyted cert generate_server_certs [flags]
-```
-
 For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0.2, 127.0.0.3, execute the following command:
 
 ```sh
-Usage: yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
+./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.0.0.3
 ```
 
 #### Flags
@@ -412,7 +392,7 @@ Usage: yugabyted destroy [flags]
 
 #### Flags
 
--h, --help
+-h | --help
 : Print the command-line help and exit.
 
 --config *config-file*
@@ -523,6 +503,12 @@ Usage: yugabyted collect_logs [flags]
 
 Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh).
 
+#### Syntax
+
+```sh
+Usage: yugabyted connect [command] [flags]
+```
+
 #### Commands
 
 The following subcommands are available for the `yugabyted connect` command:
@@ -530,48 +516,13 @@ The following subcommands are available for the `yugabyted connect` command:
 - [ysql](#ysql)
 - [ycql](#ycql)
 
-#### Syntax
-
-```sh
-Usage: yugabyted connect [command] [flags]
-```
-
 #### ysql
 
 Use the `yugabyted connect ysql` subcommand to connect to YugabyteDB with [ysqlsh](../../../admin/ysqlsh/).
 
-#### Syntax
-
-```sh
-Usage: yugabyted connect ysql [flags]
-```
-
-#### Flags
-
--h | --help
-: Print the command-line help and exit.
-
---config *config-file*
-: The path to the configuration file of the yugabyted server to connect to.
-
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to.
-
---base_dir *base-directory*
-: The base directory for the yugabyted server to connect to.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to.
-
 #### ycql
 
 Use the `yugabyted connect ycql` subcommand to connect to YugabyteDB with [ycqlsh](../../../admin/ycqlsh).
-
-#### Syntax
-
-```sh
-Usage: yugabyted connect ycql [flags]
-```
 
 #### Flags
 
@@ -596,6 +547,12 @@ Usage: yugabyted connect ycql [flags]
 
 Use the `yugabyted demo` command to use the demo [Northwind sample dataset](../../../sample-data/northwind/) with YugabyteDB.
 
+#### Syntax
+
+```sh
+Usage: yugabyted demo [command] [flags]
+```
+
 #### Commands
 
 The following subcommands are available for the `yugabyted demo` command:
@@ -603,69 +560,34 @@ The following subcommands are available for the `yugabyted demo` command:
 - [connect](#connect-1)
 - [destroy](#destroy-1)
 
-#### Syntax
-
-```sh
-Usage: yugabyted demo [command] [flags]
-```
-
 #### connect
 
 Use the `yugabyted demo connect` subcommand to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
-
-#### Syntax
-
-```sh
-Usage: yugabyted demo connect [flags]
-```
-
-#### Flags
-
--h | --help
-: Print the help message and exit.
-
---config *config-file*
-: The path to the configuration file of the yugabyted server to connect to.
-
---data_dir *data-directory*
-: The data directory for the yugabyted server to connect to.
-
---base_dir *base-directory*
-: The base directory for the yugabyted server to connect to.
-
---log_dir *log-directory*
-: The log directory for the yugabyted server to connect to.
 
 #### destroy
 
 Use the `yuagbyted demo destroy` subcommand to shut down the yugabyted single-node cluster and remove data, configuration, and log directories. This subcommand also deletes the `yb_demo_northwind` database.
 
-#### Syntax
-
-```sh
-Usage: yugabyted demo destroy [flags]
-```
-
 #### Flags
 
 -h | --help
 : Print the help message and exit.
 
 --config *config-file*
-: The path to the configuration file of the yugabyted server to destroy.
+: The path to the configuration file of the yugabyted server to connect to or destroy.
 
 --data_dir *data-directory*
-: The data directory for the yugabyted server to destroy.
+: The data directory for the yugabyted server to connect to or destroy.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to destroy.
+: The base directory for the yugabyted server to connect to or destroy.
 
 --log_dir *log-directory*
-: The log directory for the yugabyted server to destroy.
+: The log directory for the yugabyted server to connect to or destroy.
 
 -----
 
-## Environment Variables
+## Environment variables
 
 In the case of multi-node deployments, all nodes should have similar environment variables.
 
