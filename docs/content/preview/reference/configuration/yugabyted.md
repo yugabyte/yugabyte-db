@@ -89,6 +89,12 @@ Examples:
   yugabyted start
   ```
 
+- Create a secure local single-node cluster:
+
+  ```sh
+  yugabyted start --secure
+  ```
+
 - Create a single-node locally and join other nodes that are part of the same cluster:
 
   ```sh
@@ -129,6 +135,14 @@ Examples:
 
 --ui *bool*
 : Enable or disable the webserver UI. Default: `false`
+
+--secure
+: Enable [encryption-in-transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
+: Encryption-in-transit requires SSL/TLS certificates for each node in the cluster.
+: - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
+: - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
+: When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+: For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
 #### Advanced Flags
 
@@ -248,11 +262,11 @@ yugabyted configure data_placement --fault_tolerance=zone
 : The base directory for the yugabyted server.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server.
 
 #### encrypt_at_rest
 
-Use the `yugabyted configure encrypt_at_rest` subcommand to enable or disable encryption at rest for the deployed cluster.
+Use the `yugabyted configure encrypt_at_rest` subcommand to enable or disable [encryption at rest](../../../secure/encryption-at-rest/) for the deployed cluster.
 
 #### Syntax
 
@@ -295,7 +309,8 @@ Examples:
 : The base directory for the yugabyted server.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: : The log directory for the yugabyted server.
+
 -----
 
 ### cert
@@ -348,7 +363,7 @@ Usage: yugabyted cert generate_server_certs --hostnames=127.0.0.1,127.0.0.2,127.
 : The base directory for the yugabyted server.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server.
 
 -----
 
@@ -377,7 +392,7 @@ Usage: yugabyted stop [flags]
 : The base directory for the yugabyted server that needs to be stopped.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server that needs to be stopped.
 
 -----
 
@@ -406,7 +421,7 @@ Usage: yugabyted destroy [flags]
 : The base directory for the yugabyted server that needs to be destroyed.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -435,7 +450,7 @@ Usage: yugabyted status [flags]
 : The base directory for the yugabyted server that whose status is desired.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server that whose status is desired.
 
 -----
 
@@ -464,7 +479,7 @@ Usage: yugabyted version [flags]
 : The base directory for the yugabyted server that whose version is desired.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server that whose version is desired.
 
 -----
 
@@ -496,7 +511,7 @@ Usage: yugabyted collect_logs [flags]
 : The base directory for the yugabyted server whose logs are desired.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server whose logs are desired.
 
 -----
 
@@ -542,7 +557,7 @@ Usage: yugabyted connect ysql [flags]
 : The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server to connect to.
 
 #### ycql
 
@@ -569,7 +584,7 @@ Usage: yugabyted connect ycql [flags]
 : The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server to connect to.
 
 -----
 
@@ -615,7 +630,7 @@ Usage: yugabyted demo connect [flags]
 : The base directory for the yugabyted server to connect to.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server to connect to.
 
 #### destroy
 
@@ -642,7 +657,7 @@ Usage: yugabyted demo destroy [flags]
 : The base directory for the yugabyted server to destroy.
 
 --log_dir *log-directory*
-: The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored.
+: The log directory for the yugabyted server to destroy.
 
 -----
 
@@ -746,7 +761,7 @@ When authentication is enabled, the default user and password is `yugabyte` and 
 
 ### Create certificates for a secure local multi-node cluster
 
-Secure clusters use encryption-in-transit, which requires SSL/TLS certificates for each node in the cluster. Generate the SSL/TLS certificates and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
+Secure clusters use [encryption-in-transit](../../../secure/tls-encryption/), which requires SSL/TLS certificates for each node in the cluster. Generate the SSL/TLS certificates using the `--cert generate_server_certs` command and then copy them to the respective node base directories *before* you create a secure local multi-node cluster.
 
 Create the certificates for SSL and TLS connection:
 
@@ -961,7 +976,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Enable and disable encryption at rest
 
-To enable encryption at rest in a deployed local cluster, run the following command:
+To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deployed local cluster, run the following command:
 
 ```sh
 ./bin/yugabyted configure encrypt_at_rest --enable --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
