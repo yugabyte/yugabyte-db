@@ -1,49 +1,38 @@
 ---
-title: Build a Java application that uses Ebean and YSQL
-headerTitle: Build a Java application
-linkTitle: More examples
-description: Build a sample Java application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
+title: Java ORM example application that uses Ebean and YSQL
+headerTitle: Java ORM example application
+linkTitle: Java
+description: Java ORM example application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    parent: cloud-java
-    identifier: java-7
-    weight: 550
+    identifier: java-ebean
+    parent: orm-tutorials
+    weight: 640
 type: docs
 ---
 
-<ul class="nav yb-pills">
-  <li >
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
     <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>
   </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      Spring Data YugabyteDB
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-spring-data/" class="nav-link">
+  <li>
+    <a href="../ysql-spring-data/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Spring Data JPA
     </a>
   </li>
-   <li class="active">
-    <a href="../ysql-ebean/" class="nav-link ">
+   <li>
+    <a href="../ysql-ebean/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
-
-- `users` — the users of the e-commerce site
-- `products` — the products being sold
-- `orders` — the orders placed by the users
-- `orderline` — each line item of an order
+The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses.
 
 The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
 
@@ -51,7 +40,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8 is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
 - [sbt](https://www.scala-sbt.org/1.x/docs/) is installed.
 
@@ -61,7 +50,7 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebean
 ```
 
-## Database configuration
+## Set up the database connection
 
 - Modify the database configuration section of the `conf/application.conf` file to include the YugabyteDB JDBC driver settings as follows:
 
@@ -79,7 +68,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
   libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
   ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using:
 
   ```sh
   $ ./bin/ysqlsh
@@ -368,7 +357,3 @@ $ curl http://localhost:8080/orders
   ...
 }
 ```
-
-## Explore the source
-
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.

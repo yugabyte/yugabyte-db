@@ -120,7 +120,7 @@ The following libraries are officially supported by YugabyteDB.
 | [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |
-| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [Hello World](../develop/build-apps/java/ysql-spring-data/) |
+| [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [Hello World](orms/ysql-spring-data/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
