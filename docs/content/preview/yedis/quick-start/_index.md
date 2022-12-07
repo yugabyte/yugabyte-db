@@ -16,6 +16,7 @@ menu:
     weight: 2800
 type: indexpage
 ---
+
 After [creating a local cluster](../../quick-start/), follow the instructions below to test YugabyteDB's Redis-compatible [YEDIS](../api/) API.
 
 [**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugabyteDB ships with the 4.0.1 version of redis-cli in its `bin` directory.
@@ -72,7 +73,7 @@ Insert a key and a value.
 127.0.0.1:6379> set mykey somevalue
 ```
 
-```
+```output
 "OK"
 ```
 
@@ -82,7 +83,7 @@ Query the value by the key.
 127.0.0.1:6379> get mykey
 ```
 
-```
+```output
 "somevalue"
 ```
 
@@ -92,7 +93,7 @@ Check if the key exists.
 127.0.0.1:6379> exists mykey
 ```
 
-```
+```output
 (integer) 1
 ```
 
@@ -102,7 +103,7 @@ If the value is a number, it can be incremented.
 127.0.0.1:6379> set counter 100
 ```
 
-```
+```output
 "OK"
 ```
 
@@ -110,7 +111,7 @@ If the value is a number, it can be incremented.
 127.0.0.1:6379> incr counter
 ```
 
-```
+```output
 (integer) 101
 ```
 
@@ -118,7 +119,7 @@ If the value is a number, it can be incremented.
 127.0.0.1:6379> incr counter
 ```
 
-```
+```output
 (integer) 102
 ```
 
@@ -126,19 +127,19 @@ If the value is a number, it can be incremented.
 127.0.0.1:6379> get counter
 ```
 
-```
+```output
 "102"
 ```
 
 ## 3. Hash data types
 
-You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes {username : john, birthyear : 1977, verified : 1}.
+You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes: `{username : john, birthyear : 1977, verified : 1}`.
 
 ```sql
 127.0.0.1:6379> hmset user:1000 username john birthyear 1977 verified 1
 ```
 
-```
+```output
 "OK"
 ```
 
@@ -148,7 +149,7 @@ You can retrieve specific attributes for user id 1000 as follows.
 127.0.0.1:6379> hget user:1000 username
 ```
 
-```
+```output
 "john"
 ```
 
@@ -156,7 +157,7 @@ You can retrieve specific attributes for user id 1000 as follows.
 127.0.0.1:6379> hget user:1000 birthyear
 ```
 
-```
+```output
 "1977"
 ```
 
@@ -166,7 +167,7 @@ You can fetch multiple attributes with a single command as follows.
 127.0.0.1:6379> hmget user:1000 username birthyear no-such-field
 ```
 
-```
+```output
 1) "john"
 2) "1977"
 3) (nil)
@@ -178,7 +179,7 @@ You can fetch all attributes by using the `hgetall` command.
 127.0.0.1:6379> hgetall user:1000
 ```
 
-```
+```output
 1) "birthyear"
 2) "1977"
 3) "username"
