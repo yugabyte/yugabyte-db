@@ -854,12 +854,7 @@ function(enable_lto_if_needed)
 
   detect_lto_type_from_linking_type()
   if(YB_LTO_ENABLED)
-    # Inlined functions are counted multiple times if dso's are built with -flto
-    # https://github.com/yugabyte/yugabyte-db/issues/15093
-    if(NOT YB_BUILD_TYPE STREQUAL "prof_gen")
-      ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE}")
-    endif()
-    ADD_CXX_FLAGS("-fuse-ld=lld")
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
     set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)
