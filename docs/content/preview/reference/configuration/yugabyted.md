@@ -884,7 +884,7 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Secure" lang="secure" %}}
+  {{% tab header="Secure" lang="secure-2" %}}
 
 To create a secure multi-region cluster, start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
 
@@ -915,7 +915,7 @@ Start the second and the third node on two separate VMs, as follows:
 
   {{% /tab %}}
 
-  {{% tab header="Basic" lang="basic" %}}
+  {{% tab header="Basic" lang="basic-2" %}}
 
 To create a multi-region cluster, start the first yugabyted node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details as follows:
 
