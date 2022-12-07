@@ -305,13 +305,20 @@ cleanPlatform := {
   cleanModules.value
 }
 
+lazy val moveYbcPackageEnvName = "MOVE_YBC_PKG"
+lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
+
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  if (moveYbcPackage) {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -s", baseDirectory.value).!
+  } else {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  }
   status
 }
 

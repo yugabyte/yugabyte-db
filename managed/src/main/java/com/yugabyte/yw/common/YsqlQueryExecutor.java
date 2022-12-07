@@ -69,6 +69,16 @@ public class YsqlQueryExecutor {
   }
 
   private String getQueryType(String queryString) {
+    // Ignore Set statements. E.g.: /*+Set(yb_bnl_batch_size 20)*/SELECT a.rolname, t.datname, ...
+    if (queryString.startsWith("/*")) {
+      String[] queryStringParts = queryString.split("\\*/", 2);
+      if (queryStringParts.length < 2) {
+        LOG.warn("Illegal YSQL query string: {}", queryString);
+      } else {
+        queryString = queryStringParts[1].trim();
+      }
+    }
+
     String[] queryParts = queryString.split(" ");
     String command = queryParts[0].toUpperCase();
     if (command.equals("TRUNCATE") || command.equals("DROP"))

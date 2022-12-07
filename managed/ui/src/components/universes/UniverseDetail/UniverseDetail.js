@@ -261,6 +261,10 @@ class UniverseDetail extends Component {
       onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
     }
 
+    const isTopKMetricsEnabled = runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.metrics.ui.topk.enable'
+    ).value === 'true';
+
     const type =
       pathname.indexOf('edit') < 0
         ? 'Create'
@@ -385,6 +389,7 @@ class UniverseDetail extends Component {
             <div className="universe-detail-content-container">
               <CustomerMetricsPanel
                 customer={customer}
+                isTopKMetricsEnabled={isTopKMetricsEnabled}
                 origin={'universe'}
                 width={width}
                 nodePrefixes={nodePrefixes}

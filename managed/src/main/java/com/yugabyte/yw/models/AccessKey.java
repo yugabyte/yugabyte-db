@@ -4,22 +4,17 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
-
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.time.DateUtils;
-
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
-import lombok.Getter;
-
 import java.io.File;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
@@ -29,6 +24,9 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import lombok.Getter;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import play.data.validation.Constraints;
 
 @Entity
@@ -44,6 +42,9 @@ public class AccessKey extends Model {
     @ApiModelProperty public String privateKey;
     @ApiModelProperty public String vaultPasswordFile;
     @ApiModelProperty public String vaultFile;
+    @ApiModelProperty public boolean deleteRemote = true;
+
+    // Below fields should be moved to provider details
     @ApiModelProperty public String sshUser;
     @ApiModelProperty public Integer sshPort;
     @ApiModelProperty public boolean airGapInstall = false;
@@ -53,7 +54,6 @@ public class AccessKey extends Model {
     @ApiModelProperty public Integer nodeExporterPort = 9300;
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
-    @ApiModelProperty public boolean deleteRemote = true;
     @ApiModelProperty public boolean setUpChrony = false;
     @ApiModelProperty public List<String> ntpServers;
 

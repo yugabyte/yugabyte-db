@@ -219,6 +219,10 @@ public class TaskExecutor {
     return inverseTaskTypeMap.get(taskClass);
   }
 
+  public boolean isShutdown() {
+    return isShutdown.get();
+  }
+
   @Inject
   public TaskExecutor(
       ShutdownHookHandler shutdownHookHandler,

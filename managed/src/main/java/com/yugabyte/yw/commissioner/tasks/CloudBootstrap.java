@@ -40,19 +40,19 @@ public class CloudBootstrap extends CloudTaskBase {
   public static class Params extends CloudTaskParams {
     public static Params fromProvider(Provider provider) {
       Params taskParams = new Params();
-      taskParams.airGapInstall = provider.airGapInstall;
+      taskParams.airGapInstall = provider.details.airGapInstall;
       taskParams.destVpcId = provider.destVpcId;
       taskParams.hostVpcId = provider.hostVpcId;
       taskParams.hostVpcRegion = provider.hostVpcRegion;
       taskParams.keyPairName = provider.keyPairName;
       taskParams.providerUUID = provider.uuid;
-      taskParams.sshPort = provider.sshPort;
-      taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
-      taskParams.sshUser = provider.sshUser;
       taskParams.overrideKeyValidate = provider.overrideKeyValidate;
-      taskParams.setUpChrony = provider.setUpChrony;
-      taskParams.ntpServers = provider.ntpServers;
-      taskParams.showSetUpChrony = provider.showSetUpChrony;
+      taskParams.sshPrivateKeyContent = provider.sshPrivateKeyContent;
+      taskParams.sshPort = provider.details.sshPort;
+      taskParams.sshUser = provider.details.sshUser;
+      taskParams.setUpChrony = provider.details.setUpChrony;
+      taskParams.ntpServers = provider.details.ntpServers;
+      taskParams.showSetUpChrony = provider.details.showSetUpChrony;
       taskParams.perRegionMetadata =
           provider
               .regions
