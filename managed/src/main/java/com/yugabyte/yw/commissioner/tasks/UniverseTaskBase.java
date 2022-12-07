@@ -2584,22 +2584,79 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
   /**
-   * Create Load Balancer map to add nodes to load balancer.
+   * Create Load Balancer map to add/remove nodes from load balancer.
    *
-   * @param taskParams The universe task params
+   * @param taskParams the universe task params.
+   * @param targetClusters list of clusters with nodes that need to be added/removed. If null/empty,
+   *     default to all clusters.
+   * @param nodesToIgnore list of nodes to exclude.
+   * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
+   *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
+   *     nodes)
    */
   public Map<LoadBalancerPlacement, LoadBalancerConfig> createLoadBalancerMap(
-      UniverseDefinitionTaskParams taskParams, List<NodeDetails> nodesToIgnore) {
+      UniverseDefinitionTaskParams taskParams,
+      List<Cluster> targetClusters,
+      Set<NodeDetails> nodesToIgnore) {
+    boolean allClusters = CollectionUtils.isEmpty(targetClusters);
+    // Get load balancer map for target clusters
+    Map<LoadBalancerPlacement, LoadBalancerConfig> targetLbMap =
+        generateLoadBalancerMap(taskParams, targetClusters, nodesToIgnore);
+    // Get load balancer map remaining clusters in universe
+    List<Cluster> remainingClusters = taskParams.clusters;
+    if (!allClusters) {
+      remainingClusters =
+          remainingClusters
+              .stream()
+              .filter(c -> !targetClusters.contains(c))
+              .collect(Collectors.toList());
+    }
+    Map<LoadBalancerPlacement, LoadBalancerConfig> remainingLbMap =
+        generateLoadBalancerMap(taskParams, remainingClusters, nodesToIgnore);
+
+    // Filter by target load balancers and
+    // merge nodes in other clusters that are part of the same load balancer
+    for (Map.Entry<LoadBalancerPlacement, LoadBalancerConfig> lb : targetLbMap.entrySet()) {
+      LoadBalancerPlacement lbPlacement = lb.getKey();
+      LoadBalancerConfig lbConfig = lb.getValue();
+      if (remainingLbMap.containsKey(lbPlacement)) {
+        lbConfig.addAll(remainingLbMap.get(lbPlacement).getAzNodes());
+      }
+    }
+    return (allClusters) ? remainingLbMap : targetLbMap;
+  }
+
+  /**
+   * Generates Load Balancer map for a list of clusters.
+   *
+   * @param taskParams the universe task params.
+   * @param clusters list of clusters.
+   * @param nodesToIgnore list of nodes to exclude.
+   * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
+   *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
+   *     nodes)
+   */
+  public Map<LoadBalancerPlacement, LoadBalancerConfig> generateLoadBalancerMap(
+      UniverseDefinitionTaskParams taskParams,
+      List<Cluster> clusters,
+      Set<NodeDetails> nodesToIgnore) {
     // Prov1 + Reg1 + LB1 -> AZ1 (n1, n2, n3,...), AZ2 (n4, n5), AZ3(nX)
     Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap = new HashMap<>();
+    if (CollectionUtils.isEmpty(clusters)) {
+      return loadBalancerMap;
+    }
     // Get load balancers for each cluster
-    List<Cluster> clusters = taskParams.clusters;
     for (Cluster cluster : clusters) {
       if (cluster.userIntent.enableLB) {
         // Map AZ -> nodes for each cluster
         Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
-        Set<NodeDetails> nodes = taskParams.getNodesInCluster(cluster.uuid);
-        if (nodesToIgnore != null) {
+        Set<NodeDetails> nodes =
+            taskParams
+                .getNodesInCluster(cluster.uuid)
+                .stream()
+                .filter(n -> n.isActive() && n.isTserver)
+                .collect(Collectors.toSet());
+        if (CollectionUtils.isNotEmpty(nodesToIgnore)) {
           nodes =
               nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
         }
@@ -2614,10 +2671,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         for (PlacementInfo.PlacementAZ placementAZ : azList) {
           String lbName = placementAZ.lbName;
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
-          LoadBalancerPlacement lbPlacement =
-              new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
-          LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
-          loadBalancerMap.computeIfAbsent(lbPlacement, v -> lbConfig).addNodes(az, azNodes.get(az));
+          // Skip map creation if all nodes in entire Regions/AZs have been ignored
+          if (azNodes.containsKey(az)) {
+            LoadBalancerPlacement lbPlacement =
+                new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+            LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
+            loadBalancerMap
+                .computeIfAbsent(lbPlacement, v -> lbConfig)
+                .addNodes(az, azNodes.get(az));
+          }
         }
       }
     }
