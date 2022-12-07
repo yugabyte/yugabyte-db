@@ -6,6 +6,7 @@ import com.google.api.client.util.Throwables;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YbcBackupUtil;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.lang.Thread;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +42,7 @@ public class BackupTableYbc extends YbcTaskBase {
 
   private final YbcManager ybcManager;
   private YbcClient ybcClient;
+  private TaskExecutor taskExecutor;
   private long totalTimeTaken = 0L;
   private long totalSizeinBytes = 0L;
   private String baseLogMessage = null;
@@ -53,9 +56,11 @@ public class BackupTableYbc extends YbcTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       YbcClientService ybcService,
       YbcBackupUtil ybcBackupUtil,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      TaskExecutor taskExecutor) {
     super(baseTaskDependencies, ybcService, ybcBackupUtil);
     this.ybcManager = ybcManager;
+    this.taskExecutor = taskExecutor;
   }
 
   public static class Params extends BackupTableParams {
@@ -200,6 +205,13 @@ public class BackupTableYbc extends YbcTaskBase {
       }
       ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID, ybcClient);
     } catch (CancellationException ce) {
+      if (!taskExecutor.isShutdown()) {
+        if (!ce.getMessage().contains("Yb-Controller task aborted")) {
+          ybcManager.abortBackupTask(
+              taskParams().customerUuid, taskParams().backupUuid, taskID, ybcClient);
+        }
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID, ybcClient);
+      }
       Throwables.propagate(ce);
     } catch (Throwable e) {
       // Backup state will be set to Failed in main task.

@@ -380,7 +380,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }
 
-TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TableColocationRemoteBootstrapTest)) {
   const int kNumReplicas = 3;
   const string kNamespaceName = "colocation_test";
   string parent_table_id;
