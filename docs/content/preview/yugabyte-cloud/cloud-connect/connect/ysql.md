@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 To connect to a cluster using `ysqlsh`:
 
 1. On the **Clusters** tab, select a cluster.
