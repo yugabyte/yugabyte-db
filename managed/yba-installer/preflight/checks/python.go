@@ -14,22 +14,30 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
-var Python = &pythonCheck{"python", "critical"}
+// Python checks to ensure the correct version of python exists
+var Python = &pythonCheck{"python", false}
 
 type pythonCheck struct {
-	name         string
-	warningLevel string
+	name        string
+	skipAllowed bool
 }
 
+// Name gets the name of the check
 func (p pythonCheck) Name() string {
 	return p.name
 }
 
-func (p pythonCheck) WarningLevel() string {
-	return p.warningLevel
+// SkipAllowed gets if the check can be skipped
+func (p pythonCheck) SkipAllowed() bool {
+	return p.skipAllowed
 }
 
-func (p pythonCheck) Execute() error {
+// Execute runs the python check. Ensures we have a valid version of python for yba.
+func (p pythonCheck) Execute() Result {
+	res := Result{
+		Check:  p.name,
+		Status: StatusPassed,
+	}
 	command := "bash"
 	args := []string{"-c", "python3 --version"}
 	output, _ := common.ExecuteBashCommand(command, args)
@@ -39,8 +47,10 @@ func (p pythonCheck) Execute() error {
 	re := regexp.MustCompile(`Python 3.6|Python 3.7|Python 3.8|Python 3.9`)
 
 	if !re.MatchString(outputTrimmed) {
-		return fmt.Errorf("System does not meet Python requirements. Please install any " +
+		res.Error = fmt.Errorf("System does not meet Python requirements. Please install any " +
 			"version of Python between 3.6 and 3.9.")
+		res.Status = StatusCritical
+		return res
 	} else {
 		log.Info("System meets Python installation requirements.")
 	}
@@ -49,9 +59,10 @@ func (p pythonCheck) Execute() error {
 	if viper.GetBool("python.bringOwn") {
 		re = regexp.MustCompile(viper.GetString("python.version"))
 		if !re.MatchString(outputTrimmed) {
-			return fmt.Errorf("User defined python %s not found. Got %s",
+			res.Error = fmt.Errorf("User defined python %s not found. Got %s",
 				viper.GetString("python.version"), outputTrimmed)
+			res.Status = StatusCritical
 		}
 	}
-	return nil
+	return res
 }
