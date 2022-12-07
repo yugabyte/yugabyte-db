@@ -60,4 +60,3 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
 
 } // namespace rpc
 } // namespace yb
-

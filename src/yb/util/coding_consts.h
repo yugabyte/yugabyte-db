@@ -32,4 +32,3 @@ constexpr const unsigned int kMaxVarint32Length = 5;
 constexpr const unsigned int kMaxVarint64Length = 10;
 
 }  // namespace yb
-

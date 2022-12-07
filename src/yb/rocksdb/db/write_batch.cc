@@ -750,7 +750,7 @@ class MemTableInserter : public WriteBatch::Handler {
   }
 
   Status DeleteImpl(uint32_t column_family_id, const Slice& key,
-                            ValueType delete_type) {
+                    ValueType delete_type) {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;

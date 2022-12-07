@@ -59,4 +59,3 @@ bool IsAggregateOpcode(TSOpcode op);
 
 } // namespace bfpg
 } // namespace yb
-

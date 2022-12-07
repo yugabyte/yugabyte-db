@@ -89,5 +89,3 @@ void SetupErrorAndRespond(ErrType* error,
 }
 
 } // namespace yb
-
-

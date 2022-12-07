@@ -184,8 +184,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // This initializer provides methods for avoiding disk IO when creating a
   // ReadableLogSegment from a WritableLogSegment (i.e. for log rolling).
   Status Init(const LogSegmentHeaderPB& header,
-                      const LogSegmentFooterPB& footer,
-                      int64_t first_entry_offset);
+              const LogSegmentFooterPB& footer,
+              int64_t first_entry_offset);
 
   // Initialize the ReadableLogSegment.
   // This initializer will parse the log segment header and footer.
@@ -508,4 +508,3 @@ void UpdateSegmentFooterIndexes(
 
 }  // namespace log
 }  // namespace yb
-

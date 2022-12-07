@@ -101,4 +101,3 @@ BlockHashIndex* CreateBlockHashIndexOnTheFly(
     const SliceTransform* hash_key_extractor);
 
 }  // namespace rocksdb
-

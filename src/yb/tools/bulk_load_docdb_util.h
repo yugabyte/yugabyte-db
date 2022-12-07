@@ -38,4 +38,3 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
 
 } // namespace tools
 } // namespace yb
-

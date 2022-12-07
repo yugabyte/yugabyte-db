@@ -40,4 +40,3 @@ class QLRangeBasedFileFilter : public rocksdb::ReadFileFilter {
 
 }  // namespace docdb
 }  // namespace yb
-

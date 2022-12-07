@@ -29,4 +29,3 @@ const char* DatabaseTypeName(YQLDatabase db);
 YQLDatabase DatabaseTypeByName(const std::string& db_type_name);
 
 } // namespace yb
-

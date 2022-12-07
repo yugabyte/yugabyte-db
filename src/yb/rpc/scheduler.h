@@ -161,4 +161,3 @@ class ScheduledTaskTracker {
 
 } // namespace rpc
 } // namespace yb
-

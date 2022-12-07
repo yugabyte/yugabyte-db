@@ -91,4 +91,3 @@ class PgSamplePicker : public PgSelectIndex {
 
 }  // namespace pggate
 }  // namespace yb
-

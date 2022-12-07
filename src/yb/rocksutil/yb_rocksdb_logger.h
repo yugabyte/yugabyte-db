@@ -55,4 +55,3 @@ class YBRocksDBLogger : public rocksdb::Logger {
 };
 
 } // namespace yb
-

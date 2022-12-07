@@ -188,20 +188,20 @@ Status PTExpr::AnalyzeOperator(SemContext *sem_context) {
 }
 
 Status PTExpr::AnalyzeOperator(SemContext *sem_context,
-                                       PTExpr::SharedPtr op1) {
+                               PTExpr::SharedPtr op1) {
   return Status::OK();
 }
 
 Status PTExpr::AnalyzeOperator(SemContext *sem_context,
-                                       PTExpr::SharedPtr op1,
-                                       PTExpr::SharedPtr op2) {
+                               PTExpr::SharedPtr op1,
+                               PTExpr::SharedPtr op2) {
   return Status::OK();
 }
 
 Status PTExpr::AnalyzeOperator(SemContext *sem_context,
-                                       PTExpr::SharedPtr op1,
-                                       PTExpr::SharedPtr op2,
-                                       PTExpr::SharedPtr op3) {
+                               PTExpr::SharedPtr op1,
+                               PTExpr::SharedPtr op2,
+                               PTExpr::SharedPtr op3) {
   return Status::OK();
 }
 
@@ -253,8 +253,8 @@ Status PTExpr::CheckExpectedTypeCompatibility(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 Status PTExpr::CheckInequalityOperands(SemContext *sem_context,
-                                               PTExpr::SharedPtr lhs,
-                                               PTExpr::SharedPtr rhs) {
+                                       PTExpr::SharedPtr lhs,
+                                       PTExpr::SharedPtr rhs) {
   if (!sem_context->IsComparable(lhs->ql_type_id(), rhs->ql_type_id())) {
     return sem_context->Error(this, "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
@@ -263,8 +263,8 @@ Status PTExpr::CheckInequalityOperands(SemContext *sem_context,
 }
 
 Status PTExpr::CheckEqualityOperands(SemContext *sem_context,
-                                             PTExpr::SharedPtr lhs,
-                                             PTExpr::SharedPtr rhs) {
+                                     PTExpr::SharedPtr lhs,
+                                     PTExpr::SharedPtr rhs) {
   if (QLType::IsNull(lhs->ql_type_id()) || QLType::IsNull(rhs->ql_type_id())) {
     return Status::OK();
   } else {
@@ -430,7 +430,7 @@ Status PTLiteralString::ToInetaddress(InetAddress *value) const {
 // Collections.
 
 Status PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& expected_type,
-                                                     ProcessContextBase* process_context) {
+                                             ProcessContextBase* process_context) {
   SCHECK(expected_type->IsUserDefined(), Corruption, "Expected type should be UDT");
   SCHECK_EQ(keys_.size(), values_.size(), Corruption,
             "Expected keys and values to be of the same size");
@@ -697,7 +697,7 @@ Status PTLogicExpr::SetupSemStateForOp2(SemState *sem_state) {
 }
 
 Status PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
-                                            PTExpr::SharedPtr op1) {
+                                    PTExpr::SharedPtr op1) {
   switch (ql_op_) {
     case QL_OP_NOT:
       if (op1->ql_type_id() != BOOL) {
@@ -718,8 +718,8 @@ Status PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 }
 
 Status PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
-                                            PTExpr::SharedPtr op1,
-                                            PTExpr::SharedPtr op2) {
+                                    PTExpr::SharedPtr op1,
+                                    PTExpr::SharedPtr op2) {
   // Verify the operators.
   DCHECK(ql_op_ == QL_OP_AND || ql_op_ == QL_OP_OR);
 
@@ -885,7 +885,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context) {
 }
 
 Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
-                                               PTExpr::SharedPtr op1) {
+                                       PTExpr::SharedPtr op1) {
   // "op1" must have been analyzed before getting here
   switch (ql_op_) {
     case QL_OP_IS_NULL: FALLTHROUGH_INTENDED;
@@ -900,8 +900,8 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
 }
 
 Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
-                                               PTExpr::SharedPtr op1,
-                                               PTExpr::SharedPtr op2) {
+                                       PTExpr::SharedPtr op1,
+                                       PTExpr::SharedPtr op2) {
   // "op1" and "op2" must have been analyzed before getting here
   switch (ql_op_) {
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
@@ -1061,9 +1061,9 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
 }
 
 Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
-                                               PTExpr::SharedPtr op1,
-                                               PTExpr::SharedPtr op2,
-                                               PTExpr::SharedPtr op3) {
+                                       PTExpr::SharedPtr op1,
+                                       PTExpr::SharedPtr op2,
+                                       PTExpr::SharedPtr op3) {
   // "op1", "op2", and "op3" must have been analyzed before getting here
   switch (ql_op_) {
     case QL_OP_BETWEEN: FALLTHROUGH_INTENDED;
@@ -1204,7 +1204,7 @@ Status PTOperatorExpr::SetupSemStateForOp1(SemState *sem_state) {
 }
 
 Status PTOperatorExpr::AnalyzeOperator(SemContext *sem_context,
-                                               PTExpr::SharedPtr op1) {
+                                       PTExpr::SharedPtr op1) {
   switch (op_) {
     case ExprOperator::kUMinus:
       // "op1" must have been analyzed before we get here.

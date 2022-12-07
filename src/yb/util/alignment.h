@@ -79,4 +79,3 @@ T align_up(T ptr, typename AlignmentTraits<T>::value_type alignment_bytes) {
 }
 
 } // namespace yb
-

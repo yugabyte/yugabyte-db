@@ -13,10 +13,7 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
+import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -31,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil;
-import org.yb.util.MiscUtil.ThrowingRunnable;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.ProcessUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 

@@ -62,4 +62,3 @@ extern void TestKillRandom(std::string kill_point, int odds,
 }  // namespace yb
 
 #endif // NDEBUG
-

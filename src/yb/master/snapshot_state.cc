@@ -29,13 +29,13 @@
 #include "yb/tserver/backup.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
+DEFINE_UNKNOWN_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
 DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,

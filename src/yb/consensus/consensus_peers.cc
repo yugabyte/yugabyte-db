@@ -59,7 +59,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -73,11 +73,11 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(consensus_rpc_timeout_ms, 3000,
+DEFINE_UNKNOWN_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
-DEFINE_int32(max_wait_for_processresponse_before_closing_ms,
+DEFINE_UNKNOWN_int32(max_wait_for_processresponse_before_closing_ms,
              yb::RegularBuildVsSanitizers(5000, 60000),
              "Maximum amount of time we will wait in Peer::Close() for Peer::ProcessResponse() to "
              "finish before returning proceding to close the Peer and return");

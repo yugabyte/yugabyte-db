@@ -100,4 +100,3 @@ class NMSWriter : public PrometheusWriter {
 };
 
 } // namespace yb
-

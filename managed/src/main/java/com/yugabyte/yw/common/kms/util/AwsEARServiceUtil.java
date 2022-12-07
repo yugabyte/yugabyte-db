@@ -41,9 +41,11 @@ import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.ebean.annotation.EnumValue;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,23 +55,52 @@ import play.api.Play;
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
 
-  private static final Logger LOG = LoggerFactory.getLogger(AwsEARServiceUtil.class);
+  // All fields in authConfig object sent from UI
+  public enum AwsKmsAuthConfigField {
+    ACCESS_KEY_ID("AWS_ACCESS_KEY_ID", true),
+    SECRET_ACCESS_KEY("AWS_SECRET_ACCESS_KEY", true),
+    ENDPOINT("AWS_KMS_ENDPOINT", true),
+    CMK_POLICY("cmk_policy", true),
+    REGION("AWS_REGION", false),
+    CMK_ID("cmk_id", false);
 
-  private enum CredentialType {
-    @EnumValue("KMS_CONFIG")
-    KMS_CONFIG,
-    @EnumValue("CLOUD_PROVIDER")
-    CLOUD_PROVIDER;
+    public final String fieldName;
+    public final boolean isEditable;
+
+    AwsKmsAuthConfigField(String fieldName, boolean isEditable) {
+      this.fieldName = fieldName;
+      this.isEditable = isEditable;
+    }
+
+    public static List<String> getEditableFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getNonEditableFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> !configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
   }
+
+  private static final Logger LOG = LoggerFactory.getLogger(AwsEARServiceUtil.class);
 
   private static AWSCredentials getCredentials(ObjectNode authConfig) {
 
-    if (!StringUtils.isBlank(authConfig.path("AWS_ACCESS_KEY_ID").asText())
-        && !StringUtils.isBlank(authConfig.path("AWS_SECRET_ACCESS_KEY").asText())) {
+    if (!StringUtils.isBlank(
+            authConfig.path(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName).asText())
+        && !StringUtils.isBlank(
+            authConfig.path(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName).asText())) {
 
       return new BasicAWSCredentials(
-          authConfig.get("AWS_ACCESS_KEY_ID").asText(),
-          authConfig.get("AWS_SECRET_ACCESS_KEY").asText());
+          authConfig.get(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName).asText(),
+          authConfig.get(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName).asText());
     }
     return null;
   }
@@ -86,16 +117,18 @@ public class AwsEARServiceUtil {
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
 
-    if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+    if (awsCredentials == null
+        || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
 
       return AWSKMSClientBuilder.defaultClient();
     }
 
-    if (authConfig.path("AWS_KMS_ENDPOINT").isMissingNode()
-        || StringUtils.isBlank(authConfig.path("AWS_KMS_ENDPOINT").asText())) {
+    if (authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).isMissingNode()
+        || StringUtils.isBlank(
+            authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText())) {
       return AWSKMSClientBuilder.standard()
           .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-          .withRegion(authConfig.get("AWS_REGION").asText())
+          .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
           .build();
     }
 
@@ -103,8 +136,8 @@ public class AwsEARServiceUtil {
         .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
         .withEndpointConfiguration(
             new EndpointConfiguration(
-                authConfig.path("AWS_KMS_ENDPOINT").asText(),
-                authConfig.get("AWS_REGION").asText()))
+                authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText(),
+                authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText()))
         .build();
   }
 
@@ -113,13 +146,14 @@ public class AwsEARServiceUtil {
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
 
-    if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+    if (awsCredentials == null
+        || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
 
       return AmazonIdentityManagementClientBuilder.defaultClient();
     }
     return AmazonIdentityManagementClientBuilder.standard()
         .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withRegion(authConfig.get("AWS_REGION").asText())
+        .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
         .build();
   }
 
@@ -127,13 +161,14 @@ public class AwsEARServiceUtil {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
 
     AWSCredentials awsCredentials = getCredentials(authConfig);
-    if (awsCredentials == null || StringUtils.isBlank(authConfig.path("AWS_REGION").asText())) {
+    if (awsCredentials == null
+        || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
 
       return AWSSecurityTokenServiceClientBuilder.defaultClient();
     }
     return AWSSecurityTokenServiceClientBuilder.standard()
         .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withRegion(authConfig.get("AWS_REGION").asText())
+        .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
         .build();
   }
 

@@ -324,4 +324,3 @@ using port::pthread_getspecific;
 using port::truncate;
 
 }  // namespace rocksdb
-

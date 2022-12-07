@@ -169,4 +169,3 @@ inline size_t MemoryDifferencePos(const void *a_void, const void *b_void, size_t
 }
 
 }  // namespace strings
-

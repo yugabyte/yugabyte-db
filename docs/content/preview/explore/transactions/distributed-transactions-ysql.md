@@ -1,12 +1,12 @@
 ---
-title: Distributed Transactions
-headerTitle: Distributed Transactions
-linkTitle: Distributed Transactions
-description: Distributed Transactions in YugabyteDB.
-headcontent: Distributed Transactions in YugabyteDB.
+title: Distributed transactions
+headerTitle: Distributed transactions
+linkTitle: Distributed transactions
+description: Distributed transactions in YugabyteDB.
+headcontent: Explore distributed transactions in YugabyteDB.
 menu:
   preview:
-    name: Distributed Transactions
+    name: Distributed transactions
     identifier: explore-transactions-distributed-transactions-1-ysql
     parent: explore-transactions
     weight: 230
@@ -31,9 +31,13 @@ type: docs
 
 </ul>
 
-## Overview of transaction control
+This example shows how a distributed transaction works in YugabyteDB.
 
-This section explains how a distributed transaction works in YugabyteDB. We will use the example table below to describe the control flow of a simple transaction.
+{{% explore-setup-single %}}
+
+## Create a table
+
+Create the following table:
 
 ```sql
 CREATE TABLE accounts (
@@ -55,8 +59,11 @@ INSERT INTO accounts VALUES ('Smith', 'checking', 50);
 
 The table should look as follows:
 
+```sql
+yugabyte=# SELECT * FROM accounts;
 ```
-yugabyte=# select * from accounts;
+
+```output
  account_name | account_type | balance
 --------------+--------------+---------
  John         | checking     |     100
@@ -66,7 +73,9 @@ yugabyte=# select * from accounts;
 (4 rows)
 ```
 
-Now, we will run the following transaction and explain what happens at each step.
+## Run a transaction
+
+Run the following transaction:
 
 ```sql
 BEGIN TRANSACTION;
@@ -77,8 +86,9 @@ BEGIN TRANSACTION;
 COMMIT;
 ```
 
+The following table explains what happens at each step.
 
-<table style="margin:0 5px;">
+<table>
   <tr>
    <td style="text-align:center;"><span style="font-size: 22px;">Command</span></td>
    <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">Description</span></td>
@@ -104,7 +114,7 @@ UPDATE accounts SET balance = balance - 200
     </code></pre>
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      The transaction coordinator writes a *provisional record* to the tablet that contains this row. The provisional record consists of the transaction id, so the state of the transaction can be determined. If there already exists a provisional record written by another transaction, then the current transaction would use the transaction id that is present in the provisional record to fetch details and check if there is a potential conflict.
+      The transaction coordinator writes a <i>provisional record</i> to the tablet that contains this row. The provisional record consists of the transaction ID, so the state of the transaction can be determined. If a provisional record written by another transaction already exists, then the current transaction would use the transaction ID that is present in the provisional record to fetch details and check if there is a potential conflict.
     </td>
   </tr>
 
@@ -128,20 +138,23 @@ COMMIT;
     </code></pre>
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5); font-size: 16px;">
-      Note that in order to <code>COMMIT</code>, all the provisional writes must have successfully completed. The <code>COMMIT</code> statement causes the transaction coordinator to update the transaction status in the <code>transaction status</code> table to <code>COMMITED</code>, at which point it is assigned the commit timestamp (which is a *hybrid timestamp* to be precise). At this point, the transaction is completed. In the background, the <code>COMMIT</code> record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
+      Note that to <code>COMMIT</code>, all the provisional writes must have successfully completed. The <code>COMMIT</code> statement causes the transaction coordinator to update the transaction status in the <code>transaction status</code> table to <code>COMMITED</code>, at which point it is assigned the commit timestamp (which is a <i>hybrid timestamp</i> to be precise). At this point, the transaction is completed. In the background, the <code>COMMIT</code> record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
     </td>
   </tr>
 
 </table>
 
-This is shown diagrammatically below.
-![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
+This is shown diagrammatically in the following illustration.
 
+![Distributed transaction write path](/images/architecture/txn/distributed_txn_write_path.svg)
 
-After the above transaction succeeds, the table should look as follows.
+After the above transaction succeeds, the table should look as follows:
 
+```sql
+yugabyte=# SELECT * FROM accounts;
 ```
-yugabyte=# select * from accounts;
+
+```output
  account_name | account_type | balance
 --------------+--------------+---------
  John         | checking     |     300
@@ -151,10 +164,9 @@ yugabyte=# select * from accounts;
 (4 rows)
 ```
 
-
 ### Scalability
 
-Since all nodes of the cluster can process transactions by becoming transaction coordinators, horizontal scalability can simply be achieved by distributing the queries evenly across the nodes of the cluster.
+Because all nodes of the cluster can process transactions by becoming transaction coordinators, horizontal scalability can be achieved by distributing the queries evenly across the nodes of the cluster.
 
 ### Resilience
 
@@ -166,15 +178,17 @@ Each update performed as a part of the transaction is replicated across multiple
 
 {{< note title="Note" >}}
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
-{{</note >}}
+{{</ note >}}
 
+## Transaction options
 
-## Transaction Options
+You can see the various options supported by transactions by running the following `\h BEGIN` meta-command:
 
-You can see the various options supported by transactions by running the `\h BEGIN` statement, as shown below.
-
-```
+```sql
 yugabyte=# \h BEGIN
+```
+
+```output
 Command:     BEGIN
 Description: start a transaction block
 Syntax:
@@ -196,21 +210,28 @@ The `transaction_mode` can be set to one of the following options:
 
 As an example, trying to do a write operation such as creating a table or inserting a row in a `READ ONLY` transaction would result in an error as shown below.
 
-```
+```sql
 yugabyte=# BEGIN READ ONLY;
-BEGIN
+```
 
+```output
+BEGIN
+```
+
+```sql
 yugabyte=# CREATE TABLE example(k INT PRIMARY KEY);
-ERROR: 25P02: current transaction is aborted, commands ignored until end of
-              transaction block
+```
+
+```output
+ERROR: cannot execute CREATE TABLE in a read-only transaction
 ```
 
 ### `DEFERRABLE` transactions
 
 The `DEFERRABLE` transaction property in YSQL is similar to PostgreSQL in that has no effect unless the transaction is also `SERIALIZABLE` and `READ ONLY`.
 
-When all three of these properties (`SERIALIZABLE`, `DEFERRABLE` and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
+When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the typical overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
 
 {{< tip title="Tip" >}}
-This mode is well suited for long-running reports or backups without being impacting or impacted by other transactions.
+This mode is well-suited for long-running reports or backups without being impacting or impacted by other transactions.
 {{< /tip >}}

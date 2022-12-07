@@ -1002,22 +1002,22 @@ static const struct cachedesc cacheinfo[] = {
 	},
 };
 
-typedef struct YBPinnedObjectKey
+typedef struct YbPinnedObjectKey
 {
 	Oid classid;
 	Oid objid;
-} YBPinnedObjectKey;
+} YbPinnedObjectKey;
 
-typedef struct YBPinnedObjectsCacheData
+typedef struct YbPinnedObjectsCacheData
 {
 	/* Pinned objects from pg_depend */
 	HTAB *regular;
 	/* Pinned objects from pg_shdepend */
 	HTAB *shared;
-} YBPinnedObjectsCacheData;
+} YbPinnedObjectsCacheData;
 
 /* Stores all pinned objects */
-static YBPinnedObjectsCacheData YBPinnedObjectsCache = {0};
+static YbPinnedObjectsCacheData YbPinnedObjectsCache = {0};
 
 static CatCache *SysCache[SysCacheSize];
 
@@ -1130,7 +1130,7 @@ YBSysTablePrimaryKey(Oid relid)
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
-void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
+void YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 {
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	switch (RelationGetRelid(rel))
@@ -1166,7 +1166,7 @@ void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
  * If no index cache is associated with the given cache (most of the time), its id should be -1.
  */
 void
-YBPreloadCatalogCache(int cache_id, int idx_cache_id)
+YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 {
 
 	CatCache* cache         = SysCache[cache_id];
@@ -1319,7 +1319,7 @@ YBIsEssentialCache(int cache_id)
 }
 
 static void
-YBPreloadCatalogCacheIfEssential(int cache_id)
+YbPreloadCatalogCacheIfEssential(int cache_id)
 {
 	if (!YBIsEssentialCache(cache_id))
 		return;
@@ -1347,7 +1347,7 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 			break;
 	}
 
-	YBPreloadCatalogCache(cache_id, idx_cache_id);
+	YbPreloadCatalogCache(cache_id, idx_cache_id);
 }
 
 /*
@@ -1357,7 +1357,7 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
  * Used during initdb.
  */
 void
-YBPreloadCatalogCaches(void)
+YbPreloadCatalogCaches(void)
 {
 	Assert(CacheInitialized);
 
@@ -1369,18 +1369,18 @@ YBPreloadCatalogCaches(void)
 			YbRegisterSysTableForPrefetching(SysCache[cacheId]->cc_reloid);
 
 	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
-		YBPreloadCatalogCacheIfEssential(cacheId);
+		YbPreloadCatalogCacheIfEssential(cacheId);
 }
 
 static void
-YBFetchPinnedObjectKeyFromPgDepend(HeapTuple tup, YBPinnedObjectKey* key) {
+YbFetchPinnedObjectKeyFromPgDepend(HeapTuple tup, YbPinnedObjectKey* key) {
 	Form_pg_depend dep = (Form_pg_depend) GETSTRUCT(tup);
 	key->classid = dep->refclassid;
 	key->objid = dep->refobjid;
 }
 
 static void
-YBFetchPinnedObjectKeyFromPgShdepend(HeapTuple tup, YBPinnedObjectKey *key) {
+YbFetchPinnedObjectKeyFromPgShdepend(HeapTuple tup, YbPinnedObjectKey *key) {
 	Form_pg_shdepend dep = (Form_pg_shdepend) GETSTRUCT(tup);
 	key->classid = dep->refclassid;
 	key->objid = dep->refobjid;
@@ -1391,17 +1391,17 @@ YBFetchPinnedObjectKeyFromPgShdepend(HeapTuple tup, YBPinnedObjectKey *key) {
  * and fill it from specified relation (pg_depend or pg_shdepend).
  */
 static HTAB*
-YBBuildPinnedObjectCache(const char *name,
+YbBuildPinnedObjectCache(const char *name,
                          int size,
                          Oid dependRelId,
                          int depTypeAnum,
                          char depTypeValue,
-                         void(*key_fetcher)(HeapTuple, YBPinnedObjectKey*)) {
+                         void(*key_fetcher)(HeapTuple, YbPinnedObjectKey*)) {
 	HASHCTL ctl;
 	MemSet(&ctl, 0, sizeof(ctl));
-	ctl.keysize = sizeof(YBPinnedObjectKey);
+	ctl.keysize = sizeof(YbPinnedObjectKey);
 	/* No information associated with key is required. Cache is a set of pinned objects. */
-	ctl.entrysize = sizeof(YBPinnedObjectKey);
+	ctl.entrysize = sizeof(YbPinnedObjectKey);
 	HTAB *cache = hash_create(name, size, &ctl, HASH_ELEM | HASH_BLOBS);
 
 	ScanKeyData key;
@@ -1411,7 +1411,7 @@ YBBuildPinnedObjectCache(const char *name,
 	            CharGetDatum(depTypeValue));
 	Relation dependDesc = heap_open(dependRelId, RowExclusiveLock);
 	SysScanDesc scan = systable_beginscan(dependDesc, InvalidOid, false, NULL, 1, &key);
-	YBPinnedObjectKey pinnedKey;
+	YbPinnedObjectKey pinnedKey;
 	HeapTuple tup;
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
@@ -1424,55 +1424,79 @@ YBBuildPinnedObjectCache(const char *name,
 }
 
 static void
-YBLoadPinnedObjectsCache()
+YbLoadPinnedObjectsCache()
 {
-	YBPinnedObjectsCacheData cache = {
-		.shared = YBBuildPinnedObjectCache("Shared pinned objects cache",
+	YbPinnedObjectsCacheData cache = {
+		.shared = YbBuildPinnedObjectCache("Shared pinned objects cache",
 		                                   20, /* Number of pinned objects in pg_shdepend is 9 */
 		                                   SharedDependRelationId,
 		                                   Anum_pg_shdepend_deptype,
 		                                   SHARED_DEPENDENCY_PIN,
-		                                   YBFetchPinnedObjectKeyFromPgShdepend),
-		.regular = YBBuildPinnedObjectCache("Pinned objects cache",
+		                                   YbFetchPinnedObjectKeyFromPgShdepend),
+		.regular = YbBuildPinnedObjectCache("Pinned objects cache",
 		                                    6500, /* Number of pinned object is pg_depend 6179 */
 		                                    DependRelationId,
 		                                    Anum_pg_depend_deptype,
 		                                    DEPENDENCY_PIN,
-		                                    YBFetchPinnedObjectKeyFromPgDepend)};
-	YBPinnedObjectsCache = cache;
+		                                    YbFetchPinnedObjectKeyFromPgDepend)};
+	YbPinnedObjectsCache = cache;
 }
 
-bool
-YBIsPinnedObjectsCacheAvailable()
+/* Build the cache in case it is not yet ready. */
+void
+YbInitPinnedCacheIfNeeded()
 {
 	/*
-	 * Build the cache in case it is not yet ready.
-	 * Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough.
-	 * Avoid cache building in case of `initdb`.
+	 * Both 'regular' and 'shared' fields are set at same time.
+	 * Checking any of them is enough.
 	 */
-	if (!(YBPinnedObjectsCache.regular || YBCIsInitDbModeEnvVarSet()))
-		YBLoadPinnedObjectsCache();
-	return YBPinnedObjectsCache.regular;
+	if (!YbPinnedObjectsCache.regular)
+	{
+		Assert(!YbPinnedObjectsCache.shared);
+		YbLoadPinnedObjectsCache();
+	}
 }
 
-static bool
-YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId)
+void
+YbResetPinnedCache()
 {
-	Assert(pinned_cache);
-	YBPinnedObjectKey key = {.classid = classId, .objid = objectId};
-	return hash_search(pinned_cache, &key, HASH_FIND, NULL);
+	YbPinnedObjectsCacheData cache = {
+		.shared  = NULL,
+		.regular = NULL
+	};
+	YbPinnedObjectsCacheData old_cache = YbPinnedObjectsCache;
+	YbPinnedObjectsCache = cache;
+	if (old_cache.regular)
+	{
+		Assert(old_cache.shared);
+		hash_destroy(old_cache.regular);
+		hash_destroy(old_cache.shared);
+	}
 }
 
 bool
-YBIsObjectPinned(Oid classId, Oid objectId)
+YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency)
 {
-	return YBIsPinned(YBPinnedObjectsCache.regular, classId, objectId);
+	YbInitPinnedCacheIfNeeded();
+
+	HTAB *cache = shared_dependency ? YbPinnedObjectsCache.shared
+									: YbPinnedObjectsCache.regular;
+	YbPinnedObjectKey key = {.classid = classId, .objid = objectId};
+	return hash_search(cache, &key, HASH_FIND, NULL);
 }
 
-bool
-YBIsSharedObjectPinned(Oid classId, Oid objectId)
+/*
+ * Pin a new object using YB pinned objects cache.
+ */
+void
+YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency)
 {
-	return YBIsPinned(YBPinnedObjectsCache.shared, classId, objectId);
+	HTAB *cache = shared_dependency ? YbPinnedObjectsCache.shared
+									: YbPinnedObjectsCache.regular;
+	if (!cache)
+		return;
+	YbPinnedObjectKey key = {.classid = classId, .objid = objectId};
+	hash_search(cache, &key, HASH_ENTER, NULL);
 }
 
 /*

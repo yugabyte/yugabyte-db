@@ -224,4 +224,3 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
 } // namespace docdb
 } // namespace yb
-

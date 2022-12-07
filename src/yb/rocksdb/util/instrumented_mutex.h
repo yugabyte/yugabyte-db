@@ -113,4 +113,3 @@ class InstrumentedCondVar {
 };
 
 }  // namespace rocksdb
-

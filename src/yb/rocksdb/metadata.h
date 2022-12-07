@@ -355,4 +355,3 @@ struct LiveFileMetaData : SstFileMetaData {
 };
 
 }  // namespace rocksdb
-

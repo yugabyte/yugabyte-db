@@ -63,4 +63,3 @@ uint128 CityHash128(const char *s, size_t len);
 uint128 CityHash128WithSeed(const char *s, size_t len, uint128 seed);
 
 }  // namespace util_hash
-

@@ -4,9 +4,10 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { YBCheckBox } from '../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
 import { EditConfig } from './EditConfig';
-import { DeleteConfig } from './DeleteConfig';
+import { ResetConfig } from './ResetConfig';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
@@ -31,13 +32,11 @@ export const ConfigData: FC<GlobalConfigProps> = ({
 }) => {
   const { t } = useTranslation();
   const runtimeConfigs = useSelector((state: any) => state.customer.runtimeConfigs);
-  const currentUserInfo = useSelector((state: any) => state.customer.currentUser?.data);
-  const role = currentUserInfo?.role;
-  const isSuperAdmin = ['SuperAdmin'].includes(role);
   // Helps in deciding if the logged in user can mutate the config values
-  // const isScopeMutable = runtimeConfigs?.data?.mutableScope;
+  const isScopeMutable = runtimeConfigs?.data?.mutableScope;
   const [editConfig, setEditConfig] = useState(false);
-  const [deleteConfig, setDeleteConfig] = useState(false);
+  const [resetConfig, setResetConfig] = useState(false);
+  const [showOverridenValues, setShowOverridenValues] = useState(false);
   const [configData, setConfigData] = useState({
     configID: 0,
     configKey: '',
@@ -46,14 +45,14 @@ export const ConfigData: FC<GlobalConfigProps> = ({
   });
 
   if (runtimeConfigs?.data && getPromiseState(runtimeConfigs).isLoading()) {
-    return <YBLoading />
+    return <YBLoading />;
   } else if (runtimeConfigs?.error) {
-    return <YBErrorIndicator
-      customErrorMessage={t('admin.advanced.globalConfig.GlobalConfigReqFailed')} />
+    return (<YBErrorIndicator
+      customErrorMessage={t('admin.advanced.globalConfig.GlobalConfigReqFailed')} />);
   }
 
   const globalConfigEntries = runtimeConfigs?.data?.configEntries;
-  let listItems = [];
+  let listItems: Array<any> = [];
   if (isNonEmptyArray(globalConfigEntries)) {
     listItems = globalConfigEntries.map(function (entry: any, idx: number) {
       return {
@@ -70,8 +69,8 @@ export const ConfigData: FC<GlobalConfigProps> = ({
     setConfigData(row);
   };
 
-  const openDeleteConfig = (row: any) => {
-    setDeleteConfig(true);
+  const openResetConfig = (row: any) => {
+    setResetConfig(true);
     setConfigData(row);
   };
 
@@ -85,7 +84,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
       >
         <MenuItem
           onClick={() => {
-            openEditConfig(row)
+            openEditConfig(row);
           }}
         >
           {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
@@ -93,10 +92,10 @@ export const ConfigData: FC<GlobalConfigProps> = ({
 
         {(!row.isConfigInherited) && <MenuItem
           onClick={() => {
-            openDeleteConfig(row)
+            openResetConfig(row);
           }}
         >
-          {t('admin.advanced.globalConfig.ModelDeleteConfigTitle')}
+          {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
         </MenuItem>}
       </DropdownButton>
     );
@@ -104,12 +103,25 @@ export const ConfigData: FC<GlobalConfigProps> = ({
 
   const rowClassNameFormat = (row: any) => {
     return row.isConfigInherited ? "config-inherited-row" : "config-non-inherited-row";
-  }
+  };
 
   return (
     <div className="runtime-config-data-container">
+      <span className="runtime-config-data-container__check">
+        <YBCheckBox
+          label={
+            <span className="checkbox-label">
+              {t('admin.advanced.globalConfig.ShowOverridenConfigs')}
+            </span>}
+          input={{
+            onChange: (e: any) => {
+              setShowOverridenValues(e.target.checked);
+            }
+          }}
+        />
+      </span>
       <BootstrapTable
-        data={listItems}
+        data={showOverridenValues ? listItems.filter((item) => !item.isConfigInherited) : listItems}
         pagination
         search
         multiColumnSearch
@@ -130,8 +142,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         >
           Config Value
         </TableHeaderColumn>
-        {/* TODO: Change isSuperAdmin to isScopeMutable*/}
-        {isSuperAdmin && (
+        {isScopeMutable && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}
@@ -152,10 +163,10 @@ export const ConfigData: FC<GlobalConfigProps> = ({
           providerUUID={providerUUID}
           customerUUID={customerUUID}
         />}
-      {deleteConfig &&
-        <DeleteConfig
+      {resetConfig &&
+        <ResetConfig
           configData={configData}
-          onHide={() => setDeleteConfig(false)}
+          onHide={() => setResetConfig(false)}
           deleteRunTimeConfig={deleteRunTimeConfig}
           scope={scope}
           universeUUID={universeUUID}
@@ -164,4 +175,4 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         />}
     </div>
   );
-}
+};

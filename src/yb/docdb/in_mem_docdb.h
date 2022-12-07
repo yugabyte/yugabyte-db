@@ -71,4 +71,3 @@ class InMemDocDbState {
 
 }  // namespace docdb
 }  // namespace yb
-

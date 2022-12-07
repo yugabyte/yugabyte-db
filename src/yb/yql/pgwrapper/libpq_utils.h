@@ -25,8 +25,6 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 
-#include <boost/optional.hpp>
-
 namespace yb {
 namespace pgwrapper {
 
@@ -136,6 +134,8 @@ class PGConn {
   Status CommitTransaction();
   Status RollbackTransaction();
 
+  Status TestFailDdl(const std::string& ddl_to_fail);
+
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
   Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
@@ -196,6 +196,7 @@ class PGConnBuilder {
 
 bool HasTryAgain(const Status& status);
 
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+
 } // namespace pgwrapper
 } // namespace yb
-

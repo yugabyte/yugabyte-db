@@ -135,4 +135,3 @@ class WritableFileOutputStream : public google::protobuf::io::ZeroCopyOutputStre
 } // namespace internal
 } // namespace pb_util
 } // namespace yb
-

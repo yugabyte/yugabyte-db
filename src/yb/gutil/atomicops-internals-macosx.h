@@ -422,4 +422,3 @@ inline Atomic64 Release_Load(volatile const Atomic64 *ptr) {
 inline void MemoryBarrier() {
   base::subtle::MemoryBarrier();
 }
-

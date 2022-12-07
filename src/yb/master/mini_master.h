@@ -147,4 +147,3 @@ class MiniMaster {
 
 } // namespace master
 } // namespace yb
-

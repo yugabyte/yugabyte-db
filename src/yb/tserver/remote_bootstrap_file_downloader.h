@@ -87,4 +87,3 @@ Status UnwindRemoteError(const Status& status, const rpc::RpcController& control
 
 } // namespace tserver
 } // namespace yb
-

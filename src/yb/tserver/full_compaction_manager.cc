@@ -26,7 +26,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -84,7 +84,7 @@ void FullCompactionManager::DoScheduleFullCompactions() {
       continue;
     }
     Status s = tablet->TriggerFullCompactionIfNeeded(
-        tablet::FullCompactionReason::Scheduled);
+        rocksdb::CompactionReason::kScheduledFullCompaction);
     if (s.ok()) {
       // Remove tablet from compaction times on successful schedule.
       next_compact_time_per_tablet_.erase(peer->tablet_id());

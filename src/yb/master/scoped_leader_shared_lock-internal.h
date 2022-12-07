@@ -128,4 +128,3 @@ inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
 
 }  // namespace master
 }  // namespace yb
-

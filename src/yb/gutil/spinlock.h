@@ -168,4 +168,3 @@ class SCOPED_CAPABILITY SpinLockHolder {
 #define SpinLockHolder(x) COMPILE_ASSERT(0, spin_lock_decl_missing_var_name)
 
 } // namespace base
-

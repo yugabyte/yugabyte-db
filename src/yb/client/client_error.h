@@ -49,4 +49,3 @@ bool IsRetryableClientError(const Status& status);
 
 } // namespace client
 } // namespace yb
-

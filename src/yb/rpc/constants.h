@@ -42,4 +42,3 @@ const uint8_t kMsgLengthPrefixLength = 4;
 
 } // namespace rpc
 } // namespace yb
-

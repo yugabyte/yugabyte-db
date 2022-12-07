@@ -119,8 +119,6 @@ CHECKED_YBCSTATUS YBCInit(
     YBCPAllocFn palloc_fn,
     YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
 
-CHECKED_YBCSTATUS YBCInitGFlags(const char* argv0);
-
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;
 
@@ -181,4 +179,3 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 #ifdef __cplusplus
 } // extern "C"
 #endif
-

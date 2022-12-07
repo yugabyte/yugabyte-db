@@ -40,26 +40,27 @@
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using std::min;
 
-DEFINE_int32(timestamp_history_retention_interval_sec, 900,
+DEFINE_UNKNOWN_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
              "hybrid time further than this in the past might not be allowed after a compaction. "
              "Set this to be higher than the expected maximum duration of any single transaction "
              "in your application.");
 
-DEFINE_int32(timestamp_syscatalog_history_retention_interval_sec, 4 * 3600,
+DEFINE_UNKNOWN_int32(timestamp_syscatalog_history_retention_interval_sec, 4 * 3600,
     "The time interval in seconds to retain syscatalog history for CDC to read specific schema "
     "version. Point-in-time reads at a hybrid time further than this in the past might not be "
     "allowed after a compaction. Set this to be higher than the expected maximum duration of any "
     "single transaction in your application.");
 
-DEFINE_bool(enable_history_cutoff_propagation, false,
+DEFINE_UNKNOWN_bool(enable_history_cutoff_propagation, false,
             "Should we use history cutoff propagation (true) or calculate it locally (false).");
 
-DEFINE_int32(history_cutoff_propagation_interval_ms, 180000,
+DEFINE_UNKNOWN_int32(history_cutoff_propagation_interval_ms, 180000,
              "History cutoff propagation interval in milliseconds.");
 
 namespace yb {

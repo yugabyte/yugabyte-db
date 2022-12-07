@@ -109,4 +109,3 @@ bool MapsEqual(const UM& map1, const UM& map2, EqualityFn equality_fn) {
 
 }  // namespace util
 }  // namespace yb
-

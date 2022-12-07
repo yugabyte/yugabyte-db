@@ -260,4 +260,3 @@ class ManualConstructor {
 #undef UTIL_GTL_ALIGN_OF
 
 }
-

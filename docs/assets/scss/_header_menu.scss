@@ -427,6 +427,10 @@ ol {
   position: relative;
   margin-right: 2px;
 
+  @media (max-width: 1024px) {
+    max-width: 220px;
+  }
+
   .search-icon {
     position: absolute;
     top: 12px;
@@ -434,6 +438,12 @@ ol {
     font-size: 18px;
     z-index: 1000;
     color: var(--theme-color);
+  }
+
+  form {
+    .algolia-autocomplete {
+      max-width: 100%;
+    }
   }
 }
 

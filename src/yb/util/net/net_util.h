@@ -38,7 +38,7 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
@@ -145,8 +145,8 @@ struct HostPortHash {
 //
 // Any elements which do not include a port will be assigned 'default_port'.
 Status ParseAddressList(const std::string& addr_list,
-                                uint16_t default_port,
-                                std::vector<Endpoint>* addresses);
+                        uint16_t default_port,
+                        std::vector<Endpoint>* addresses);
 
 // Return true if the given port is likely to need root privileges to bind to.
 bool IsPrivilegedPort(uint16_t port);
@@ -219,4 +219,3 @@ bool IsWildcardAddress(const std::string& host_str);
 void TEST_SetFailToFastResolveAddress(const std::string& address);
 
 } // namespace yb
-

@@ -54,4 +54,3 @@ class CircularReadBuffer : public StreamReadBuffer {
 
 } // namespace rpc
 } // namespace yb
-

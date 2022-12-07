@@ -100,4 +100,3 @@ enum class FlushFlags {
 
 }  // namespace tablet
 }  // namespace yb
-

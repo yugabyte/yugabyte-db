@@ -515,7 +515,8 @@ class Version {
 
   size_t GetMemoryUsageByTableReaders();
 
-  // Returns approximate middle key of the largest SST file (see TableReader::GetMiddleKey).
+  // Returns weighted middle key of the approximate middle keys of the SST files
+  // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.
   Result<std::string> GetMiddleKey();
 
@@ -571,6 +572,7 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
+  Result<std::string> GetMiddleOfMiddleKeys();
 
   ColumnFamilyData* cfd_;  // ColumnFamilyData to which this Version belongs
   Logger* info_log_;
@@ -642,7 +644,6 @@ class VersionSet {
                                    BoundaryValuesExtractor* extractor,
                                    Env* env);
 
-#ifndef ROCKSDB_LITE
   // Try to reduce the number of levels. This call is valid when
   // only one level from the new max level to the old
   // max level containing files.
@@ -661,7 +662,6 @@ class VersionSet {
   Status DumpManifest(const Options& options, const std::string& manifestFileName,
                       bool verbose, bool hex = false);
 
-#endif  // ROCKSDB_LITE
 
   // Return the current manifest file number
   uint64_t manifest_file_number() const { return manifest_file_number_; }
@@ -841,4 +841,3 @@ class VersionSet {
 };
 
 }  // namespace rocksdb
-

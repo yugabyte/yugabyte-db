@@ -29,7 +29,7 @@ type: docs
 
 </ul>
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
+<br>You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
 Note that non-transactional backups are not supported.
 
@@ -41,9 +41,9 @@ By default, the list displays all the backups generated for the universe regardl
 
 The **Backups** page allows you to create new backups that start immediately, as follows:
 
-- Click **Backup now** to open the dialog shown in the following illustration:<br><br>
+- Click **Backup now** to open the dialog shown in the following illustration:<br>
 
-  ![Backup](/images/yp/create-backup-new-3.png)<br><br>
+  ![Backup](/images/yp/create-backup-new-3.png)<br>
 
 - In the **Backup Now** dialog, select YCQL as the API type.
 

@@ -147,4 +147,3 @@ class FileNumbersProvider : public FileNumberAdderRemover {
 };
 
 }  // namespace rocksdb
-

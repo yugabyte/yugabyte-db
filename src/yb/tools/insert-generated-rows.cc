@@ -36,7 +36,6 @@
 #include <memory>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
@@ -62,7 +61,7 @@
 
 using namespace std::literals;
 
-DEFINE_string(master_address, "localhost",
+DEFINE_UNKNOWN_string(master_address, "localhost",
               "Comma separated list of master addresses to run against.");
 
 namespace yb {

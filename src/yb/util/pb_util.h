@@ -301,7 +301,7 @@ class ReadablePBContainerFile {
   // If 'eofOK' is EOF_OK, an EOF is returned as-is. Otherwise, it is
   // considered to be an invalid short read and returned as an error.
   Status ValidateAndRead(size_t length, EofOK eofOK,
-                                 Slice* result, std::unique_ptr<uint8_t[]>* scratch);
+                         Slice* result, std::unique_ptr<uint8_t[]>* scratch);
 
   size_t offset_;
 
@@ -350,4 +350,3 @@ bool ArePBsEqual(const google::protobuf::Message& prev_pb,
 using RepeatedBytes = google::protobuf::RepeatedPtrField<std::string>;
 
 } // namespace yb
-

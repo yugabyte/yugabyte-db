@@ -55,4 +55,3 @@ class lock_guard_maybe {
  private:
   LockType *lock_;
 };
-

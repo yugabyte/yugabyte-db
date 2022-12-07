@@ -264,4 +264,3 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 };
 
 }  // namespace yb
-

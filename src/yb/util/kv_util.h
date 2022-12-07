@@ -142,4 +142,3 @@ inline void AppendBigEndianUInt64(uint64_t u, Buffer* dest) {
 
 } // namespace util
 } // namespace yb
-

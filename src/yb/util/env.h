@@ -132,30 +132,30 @@ class FileFactoryWrapper : public FileFactory {
   virtual ~FileFactoryWrapper() {}
 
   Status NewSequentialFile(const std::string& fname,
-                                   std::unique_ptr<SequentialFile>* result) override;
+                           std::unique_ptr<SequentialFile>* result) override;
 
   Status NewRandomAccessFile(const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override;
+                             std::unique_ptr<RandomAccessFile>* result) override;
 
   Status NewWritableFile(const std::string& fname,
-                                 std::unique_ptr<WritableFile>* result) override;
+                         std::unique_ptr<WritableFile>* result) override;
 
   Status NewWritableFile(const WritableFileOptions& opts,
-                                 const std::string& fname,
-                                 std::unique_ptr<WritableFile>* result) override;
+                         const std::string& fname,
+                         std::unique_ptr<WritableFile>* result) override;
 
   Status NewTempWritableFile(const WritableFileOptions& opts,
-                                     const std::string& name_template,
-                                     std::string* created_filename,
-                                     std::unique_ptr<WritableFile>* result) override;
+                             const std::string& name_template,
+                             std::string* created_filename,
+                             std::unique_ptr<WritableFile>* result) override;
 
   Status NewRWFile(const std::string& fname,
-                           std::unique_ptr<RWFile>* result) override;
+                   std::unique_ptr<RWFile>* result) override;
 
   // Like the previous NewRWFile, but allows options to be specified.
   Status NewRWFile(const RWFileOptions& opts,
-                           const std::string& fname,
-                           std::unique_ptr<RWFile>* result) override;
+                   const std::string& fname,
+                   std::unique_ptr<RWFile>* result) override;
 
   Result<uint64_t> GetFileSize(const std::string& fname) override;
 
@@ -171,13 +171,15 @@ class Env {
  public:
   // Governs if/how the file is created.
   //
-  // enum value                      | file exists       | file does not exist
-  // --------------------------------+-------------------+--------------------
-  // CREATE_IF_NON_EXISTING_TRUNCATE | opens + truncates | creates
-  // CREATE_NON_EXISTING             | fails             | creates
-  // OPEN_EXISTING                   | opens             | fails
+  // enum value                      | file exists        | file does not exist
+  // --------------------------------+--------------------+--------------------
+  // CREATE_IF_NON_EXISTING_TRUNCATE | opens + truncates  | creates
+  // CREATE_NONBLOCK_IF_NON_EXISTING | opens (O_NONBLOCK) | creates (O_NONBLOCK)
+  // CREATE_NON_EXISTING             | fails              | creates
+  // OPEN_EXISTING                   | opens              | fails
   enum CreateMode {
     CREATE_IF_NON_EXISTING_TRUNCATE,
+    CREATE_NONBLOCK_IF_NON_EXISTING,
     CREATE_NON_EXISTING,
     OPEN_EXISTING
   };
@@ -682,15 +684,15 @@ class EnvWrapper : public Env {
 
   // The following text is boilerplate that forwards all methods to target()
   Status NewSequentialFile(const std::string& f,
-                                   std::unique_ptr<SequentialFile>* r) override;
+                           std::unique_ptr<SequentialFile>* r) override;
   Status NewRandomAccessFile(const std::string& f,
-                                     std::unique_ptr<RandomAccessFile>* r) override;
+                             std::unique_ptr<RandomAccessFile>* r) override;
   Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r) override;
   Status NewWritableFile(const WritableFileOptions& o,
-                                 const std::string& f,
-                                 std::unique_ptr<WritableFile>* r) override;
+                         const std::string& f,
+                         std::unique_ptr<WritableFile>* r) override;
   Status NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
-                                     std::string* f, std::unique_ptr<WritableFile>* r) override;
+                             std::string* f, std::unique_ptr<WritableFile>* r) override;
   Status NewRWFile(const std::string& f, std::unique_ptr<RWFile>* r) override;
   Status NewRWFile(const RWFileOptions& o,
                    const std::string& f,
@@ -757,4 +759,3 @@ class EnvWrapper : public Env {
 Status DeleteIfExists(const std::string& path, Env* env);
 
 }  // namespace yb
-

@@ -93,4 +93,3 @@ inline uint16 HashTo16(const char *s, uint64 slen) {
   uint16 retval = Hash32StringWithSeed(s, slen, MIX32) >> 16;
   return retval == kIllegalHash16 ? static_cast<uint16>(retval-1) : retval;
 }
-

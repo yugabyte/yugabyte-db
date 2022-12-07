@@ -134,8 +134,6 @@ class PgsqlReadOp : public PgsqlOp {
   bool read_from_followers_ = false;
 };
 
-using PgsqlReadOpPtr = std::shared_ptr<PgsqlReadOp>;
-
 std::shared_ptr<PgsqlReadRequestPB> InitSelect(
     const PgsqlReadOpPtr& read_op, const PgTableDesc& desc);
 
@@ -185,4 +183,3 @@ bool PrepareNextRequest(PgsqlReadOp* read_op);
 
 }  // namespace pggate
 }  // namespace yb
-

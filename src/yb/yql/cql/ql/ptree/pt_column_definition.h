@@ -230,4 +230,3 @@ class PTIndexColumn : public PTColumnDefinition {
 
 }  // namespace ql
 }  // namespace yb
-

@@ -60,4 +60,3 @@ Substitutions CreateSubstitutions(const google::protobuf::ServiceDescriptor* ser
 
 } // namespace gen_yrpc
 } // namespace yb
-

@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <map>
+
 namespace yb {
 
 template <class Object>
@@ -38,4 +40,3 @@ using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
 
 } // namespace tserver
 } // namespace yb
-

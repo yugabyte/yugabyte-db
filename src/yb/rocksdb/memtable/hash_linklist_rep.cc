@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/memtable/hash_linklist_rep.h"
 
 #include <algorithm>
@@ -832,4 +831,3 @@ MemTableRepFactory* NewHashLinkListRepFactory(
 }
 
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

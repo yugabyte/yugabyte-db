@@ -142,20 +142,20 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
   void StartLocalTransactionTableNodes() {
     LOG(INFO) << "Starting local transaction table nodes";
-    ASSERT_OK(StartTabletServers(boost::none /* region_str */, "local_txn_zone"s));
+    ASSERT_OK(StartTabletServers(std::nullopt /* region_str */, "local_txn_zone"s));
   }
 
   void ShutdownLocalTransactionTableNodes() {
     LOG(INFO) << "Shutting down local transaction table nodes";
-    ASSERT_OK(ShutdownTabletServers(boost::none /* region_str */, "local_txn_zone"s));
+    ASSERT_OK(ShutdownTabletServers(std::nullopt /* region_str */, "local_txn_zone"s));
   }
 
   void RestartDataNodes() {
     LOG(INFO) << "Shutting down data nodes";
-    ASSERT_OK(ShutdownTabletServers(boost::none /* region_str */, "zone"s));
+    ASSERT_OK(ShutdownTabletServers(std::nullopt /* region_str */, "zone"s));
 
     LOG(INFO) << "Starting data nodes";
-    ASSERT_OK(StartTabletServers(boost::none /* region_str */, "zone"s));
+    ASSERT_OK(StartTabletServers(std::nullopt /* region_str */, "zone"s));
   }
 
   void CheckSimplePromotion(int64_t txn_end_delay, TestTransactionType transaction_type,

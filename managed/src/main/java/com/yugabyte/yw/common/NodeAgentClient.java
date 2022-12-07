@@ -40,13 +40,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Singleton;
@@ -54,7 +54,6 @@ import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 /** This class contains all the methods required to communicate to a node agent server. */
@@ -62,6 +61,7 @@ import play.mvc.Http.Status;
 @Singleton
 public class NodeAgentClient {
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
+  public static final String NODE_AGENT_CLIENT_ENABLED_PROPERTY = "yb.node_agent.client.enabled";
 
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
@@ -116,7 +116,7 @@ public class NodeAgentClient {
       NettyChannelBuilder channelBuilder =
           NettyChannelBuilder.forAddress(nodeAgent.ip, nodeAgent.port);
       if (config.isEnableTls()) {
-        Path caCertPath = getCertFilePath(nodeAgent, NodeAgent.ROOT_CA_CERT_NAME);
+        Path caCertPath = nodeAgent.getCaCertFilePath();
         try {
           SslContext sslcontext =
               GrpcSslContexts.forClient().trustManager(caCertPath.toFile()).build();
@@ -228,12 +228,8 @@ public class NodeAgentClient {
     }
   }
 
-  private static String getNodeAgentJWT(UUID nodeAgentUuid) {
-    Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
-    if (!nodeAgentOp.isPresent()) {
-      throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
-    }
-    PrivateKey privateKey = nodeAgentOp.get().getPrivateKey();
+  public static String getNodeAgentJWT(NodeAgent nodeAgent) {
+    PrivateKey privateKey = nodeAgent.getPrivateKey();
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject("Platform")
@@ -243,13 +239,40 @@ public class NodeAgentClient {
         .compact();
   }
 
-  private static Path getCertFilePath(NodeAgent nodeAgent, String certName) {
-    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isBlank(certDirPath)) {
-      throw new IllegalArgumentException(
-          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+  public static String getNodeAgentJWT(UUID nodeAgentUuid) {
+    Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
+    if (!nodeAgentOp.isPresent()) {
+      throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return Paths.get(certDirPath, certName);
+    return getNodeAgentJWT(nodeAgentOp.get());
+  }
+
+  public static void addNodeAgentClientParams(NodeAgent nodeAgent, List<String> cmdParams) {
+    addNodeAgentClientParams(nodeAgent, cmdParams, null);
+  }
+
+  public static void addNodeAgentClientParams(
+      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> sensitiveCmdParams) {
+    cmdParams.add("--node_agent_ip");
+    cmdParams.add(nodeAgent.ip);
+    cmdParams.add("--node_agent_port");
+    cmdParams.add(String.valueOf(nodeAgent.port));
+    cmdParams.add("--node_agent_cert_path");
+    cmdParams.add(nodeAgent.getCaCertFilePath().toString());
+    if (sensitiveCmdParams == null) {
+      cmdParams.add("--node_agent_auth_token");
+      cmdParams.add(getNodeAgentJWT(nodeAgent));
+    } else {
+      sensitiveCmdParams.put("--node_agent_auth_token", getNodeAgentJWT(nodeAgent));
+    }
+  }
+
+  public Optional<NodeAgent> maybeGetNodeAgentClient(String ip) {
+    // TODO check for server readiness?
+    if (appConfig.getBoolean(NODE_AGENT_CLIENT_ENABLED_PROPERTY)) {
+      return NodeAgent.maybeGetByIp(ip);
+    }
+    return Optional.empty();
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {

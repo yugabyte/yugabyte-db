@@ -41,4 +41,3 @@ class MetricsSnapshotter {
 
 } // namespace tserver
 } // namespace yb
-

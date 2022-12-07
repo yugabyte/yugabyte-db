@@ -39,4 +39,3 @@ CsvTokenizer Tokenize(const std::string& line, char delimiter, char quote_char);
 
 } // namespace tools
 } // namespace yb
-

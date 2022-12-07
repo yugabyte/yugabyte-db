@@ -487,4 +487,3 @@ bool operator!=(const scoped_refptr<T>& lhs, const scoped_refptr<U>& rhs) {
 }
 
 #undef INVOKE_REF_COUNTED_DEBUG_HOOK
-

@@ -85,4 +85,3 @@ class PTDropStmt : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

@@ -8,7 +8,40 @@ layout: single
 type: docs
 ---
 
+On this page:
+
+- [Releases](#releases)
+- [Cloud provider regions](#cloud-provider-regions)
+- [Known issues](#known-issues)
+
 ## Releases
+
+### November 28, 2022
+
+**New Features**
+
+- Support for multi-region clusters with [geo-partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/) using the new [Partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployment. Geo-partitioning allows you to move data closer to users to achieve lower latency and higher performance, and meet data residency requirements to comply with regulations such as GDPR.
+- Support for [read replicas](../cloud-basics/create-clusters-topology/#read-replicas). Use read replicas to lower latencies for read requests from remote regions.
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.3. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Stable release updated to version 2.14.4 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### November 15, 2022
+
+**New Features**
+
+- Ability to view cluster health. YugabyteDB Managed monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
+- Ability to set alerts for failed nodes. Get notified when the number of failed nodes exceeds the threshold.
+
+### November 4, 2022
+
+**New Features**
+
+- Ability to reset slow queries for faster debugging of slow-running queries.
+- Ability to set a preferred region to tune the read and write latency for specific regions. Designating one region as preferred can reduce the number of network hops needed to process requests. The preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Ability to view details of task progress for cluster edit operations for better monitoring.
 
 ### October 24, 2022
 
@@ -262,16 +295,26 @@ The following **AWS regions** are available:
 - Sao Paulo (sa-east-1)
 - N. Virginia (us-east-1)
 - Ohio (us-east-2)
-- N. California (us-west-1)
+- N. California (us-west-1)*
 - Oregon (us-west-2)
+
+\* Region has 2 availability zones only
 
 ## Known issues
 
 - **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
+- **Slow Queries Reset** - When resetting Slow Queries, the query used for the reset remains in the table.
 - **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
+- **Read replicas**
+  - The replication factor for a read replica region can't be changed after creation.
+  - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
+  - Read replicas currently need to use the same instance type as the Primary cluster.
+  - Because the free storage allowance for read replicas is calculated by month, deleting a read replica before the end of the current month can result in minor billing discrepancies.
+  - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
 
 ### Known issues in Cloud Shell
 

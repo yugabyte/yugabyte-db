@@ -85,6 +85,10 @@ class ArenaWrappedDBIter : public Iterator {
 
   void RevalidateAfterUpperBoundChange() override;
 
+  virtual bool ScanForward(
+    const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+    ScanCallback* scan_callback) override;
+
  private:
   DBIter* db_iter_;
   Arena arena_;
@@ -99,4 +103,3 @@ extern ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     bool prefix_same_as_start = false, bool pin_data = false);
 
 }  // namespace rocksdb
-

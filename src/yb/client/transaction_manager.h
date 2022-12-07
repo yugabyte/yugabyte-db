@@ -72,4 +72,3 @@ class TransactionManager {
 
 } // namespace client
 } // namespace yb
-

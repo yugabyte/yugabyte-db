@@ -53,4 +53,3 @@ class ApplyIntentsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-

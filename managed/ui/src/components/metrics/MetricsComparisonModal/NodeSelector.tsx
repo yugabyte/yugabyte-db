@@ -10,10 +10,9 @@ interface NodeSelectorData {
   nodeItemChangedOld: any;
   selectedNode: string;
   otherSelectedNode?: string | null;
-  topNodesSelection?: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
-  enableTopKMetrics: boolean;
+  isTopKMetricsEnabled: boolean;
   selectedRegionCode: string;
 }
 
@@ -23,10 +22,9 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   nodeItemChangedOld,
   selectedNode,
   otherSelectedNode,
-  topNodesSelection,
   selectedRegionClusterUUID,
   selectedZoneName,
-  enableTopKMetrics,
+  isTopKMetricsEnabled,
   selectedRegionCode
 }) => {
   let nodeItems: any[] = [];
@@ -34,7 +32,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   let zone = '';
   let renderItem = null;
   let nodeData = null;
-  let isDisabled = (selectedUniverse === MetricConsts.ALL);
+  const isDisabled = (selectedUniverse === MetricConsts.ALL);
 
   if (
     isNonEmptyObject(selectedUniverse) &&
@@ -42,17 +40,17 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     selectedUniverse.universeDetails.nodeDetailsSet
   ) {
     nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.nodeName === null) {
+      if (a.cloudInfo.az === null) {
         return -1;
-      } else if (b.nodeName === null) {
+      } else if (b.cloudInfo.az === null) {
         return 1;
       } else {
-        return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
       }
     });
   }
 
-  if (enableTopKMetrics) {
+  if (isTopKMetricsEnabled) {
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
       nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionCode ? selectedRegionClusterUUID === nodeItem.placementUuid
@@ -74,7 +72,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             key={zoneKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeItem.cloudInfo.az}
             active={selectedZoneName === nodeItem.cloudInfo.az}
           >
@@ -94,7 +92,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             key={nodeKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={nodeIdx}
             active={selectedNode === nodeItem.nodeName}
           >
@@ -108,7 +106,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
             {nodeItem.nodeName === otherSelectedNode ? 'Already selected' : ''}
           </MenuItem>
         </Fragment>
-      )
+      );
     });
 
     // By default we need to have 'All nodes' populated
@@ -120,23 +118,11 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedNode === MetricConsts.ALL && !selectedZoneName}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {'All AZs & nodes'}
         </MenuItem>
-        {topNodesSelection &&
-          <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.TOP, null)}
-            key={MetricConsts.TOP}
-            // Added this line due to the issue that dropdown does not close
-            // when a menu item is selected
-            onClick={() => { document.body.click() }}
-            eventKey={MetricConsts.TOP}
-          >
-            {'Top'}
-          </MenuItem>
-        }
       </Fragment>
     );
     nodeItemsElement.splice(0, 0, defaultMenuItem);
@@ -152,7 +138,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     nodeData = (
       <div className="node-picker">
         <Dropdown
-          id="node-filter-dropdown"
+          id="nodeFilterDropdown"
+          className="node-filter-dropdown"
           disabled={isDisabled}
           title={isDisabled ? "Select a specific universe to view the zones and nodes" : ""}
         >
@@ -176,11 +163,6 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           <option key={-2} value="all">
             All
           </option>
-          {topNodesSelection && (
-            <option key={-1} value="top">
-              Top
-            </option>
-          )}
           {nodeItems.map((nodeItem, nodeIdx) => (
             <option
               key={nodeIdx}

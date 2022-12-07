@@ -37,8 +37,9 @@
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
              "Timeout if preparing for child transaction takes longer"
              "than the prescribed threshold.");
 

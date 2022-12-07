@@ -113,4 +113,3 @@ extern bool Snappy_Uncompress(const char* input_data, size_t input_length,
 
 }  // namespace port
 }  // namespace rocksdb
-

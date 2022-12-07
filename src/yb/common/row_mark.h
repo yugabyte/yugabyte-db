@@ -46,4 +46,3 @@ bool IsValidRowMarkType(RowMarkType row_mark_type);
 bool RowMarkNeedsHigherPriority(RowMarkType row_mark_type);
 
 } // namespace yb
-

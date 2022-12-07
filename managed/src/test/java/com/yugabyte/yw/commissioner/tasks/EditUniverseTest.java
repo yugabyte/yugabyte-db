@@ -84,7 +84,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -119,7 +118,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
-          TaskType.ModifyBlackList,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 

@@ -69,4 +69,3 @@ class SkewedClockDeltaChanger {
 
 } // namespace server
 } // namespace yb
-

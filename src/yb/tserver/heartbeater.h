@@ -87,6 +87,7 @@ class Heartbeater {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
+  std::string get_leader_master_hostport();
 
   ~Heartbeater();
 
@@ -115,4 +116,3 @@ class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
 
 } // namespace tserver
 } // namespace yb
-

@@ -67,4 +67,3 @@ inline static bool IsValidCachingRowsPerPartitionInt(const int64_t val) {
 
 }  // namespace common
 }  // namespace yb
-

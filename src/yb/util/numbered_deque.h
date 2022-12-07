@@ -159,4 +159,3 @@ class NumberedDeque {
 };
 
 } // namespace yb
-

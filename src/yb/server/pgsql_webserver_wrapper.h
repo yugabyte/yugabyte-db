@@ -94,4 +94,3 @@ void WriteStatArrayElemToJson(void *p1, void *p2);
 }  // extern "C"
 }  // namespace yb
 #endif
-

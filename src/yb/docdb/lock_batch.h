@@ -138,4 +138,3 @@ class UnlockedBatch {
 
 }  // namespace docdb
 }  // namespace yb
-

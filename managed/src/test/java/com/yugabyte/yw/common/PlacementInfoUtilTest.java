@@ -1270,8 +1270,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<String, String> config = new HashMap<>();
     config.put("KUBE_DOMAIN", "test");
     az1.updateConfig(config);
+    az1.save();
     az2.updateConfig(config);
+    az2.save();
     az3.updateConfig(config);
+    az3.save();
     Map<UUID, String> expectedDomains = new HashMap<>();
     expectedDomains.put(az1.uuid, "test");
     expectedDomains.put(az2.uuid, "test");
@@ -1430,12 +1433,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
     config.put("KUBECONFIG", "az1");
     az1.updateConfig(config);
+    az1.save();
     expectedConfigs.put(az1.uuid, az1.getUnmaskedConfig());
     config.put("KUBECONFIG", "az2");
     az2.updateConfig(config);
+    az2.save();
     expectedConfigs.put(az2.uuid, az2.getUnmaskedConfig());
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
+    az3.save();
     expectedConfigs.put(az3.uuid, az3.getUnmaskedConfig());
 
     PlacementInfo pi = new PlacementInfo();
@@ -1591,16 +1597,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     config.put("KUBECONFIG", "az1");
     config.put("KUBENAMESPACE", "ns-1");
     az1.updateConfig(config);
+    az1.save();
     expectedConfigs.put("ns-1", "az1");
 
     config.put("KUBECONFIG", "az2");
     config.put("KUBENAMESPACE", "ns-2");
     az2.updateConfig(config);
+    az2.save();
     expectedConfigs.put("ns-2", "az2");
 
     config.remove("KUBENAMESPACE");
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
+    az3.save();
     expectedConfigs.put(String.format("%s-%s", nodePrefix, az3.code), "az3");
 
     PlacementInfo pi = new PlacementInfo();
@@ -1711,12 +1720,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
     String nodePrefix = "demo-universe";
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     // New naming style
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
     String masterAddressFormat =
         "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
     String expectedMasterAddresses =
@@ -1730,7 +1738,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old naming style
     masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false, podAddressTemplate);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
     masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
     expectedMasterAddresses =
         String.format(masterAddressFormat, nodePrefix, az1.code)
@@ -1752,11 +1760,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
-    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true, podAddressTemplate);
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
     assertEquals(
         "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
         masterAddresses);
@@ -1771,6 +1778,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     int idx = 1;
     for (AvailabilityZone az : azs) {
       az.updateConfig(ImmutableMap.of("KUBECONFIG", "az-" + idx));
+      az.save();
       PlacementInfoUtil.addPlacementZone(az.uuid, pi);
 
       NodeDetails node = ApiUtils.getDummyNodeDetails(idx);

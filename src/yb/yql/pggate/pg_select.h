@@ -43,4 +43,3 @@ class PgSelect : public PgDmlRead {
 
 }  // namespace pggate
 }  // namespace yb
-

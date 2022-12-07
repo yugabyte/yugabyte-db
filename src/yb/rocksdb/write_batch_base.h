@@ -113,4 +113,3 @@ class WriteBatchBase {
 };
 
 }  // namespace rocksdb
-

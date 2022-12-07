@@ -65,4 +65,3 @@ class TransactionPool {
 
 } // namespace client
 } // namespace yb
-

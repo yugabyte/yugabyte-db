@@ -371,7 +371,7 @@ SELECT yb_get_range_split_clause('tbl_collation_pk3'::regclass);
 DROP TABLE tbl_collation_pk3;
 
 -- Test colocated table
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE tbl_colocated_range (
   a INT,

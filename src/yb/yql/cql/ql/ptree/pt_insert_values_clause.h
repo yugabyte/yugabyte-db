@@ -74,4 +74,3 @@ class PTInsertValuesClause : public PTCollection {
 
 }  // namespace ql
 }  // namespace yb
-

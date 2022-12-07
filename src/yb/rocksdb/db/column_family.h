@@ -231,11 +231,9 @@ class ColumnFamilyData {
   const MutableCFOptions* GetLatestMutableCFOptions() const {
     return &mutable_cf_options_;
   }
-#ifndef ROCKSDB_LITE
   // REQUIRES: DB mutex held
   Status SetOptions(
       const std::unordered_map<std::string, std::string>& options_map);
-#endif  // ROCKSDB_LITE
 
   InternalStats* internal_stats() { return internal_stats_.get(); }
 
@@ -275,6 +273,7 @@ class ColumnFamilyData {
       uint32_t output_path_id,
       const InternalKey* begin,
       const InternalKey* end,
+      CompactionReason compaction_reason,
       InternalKey** compaction_end,
       bool* manual_conflict);
 
@@ -563,4 +562,3 @@ extern const Comparator* GetColumnFamilyUserComparator(
     ColumnFamilyHandle* column_family);
 
 }  // namespace rocksdb
-

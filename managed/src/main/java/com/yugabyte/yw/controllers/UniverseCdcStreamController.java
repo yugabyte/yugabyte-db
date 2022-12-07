@@ -1,6 +1,18 @@
+/*
+ * Copyright 2022 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 package com.yugabyte.yw.controllers;
 
-import com.google.common.net.HostAndPort;
+import java.util.List;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.cdc.CdcStream;
@@ -8,27 +20,14 @@ import com.yugabyte.yw.common.cdc.CdcStreamCreateResponse;
 import com.yugabyte.yw.common.cdc.CdcStreamDeleteResponse;
 import com.yugabyte.yw.common.cdc.CdcStreamManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.CdcStreamFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.*;
-import org.yb.log.Log;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterReplicationOuterClass.IdTypePB;
-import org.yb.util.NetUtil;
+import play.data.Form;
 import play.mvc.Result;
-
-import javax.persistence.Table;
 
 @Api
 public class UniverseCdcStreamController extends AuthenticatedController {
@@ -62,7 +61,13 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   public Result createCdcStream(UUID customerUUID, UUID universeUUID) throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
 
-    CdcStreamCreateResponse response = cdcStreamManager.createCdcStream(universe, "yugabyte");
+    Form<CdcStreamFormData> formData = formFactory.getFormDataOrBadRequest(CdcStreamFormData.class);
+    CdcStreamFormData data = formData.get();
+
+    // No need to check if database exists at this layer, as lower layers will try to
+    // enumerate all tables, so they will fail.
+    CdcStreamCreateResponse response =
+        cdcStreamManager.createCdcStream(universe, data.getDatabaseName());
     return PlatformResults.withData(response);
   }
 

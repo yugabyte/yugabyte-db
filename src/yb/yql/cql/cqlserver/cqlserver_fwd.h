@@ -22,4 +22,3 @@ using CQLProcessorListPos = CQLProcessorList::iterator;
 
 }  // namespace cqlserver
 }  // namespace yb
-

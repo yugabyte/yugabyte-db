@@ -65,4 +65,3 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
 
 } // namespace ql
 } // namespace yb
-

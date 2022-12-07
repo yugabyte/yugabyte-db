@@ -28,6 +28,14 @@
 #include "yb/util/monotime.h"
 
 // This file contains utility functions that can be shared between client and master code.
+static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
+static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
+static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
+// ID && name of a tablegroup for Colocation GA contain string "colocation".
+// We keep string "tablegroup" in ID && name of user-created tablegroups in non-colocated databases.
+static constexpr const char* kColocationParentTableIdSuffix = ".colocation.parent.uuid";
+static constexpr const char* kColocationParentTableNameSuffix = ".colocation.parent.tablename";
 
 namespace yb {
 
@@ -98,6 +106,10 @@ TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
 
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
 
+TableId GetColocationParentTableId(const TablegroupId& tablegroup_id);
+
+TableName GetColocationParentTableName(const TablegroupId& tablegroup_id);
+
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
 
 bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
@@ -106,4 +118,3 @@ BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master
 } // namespace yb
-

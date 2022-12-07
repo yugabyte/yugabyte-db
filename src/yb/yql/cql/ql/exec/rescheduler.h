@@ -34,4 +34,3 @@ class Rescheduler {
 
 }  // namespace ql
 }  // namespace yb
-

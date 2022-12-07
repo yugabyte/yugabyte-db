@@ -55,4 +55,3 @@ std::unique_ptr<D> down_pointer_cast(std::unique_ptr<S> s) {
 }  // namespace yb
 
 using yb::pointer_cast;
-

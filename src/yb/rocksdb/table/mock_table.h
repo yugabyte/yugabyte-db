@@ -211,4 +211,3 @@ class MockTableFactory : public TableFactory {
 
 }  // namespace mock
 }  // namespace rocksdb
-

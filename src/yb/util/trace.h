@@ -37,7 +37,7 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -307,4 +307,3 @@ class PlainTrace {
 };
 
 } // namespace yb
-

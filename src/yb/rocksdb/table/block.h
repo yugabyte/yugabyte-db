@@ -284,4 +284,3 @@ class BlockIter : public InternalIterator {
 };
 
 }  // namespace rocksdb
-

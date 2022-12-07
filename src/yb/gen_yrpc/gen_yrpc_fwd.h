@@ -41,4 +41,3 @@ using Substitutions = std::vector<std::pair<std::string, std::string>>;
 
 } // namespace gen_yrpc
 } // namespace yb
-

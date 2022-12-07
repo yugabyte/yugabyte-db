@@ -62,4 +62,3 @@ ATTRIBUTE_WEAK extern void SubmitSpinLockProfileData(const void *, int64);
 extern void SubmitSpinLockProfileData(const void *contendedlock,
                                       int64 wait_cycles) {}
 } // namespace gutil
-

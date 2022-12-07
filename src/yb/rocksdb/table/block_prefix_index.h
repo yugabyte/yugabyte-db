@@ -83,4 +83,3 @@ class BlockPrefixIndex {
 };
 
 }  // namespace rocksdb
-

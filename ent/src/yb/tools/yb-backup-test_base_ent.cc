@@ -38,9 +38,9 @@ namespace tools {
 namespace helpers {
 
 Status RedisGet(std::shared_ptr<client::YBSession> session,
-                        const std::shared_ptr<client::YBTable> table,
-                        const string& key,
-                        const string& value) {
+                const std::shared_ptr<client::YBTable> table,
+                const string& key,
+                const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
   RETURN_NOT_OK(session->TEST_ReadSync(get_op));
@@ -58,9 +58,9 @@ Status RedisGet(std::shared_ptr<client::YBSession> session,
 }
 
 Status RedisSet(std::shared_ptr<client::YBSession> session,
-                        const std::shared_ptr<client::YBTable> table,
-                        const string& key,
-                        const string& value) {
+                const std::shared_ptr<client::YBTable> table,
+                const string& key,
+                const string& value) {
   auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
   RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
                                       redisserver::RedisClientCommand({"set", key, value})));
@@ -73,6 +73,7 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
 void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
+  test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
 }
 
 string YBBackupTest::GetTempDir(const string& subdir) {
@@ -125,19 +126,8 @@ Result<string> YBBackupTest::GetTableId(
   return name.table_id();
 }
 
-Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>>
-    YBBackupTest::GetTablets(const string& table_name, const string& log_prefix,
-                              const string& ns) {
-  auto table_id = VERIFY_RESULT(GetTableId(table_name, log_prefix, ns));
-
-  LOG(INFO) << log_prefix << ": get tablets";
-  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
-  return tablets;
-}
-
 bool YBBackupTest::CheckPartitions(
-    const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+    const std::vector<yb::master::TabletLocationsPB>& tablets,
     const vector<string>& expected_splits) {
   if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
     LOG(WARNING) << Format("Tablets size ($0) != expected_splits.size() + 1 ($1)", tablets.size(),
@@ -146,7 +136,7 @@ bool YBBackupTest::CheckPartitions(
   }
 
   static const string empty;
-  for (int i = 0; i < tablets.size(); i++) {
+  for (size_t i = 0; i < tablets.size(); i++) {
     const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
     const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
 
@@ -168,36 +158,7 @@ bool YBBackupTest::CheckPartitions(
   return true;
 }
 
-// Waiting for parent deletion is required if we plan to split the children created by this split
-// in the future.
-void YBBackupTest::ManualSplitTablet(
-    const string& tablet_id, const string& table_name, const int expected_num_tablets,
-    bool wait_for_parent_deletion, const std::string& namespace_name) {
-  master::SplitTabletRequestPB split_req;
-  split_req.set_tablet_id(tablet_id);
-  master::SplitTabletResponsePB split_resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(30s * kTimeMultiplier);
-  auto master_admin_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();
-  ASSERT_OK(master_admin_proxy.SplitTablet(split_req, &split_resp, &rpc));
-  ASSERT_FALSE(split_resp.has_error());
-
-  master::IsTabletSplittingCompleteRequestPB splitting_complete_req;
-  master::IsTabletSplittingCompleteResponsePB splitting_complete_resp;
-  splitting_complete_req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    rpc.Reset();
-    RETURN_NOT_OK(master_admin_proxy.IsTabletSplittingComplete(
-        splitting_complete_req, &splitting_complete_resp, &rpc));
-    return splitting_complete_resp.is_tablet_splitting_complete();
-  }, 30s, "Wait for ongoing splits to finish."));
-
-  auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split", namespace_name));
-  ASSERT_EQ(tablets.size(), expected_num_tablets);
-}
-
-void YBBackupTest::LogTabletsInfo(
-    const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets) {
+void YBBackupTest::LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets) {
   for (const auto& tablet : tablets) {
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "tablet location:\n" << tablet.DebugString();

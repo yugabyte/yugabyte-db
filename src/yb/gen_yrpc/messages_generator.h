@@ -37,4 +37,3 @@ class MessagesGenerator {
 
 } // namespace gen_yrpc
 } // namespace yb
-

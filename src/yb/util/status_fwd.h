@@ -25,4 +25,3 @@ template<class TValue>
 class NODISCARD_CLASS Result;
 
 }  // namespace yb
-

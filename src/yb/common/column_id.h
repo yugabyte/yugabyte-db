@@ -105,4 +105,3 @@ ColumnId operator"" _ColId() {
 }
 
 }  // namespace yb
-

@@ -58,7 +58,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -83,20 +83,20 @@ DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
     "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 
-DEFINE_int32(follower_unavailable_considered_failed_sec, 900,
+DEFINE_UNKNOWN_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
              "evicted from the config.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 
-DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
+DEFINE_UNKNOWN_int32(consensus_inject_latency_ms_in_notifications, 0,
              "Injects a random sleep between 0 and this many milliseconds into "
              "asynchronous notifications from the consensus queue back to the "
              "consensus implementation.");
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
-DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "Interval up to which CDC consumer's checkpoint is considered for retaining log cache."
              "If we haven't received an updated checkpoint from CDC consumer within the interval "
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
@@ -122,7 +122,7 @@ TAG_FLAG(cdc_intent_retention_ms, advanced);
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     remote_bootstrap_from_leader_only, true,
     "Whether to instruct the peer to attempt bootstrap from the closest peer instead of "
     "the leader. The leader too could be the closest peer depending on the new peer's "
@@ -715,16 +715,15 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   return Status::OK();
 }
 
-Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
-                                                         int64_t to_index,
-                                                         size_t max_batch_size,
-                                                         const std::string& peer_uuid,
-                                                         const CoarseTimePoint deadline) {
+Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
+    int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
+    const CoarseTimePoint deadline, const bool fetch_single_entry) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
 
   // We try to get the follower's next_index from our log.
   // Note this is not using "term" and needs to change
-  auto result = log_cache_.ReadOps(after_index, to_index, max_batch_size, deadline);
+  auto result =
+      log_cache_.ReadOps(after_index, to_index, max_batch_size, deadline, fetch_single_entry);
   if (PREDICT_FALSE(!result.ok())) {
     auto s = result.status();
     if (PREDICT_TRUE(s.IsNotFound())) {
@@ -751,10 +750,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
 Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
-  const yb::OpId& last_op_id,
-  int64_t* repl_index,
-  const CoarseTimePoint deadline) {
-
+    const yb::OpId& last_op_id, int64_t* repl_index, const CoarseTimePoint deadline,
+    const bool fetch_single_entry) {
   // The batch of messages read from cache.
 
   int64_t to_index;
@@ -781,7 +778,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
                              last_op_id.index;
 
   auto result = ReadFromLogCache(
-      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline);
+      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline,
+      fetch_single_entry);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     const std::string premature_gc_warning =
       Format("The logs from index $0 have been garbage collected and cannot be read ($1)",

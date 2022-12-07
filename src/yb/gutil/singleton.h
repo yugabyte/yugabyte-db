@@ -162,4 +162,3 @@ Type* Singleton<Type>::instance_ = NULL;
 
 template <typename Type>
 Type* Singleton<Type>::injected_instance_ = NULL;
-

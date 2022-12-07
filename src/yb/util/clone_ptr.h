@@ -104,4 +104,3 @@ class clone_ptr {
 };
 
 } // namespace yb
-

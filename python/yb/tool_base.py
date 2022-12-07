@@ -2,10 +2,12 @@
 
 import argparse
 import os
+import sys
+import logging
 
 from typing import Dict, List, Any, Union, Optional
 
-from yb.common_util import set_env_vars_from_build_root
+from yb.common_util import set_env_vars_from_build_root, init_logging
 
 from overrides import overrides, EnforceOverrides
 
@@ -17,17 +19,22 @@ class YbBuildToolBase(EnforceOverrides):
     arg_parser_created: bool
     arg_parser: argparse.ArgumentParser
     args: argparse.Namespace
-    add_standard_build_args: bool
 
-    def get_description(self) -> str:
-        raise NotImplementedError()
+    def get_description(self) -> Optional[str]:
+        """
+        Returns the description of the command-line tool that is shown when invoked with --help.
+        By default, the description is taken from the tool class, or from the module containing
+        the tool's class, in that order of preference.
+        """
+        class_docstring = self.__class__.__doc__
+        if class_docstring is not None and class_docstring.strip():
+            return class_docstring
+        return sys.modules[self.__class__.__module__].__doc__
 
     def get_arg_parser_kwargs(self) -> Dict[str, Any]:
         return dict(description=self.get_description())
 
     def __init__(self) -> None:
-        # Whether to add "standard" arguments needed by most build tools.
-        self.add_standard_build_args = True
         self.arg_parser_created = False
 
     def run(self) -> None:
@@ -41,16 +48,27 @@ class YbBuildToolBase(EnforceOverrides):
 
     def parse_args(self) -> None:
         self.args = self.arg_parser.parse_args()
+        init_logging(verbose=self.args.verbose)
+
+    def get_default_build_root(self) -> Optional[str]:
+        return None
 
     def validate_and_process_args(self) -> None:
         if hasattr(self.args, 'build_root'):
             if self.args.build_root is None:
-                raise ValueError('--build_root (or BUILD_ROOT environment variable) not specified')
+                default_build_root = self.get_default_build_root()
+                if default_build_root is not None:
+                    self.args.build_root = default_build_root
+                    logging.info("Determined default build root as: %s", self.args.build_root)
+                else:
+                    raise ValueError(
+                        '--build_root (or BUILD_ROOT environment variable) not specified, and '
+                        'cannot determine the default build root')
             set_env_vars_from_build_root(self.args.build_root)
 
     def run_impl(self) -> None:
         """
-        The overridable internal implementation of running the tool.
+        The overridable function containing the tool's functionality.
         """
         raise NotImplementedError()
 
@@ -66,31 +84,26 @@ class YbBuildToolBase(EnforceOverrides):
             raise RuntimeError("Cannot create the argument parser multiple times")
 
         self.arg_parser = argparse.ArgumentParser(**self.get_arg_parser_kwargs())
-        if self.add_standard_build_args:
-            self.add_build_root_arg()
-            self.add_compiler_type_arg()
-            self.add_thirdparty_dir_arg()
 
-        self.add_command_line_args()
-
-    # ---------------------------------------------------------------------------------------------
-    # Functions to add various standard arguments
-    # ---------------------------------------------------------------------------------------------
-
-    def add_build_root_arg(self) -> None:
         self.arg_parser.add_argument(
             '--build_root',
             default=os.environ.get('BUILD_ROOT'),
             help='YugabyteDB build root directory')
 
-    def add_compiler_type_arg(self) -> None:
         self.arg_parser.add_argument(
             '--compiler_type',
             default=os.getenv('YB_COMPILER_TYPE'),
             help='Compiler type, e.g. gcc or clang')
 
-    def add_thirdparty_dir_arg(self) -> None:
         self.arg_parser.add_argument(
             '--thirdparty_dir',
             default=os.getenv('YB_THIRDPARTY_DIR'),
             help='YugabyteDB third-party dependencies directory')
+
+        self.arg_parser.add_argument(
+            '--verbose',
+            help='Enable verbose output',
+            action='store_true'
+        )
+
+        self.add_command_line_args()

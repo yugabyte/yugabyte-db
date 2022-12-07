@@ -63,11 +63,11 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/env.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
 TAG_FLAG(entries_per_index_block, advanced);
 

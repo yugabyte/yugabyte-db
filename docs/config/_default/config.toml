@@ -20,3 +20,6 @@ resourceDir = 'docs/resources'
   [[module.imports]]
     path = "github.com/google/docsy/dependencies"
     disable = false
+  [[module.imports]]
+    path = "github.com/trunkcode/hugo-seo"
+    disable = false

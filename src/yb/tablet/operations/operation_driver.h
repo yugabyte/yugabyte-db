@@ -286,4 +286,3 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
 }  // namespace tablet
 }  // namespace yb
-

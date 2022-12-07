@@ -26,8 +26,6 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(disable_hybrid_scan);
-
 using std::vector;
 
 namespace yb {
@@ -81,18 +79,6 @@ DocQLScanSpec::DocQLScanSpec(
       range_options_ = std::make_shared<std::vector<OptionList>>(schema_.num_range_key_columns());
       range_options_num_cols_ = std::vector<size_t>(schema_.num_range_key_columns(), 0);
       InitRangeOptions(*condition);
-
-      if (FLAGS_disable_hybrid_scan) {
-        // Range options are only valid if all range columns
-        // are set (i.e. have one or more options).
-        for (size_t i = 0; i < schema_.num_range_key_columns(); i++) {
-          if ((*range_options_)[i].empty()) {
-            range_options_ = nullptr;
-            break;
-          }
-          i = i + range_options_num_cols_[i] - 1;
-        }
-      }
     }
 }
 

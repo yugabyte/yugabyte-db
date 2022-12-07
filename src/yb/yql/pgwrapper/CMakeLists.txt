@@ -60,7 +60,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_tablet_split_test_base.cc
     pg_wrapper_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
-    pq_utils)
+    pq_utils
+    yb_client_test_util)
 ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
@@ -101,7 +102,7 @@ ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
-ADD_YB_TEST(pg_pessimistic_locking-test)
+ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
@@ -112,6 +113,7 @@ ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_ddl_atomicity-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
@@ -140,6 +142,7 @@ endif()
 
 add_dependencies(
   initial_sys_catalog_snapshot
+  run-with-timeout
   "${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME}"
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"

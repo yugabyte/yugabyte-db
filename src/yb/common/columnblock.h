@@ -250,4 +250,3 @@ class ScopedColumnBlock : public ColumnBlock {
 };
 
 } // namespace yb
-

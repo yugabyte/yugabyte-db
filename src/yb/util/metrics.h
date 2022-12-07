@@ -246,7 +246,7 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include <gtest/gtest_prod.h>
 
@@ -960,7 +960,7 @@ class AtomicMillisLag : public MillisLag {
   }
 
   Status WriteAsJson(JsonWriter* w,
-                             const MetricJsonOptions& opts) const override;
+                     const MetricJsonOptions& opts) const override;
 
   Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
@@ -1214,4 +1214,3 @@ class OwningHistogramPrototype : public OwningMetricCtorArgs, public HistogramPr
 void EscapeMetricNameForPrometheus(std::string *id);
 
 } // namespace yb
-

@@ -140,7 +140,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // If the update is from master leader, we use that list directly. If not, we
   // merge the existing in-memory master list with the provided config list.
   Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
-                                       bool is_master_leader);
+                               bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
 
@@ -158,7 +158,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       std::vector<master::TSInformationPB> *live_tservers) const override;
 
   Status GetTabletStatus(const GetTabletStatusRequestPB* req,
-                                 GetTabletStatusResponsePB* resp) const override;
+                         GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
@@ -219,7 +219,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -261,6 +261,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
+  Status ListMasterServers(const ListMasterServersRequestPB* req,
+                           ListMasterServersResponsePB* resp) const;
 
  protected:
   virtual Status RegisterServices();

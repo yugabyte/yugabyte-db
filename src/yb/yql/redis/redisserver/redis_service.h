@@ -38,4 +38,3 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
 }  // namespace redisserver
 }  // namespace yb
-

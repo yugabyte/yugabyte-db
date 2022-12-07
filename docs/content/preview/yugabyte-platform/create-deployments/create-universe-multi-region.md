@@ -49,7 +49,7 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
   leader_lease_duration_ms 6000
   ```
 
-  Note that since the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.<br><br>
+  Note that since the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.<br>
 
   ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe3.png)
 
@@ -112,7 +112,7 @@ With the goal of starting a workload from each node, perform the following on ev
 Run the following command on each of the nodes, substituting *REGION* with the region code for each node:
 
 ```sh
-$ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
+java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
             --workload CassandraKeyValue \
             --nodes $YCQL_ENDPOINTS \
             --num_threads_write 1 \

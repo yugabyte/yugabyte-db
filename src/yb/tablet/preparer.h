@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"

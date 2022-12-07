@@ -16,7 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
@@ -312,4 +311,3 @@ Iterator* DBWithTTLImpl::NewIterator(const ReadOptions& opts,
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

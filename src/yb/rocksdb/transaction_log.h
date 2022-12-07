@@ -135,4 +135,3 @@ class TransactionLogIterator {
   };
 };
 } //  namespace rocksdb
-

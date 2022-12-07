@@ -44,11 +44,11 @@ class YBMetaDataCache {
   // previously opened table from cached_tables_. If the table has not been opened before
   // in this client, this will do an RPC to ensure that the table exists and look up its schema.
   Status GetTable(const YBTableName& table_name,
-                          std::shared_ptr<YBTable>* table,
-                          bool* cache_used);
+                  std::shared_ptr<YBTable>* table,
+                  bool* cache_used);
   Status GetTable(const TableId& table_id,
-                          std::shared_ptr<YBTable>* table,
-                          bool* cache_used);
+                  std::shared_ptr<YBTable>* table,
+                  bool* cache_used);
 
   // Remove the table from cached_tables_ if it is in the cache.
   void RemoveCachedTable(const YBTableName& table_name);
@@ -58,9 +58,9 @@ class YBMetaDataCache {
   // previously opened type from cached_types_. If the type has not been opened before
   // in this client, this will do an RPC to ensure that the type exists and look up its info.
   Status GetUDType(const std::string &keyspace_name,
-                           const std::string &type_name,
-                           std::shared_ptr<QLType> *ql_type,
-                           bool *cache_used);
+                   const std::string &type_name,
+                   std::shared_ptr<QLType> *ql_type,
+                   bool *cache_used);
 
   // Remove the type from cached_types_ if it is in the cache.
   void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
@@ -73,12 +73,12 @@ class YBMetaDataCache {
   // If the permission is not found, and check_mode is RETRY, this method will refresh the
   // permissions cache and retry.
   Status HasResourcePermission(const std::string &canonical_resource,
-                                       const ql::ObjectType &object_type,
-                                       const RoleName &role_name,
-                                       const PermissionType &permission,
-                                       const NamespaceName &keyspace,
-                                       const TableName &table,
-                                       const CacheCheckMode check_mode);
+                               const ql::ObjectType &object_type,
+                               const RoleName &role_name,
+                               const PermissionType &permission,
+                               const NamespaceName &keyspace,
+                               const TableName &table,
+                               const CacheCheckMode check_mode);
 
   Status WaitForPermissionCache();
   Result<bool> RoleCanLogin(const RoleName& role_name);
@@ -123,4 +123,3 @@ class YBMetaDataCache {
 
 } // namespace client
 } // namespace yb
-

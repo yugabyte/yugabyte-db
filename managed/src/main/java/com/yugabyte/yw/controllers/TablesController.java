@@ -476,7 +476,6 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.MultiTableBackupRequestParams",
         paramType = "body")
   })
-  // Will remove this on completion.
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -488,12 +487,10 @@ public class TablesController extends AuthenticatedController {
 
     MultiTableBackup.Params taskParams = formData.get();
     if (taskParams.storageConfigUUID == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Missing StorageConfig UUID: " + null);
     }
     customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (universe.getUniverseDetails().updateInProgress
-        || universe.getUniverseDetails().backupInProgress) {
+    if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -580,8 +577,7 @@ public class TablesController extends AuthenticatedController {
         taskParams.backupType);
 
     customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (universe.getUniverseDetails().updateInProgress
-        || universe.getUniverseDetails().backupInProgress) {
+    if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(

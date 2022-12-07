@@ -144,4 +144,3 @@ Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 
 }  // namespace docdb
 }  // namespace yb
-

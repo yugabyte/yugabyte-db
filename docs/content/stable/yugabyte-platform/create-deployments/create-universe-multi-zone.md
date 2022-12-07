@@ -15,13 +15,13 @@ type: docs
 
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link active">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
     <a href="../create-universe-multi-zone-kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

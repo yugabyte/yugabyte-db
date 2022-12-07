@@ -93,4 +93,3 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 };
 
 } // namespace yb
-

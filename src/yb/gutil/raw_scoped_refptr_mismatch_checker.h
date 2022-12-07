@@ -138,4 +138,3 @@ struct ParamsUseScopedRefptrCorrectly<Tuple8<A, B, C, D, E, F, G, H> > {
 }  // namespace internal
 
 }  // namespace yb
-

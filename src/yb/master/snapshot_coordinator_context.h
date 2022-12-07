@@ -96,4 +96,3 @@ Result<docdb::KeyBytes> EncodedKey(
 
 } // namespace master
 } // namespace yb
-

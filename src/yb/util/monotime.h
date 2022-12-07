@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MONOTIME_H
-#define YB_UTIL_MONOTIME_H
 
 #pragma once
 
@@ -342,5 +340,3 @@ std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 bool IsInitialized(CoarseTimePoint time_point);
 
 } // namespace yb
-
-#endif /* YB_UTIL_MONOTIME_H */

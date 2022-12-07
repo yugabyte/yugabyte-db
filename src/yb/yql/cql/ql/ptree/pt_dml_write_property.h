@@ -168,4 +168,3 @@ struct Options {
 
 } // namespace ql
 } // namespace yb
-

@@ -221,4 +221,3 @@ inline Status&& MoveStatus(ScopedRWOperationPause&& p) {
 }
 
 } // namespace yb
-

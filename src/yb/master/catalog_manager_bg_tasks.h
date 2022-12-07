@@ -81,4 +81,3 @@ class CatalogManagerBgTasks final {
 
 }  // namespace master
 }  // namespace yb
-

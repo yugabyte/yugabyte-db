@@ -344,4 +344,3 @@ inline Slice GetSliceUntil(Slice* slice, char delimiter) {
 }
 
 }  // namespace rocksdb
-

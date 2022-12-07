@@ -223,9 +223,17 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const ClientId& client_id() const;
 
-  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
-      const TabletId& tablet_id);
-  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
+
+  void RequestsFinished();
+
+  void RegisterRequest(RetryableRequestId id) {
+    retryable_request_ids_.insert(id);
+  }
+
+  void RemoveRequest(RetryableRequestId id) {
+    retryable_request_ids_.erase(id);
+  }
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
     rejection_score_source_ = rejection_score_source;
@@ -286,7 +294,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void Run() override;
 
-  std::map<PartitionKey, Status> CollectOpsErrors();
+  std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+      CollectOpsErrors();
 
   BatcherState state_ = BatcherState::kGatheringOps;
 
@@ -330,6 +339,14 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   ForceConsistentRead force_consistent_read_;
 
   RejectionScoreSourcePtr rejection_score_source_;
+
+  // Set of retryable request ids used in current batcher.
+  // When creating WriteRpc, new ids will be registered into this set.
+  // If the batcher has requests to be retried, request id is removed from current batcher
+  // and transmit to the retry batcher.
+  // At destruction of the batcher, all request ids in the set will be removed from the client
+  // running requests.
+  std::set<RetryableRequestId> retryable_request_ids_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

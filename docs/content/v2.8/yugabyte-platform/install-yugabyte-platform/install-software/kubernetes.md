@@ -15,22 +15,22 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -123,7 +123,7 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set prometheus.resources.requests.mem=6Gi
   ```
 
-- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
+- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annotations for doing this, refer to the following documentation:
 
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).

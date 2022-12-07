@@ -23,7 +23,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"

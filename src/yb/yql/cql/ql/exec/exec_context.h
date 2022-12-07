@@ -85,8 +85,8 @@ class QueryPagingState {
 
   // Load the paging state in DocDB responses.
   Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
-                                          int64_t number_of_new_rows,
-                                          bool has_nested_query);
+                                  int64_t number_of_new_rows,
+                                  bool has_nested_query);
 
   // Access functions to query_pb_.
   const std::string& table_id() const {
@@ -562,4 +562,3 @@ class ExecContext : public ProcessContextBase {
 
 }  // namespace ql
 }  // namespace yb
-

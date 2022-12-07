@@ -15,7 +15,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
@@ -359,8 +359,8 @@ $ kubectl get services --namespace yb-demo
 ```
 
 ```output
-NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
+NAME                 TYPE                 CLUSTER-IP     EXTERNAL-IP     PORT(S)                                                                                                                  AGE
 ...
-yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195    ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s
+yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195   ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s
 ...
 ```

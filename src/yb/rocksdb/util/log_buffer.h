@@ -91,4 +91,3 @@ extern void LogToBufferWithContext(
     ...);
 
 }  // namespace rocksdb
-

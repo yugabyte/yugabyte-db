@@ -19,7 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
@@ -53,8 +53,6 @@ class TabletRpc {
 
   // attempt_num starts with 1.
   virtual void SendRpcToTserver(int attempt_num) = 0;
-
-  virtual bool ShouldRetryExpiredRequest() { return false; }
 
  protected:
   ~TabletRpc() {}
@@ -113,7 +111,7 @@ class TabletInvoker {
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
   Status FailToNewReplica(const Status& reason,
-                                  const tserver::TabletServerErrorPB* error_code = nullptr);
+                          const tserver::TabletServerErrorPB* error_code = nullptr);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
@@ -192,4 +190,3 @@ HybridTime GetPropagatedHybridTime(const Response& response) {
 } // namespace internal
 } // namespace client
 } // namespace yb
-

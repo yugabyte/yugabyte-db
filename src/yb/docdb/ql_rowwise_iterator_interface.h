@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "boost/function/function_fwd.hpp"
+
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -27,6 +29,9 @@ class Slice;
 
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(ContinueScan);
+using YQLScanCallback = boost::function<Result<ContinueScan>(const QLTableRow& row)>;
+
 class YQLRowwiseIteratorIf {
  public:
   typedef std::unique_ptr<YQLRowwiseIteratorIf> UniPtr;
@@ -36,7 +41,7 @@ class YQLRowwiseIteratorIf {
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual Result<bool> HasNext() const = 0;
+  virtual Result<bool> HasNext() = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;
@@ -61,7 +66,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;
@@ -77,10 +82,14 @@ class YQLRowwiseIteratorIf {
 
   Status NextRow(QLTableRow* table_row);
 
+  // Iterates over the rows until --
+  //  - callback fails or returns false.
+  //  - Iterator reaches end of iteration.
+  virtual Status Iterate(const YQLScanCallback& callback);
+
  private:
   virtual Status DoNextRow(const Schema& projection, QLTableRow* table_row) = 0;
 };
 
 }  // namespace docdb
 }  // namespace yb
-

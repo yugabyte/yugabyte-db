@@ -301,4 +301,3 @@ class CowWriteLock {
 };
 
 } // namespace yb
-

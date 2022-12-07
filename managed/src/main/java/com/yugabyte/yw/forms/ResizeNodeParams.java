@@ -229,15 +229,10 @@ public class ResizeNodeParams extends UpgradeTaskParams {
                 + " got "
                 + newDeviceInfo.volumeSize);
       }
-      // If numVolumes is specified in the newUserIntent,
-      // make sure it is the same as the current value.
-      if (newDeviceInfo.numVolumes != null
-          && !newDeviceInfo.numVolumes.equals(currentDeviceInfo.numVolumes)) {
-        errorConsumer.accept(
-            "Number of volumes cannot be changed. It was "
-                + currentDeviceInfo.numVolumes
-                + " got "
-                + newDeviceInfo.numVolumes);
+      DeviceInfo newDeviceInfoCloned = newDeviceInfo.clone();
+      newDeviceInfoCloned.volumeSize = currDiskSize;
+      if (!newDeviceInfoCloned.equals(currentDeviceInfo)) {
+        errorConsumer.accept("Only volume size should be changed to do smart resize");
       }
       return !Objects.equals(currDiskSize, newDeviceInfo.volumeSize);
     }

@@ -84,13 +84,13 @@ struct ParsedRequestHeader {
 //      parsed_main_message pointing to offset in original buffer containing
 //      the main payload.
 Status ParseYBMessage(const Slice& buf,
-                              google::protobuf::MessageLite* parsed_header,
-                              Slice* parsed_main_message);
+                      google::protobuf::MessageLite* parsed_header,
+                      Slice* parsed_main_message);
 
 
 Status ParseYBMessage(const Slice& buf,
-                              ParsedRequestHeader* parsed_header,
-                              Slice* parsed_main_message);
+                      ParsedRequestHeader* parsed_header,
+                      Slice* parsed_main_message);
 
 struct ParsedRemoteMethod {
   Slice service;
@@ -101,4 +101,3 @@ Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 
 }  // namespace rpc
 }  // namespace yb
-

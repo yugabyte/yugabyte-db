@@ -32,4 +32,3 @@ using StatementBatch = std::vector<std::pair<std::reference_wrapper<const ParseT
 
 }  // namespace ql
 }  // namespace yb
-

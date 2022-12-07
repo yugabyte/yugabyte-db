@@ -745,4 +745,3 @@ class Variant {
 };
 
 }  // namespace yb
-

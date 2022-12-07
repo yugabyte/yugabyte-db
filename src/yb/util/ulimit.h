@@ -50,4 +50,3 @@ struct ResourceLimits {
 };
 
 } // namespace yb
-

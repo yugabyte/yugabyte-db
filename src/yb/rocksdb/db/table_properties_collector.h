@@ -150,4 +150,3 @@ class UserKeyTablePropertiesCollectorFactory
 };
 
 }  // namespace rocksdb
-

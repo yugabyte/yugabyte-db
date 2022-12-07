@@ -44,4 +44,3 @@ class PgTruncateColocated : public PgDmlWrite {
 
 }  // namespace pggate
 }  // namespace yb
-

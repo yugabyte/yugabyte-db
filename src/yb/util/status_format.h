@@ -114,4 +114,3 @@
       return STATUS_FORMAT(status_type, __VA_ARGS__); \
     } \
   } while (0)
-

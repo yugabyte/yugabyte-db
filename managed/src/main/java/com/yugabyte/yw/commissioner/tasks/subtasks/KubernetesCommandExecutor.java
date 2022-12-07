@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -347,6 +348,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               isMultiAz,
               nodePrefix,
               azName,
+              // TODO(bhavin192): it is not guaranteed that the config
+              // we get here is an azConfig.
               config,
               u.getUniverseDetails().useNewHelmNamingStyle,
               taskParams().isReadOnlyCluster);
@@ -406,12 +409,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             String helmFullNameWithSuffix = podVals.get("helmFullNameWithSuffix").asText();
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
+            String podAddressTemplate =
+                AvailabilityZone.get(azUUID)
+                    .getUnmaskedConfig()
+                    .getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
                   PlacementInfoUtil.formatPodAddress(
-                      provider.getK8sPodAddrTemplate(),
+                      podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-masters",
                       namespace,
@@ -421,7 +428,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
                   PlacementInfoUtil.formatPodAddress(
-                      provider.getK8sPodAddrTemplate(),
+                      podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-tservers",
                       namespace,
@@ -433,6 +440,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
+            nodeDetail.cloudInfo.instance_type =
+                taskParams().isReadOnlyCluster
+                    ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
+                    : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
@@ -914,9 +925,29 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         HelmUtils.mergeYaml(overrides, annotations);
       }
     }
-    if (taskParams().universeOverrides != null)
-      HelmUtils.mergeYaml(overrides, taskParams().universeOverrides);
-    if (taskParams().azOverrides != null) HelmUtils.mergeYaml(overrides, taskParams().azOverrides);
+    ObjectMapper mapper = new ObjectMapper();
+    String universeOverridesString = "", azOverridesString = "";
+    try {
+      if (taskParams().universeOverrides != null) {
+        universeOverridesString = mapper.writeValueAsString(taskParams().universeOverrides);
+        Map<String, Object> universeOverrides =
+            mapper.readValue(universeOverridesString, Map.class);
+        HelmUtils.mergeYaml(overrides, universeOverrides);
+      }
+      if (taskParams().azOverrides != null) {
+        azOverridesString = mapper.writeValueAsString(taskParams().azOverrides);
+        Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
+        HelmUtils.mergeYaml(overrides, azOverrides);
+      }
+    } catch (IOException e) {
+      log.error(
+          String.format(
+              "Error in writing overrides map to string or string to map: "
+                  + "universe overrides: %s, azOverrides: %s",
+              taskParams().universeOverrides, taskParams().azOverrides),
+          e);
+      throw new RuntimeException("Error in writing overrides map to string.");
+    }
     // TODO gflags which have precedence over helm overrides should be merged here.
 
     validateOverrides(overrides);
@@ -928,7 +959,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (helmLegacy) {
       overrides.put("helm2Legacy", helmLegacy);
       Map<String, String> serviceToIP = getClusterIpForLoadBalancer();
-      ObjectMapper mapper = new ObjectMapper();
       ArrayList<Object> serviceEndpoints = (ArrayList) overrides.get("serviceEndpoints");
       for (Object serviceEndpoint : serviceEndpoints) {
         Map<String, Object> endpoint = mapper.convertValue(serviceEndpoint, Map.class);

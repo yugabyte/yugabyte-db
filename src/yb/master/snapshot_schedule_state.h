@@ -124,4 +124,3 @@ class SnapshotScheduleState {
 
 } // namespace master
 } // namespace yb
-

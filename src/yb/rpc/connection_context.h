@@ -135,4 +135,3 @@ std::shared_ptr<ConnectionContextFactory> CreateConnectionContextFactory(Args&&.
 
 } // namespace rpc
 } // namespace yb
-

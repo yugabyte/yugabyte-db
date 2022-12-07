@@ -42,4 +42,3 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
 
 }  // namespace pggate
 }  // namespace yb
-

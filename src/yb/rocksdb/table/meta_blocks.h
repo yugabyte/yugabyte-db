@@ -148,4 +148,3 @@ Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      BlockContents* contents);
 
 }  // namespace rocksdb
-

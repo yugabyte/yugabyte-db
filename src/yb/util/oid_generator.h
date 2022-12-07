@@ -39,4 +39,3 @@ namespace yb {
 std::string GenerateObjectId(bool binary_id = false);
 
 } // namespace yb
-

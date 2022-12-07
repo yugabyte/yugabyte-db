@@ -425,4 +425,3 @@ std::shared_ptr<Statistics> CreateDBStatistics(
 std::shared_ptr<Statistics> CreateDBStatisticsForTests(bool for_intents = false);
 
 }  // namespace rocksdb
-

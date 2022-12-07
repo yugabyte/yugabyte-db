@@ -230,4 +230,3 @@ class YBTableCreator {
 
 } // namespace client
 } // namespace yb
-

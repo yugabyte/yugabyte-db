@@ -25,7 +25,7 @@ $ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/
 
 ## Configure
 
-- Run the **post_install.sh** script to make some final updates to the installed software.
+Run the **post_install.sh** script to make some final updates to the installed software.
 
 ```sh
 $ ./bin/post_install.sh

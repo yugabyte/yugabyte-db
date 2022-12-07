@@ -86,4 +86,3 @@ class BFOperator {
 
 } // namespace bfpg
 } // namespace yb
-

@@ -256,4 +256,3 @@ inline bool BloomFilter::MayContainKey(const BloomKeyProbe &probe) const {
 }
 
 } // namespace yb
-

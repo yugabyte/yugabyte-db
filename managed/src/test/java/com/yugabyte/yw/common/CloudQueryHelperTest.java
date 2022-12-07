@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -81,7 +80,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       case machine_image:
         return cloudQueryHelper.queryImage(regionUUID, "yb-image");
       default:
-        return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
+        return cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
     }
   }
 

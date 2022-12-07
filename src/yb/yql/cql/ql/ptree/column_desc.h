@@ -116,4 +116,3 @@ class ColumnDesc {
 
 }  // namespace ql
 }  // namespace yb
-

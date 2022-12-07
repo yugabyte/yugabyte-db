@@ -18,12 +18,15 @@ To review activity for your entire cloud, use the [**Activity** tab](../../cloud
 
 ![Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
 
+To view cluster activity details, click the activity in the list to display the **Activity Details** sheet.
+
 ## Logged activity
 
 The following table lists the cluster activity that is logged.
 
 | Source | Activity |
-| --- | --- |
+| :----- | :------- |
 | Cluster | Create cluster<br>Edit cluster<br>Upgrade cluster<br>Pause cluster<br>Resume cluster |
+| Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | Allow List | Edit IP Allow Lists |
 <!-- | Backup | Create backup<br>Delete backup<br>Restore backup | -->

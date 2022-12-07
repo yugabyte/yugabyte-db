@@ -32,4 +32,3 @@ class YQLEmptyVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-

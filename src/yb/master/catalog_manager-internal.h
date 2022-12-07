@@ -83,4 +83,3 @@ Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
 
 }  // namespace master
 }  // namespace yb
-

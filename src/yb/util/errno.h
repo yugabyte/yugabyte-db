@@ -97,4 +97,3 @@ Status StatusFromErrnoIfNonZero(const std::string& context, int rv, const char* 
     RETURN_NOT_OK(STATUS_FROM_ERRNO_RV_FN_CALL(__VA_ARGS__))
 
 } // namespace yb
-

@@ -219,4 +219,3 @@ inline std::string Substitute(
 }
 
 }  // namespace strings
-

@@ -2,7 +2,7 @@
 title: YugabyteDB Managed
 headerTitle: YugabyteDB Managed
 linkTitle: YugabyteDB Managed
-description: Fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
+headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
   - /preview/yugabyte-cloud/cloud-overview
   - /preview/deploy/yugabyte-cloud/
@@ -11,7 +11,9 @@ menu:
     identifier: yugabyte-cloud
     parent: yugabytedb-managed
     weight: 1
-type: homepage
+type: indexpage
+breadcrumbDisable: true
+body_class: yb-page-style
 resourcesIntro: Quick Links
 resources:
   - title: What's New
@@ -22,23 +24,23 @@ resources:
     url: /preview/develop/build-apps/
   - title: Troubleshoot
     url: /preview/yugabyte-cloud/cloud-troubleshoot/
-body_class: yb-page-style
 ---
+
+Run YugabyteDB clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS).
 
 <div class="row cloud-laptop">
   <div class="col-12 col-md-12 col-lg-6">
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style purple" target="_blank" href="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"><span>Sign Up</span></a>
-          <span>Create a <strong>Sandbox</strong> cluster</span>
+          <span>Sign up to create a Sandbox cluster</span>
         </div>
         <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
         <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup" title="Sign Up">Sign up</a>
         <a class="text-link" href="cloud-quickstart/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
-        <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">
+        <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" alt="Yugabyte cloud" title="Yugabyte cloud" aria-hidden="true">
       </div>
     </div>
   </div>
@@ -46,14 +48,13 @@ body_class: yb-page-style
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style orange" href="cloud-basics/"><span>Deploy</span></a>
-          <span><strong>Dedicated</strong> clusters</span>
+          <span>Deploy on dedicated clusters</span>
         </div>
         <div class="body-content">Deploy single- and multi-region production clusters across multiple availability zones and regions.</div>
         <a class="text-link" href="cloud-basics/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
-        <img class="icon" src="/images/homepage/locally-laptop.png" title="Locally Laptop" aria-hidden="true">
+        <img class="icon" src="/images/homepage/locally-laptop.png" alt="Locally Laptop" title="Locally Laptop" aria-hidden="true">
       </div>
     </div>
   </div>
@@ -118,7 +119,7 @@ body_class: yb-page-style
   <div class="row">
     <h2 class="col-12">More resources</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Manage your account</div>
           <ul>
@@ -130,7 +131,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">More Information</div>
           <ul>
@@ -142,7 +143,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Support</div>
           <ul>
@@ -159,7 +160,7 @@ body_class: yb-page-style
   <div class="row">
     <h2 class="col-12">Continue learning</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Build Applications</div>
           <div class="tag-line">FROM EXAMPLES</div>
@@ -169,7 +170,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Yugabyte University</div>
           <div class="tag-line">FREE COURSES AND WORKSHOPS</div>
@@ -182,7 +183,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Yugabyte Channel</div>
           <div class="tag-line">GETTING STARTED SERIES</div>

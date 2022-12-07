@@ -71,4 +71,3 @@ class PTAlterKeyspace : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

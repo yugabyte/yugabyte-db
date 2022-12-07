@@ -49,4 +49,3 @@ uint32_t Crc32c(const void* data, size_t length);
 
 } // namespace crc
 } // namespace yb
-

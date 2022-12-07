@@ -278,4 +278,3 @@ class SemState {
 
 }  // namespace ql
 }  // namespace yb
-

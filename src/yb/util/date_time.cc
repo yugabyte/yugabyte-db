@@ -29,6 +29,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using std::locale;
 using std::vector;
@@ -49,7 +50,8 @@ using boost::posix_time::time_duration;
 using boost::posix_time::microsec_clock;
 using boost::posix_time::milliseconds;
 
-DEFINE_bool(use_icu_timezones, true, "Use the new ICU library for timezones instead of boost");
+DEFINE_UNKNOWN_bool(use_icu_timezones, true,
+    "Use the new ICU library for timezones instead of boost");
 
 namespace yb {
 

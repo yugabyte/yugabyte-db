@@ -136,4 +136,3 @@ Status CreateLoggerFromOptions(const std::string& dbname,
                                std::shared_ptr<Logger>* logger);
 
 }  // namespace rocksdb
-

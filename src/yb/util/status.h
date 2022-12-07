@@ -266,4 +266,3 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-

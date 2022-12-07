@@ -52,4 +52,3 @@ class TransactionIntentApplier {
 
 }  // namespace tablet
 }  // namespace yb
-

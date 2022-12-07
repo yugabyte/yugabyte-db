@@ -121,6 +121,9 @@ public class HookScope extends Model {
   @Column(nullable = true)
   public UUID providerUUID;
 
+  @Column(nullable = true)
+  public UUID clusterUUID;
+
   @OneToMany private Set<Hook> hooks;
 
   public Set<Hook> getHooks() {
@@ -152,12 +155,14 @@ public class HookScope extends Model {
     return hookScope;
   }
 
-  public static HookScope create(UUID customerUUID, TriggerType triggerType, Universe universe) {
+  public static HookScope create(
+      UUID customerUUID, TriggerType triggerType, Universe universe, UUID clusterUUID) {
     HookScope hookScope = new HookScope();
     hookScope.customerUUID = customerUUID;
     hookScope.triggerType = triggerType;
     hookScope.universeUUID = universe.universeUUID;
     hookScope.providerUUID = null;
+    hookScope.clusterUUID = clusterUUID;
     hookScope.save();
     return hookScope;
   }
@@ -179,7 +184,11 @@ public class HookScope extends Model {
   }
 
   public static HookScope getByTriggerScopeId(
-      UUID customerUUID, TriggerType triggerType, UUID universeUUID, UUID providerUUID) {
+      UUID customerUUID,
+      TriggerType triggerType,
+      UUID universeUUID,
+      UUID providerUUID,
+      UUID clusterUUID) {
     if (universeUUID != null && providerUUID != null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "At most one of universe UUID and provider UUID can be null");
@@ -190,6 +199,8 @@ public class HookScope extends Model {
     else findExpression = findExpression.eq("provider_uuid", providerUUID);
     if (universeUUID == null) findExpression = findExpression.isNull("universe_uuid");
     else findExpression = findExpression.eq("universe_uuid", universeUUID);
+    if (clusterUUID == null) findExpression = findExpression.isNull("cluster_uuid");
+    else findExpression = findExpression.eq("cluster_uuid", clusterUUID);
     return findExpression.findOne();
   }
 }

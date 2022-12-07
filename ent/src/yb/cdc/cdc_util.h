@@ -111,5 +111,3 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
 
 } // namespace cdc
 } // namespace yb
-
-

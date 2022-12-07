@@ -108,4 +108,3 @@ class MasterServiceBase {
 
 } // namespace master
 } // namespace yb
-

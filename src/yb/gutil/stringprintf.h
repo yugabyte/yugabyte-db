@@ -55,4 +55,3 @@ extern const int kStringPrintfVectorMaxArgs;
 // you don't know how many arguments you'll have at compile time.
 // StringPrintfVector will LOG(FATAL) if v.size() > kStringPrintfVectorMaxArgs
 extern std::string StringPrintfVector(const char* format, const std::vector<std::string>& v);
-

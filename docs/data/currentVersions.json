@@ -1,20 +1,20 @@
 {
-  "docVersions":
+  "dbVersions":
   [
     {
       "series": "v2.15",
       "display": "v2.15 (Preview)",
-      "version": "2.15.3.0",
+      "version": "2.15.3.2",
       "versionShort": "2.15.3",
-      "appVersion": "2.15.3.0-b231",
+      "appVersion": "2.15.3.2-b1",
       "alias": "preview"
     },
     {
       "series": "v2.14",
       "display": "v2.14 (Stable)",
-      "version": "2.14.4.0",
-      "versionShort": "2.14.4",
-      "appVersion": "2.14.4.0-b26",
+      "version": "2.14.5.0",
+      "versionShort": "2.14.5",
+      "appVersion": "2.14.5.0-b18",
       "alias": "stable"
     },
     {
@@ -38,5 +38,8 @@
       "versionShort": "2.6.20",
       "appVersion": "2.6.20.0-b10"
     }
+  ],
+  "ybaVersions":
+  [
   ]
 }

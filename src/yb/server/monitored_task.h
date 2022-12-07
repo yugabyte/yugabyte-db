@@ -122,4 +122,3 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
 } // namespace server
 } // namespace yb
-

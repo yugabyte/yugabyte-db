@@ -40,9 +40,9 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
 
-3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br>
 
-    ![Restore backup](/images/yp/restore-entire-backup-ysql.png)<br><br>
+    ![Restore backup](/images/yp/restore-entire-backup-ysql.png)
 
 4. Complete the fields of the **Restore Backup** dialog, as follows:
 
@@ -66,11 +66,11 @@ In addition to the basic restore, an advanced option is available if you have mo
 
 To perform this type of restore, click **... > Advanced Restore**, as per the following illustration:
 
-![Restore advanced - YSQL](/images/yp/restore-backup-advanced-ysql.png)<br>
+![Restore advanced - YSQL](/images/yp/restore-backup-advanced-ysql.png)
 
 To proceed, complete the fields of the **Advanced Restore** dialog shown in the following illustration:
 
-![Restore advanced - YSQL](/images/yp/restore-advanced-ysql.png)<br>
+![Restore advanced - YSQL](/images/yp/restore-advanced-ysql.png)
 
 - Select YSQL as the type of API.
 
@@ -90,6 +90,6 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 <br>You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
-![Backups](/images/yp/backups-list.png)<br>
+![Backups](/images/yp/backups-list.png)
 
 By clicking on a specific universe included in the list, you can access the backup details and trigger a restore.

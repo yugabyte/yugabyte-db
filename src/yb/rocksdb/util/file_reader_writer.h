@@ -27,7 +27,7 @@
 
 #include <string>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
@@ -207,4 +207,3 @@ extern Status NewWritableFile(Env* env, const std::string& fname,
                               std::unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
 }  // namespace rocksdb
-

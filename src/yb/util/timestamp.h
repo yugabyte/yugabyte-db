@@ -81,4 +81,3 @@ inline std::ostream &operator <<(std::ostream &o, const Timestamp &timestamp) {
 }
 
 } // namespace yb
-

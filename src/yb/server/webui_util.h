@@ -55,4 +55,3 @@ inline std::string TableLongName(const std::string& keyspace_name,
 
 } // namespace server
 } // namespace yb
-

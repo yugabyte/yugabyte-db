@@ -50,7 +50,7 @@
 
 using std::string;
 
-DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
+DEFINE_UNKNOWN_int32(cdc_consumer_handler_thread_pool_size, 0,
              "Override the max thread pool size for CDCConsumerHandler, which is used by "
              "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
              "cpus on the system).");
@@ -92,7 +92,12 @@ CDCClient::~CDCClient() {
 }
 
 void CDCClient::Shutdown() {
-  client->Shutdown();
+  if (client) {
+    client->Shutdown();
+  }
+  if (messenger) {
+    messenger->Shutdown();
+  }
 }
 
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
@@ -155,6 +160,8 @@ CDCConsumer::CDCConsumer(
 
 CDCConsumer::~CDCConsumer() {
   Shutdown();
+  SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
+  DCHECK(producer_pollers_map_.empty());
 }
 
 void CDCConsumer::Shutdown() {
@@ -169,6 +176,8 @@ void CDCConsumer::Shutdown() {
     thread_pool_->Shutdown();
   }
 
+  // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
+  std::vector<std::shared_ptr<CDCPoller>> pollers_to_shutdown;
   {
     std::lock_guard<rw_spinlock> write_lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
@@ -180,13 +189,19 @@ void CDCConsumer::Shutdown() {
         uuid_and_client.second->Shutdown();
       }
 
-      // Shutdown the pollers and output clients.
+      // Fetch all the pollers.
+      pollers_to_shutdown.reserve(pollers_to_shutdown.size());
       for (const auto& poller : producer_pollers_map_) {
-        poller.second->Shutdown();
+        pollers_to_shutdown.push_back(poller.second);
       }
       producer_pollers_map_.clear();
     }
     local_client_->client->Shutdown();
+  }
+
+  // Now can shutdown the pollers.
+  for (const auto& poller : pollers_to_shutdown) {
+    poller->Shutdown();
   }
 
   if (run_trigger_poll_thread_) {
@@ -244,7 +259,13 @@ std::vector<std::shared_ptr<CDCPoller>> CDCConsumer::TEST_ListPollers() {
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
 void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_registry,
-    int32_t cluster_config_version) {
+                                      int32_t cluster_config_version) {
+  {
+    std::lock_guard<std::mutex> l(should_run_mutex_);
+    if(!should_run_) {
+      return;
+    }
+  }
   std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   // Only update it if the version is newer.

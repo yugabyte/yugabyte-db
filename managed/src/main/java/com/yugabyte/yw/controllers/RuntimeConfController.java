@@ -17,8 +17,9 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
+import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
+import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -133,6 +134,15 @@ public class RuntimeConfController extends AuthenticatedController {
       notes = "List all the mutable runtime config keys")
   public Result listKeys() {
     return mutableKeysResult;
+  }
+
+  @ApiOperation(
+      value = "List mutable keys",
+      response = ConfKeyInfo.class,
+      responseContainer = "List",
+      notes = "List all the mutable runtime config keys with metadata")
+  public Result listKeyInfo() {
+    return null; // todo Inject keys map and
   }
 
   @ApiOperation(

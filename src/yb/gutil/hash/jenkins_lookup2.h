@@ -142,4 +142,3 @@ static inline uint32 Google1At(const char *ptr) {
 // TODO(user): find occurences of WORD_HASH and adjust the code to
 // use more meaningful concepts.
 # define WORD_HASH
-

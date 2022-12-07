@@ -101,4 +101,3 @@ class TestThreadHolder {
 };
 
 }  // namespace yb
-

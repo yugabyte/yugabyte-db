@@ -42,4 +42,3 @@ class PgUpdate : public PgDmlWrite {
 
 }  // namespace pggate
 }  // namespace yb
-

@@ -50,4 +50,3 @@ bool GetQLRangeBoundIsInclusive(
 
 }  // namespace docdb
 }  // namespace yb
-

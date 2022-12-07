@@ -40,4 +40,3 @@ void SetPerfLevel(PerfLevel level);
 PerfLevel GetPerfLevel();
 
 }  // namespace yb
-

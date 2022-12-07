@@ -24,4 +24,3 @@ DataType InternalToDataType(InternalType internal_type);
 std::string InternalTypeToCQLString(InternalType internal_type);
 
 } // namespace yb
-

@@ -49,4 +49,3 @@ std::unique_ptr<rpc::ServiceIf> MakeMasterReplicationService(Master* master);
 
 } // namespace master
 } // namespace yb
-

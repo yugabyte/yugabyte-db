@@ -41,4 +41,3 @@ Status Uncompress(const Slice& compressed, std::ostream* out);
 
 } // namespace zlib
 } // namespace yb
-

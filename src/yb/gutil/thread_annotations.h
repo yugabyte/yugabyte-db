@@ -155,4 +155,3 @@
 #define TS_FIXME(x) ""
 
 #define TS_CLANG_ONLY(CLANG_EXPR, GCC_EXPR) CLANG_EXPR
-

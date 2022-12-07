@@ -46,8 +46,8 @@ DocExprExecutor::DocExprExecutor() {}
 DocExprExecutor::~DocExprExecutor() {}
 
 Status DocExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                              const QLTableRow* table_row,
-                                              QLExprResultWriter result_writer) {
+                                      const QLTableRow* table_row,
+                                      QLExprResultWriter result_writer) {
   // Return NULL value if row is not provided.
   if (table_row == nullptr) {
     result_writer.SetNull();
@@ -75,9 +75,9 @@ Status DocExprExecutor::GetTupleId(QLValuePB *result) const {
 //--------------------------------------------------------------------------------------------------
 
 Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
-                                           const QLTableRow& table_row,
-                                           QLValuePB *result,
-                                           const Schema *schema) {
+                                   const QLTableRow& table_row,
+                                   QLValuePB *result,
+                                   const Schema *schema) {
   bfql::TSOpcode tsopcode = static_cast<bfql::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
     case bfql::TSOpcode::kNoOp:
@@ -198,9 +198,9 @@ Status DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 }
 
 Status DocExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                           const QLTableRow& table_row,
-                                           QLValuePB *result,
-                                           const Schema *schema) {
+                                   const QLTableRow& table_row,
+                                   QLValuePB *result,
+                                   const Schema *schema) {
   return DoEvalTSCall(ql_expr, table_row, result, schema);
 }
 
@@ -213,9 +213,9 @@ Status DocExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
 
 template <class Expr, class Res>
 Status DocExprExecutor::DoEvalTSCall(const Expr& tscall,
-                                             const QLTableRow& table_row,
-                                             Res *result,
-                                             const Schema *schema) {
+                                     const QLTableRow& table_row,
+                                     Res *result,
+                                     const Schema *schema) {
   bfpg::TSOpcode tsopcode = static_cast<bfpg::TSOpcode>(tscall.opcode());
   switch (tsopcode) {
     case bfpg::TSOpcode::kCount: {
@@ -509,9 +509,9 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
 } // namespace
 
 Status DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
-                                                     const QLTableRow& table_row,
-                                                     QLValuePB *result,
-                                                     const Schema *schema) {
+                                             const QLTableRow& table_row,
+                                             QLValuePB *result,
+                                             const Schema *schema) {
   QLExprResult val;
   RETURN_NOT_OK(EvalExpr(operand, table_row, val.Writer(), schema));
 

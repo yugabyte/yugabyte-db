@@ -182,6 +182,7 @@ set(TSERVER_SRCS
   pg_client_session.cc
   pg_create_table.cc
   pg_table_cache.cc
+  pg_response_cache.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc
@@ -243,14 +244,21 @@ ADD_YB_LIBRARY(yb-tserver_util
 # yb-tserver
 #########################################
 
-add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}" tablet_server_main.cc)
-target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}"
-  tserver
-  yb-tserver_util
-  yb-cql
-  yb-redis
-  yb_pgwrapper
-  ${YB_BASE_LIBS})
+set(TSERVER_MAIN_DEPS
+    tserver
+    yb-tserver_util
+    yb-cql
+    yb-redis
+    yb_pgwrapper
+    ${YB_BASE_LIBS})
+
+ADD_YB_LIBRARY(tserver_main_impl
+  SRCS tablet_server_main_impl.cc
+  DEPS ${TSERVER_MAIN_DEPS})
+
+add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}"
+               tablet_server_main.cc)
+target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}" tserver_main_impl)
 
 #########################################
 # Generate tserver_flags.xml

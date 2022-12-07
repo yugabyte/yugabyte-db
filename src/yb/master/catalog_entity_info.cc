@@ -307,9 +307,11 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // ================================================================================================
 
 TableInfo::TableInfo(TableId table_id,
+                     bool colocated,
                      scoped_refptr<TasksTracker> tasks_tracker)
     : table_id_(std::move(table_id)),
-      tasks_tracker_(tasks_tracker) {
+      tasks_tracker_(tasks_tracker),
+      colocated_(colocated) {
 }
 
 TableInfo::~TableInfo() {
@@ -368,10 +370,6 @@ bool TableInfo::has_pg_type_oid() const {
     }
   }
   return true;
-}
-
-bool TableInfo::colocated() const {
-  return LockForRead()->pb.colocated();
 }
 
 std::string TableInfo::matview_pg_table_id() const {

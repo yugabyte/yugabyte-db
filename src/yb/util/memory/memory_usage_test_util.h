@@ -39,4 +39,3 @@ const auto kMemoryAllocationAccuracyHighLimit = 1.15;
 const auto kDynamicMemoryUsageAccuracyLowLimit = 0.95;
 
 }  // namespace yb
-

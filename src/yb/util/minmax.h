@@ -35,4 +35,3 @@ struct MinMaxTracker {
   T min = T();
   T max = T();
 };
-

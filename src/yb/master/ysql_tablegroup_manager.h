@@ -109,4 +109,3 @@ class YsqlTablegroupManager {
 
 } // namespace master
 } // namespace yb
-

@@ -40,7 +40,6 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
@@ -52,10 +51,10 @@
 
 using std::string;
 
-DEFINE_string(fs_data_dirs, "",
+DEFINE_UNKNOWN_string(fs_data_dirs, "",
               "Comma-separated list of data directories. This argument must be specified.");
 TAG_FLAG(fs_data_dirs, stable);
-DEFINE_bool(stop_on_parent_termination, false,
+DEFINE_UNKNOWN_bool(stop_on_parent_termination, false,
             "When specified, this process will terminate when parent process terminates."
             "Linux-only.");
 

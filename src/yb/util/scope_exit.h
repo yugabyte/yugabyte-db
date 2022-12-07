@@ -54,4 +54,3 @@ ScopeExitLambda<typename std::remove_reference<F>::type> ScopeExit(F&& f) {
 }
 
 } // namespace yb
-

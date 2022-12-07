@@ -14,6 +14,7 @@ CREATE TABLE bar(b INT);
 ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
 CREATE TABLE table_other(a int, b int);
 CREATE INDEX index_table_other ON table_other(a);
+CREATE USER regress_alter_table_user1;
 SET SESSION AUTHORIZATION yb_db_admin;
 ALTER TABLE table_other RENAME to table_new;
 ALTER TABLE table_new OWNER TO regress_alter_table_user1;
@@ -28,6 +29,7 @@ RESET SESSION AUTHORIZATION;
 DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLE table_new;
+DROP USER regress_alter_table_user1;
 
 ---
 --- Verify alter table which requires table rewrite

@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import kamon.instrumentation.play.GuiceModule;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import play.Application;
@@ -31,7 +32,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.test.WithApplication;
 
 @RunWith(JUnitParamsRunner.class)
-public class YsqlQueryExecutorTest extends WithApplication {
+public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   protected Config mockRuntimeConfig;
   protected NodeUniverseManager mockNodeUniverseManager;

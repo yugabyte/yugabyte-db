@@ -97,4 +97,3 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
 }  // namespace tserver
 }  // namespace yb
-

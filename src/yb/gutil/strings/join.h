@@ -363,4 +363,3 @@ inline std::string JoinInts(const CONTAINER& components,
                        const char* delim) {
   return JoinElements(components, delim);
 }
-

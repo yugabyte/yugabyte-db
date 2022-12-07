@@ -62,4 +62,3 @@ class MultiDriveTestEnv : public EnvWrapper, public MultiDriveTestEnvBase {
 };
 
 } // namespace yb
-

@@ -89,4 +89,3 @@ void EscapeForHtml(const std::string& in, std::stringstream* out);
 std::string EscapeForHtmlToString(const std::string& in);
 
 } // namespace yb
-

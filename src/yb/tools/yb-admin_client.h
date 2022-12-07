@@ -160,14 +160,14 @@ class ClusterAdminClient {
 
   // List all the tables.
   Status ListTables(bool include_db_type,
-                            bool include_table_id,
-                            bool include_table_type);
+                    bool include_table_id,
+                    bool include_table_type);
 
   // List all tablets of this table
   Status ListTablets(const client::YBTableName& table_name,
-                             int max_tablets,
-                             bool json,
-                             bool followers);
+                     int max_tablets,
+                     bool json,
+                     bool followers);
 
   // Per Tablet list of all tablet servers
   Status ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -225,37 +225,37 @@ class ClusterAdminClient {
   Status DropRedisTable();
 
   Status FlushTables(const std::vector<client::YBTableName>& table_names,
-                             bool add_indexes,
-                             int timeout_secs,
-                             bool is_compaction);
+                     bool add_indexes,
+                     int timeout_secs,
+                     bool is_compaction);
 
   Status FlushTablesById(const std::vector<TableId>& table_id,
-                                 bool add_indexes,
-                                 int timeout_secs,
-                                 bool is_compaction);
+                         bool add_indexes,
+                         int timeout_secs,
+                         bool is_compaction);
 
   Status FlushSysCatalog();
 
   Status CompactSysCatalog();
 
   Status ModifyTablePlacementInfo(const client::YBTableName& table_name,
-                                          const std::string& placement_info,
-                                          int replication_factor,
-                                          const std::string& optional_uuid);
+                                  const std::string& placement_info,
+                                  int replication_factor,
+                                  const std::string& optional_uuid);
 
   Status ModifyPlacementInfo(std::string placement_infos,
-                                     int replication_factor,
-                                     const std::string& optional_uuid);
+                             int replication_factor,
+                             const std::string& optional_uuid);
 
   Status ClearPlacementInfo();
 
   Status AddReadReplicaPlacementInfo(const std::string& placement_info,
-                                             int replication_factor,
-                                             const std::string& optional_uuid);
+                                     int replication_factor,
+                                     const std::string& optional_uuid);
 
   Status ModifyReadReplicaPlacementInfo(const std::string& placement_uuid,
-                                                const std::string& placement_info,
-                                                int replication_factor);
+                                        const std::string& placement_info,
+                                        int replication_factor);
 
   Status DeleteReadReplicaPlacementInfo();
 
@@ -307,7 +307,7 @@ class ClusterAdminClient {
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,
-                                    master::TabletLocationsPB* locations);
+                            master::TabletLocationsPB* locations);
 
   // Fetch information about the location of a tablet peer from the leader master.
   Status GetTabletPeer(
@@ -454,4 +454,3 @@ std::string HybridTimeToString(HybridTime ht);
 
 }  // namespace tools
 }  // namespace yb
-

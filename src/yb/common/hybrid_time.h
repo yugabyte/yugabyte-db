@@ -284,4 +284,3 @@ inline HybridTime operator "" _usec_ht(unsigned long long microseconds) { // NOL
 using hybrid_time_literals::operator"" _usec_ht;
 
 }  // namespace yb
-

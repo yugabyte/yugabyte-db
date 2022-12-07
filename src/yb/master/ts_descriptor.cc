@@ -45,10 +45,10 @@
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
-DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
+DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
              "tablet server before considering it unresponsive. Unresponsive servers are not "
              "selected when assigning replicas during table creation or re-replication.");

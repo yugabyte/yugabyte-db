@@ -151,4 +151,3 @@ class ClientMasterRpc : public ClientMasterRpcBase {
 } // namespace internal
 } // namespace client
 } // namespace yb
-

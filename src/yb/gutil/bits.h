@@ -262,4 +262,3 @@ inline bool Bits::BytesAllInRange(T bytes, uint8 lo, uint8 hi) {
   return !Bits::BytesContainByteLessThan(bytes + (255 - hi) * l,
                                          lo + (255 - hi));
 }
-

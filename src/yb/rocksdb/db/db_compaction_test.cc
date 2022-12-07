@@ -48,7 +48,6 @@ using namespace std::literals;
 namespace rocksdb {
 
 // SYNC_POINT is not supported in released Windows mode.
-#if !defined(ROCKSDB_LITE)
 
 class DBCompactionTest : public DBTestBase {
  public:
@@ -2955,16 +2954,11 @@ INSTANTIATE_TEST_CASE_P(
                       CompactionPri::kOldestSmallestSeqFirst,
                       CompactionPri::kMinOverlappingRatio));
 
-#endif // !defined(ROCKSDB_LITE)
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
-#if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
-#else
-  return 0;
-#endif
 }

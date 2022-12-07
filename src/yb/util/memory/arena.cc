@@ -39,7 +39,7 @@
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 using std::copy;
 using std::max;
@@ -49,7 +49,7 @@ using std::shared_ptr;
 using std::sort;
 using std::swap;
 
-DEFINE_uint64(arena_warn_threshold_bytes, 256*1024*1024,
+DEFINE_UNKNOWN_uint64(arena_warn_threshold_bytes, 256*1024*1024,
              "Number of bytes beyond which to emit a warning for a large arena");
 TAG_FLAG(arena_warn_threshold_bytes, hidden);
 

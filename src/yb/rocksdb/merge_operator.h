@@ -198,4 +198,3 @@ class AssociativeMergeOperator : public MergeOperator {
 };
 
 }  // namespace rocksdb
-

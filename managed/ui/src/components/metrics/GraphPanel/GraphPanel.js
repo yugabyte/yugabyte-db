@@ -3,8 +3,11 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
+
+import {
+  MetricConsts,
+} from '../../metrics/constants';
 import { MetricsPanelOld } from '../../metrics';
-import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import {
   isNonEmptyObject,
@@ -15,6 +18,8 @@ import {
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { YUGABYTE_TITLE } from '../../../config';
+
+import './GraphPanel.scss';
 
 export const graphPanelTypes = {
   universe: {
@@ -175,7 +180,9 @@ export const panelTypes = {
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
-      'docdb_transaction_pool_cache'
+      'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   ysql_ops: {
@@ -391,11 +398,11 @@ class GraphPanel extends Component {
           })
           .filter(Boolean);
       }
-      const invalidPanelType =
-        selectedUniverse && isKubernetesUniverse(selectedUniverse)
-          ? panelTypes[type]?.title === 'Node'
-          : panelTypes[type]?.title === 'Container';
-      if (invalidPanelType) {
+      const isInvalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        ? panelTypes[type]?.title === 'Node'
+        : panelTypes[type]?.title === 'Container';
+
+      if (selectedUniverse !== MetricConsts.ALL && isInvalidPanelType) {
         return null;
       }
 

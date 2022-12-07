@@ -160,4 +160,3 @@ class BASE_EXPORT RefCountedMallocedMemory : public RefCountedMemory {
 };
 
 }  // namespace yb
-

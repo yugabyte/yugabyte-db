@@ -95,4 +95,3 @@ typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 
 }  // namespace docdb
 }  // namespace yb
-

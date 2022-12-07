@@ -353,4 +353,3 @@ class LogFatalHandlerSink : public google::LogSink {
 #define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (yb::ToString(expr))
 
 } // namespace yb
-

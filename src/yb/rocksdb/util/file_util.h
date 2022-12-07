@@ -41,4 +41,3 @@ Status DeleteSSTFile(
     const DBOptions* db_options, const std::string& fname, uint32_t path_id);
 
 }  // namespace rocksdb
-

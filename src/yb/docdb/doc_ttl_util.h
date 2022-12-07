@@ -65,4 +65,3 @@ static const HybridTime kNoExpiration(HybridTime::kMax);
 
 }  // namespace docdb
 }  // namespace yb
-

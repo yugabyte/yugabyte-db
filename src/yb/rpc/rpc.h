@@ -373,4 +373,3 @@ WrappedRpcFuture<Value, Functor> WrapRpcFuture(const Functor& functor, Rpcs* rpc
 
 } // namespace rpc
 } // namespace yb
-

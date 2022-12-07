@@ -90,6 +90,7 @@ public class SwamperTargetsFileUpdater {
     try {
       swamperHelper.writeUniverseTargetJson(universe);
       universe.updateSwamperConfigWritten(true);
+      universe.save();
       SWAMPER_TARGET_FILE_UPDATED_UNIVERSES_COUNTER.inc();
     } catch (Exception e) {
       log.error("Error syncing swamper target files for universe " + universe.getUniverseUUID(), e);

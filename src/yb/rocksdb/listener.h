@@ -27,6 +27,8 @@
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table_properties.h"
 
+#include "yb/util/enums.h"
+
 namespace rocksdb {
 
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
@@ -54,29 +56,33 @@ struct TableFileCreationInfo {
   TableProperties table_properties;
 };
 
-enum class CompactionReason {
-  kUnknown,
+YB_DEFINE_ENUM(CompactionReason,
+  (kUnknown)
   // [Level] number of L0 files > level0_file_num_compaction_trigger
-  kLevelL0FilesNum,
+  (kLevelL0FilesNum)
   // [Level] total size of level > MaxBytesForLevel()
-  kLevelMaxLevelSize,
+  (kLevelMaxLevelSize)
   // [Universal] Compacting for size amplification
-  kUniversalSizeAmplification,
+  (kUniversalSizeAmplification)
   // [Universal] Compacting for size ratio
-  kUniversalSizeRatio,
+  (kUniversalSizeRatio)
   // [Universal] number of sorted runs > level0_file_num_compaction_trigger
-  kUniversalSortedRunNum,
+  (kUniversalSortedRunNum)
   // [Universal] files have been marked for direct deletion
-  kUniversalDirectDeletion,
+  (kUniversalDirectDeletion)
   // [FIFO] total size > max_table_files_size
-  kFIFOMaxSize,
-  // Manual compaction
-  kManualCompaction,
+  (kFIFOMaxSize)
+  // Unknown manual compaction
+  (kManualCompaction)
   // DB::SuggestCompactRange() marked files for compaction
-  kFilesMarkedForCompaction,
-};
+  (kFilesMarkedForCompaction)
+  // Admin-triggered full compaction
+  (kAdminCompaction)
+  // Scheduled full compaction
+  (kScheduledFullCompaction)
+  // Post-split compaction
+  (kPostSplitCompaction));
 
-#ifndef ROCKSDB_LITE
 
 struct TableFileDeletionInfo {
   // The name of the database where the file was deleted.
@@ -250,12 +256,5 @@ class EventListener {
   virtual ~EventListener() {}
 };
 
-#else
-
-class EventListener {
-};
-
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
-

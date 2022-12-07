@@ -126,4 +126,3 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
 }  // namespace consensus
 }  // namespace yb
-

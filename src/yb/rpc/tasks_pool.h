@@ -90,4 +90,3 @@ class TasksPool {
 
 } // namespace rpc
 } // namespace yb
-

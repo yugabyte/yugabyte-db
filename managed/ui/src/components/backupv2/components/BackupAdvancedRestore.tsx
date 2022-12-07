@@ -148,9 +148,9 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-        return { value: config.metadata.configUUID, label: labelName };
-      })
+      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+      return { value: config.metadata.configUUID, label: labelName };
+    })
     : [];
 
   const groupedStorageConfigs = useMemo(() => {
@@ -183,11 +183,11 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     keyspaces:
       currentStep === 1
         ? Yup.array(
-            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-              message: 'Invalid keyspace name',
-              excludeEmptyString: true
-            })
-          )
+          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+            message: 'Invalid keyspace name',
+            excludeEmptyString: true
+          })
+        )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(
@@ -213,17 +213,19 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
     const backup: Partial<IBackup & Record<string, any>> = {
       backupType: (values['api_type'].value as unknown) as TableType,
-      storageConfigUUID: values['storage_config'].value,
-      sse: values['storage_config'].name === 'S3',
-      responseList: [
-        {
-          keyspace: values['should_rename_keyspace']
-            ? values['new_keyspace_name']
-            : values['keyspace_name'],
-          tablesList: [],
-          storageLocation: values['backup_location']
-        }
-      ]
+      commonBackupInfo: {
+        storageConfigUUID: values['storage_config'].value,
+        sse: values['storage_config'].name === 'S3',
+        responseList: [
+          {
+            keyspace: values['should_rename_keyspace']
+              ? values['new_keyspace_name']
+              : values['keyspace_name'],
+            tablesList: [],
+            storageLocation: values['backup_location']
+          }
+        ]
+      } as any
     };
     restore.mutateAsync({ backup_details: backup as any, values });
   };

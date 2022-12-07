@@ -169,4 +169,3 @@ class HumanReadableElapsedTime {
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableElapsedTime);
 };
-

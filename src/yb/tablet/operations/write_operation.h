@@ -103,4 +103,3 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
 }  // namespace tablet
 }  // namespace yb
-

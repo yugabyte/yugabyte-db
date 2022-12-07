@@ -81,4 +81,3 @@ class CharSet {
 };
 
 }  // namespace strings
-

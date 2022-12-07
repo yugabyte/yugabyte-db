@@ -113,4 +113,3 @@ class DocDBTableReader {
 
 }  // namespace docdb
 }  // namespace yb
-

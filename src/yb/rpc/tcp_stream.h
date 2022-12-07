@@ -28,7 +28,7 @@ class Counter;
 namespace rpc {
 
 struct TcpStreamSendingData {
-  typedef boost::container::small_vector<RefCntBuffer, 4> SendingBytes;
+  typedef boost::container::small_vector<RefCntSlice, 4> SendingBytes;
 
   TcpStreamSendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker);
 
@@ -156,4 +156,3 @@ class TcpStream : public Stream {
 
 } // namespace rpc
 } // namespace yb
-

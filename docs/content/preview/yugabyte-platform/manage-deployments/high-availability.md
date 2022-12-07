@@ -40,7 +40,7 @@ You can configure the active instance as follows:
 
 1. Navigate to **Admin** and make sure that **High Availability > Replication Configuration > Active** is selected, as per the following illustration:
 
-    ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)<br><br>
+    ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)<br>
 
 1. Enter the instance’s IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
@@ -72,9 +72,9 @@ For information on how to export peer certificates on Google Chrome, see [Get CA
 
 Once the active instance has been configured, you can configure one or more standby instances by repeating the following steps for each standby instance you wish to add to the high-availability cluster:
 
-1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:<br><br>
+1. Navigate to **Admin > High Availability > Replication Configuration** and select **Standby**, as per the following illustration:<br>
 
-    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)<br><br>
+    ![Standby instance type](/images/yp/high-availability/standby-configuration.png)<br>
 
 1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. 
 

@@ -62,4 +62,3 @@ T fit_bounds(const T& value, const T& min, const T& max) {
 }
 
 }  // namespace yb
-

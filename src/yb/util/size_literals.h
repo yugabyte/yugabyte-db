@@ -39,4 +39,3 @@ using size_literals::operator"" _MB;
 using size_literals::operator"" _GB;
 
 } // namespace yb
-

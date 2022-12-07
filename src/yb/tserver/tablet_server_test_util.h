@@ -60,4 +60,3 @@ void CreateTsClientProxies(const HostPort& addr,
 
 } // namespace tserver
 } // namespace yb
-

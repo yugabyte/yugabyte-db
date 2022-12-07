@@ -31,4 +31,3 @@ class CQLServerOptions : public yb::server::ServerBaseOptions {
 
 } // namespace cqlserver
 } // namespace yb
-

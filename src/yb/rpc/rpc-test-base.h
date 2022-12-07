@@ -227,4 +227,3 @@ class RpcTestBase : public YBTest {
 
 } // namespace rpc
 } // namespace yb
-

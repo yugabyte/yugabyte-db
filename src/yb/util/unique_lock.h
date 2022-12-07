@@ -96,4 +96,3 @@ std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
 #endif
 
 } // namespace yb
-

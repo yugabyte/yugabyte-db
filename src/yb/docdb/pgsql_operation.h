@@ -21,6 +21,8 @@
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/util/write_buffer.h"
+
 namespace yb {
 
 class IndexInfo;
@@ -29,16 +31,20 @@ namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsUpsert);
 
+bool ShouldYsqlPackRow(bool has_cotable_id);
+
 class PgsqlWriteOperation :
     public DocOperationBase<DocOperationType::PGSQL_WRITE_OPERATION, PgsqlWriteRequestPB>,
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
                       DocReadContextPtr doc_read_context,
-                      const TransactionOperationContext& txn_op_context)
+                      const TransactionOperationContext& txn_op_context,
+                      rpc::Sidecars* sidecars)
       : DocOperationBase(request),
         doc_read_context_(std::move(doc_read_context)),
-        txn_op_context_(txn_op_context) {
+        txn_op_context_(txn_op_context),
+        sidecars_(sidecars) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
@@ -51,12 +57,6 @@ class PgsqlWriteOperation :
 
   const PgsqlWriteRequestPB& request() const { return request_; }
   PgsqlResponsePB* response() const { return response_; }
-
-  const faststring& result_buffer() const { return result_buffer_; }
-
-  bool result_is_single_empty_row() const {
-    return result_rows_ == 1 && result_buffer_.size() == sizeof(int64_t);
-  }
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
@@ -127,8 +127,11 @@ class PgsqlWriteOperation :
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
+  rpc::Sidecars* const sidecars_;
+
   int64_t result_rows_ = 0;
-  faststring result_buffer_;
+  WriteBufferPos row_num_pos_;
+  WriteBuffer* write_buffer_ = nullptr;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -159,7 +162,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
-                         faststring *result_buffer,
+                         WriteBuffer *result_buffer,
                          HybridTime *restart_read_ht);
 
   Status GetTupleId(QLValuePB *result) const override;
@@ -174,7 +177,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                const DocReadContext *index_doc_read_context,
-                               faststring *result_buffer,
+                               WriteBuffer *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
 
@@ -183,7 +186,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const DocReadContext& doc_read_context,
-                                    faststring *result_buffer,
+                                    WriteBuffer *result_buffer,
                                     HybridTime *restart_read_ht);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
@@ -191,27 +194,27 @@ class PgsqlReadOperation : public DocExprExecutor {
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
-                               faststring *result_buffer,
+                               WriteBuffer *result_buffer,
                                HybridTime *restart_read_ht,
                                bool *has_paging_state);
 
   Status PopulateResultSet(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+                           WriteBuffer *result_buffer);
 
   Status EvalAggregate(const QLTableRow& table_row);
 
-  Status PopulateAggregate(const QLTableRow& table_row,
-                                   faststring *result_buffer);
+  Status PopulateAggregate(WriteBuffer *result_buffer);
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
-                                           size_t fetched_rows,
-                                           const size_t row_count_limit,
-                                           const bool scan_time_exceeded,
-                                           const Schema& schema,
-                                           const ReadHybridTime& read_time,
-                                           bool *has_paging_state);
+  Status SetPagingStateIfNecessary(
+      YQLRowwiseIteratorIf* iter,
+      size_t fetched_rows,
+      const size_t row_count_limit,
+      const bool scan_time_exceeded,
+      const Schema& schema,
+      const ReadHybridTime& read_time,
+      bool* has_paging_state);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
@@ -223,4 +226,3 @@ class PgsqlReadOperation : public DocExprExecutor {
 
 }  // namespace docdb
 }  // namespace yb
-

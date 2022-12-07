@@ -113,4 +113,3 @@ static const  int64 kint64max  = (( int64) GG_LONGLONG(0x7FFFFFFFFFFFFFFF));
 typedef uint64 Fprint;
 static const Fprint kIllegalFprint = 0;
 static const Fprint kMaxFprint = GG_ULONGLONG(0xFFFFFFFFFFFFFFFF);
-

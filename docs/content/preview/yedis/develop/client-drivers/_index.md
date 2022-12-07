@@ -50,7 +50,7 @@ For each of these languages, you are going to understand using the client driver
     <a class="section-link icon-offset" href="yedis/go/">
       <div class="head">
         <div class="icon">
-          <i class="icon-go"></i>
+          <i class="fa-brands fa-golang"></i>
         </div>
         <div class="title">Go</div>
       </div>
@@ -64,7 +64,7 @@ For each of these languages, you are going to understand using the client driver
     <a class="section-link icon-offset" href="yedis/java/">
       <div class="head">
         <div class="icon">
-          <i class="icon-java"></i>
+          <i class="fa-brands fa-java"></i>
         </div>
         <div class="title">Java</div>
       </div>
@@ -78,7 +78,7 @@ For each of these languages, you are going to understand using the client driver
     <a class="section-link icon-offset" href="yedis/nodejs/">
       <div class="head">
         <div class="icon">
-          <i class="icon-nodejs"></i>
+          <i class="fa-brands fa-node-js"></i>
         </div>
         <div class="title">NodeJS</div>
       </div>
@@ -92,7 +92,7 @@ For each of these languages, you are going to understand using the client driver
     <a class="section-link icon-offset" href="yedis/python/">
       <div class="head">
         <div class="icon">
-          <i class="icon-python"></i>
+          <i class="fa-brands fa-python"></i>
         </div>
         <div class="title">Python</div>
       </div>

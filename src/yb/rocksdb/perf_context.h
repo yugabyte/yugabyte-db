@@ -113,4 +113,3 @@ extern __thread PerfContext perf_context;
 #endif
 
 } // namespace rocksdb
-

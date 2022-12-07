@@ -62,4 +62,3 @@ class ProxyBase {
 
 }  // namespace rpc
 }  // namespace yb
-

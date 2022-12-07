@@ -586,8 +586,8 @@ class SubDocKey {
   //     Whether it is allowed to have special value types in slice, that are used during seek.
   //     If such value type is found, decoding is stopped w/o error.
   Status DecodeFrom(Slice* slice,
-                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
-                            AllowSpecial allow_special = AllowSpecial::kFalse);
+                    HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
+                    AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
@@ -883,4 +883,3 @@ class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
 
 }  // namespace docdb
 }  // namespace yb
-

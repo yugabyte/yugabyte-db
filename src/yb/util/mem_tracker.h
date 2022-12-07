@@ -640,4 +640,3 @@ bool CheckMemoryPressureWithLogging(
     const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
 } // namespace yb
-

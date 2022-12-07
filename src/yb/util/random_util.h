@@ -149,4 +149,3 @@ typename Collection::const_reference RandomElement(const Collection& collection,
 std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);
 
 } // namespace yb
-

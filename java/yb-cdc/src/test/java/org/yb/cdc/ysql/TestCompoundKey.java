@@ -93,13 +93,16 @@ public class TestCompoundKey extends CDCBaseClass {
   public void testInsertInBatch() {
     try {
       ExpectedRecordCPKProto[] expectedRecords = {
+        // insert into test values (1, 2, 3, 4), (5, 6, 7, 8);
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
         new ExpectedRecordCPKProto(5, 6, 7, 8, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
-        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
+
+        // update test set c = c + 1 where a = 1 and b = 2;
         new ExpectedRecordCPKProto(1, 2, 4, 4, Op.UPDATE),
-        new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
+
+        // update test set a = a + 1 where c = 7;
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(5, 6, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(6, 6, 7, 8, Op.INSERT),

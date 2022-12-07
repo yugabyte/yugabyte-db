@@ -21,6 +21,7 @@ import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+
 import './CustomerMetricsPanel.scss';
 
 /**
@@ -37,20 +38,23 @@ const PanelBody = ({
   nodePrefixes,
   width,
   tableName,
-  featureFlags,
-  graph
+  graph,
+  isTopKMetricsEnabled
 }) => {
-  const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
   let result = null;
 
   if (isTopKMetricsEnabled) {
-    let invalidTabType = [];
+    const invalidTabType = [];
     // List of default tabs to display based on metrics origin
     let defaultTabToDisplay = MetricTypes.YSQL_OPS;
     if (origin === MetricOrigin.TABLE) {
       defaultTabToDisplay = MetricTypes.LSMDB_TABLE;
     } else if (origin === MetricOrigin.CUSTOMER) {
-      defaultTabToDisplay = MetricTypes.SERVER;
+      if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+        defaultTabToDisplay = MetricTypes.CONTAINER;
+      } else {
+        defaultTabToDisplay = MetricTypes.SERVER;
+      }
     }
 
     const metricMeasure = graph?.graphFilter?.metricMeasure;
@@ -58,9 +62,12 @@ const PanelBody = ({
       || metricMeasure === MetricMeasure.OVERALL) {
       invalidTabType.push(MetricTypes.OUTLIER_TABLES);
     }
-    selectedUniverse && isKubernetesUniverse(selectedUniverse)
-      ? invalidTabType.push(MetricTypes.SERVER)
-      : invalidTabType.push(MetricTypes.CONTAINER);
+
+    if (!(selectedUniverse === MetricConsts.ALL)) {
+      selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        ? invalidTabType.push(MetricTypes.SERVER)
+        : invalidTabType.push(MetricTypes.CONTAINER);
+    }
 
     if (metricMeasure === MetricMeasure.OUTLIER
       || metricMeasure === MetricMeasure.OVERALL
@@ -71,10 +78,6 @@ const PanelBody = ({
           className="overall-metrics-by-origin"
         >
           {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
-
-
-
-
             const tabTitle = MetricTypesWithOperations[type].title;
             const metricContent = MetricTypesWithOperations[type];
             if (
@@ -202,9 +205,12 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin } = this.props;
+    const { origin, isTopKMetricsEnabled } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin}>
+      <GraphPanelHeaderContainer
+        origin={origin}
+        isTopKMetricsEnabled={!!isTopKMetricsEnabled}
+      >
         <PanelBody {...this.props} />
       </GraphPanelHeaderContainer>
     );

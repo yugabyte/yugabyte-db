@@ -49,4 +49,3 @@ class PgInsert : public PgDmlWrite {
 
 }  // namespace pggate
 }  // namespace yb
-

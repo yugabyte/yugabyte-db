@@ -30,4 +30,3 @@ using yb::SetPerfLevel;
 using yb::GetPerfLevel;
 
 } // namespace rocksdb
-

@@ -181,4 +181,3 @@ class CQLProcessor : public ql::QLProcessor {
 
 }  // namespace cqlserver
 }  // namespace yb
-

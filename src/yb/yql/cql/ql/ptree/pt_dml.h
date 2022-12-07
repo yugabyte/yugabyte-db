@@ -123,20 +123,20 @@ class WhereExprState : public AnalyzeStepState {
   }
 
   Status AnalyzeColumnOp(SemContext *sem_context,
-                                 const PTRelationExpr *expr,
-                                 const ColumnDesc *col_desc,
-                                 PTExprPtr value,
-                                 PTExprListNodePtr args = nullptr);
+                         const PTRelationExpr *expr,
+                         const ColumnDesc *col_desc,
+                         PTExprPtr value,
+                         PTExprListNodePtr args = nullptr);
 
   Status AnalyzeMultiColumnOp(SemContext *sem_context,
-                                      const PTRelationExpr *expr,
-                                      const std::vector<const ColumnDesc *> col_desc,
-                                      PTExprPtr value);
+                              const PTRelationExpr *expr,
+                              const std::vector<const ColumnDesc *> col_desc,
+                              PTExprPtr value);
 
   Status AnalyzeColumnFunction(SemContext *sem_context,
-                                       const PTRelationExpr *expr,
-                                       PTExprPtr value,
-                                       PTBcallPtr call);
+                               const PTRelationExpr *expr,
+                               PTExprPtr value,
+                               PTBcallPtr call);
 
   Status AnalyzePartitionKeyOp(SemContext *sem_context,
                                const PTRelationExpr *expr,
@@ -542,4 +542,3 @@ class PTDmlStmt : public PTCollection {
 
 }  // namespace ql
 }  // namespace yb
-

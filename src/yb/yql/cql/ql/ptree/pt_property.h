@@ -131,4 +131,3 @@ class PTPropertyListNode : public TreeListNode<PTProperty> {
 
 } // namespace ql
 } // namespace yb
-

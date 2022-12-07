@@ -187,4 +187,3 @@ class PosixLogger : public Logger {
 };
 
 }  // namespace rocksdb
-

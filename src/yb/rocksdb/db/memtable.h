@@ -448,4 +448,3 @@ class MemTable {
 extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
 }  // namespace rocksdb
-

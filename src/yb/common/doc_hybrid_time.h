@@ -171,4 +171,3 @@ inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {
 }
 
 }  // namespace yb
-

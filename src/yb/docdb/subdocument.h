@@ -212,4 +212,3 @@ static_assert(sizeof(SubDocument) == sizeof(PrimitiveValue),
 
 }  // namespace docdb
 }  // namespace yb
-

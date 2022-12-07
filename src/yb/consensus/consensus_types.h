@@ -27,4 +27,3 @@ struct ConsensusOptions {
 
 } // namespace consensus
 } // namespace yb
-

@@ -58,4 +58,3 @@ class VersionBuilder {
 extern bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b);
 
 }  // namespace rocksdb
-

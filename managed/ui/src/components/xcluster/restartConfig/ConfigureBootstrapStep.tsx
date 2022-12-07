@@ -52,7 +52,6 @@ export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) 
 
   return (
     <>
-      <div className={styles.formInstruction}>Configure bootstrap</div>
       <div className={styles.formFieldContainer}>
         <Field
           name="storageConfig"

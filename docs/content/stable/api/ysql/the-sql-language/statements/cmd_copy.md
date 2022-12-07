@@ -19,13 +19,13 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
       Diagram
     </a>
   </li>
@@ -174,7 +174,7 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 
 ### Import with skipping rows
 
-Assume we ran the command one time, and it failed in the middle, as if the server had crashed. 
+Assume we ran the command one time, and it failed in the middle, as if the server had crashed.
 Since we use `ROWS_PER_TRANSACTION=5000`, we can resume importing at multiples of 5000:
 
 ```plpgsql
@@ -212,4 +212,3 @@ HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, DISABLE_FK_CHECK, REPLACE, SKI
 
 
 For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).
-

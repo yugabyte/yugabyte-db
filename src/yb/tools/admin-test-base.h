@@ -75,4 +75,3 @@ Result<std::string> RunAdminToolCommand(const std::string& master_addresses, Arg
 
 }  // namespace tools
 }  // namespace yb
-

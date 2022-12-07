@@ -69,12 +69,17 @@ class TabletServerPathHandlers {
                             Webserver::WebResponse* resp);
   void HandleDashboardsPage(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp);
+  void HandleIntentsDBPage(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req,
                          Webserver::WebResponse* resp);
   void HandleVersionInfoDump(const Webserver::WebRequest& req,
                               Webserver::WebResponse* resp);
+  void HandleListMasterServers(const Webserver::WebRequest& req,
+                               Webserver::WebResponse* resp);
+
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);

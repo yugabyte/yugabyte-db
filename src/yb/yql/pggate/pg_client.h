@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -64,8 +65,8 @@ class PgClient {
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
-                       rpc::Scheduler* scheduler,
-                       const tserver::TServerSharedObject& tserver_shared_object);
+               rpc::Scheduler* scheduler,
+               const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -103,22 +104,25 @@ class PgClient {
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             bool is_db_catalog_version_mode,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_db_catalog_version_mode,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called);
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
-                                                     uint64_t ysql_catalog_version);
+                                                     uint64_t ysql_catalog_version,
+                                                     bool is_db_catalog_version_mode);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
@@ -131,7 +135,8 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
-  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
+      bool size_only);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
@@ -147,4 +152,3 @@ class PgClient {
 
 }  // namespace pggate
 }  // namespace yb
-

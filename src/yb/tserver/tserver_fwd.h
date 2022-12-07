@@ -26,6 +26,7 @@ namespace yb {
 namespace client {
 
 class TransactionPool;
+class YBPgsqlOp;
 
 }
 
@@ -35,6 +36,7 @@ class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
 class PgTableCache;
+class PgResponseCache;
 class TSTabletManager;
 class TabletPeerLookupIf;
 class TabletServer;
@@ -54,4 +56,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 } // namespace tserver
 } // namespace yb
-

@@ -991,9 +991,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					   InvalidOid /* matviewPgTableId */);
 	}
 
-	/* For testing purposes, user might ask us to fail a DLL. */
-	YBTestFailDdlIfRequested();
-
 	/*
 	 * Open the new relation and acquire exclusive lock on it.  This isn't
 	 * really necessary for locking out other backends (since they can't see
@@ -3896,12 +3893,21 @@ ATController(AlterTableStmt *parsetree,
 	}
 	PG_CATCH();
 	{
-		/* Rollback the DocDB changes. */
-		ListCell *lc = NULL;
-		foreach(lc, rollbackHandles)
+		if (!*YBCGetGFlags()->ysql_ddl_rollback_enabled ||
+		    rel->yb_table_properties->is_colocated)
 		{
-			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
-			YBCExecAlterTable(handle, RelationGetRelid(rel));
+			/*
+			 * The new way of doing ddl rollback is disabled (or unsupported,
+			 * as in the case of colocated tables) fall back to the old way of
+			 * doing a best-effort rollback which may not always succeed
+			 * (e.g., in case of network failure or PG crash).
+			 */
+			ListCell *lc = NULL;
+			foreach(lc, rollbackHandles)
+			{
+				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+				YBCExecAlterTable(handle, RelationGetRelid(rel));
+			}
 		}
 		PG_RE_THROW();
 	}

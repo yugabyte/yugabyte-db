@@ -183,4 +183,3 @@ class CompactionFileFilterFactory {
 };
 
 }  // namespace rocksdb
-

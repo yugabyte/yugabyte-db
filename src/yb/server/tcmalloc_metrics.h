@@ -44,4 +44,3 @@ void RegisterMetrics(const scoped_refptr<MetricEntity>& entity);
 
 } // namespace tcmalloc
 } // namespace yb
-

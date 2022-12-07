@@ -263,4 +263,3 @@ boost::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Ta
 }
 
 } // namespace yb
-

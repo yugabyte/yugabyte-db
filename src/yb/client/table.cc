@@ -26,10 +26,11 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     max_num_tablets_for_table, 5000,
     "Max number of tablets that can be specified in a CREATE TABLE statement");
 

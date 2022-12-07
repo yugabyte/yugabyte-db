@@ -2,7 +2,7 @@
 title: Example applications
 linkTitle: Example applications
 description: Example applications for YugabyteDB Managed.
-headcontent: Example applications for YugabyteDB Managed.
+headcontent: Example applications for YugabyteDB Managed
 image: /images/section_icons/index/develop.png
 menu:
   preview_yugabyte-cloud:

@@ -80,4 +80,3 @@ class BlockBuilder {
 };
 
 }  // namespace rocksdb
-

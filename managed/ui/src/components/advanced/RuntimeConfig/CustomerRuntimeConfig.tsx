@@ -31,7 +31,7 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
   const onCustomerDropdownChanged = (customerName: string, customerUUID: string) => {
     setcustomerDropdownValue(customerName);
     setCustomerUUID(customerUUID);
-  }
+  };
 
   useEffect(() => {
     resetRuntimeConfigs();
@@ -46,7 +46,7 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
     );
   }
   if (customers.isLoading || (customers.isIdle && customers.data === undefined)) {
-    return <YBLoading />
+    return <YBLoading />;
   }
 
   const customersList = customers.data;
@@ -62,7 +62,8 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
         <span className="customer-runtime-config-container__label"> {"Select Customer:"}</span>
         &nbsp;&nbsp;
         <Dropdown
-          id="customer-runtime-config-dropdown"
+          id="customerRuntimeConfigDropdown"
+          className="customer-runtime-config-dropdown"
         >
           <Dropdown.Toggle>
             <span className="customer-config-dropdown-value">{customerDropdownValue}</span>
@@ -91,4 +92,4 @@ export const CustomerRuntimeConfig: FC<CustomerRuntimeConfigProps> = ({
       />
     </div>
   );
-}
+};

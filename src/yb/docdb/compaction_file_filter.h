@@ -106,4 +106,3 @@ class DocDBCompactionFileFilterFactory : public rocksdb::CompactionFileFilterFac
 
 }  // namespace docdb
 }  // namespace yb
-

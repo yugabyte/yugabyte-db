@@ -256,4 +256,3 @@ class BASE_EXPORT ThreadCollisionWarner {
 };
 
 }  // namespace base
-

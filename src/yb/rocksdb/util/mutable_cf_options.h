@@ -165,4 +165,3 @@ struct MutableCFOptions {
 uint64_t MultiplyCheckOverflow(uint64_t op1, int op2);
 
 }  // namespace rocksdb
-

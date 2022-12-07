@@ -147,4 +147,3 @@ std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver);
 
 } // namespace rpc
 } // namespace yb
-

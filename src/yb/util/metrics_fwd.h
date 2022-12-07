@@ -50,4 +50,3 @@ template<typename T>
 class GaugePrototype;
 
 } // namespace yb
-

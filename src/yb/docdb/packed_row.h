@@ -118,4 +118,3 @@ class RowPacker {
 
 } // namespace docdb
 } // namespace yb
-

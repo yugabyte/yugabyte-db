@@ -438,4 +438,3 @@ class WritableFileWrapper : public WritableFile {
 };
 
 } // namespace rocksdb
-

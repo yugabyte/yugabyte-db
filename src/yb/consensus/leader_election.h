@@ -268,4 +268,3 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
 } // namespace consensus
 } // namespace yb
-

@@ -129,4 +129,3 @@ class YBTableAlterer {
 
 } // namespace client
 } // namespace yb
-

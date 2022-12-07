@@ -66,4 +66,3 @@ std::string TrimTrailingWhitespaceFromEveryLine(std::string s);
 
 }  // namespace util
 }  // namespace yb
-

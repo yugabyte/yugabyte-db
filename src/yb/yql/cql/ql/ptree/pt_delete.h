@@ -88,4 +88,3 @@ class PTDeleteStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-

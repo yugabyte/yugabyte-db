@@ -85,7 +85,7 @@ public class HookInserter {
     UUID customerUUID = Customer.get(universe.customerId).uuid;
 
     // Get global hooks
-    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null);
+    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null, null);
     addHooksToExecutionPlan(executionPlan, globalScope, nodes, isSudoEnabled);
 
     // Get provider hooks
@@ -102,14 +102,28 @@ public class HookInserter {
       UUID providerUUID = entry.getKey();
       List<NodeDetails> providerNodes = entry.getValue();
       HookScope providerScope =
-          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID);
+          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID, null);
       addHooksToExecutionPlan(executionPlan, providerScope, providerNodes, isSudoEnabled);
     }
 
     // Get universe hooks
     HookScope universeScope =
-        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null);
+        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, null);
     addHooksToExecutionPlan(executionPlan, universeScope, nodes, isSudoEnabled);
+
+    // Get the cluster hooks
+    Map<UUID, List<NodeDetails>> nodeClusterMap = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+      nodeClusterMap.computeIfAbsent(cluster.uuid, k -> new ArrayList<>()).add(node);
+    }
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodeClusterMap.entrySet()) {
+      UUID clusterUUID = entry.getKey();
+      List<NodeDetails> clusterNodes = entry.getValue();
+      HookScope clusterScope =
+          HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, clusterUUID);
+      addHooksToExecutionPlan(executionPlan, clusterScope, clusterNodes, isSudoEnabled);
+    }
 
     // Sort in natural order
     NaturalOrderComparator comparator = new NaturalOrderComparator();

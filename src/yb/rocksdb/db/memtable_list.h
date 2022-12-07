@@ -259,4 +259,3 @@ class MemTableList {
 };
 
 }  // namespace rocksdb
-

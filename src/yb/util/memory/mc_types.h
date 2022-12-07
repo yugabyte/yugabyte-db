@@ -174,4 +174,3 @@ class MCBase {
 };
 
 }  // namespace yb
-

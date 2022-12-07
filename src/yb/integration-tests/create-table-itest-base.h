@@ -90,4 +90,3 @@ class CreateTableITestBase : public ExternalMiniClusterITestBase {
 };
 
 }  // namespace yb
-

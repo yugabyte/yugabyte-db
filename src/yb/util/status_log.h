@@ -85,4 +85,3 @@
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
-

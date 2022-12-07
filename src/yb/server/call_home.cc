@@ -24,7 +24,7 @@
 #include "yb/server/call_home.h"
 
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -39,7 +39,8 @@ static const char* kLowLevel = "low";
 static const char* kMediumLevel = "medium";
 static const char* kHighLevel = "high";
 
-DEFINE_RUNTIME_bool(callhome_enabled, true, "Enables callhome feature that sends analytics data to yugabyte");
+DEFINE_RUNTIME_bool(callhome_enabled, true,
+    "Enables callhome feature that sends analytics data to yugabyte");
 
 DEFINE_RUNTIME_int32(callhome_interval_secs, 3600, "How often to run callhome");
 // TODO: We need to change this to https, it involves updating our libcurl
@@ -178,7 +179,9 @@ class GFlagsCollector : public Collector {
   void Collect(CollectionLevel collection_level) {
     auto gflags = CommandlineFlagsIntoString();
     boost::replace_all(gflags, "\n", " ");
-    json_ = Substitute("\"gflags\":\"$0\"", gflags);
+    string escaped_gflags;
+    JsonEscape(gflags, &escaped_gflags);
+    json_ = Substitute("\"gflags\":\"$0\"", escaped_gflags);
   }
 
   string collector_name() { return "GFlagsCollector"; }

@@ -187,4 +187,3 @@ class YBSubTransaction {
 
 } // namespace client
 } // namespace yb
-

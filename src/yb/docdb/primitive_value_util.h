@@ -38,4 +38,3 @@ Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -1,0 +1,14 @@
+<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+	{{ .Site.Params.version_menu }}
+</a>
+<div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+	{{ range .Site.Params.versions }}
+    {{ $versionName := .version }}
+    {{ if in .version "(Preview)" }}
+      {{ $versionName = replace .version "(Preview)" "<span class='label-pv'>Preview</span>" }}
+    {{ else if in .version "(Stable)" }}
+      {{ $versionName = replace .version "(Stable)" "<span class='label-st'>Stable</span>" }}
+    {{ end }}
+	  <a class="dropdown-item" href="{{ .url }}">{{ $versionName | safeHTML }}</a>
+	{{ end }}
+</div>

@@ -51,8 +51,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status BeginTransaction();
   Status CalculateIsolation(bool read_only_op,
-                                    TxnPriorityRequirement txn_priority_requirement,
-                                    uint64_t* in_txn_limit = nullptr);
+                            TxnPriorityRequirement txn_priority_requirement,
+                            uint64_t* in_txn_limit = nullptr);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();

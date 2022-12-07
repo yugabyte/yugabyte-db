@@ -50,7 +50,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -64,7 +64,7 @@ using namespace std::placeholders;
 
 DECLARE_int32(sys_catalog_write_timeout_ms);
 
-DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
+DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
@@ -98,7 +98,7 @@ void SubmitWrite(
     const std::shared_ptr<Synchronizer>& synchronizer = nullptr) {
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, CoarseMonoClock::now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-      /* context */ nullptr, /* tablet= */ nullptr);
+      /* context */ nullptr, /* tablet= */ nullptr, /* rpc_context= */ nullptr);
   if (synchronizer) {
     query->set_callback(
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer));
@@ -1217,6 +1217,7 @@ class MasterSnapshotCoordinator::Impl {
           // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
           if (!table_info_result.ok()) {
             LOG(WARNING) << "Table " << table_id << " does not exist";
+            continue;
           }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }
@@ -1412,7 +1413,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
-        nullptr /* context */, nullptr /* tablet */);
+        nullptr /* context */, nullptr /* tablet */, nullptr /* rpc_context */);
 
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();

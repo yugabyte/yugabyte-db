@@ -192,5 +192,3 @@ std::ostream& operator<<(std::ostream& os, const VarInt& v);
 
 } // namespace util
 } // namespace yb
-
-

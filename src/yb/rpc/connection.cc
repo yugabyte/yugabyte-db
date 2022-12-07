@@ -55,6 +55,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -62,7 +63,7 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-DEFINE_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
+DEFINE_UNKNOWN_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
     "Timeout for RPC connection operations");
 
 METRIC_DEFINE_histogram_with_percentiles(

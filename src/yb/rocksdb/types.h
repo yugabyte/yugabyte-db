@@ -63,4 +63,3 @@ inline std::string KeyValueEncodingFormatToString(KeyValueEncodingFormat encodin
 }
 
 }  //  namespace rocksdb
-

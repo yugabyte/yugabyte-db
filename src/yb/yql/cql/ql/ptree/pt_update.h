@@ -191,4 +191,3 @@ class PTUpdateStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-

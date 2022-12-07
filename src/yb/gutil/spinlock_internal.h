@@ -76,4 +76,3 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop);
 } // namespace internal
 } // namespace base
 } // namespace yb
-

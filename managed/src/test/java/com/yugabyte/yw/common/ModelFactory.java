@@ -244,7 +244,7 @@ public class ModelFactory {
       NodeDetails node2 = node.clone();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
-      userIntent.ybSoftwareVersion = "2.14.0.0-b1";
+      userIntent.ybSoftwareVersion = "2.15.0.0-b1";
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);

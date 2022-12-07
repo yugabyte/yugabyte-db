@@ -47,4 +47,3 @@ class YcqlName {
 };
 
 } // namespace yb
-

@@ -132,4 +132,3 @@ Status RemoteBootstrapClientTest::CompareFileContents(const std::string& path1, 
 
 } // namespace tserver
 } // namespace yb
-

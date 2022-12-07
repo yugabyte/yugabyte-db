@@ -1,0 +1,34 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/WebPage" lang="{{ .Site.Language.Lang }}" class="no-js">
+  <head>
+    {{ partial "head.html" . }}
+  </head>
+  <body class="td-{{ .Kind }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
+    <header>
+      {{ partial "navbar.html" . }}
+    </header>
+    <div class="container-fluid td-outer">
+      <div class="td-main">
+        <aside class="td-sidebar d-print-none">
+          {{ partial "sidebar.html" . }}
+        </aside>
+        <div class="row flex-xl-nowrap content-parent">
+          <div class="content-child">
+            <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
+              <!-- {{ partial "page-meta-links.html" . }} -->
+              {{ partial "toc.html" . }}
+              {{ partial "taxonomy_terms_clouds.html" . }}
+            </aside>
+            <main class="content-area" role="main">
+              {{ partial "version-banner.html" . }}
+              {{ if not .Site.Params.ui.breadcrumb_disable }}{{ partial "breadcrumb.html" . }}{{ end }}
+              {{ block "main" . }}{{ end }}
+            </main>
+          </div>
+        </div>
+      </div>
+      {{ partial "footer.html" . }}
+    </div>
+    {{ partial "scripts.html" . }}
+  </body>
+</html>

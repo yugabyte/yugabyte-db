@@ -228,7 +228,8 @@ public class TestDBStreamInfo extends CDCBaseClass {
 
     // Assert that we receive all the tablets in the response.
     for (TabletCheckpointPair pair : resp1.getTabletCheckpointPairList()) {
-      assertTrue(tabletsInTableOne.contains(pair.getTabletId().toStringUtf8()));
+      assertTrue(
+          tabletsInTableOne.contains(pair.getTabletLocations().getTabletId().toStringUtf8()));
     }
 
     // Verify that all the tablets of table test_2 (tableTwo) are there in the cdc_state table.
@@ -241,7 +242,8 @@ public class TestDBStreamInfo extends CDCBaseClass {
 
     // Assert that we receive all the tablets in the response.
     for (TabletCheckpointPair pair : resp2.getTabletCheckpointPairList()) {
-      assertTrue(tabletsInTableTwo.contains(pair.getTabletId().toStringUtf8()));
+      assertTrue(
+          tabletsInTableTwo.contains(pair.getTabletLocations().getTabletId().toStringUtf8()));
     }
   }
 

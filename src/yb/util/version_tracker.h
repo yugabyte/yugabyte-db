@@ -105,4 +105,3 @@ VersionTrackerCheckOut<Value> VersionTracker<Value>::CheckOut() {
 }
 
 } // namespace yb
-

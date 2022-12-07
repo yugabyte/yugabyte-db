@@ -152,4 +152,3 @@ class TransactionCustomLogSegmentSizeTest : public Base {
 
 } // namespace client
 } // namespace yb
-

@@ -18,15 +18,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
 public class MetricQueryExecutor implements Callable<JsonNode> {
-
-  public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private final ApiHelper apiHelper;
 
   private final MetricUrlProvider metricUrlProvider;
@@ -108,23 +105,40 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       responseJson.put("error", "Invalid Query Key");
     } else {
       MetricConfigDefinition configDefinition = config.getConfig();
-      Map<String, List<MetricLabelFilters>> splitQueryFilters;
-      try {
-        splitQueryFilters = getSplitQueryFilters(configDefinition, responseJson);
-      } catch (Exception e) {
-        log.error("Error occurred split query filters list for metric" + metricName, e);
-        responseJson.put("error", e.getMessage());
-        return responseJson;
-      }
-
+      Map<String, String> topKQueries = Collections.emptyMap();
+      Map<String, String> aggregatedQueries = Collections.emptyMap();
       MetricQueryContext context =
           MetricQueryContext.builder()
               .queryRangeSecs(queryRangeSecs)
               .additionalFilters(additionalFilters)
-              .metricOrFilters(splitQueryFilters)
               .additionalGroupBy(getAdditionalGroupBy(metricSettings))
               .excludeFilters(getExcludeFilters(metricSettings))
               .build();
+      if (metricSettings.getSplitMode() != SplitMode.NONE) {
+        try {
+          topKQueries = getTopKQueries(configDefinition, responseJson);
+        } catch (Exception e) {
+          log.error("Error while generating top K queries for " + metricName, e);
+          responseJson.put("error", e.getMessage());
+          return responseJson;
+        }
+        if (metricSettings.isReturnAggregatedValue()) {
+          try {
+            MetricQueryContext aggregatedContext =
+                context
+                    .toBuilder()
+                    .removeGroupBy(context.getAdditionalGroupBy())
+                    .additionalGroupBy(Collections.emptySet())
+                    .build();
+            aggregatedQueries = configDefinition.getQueries(this.metricSettings, aggregatedContext);
+          } catch (Exception e) {
+            log.error("Error while generating aggregated queries for " + metricName, e);
+            responseJson.put("error", e.getMessage());
+            return responseJson;
+          }
+        }
+      }
+
       Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
       responseJson.set("layout", Json.toJson(configDefinition.getLayout()));
       MetricRechartsGraphData rechartsOutput = new MetricRechartsGraphData();
@@ -133,6 +147,14 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();
+        String topKQuery = topKQueries.get(metric);
+        if (!StringUtils.isEmpty(topKQuery)) {
+          queryExpr += " and " + topKQuery;
+        }
+        String aggregatedQuery = aggregatedQueries.get(metric);
+        if (!StringUtils.isEmpty(aggregatedQuery)) {
+          queryExpr = "(" + queryExpr + ") or " + aggregatedQuery;
+        }
         queryParam.put("query", queryExpr);
         try {
           directURLs.add(getDirectURL(queryExpr));
@@ -164,68 +186,23 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     return responseJson;
   }
 
-  private Map<String, List<MetricLabelFilters>> getSplitQueryFilters(
+  private Map<String, String> getTopKQueries(
       MetricConfigDefinition configDefinition, ObjectNode responseJson) {
     if (metricSettings.getSplitMode() == SplitMode.NONE) {
       return Collections.emptyMap();
     }
     int range = Integer.parseInt(queryParam.get("range"));
+    long end = Integer.parseInt(queryParam.get("end"));
     MetricQueryContext context =
         MetricQueryContext.builder()
             .topKQuery(true)
             .queryRangeSecs(range)
+            .queryTimestampSec(end)
             .additionalFilters(additionalFilters)
             .additionalGroupBy(getAdditionalGroupBy(metricSettings))
             .excludeFilters(getExcludeFilters(metricSettings))
             .build();
-    Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
-    Map<String, String> topKQueryParams = new HashMap<>(queryParam);
-    String endTime = topKQueryParams.remove("end");
-    if (StringUtils.isNotBlank(endTime)) {
-      // 'time' param for top K query is equal to metric query period end.
-      topKQueryParams.put("time", endTime);
-    }
-    Map<String, List<MetricLabelFilters>> results = new HashMap<>();
-    ArrayNode topKQueryURLs = responseJson.putArray("topKQueryURLs");
-    for (Map.Entry<String, String> e : queries.entrySet()) {
-      String metric = e.getKey();
-      String queryExpr = e.getValue();
-      topKQueryParams.put("query", queryExpr);
-
-      JsonNode queryResponseJson = getMetrics(topKQueryParams);
-      MetricQueryResponse queryResponse =
-          Json.fromJson(queryResponseJson, MetricQueryResponse.class);
-
-      try {
-        topKQueryURLs.add(getDirectURL(queryExpr));
-      } catch (Exception de) {
-        log.trace("Error getting direct url", de);
-      }
-
-      if (queryResponse.error != null) {
-        throw new RuntimeException("Failed to get top nodes: " + queryResponse.error);
-      }
-      List<MetricLabelFilters> metricLabelFilters =
-          queryResponse
-              .getValues()
-              .stream()
-              .map(
-                  entry ->
-                      MetricLabelFilters.builder()
-                          .filters(
-                              entry
-                                  .labels
-                                  .entrySet()
-                                  .stream()
-                                  .map(
-                                      label ->
-                                          new MetricLabelFilter(label.getKey(), label.getValue()))
-                                  .collect(Collectors.toList()))
-                          .build())
-              .collect(Collectors.toList());
-      results.put(metric, metricLabelFilters);
-    }
-    return results;
+    return configDefinition.getQueries(this.metricSettings, context);
   }
 
   private Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {

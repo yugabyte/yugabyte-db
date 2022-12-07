@@ -238,4 +238,3 @@ void TEST_Isolate(rpc::Messenger* messenger);
 
 } // namespace server
 } // namespace yb
-

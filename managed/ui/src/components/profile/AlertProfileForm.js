@@ -333,16 +333,16 @@ export default class AlertProfileForm extends Component {
                 </Col>
               </Row>
               {!isReadOnly && (
-              <div className="form-action-button-container">
-                <Col sm={12}>
-                  <YBButton
-                    btnText="Save"
-                    btnType="submit"
-                    disabled={isSubmitting}
-                    btnClass="btn btn-orange pull-right"
-                  />
-                </Col>
-              </div>
+                <div className="form-action-button-container">
+                  <Col sm={12}>
+                    <YBButton
+                      btnText="Save"
+                      btnType="submit"
+                      disabled={isSubmitting}
+                      btnClass="btn btn-orange pull-right"
+                    />
+                  </Col>
+                </div>
               )}
             </Form>
           )}

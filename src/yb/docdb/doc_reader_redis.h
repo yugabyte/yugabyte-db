@@ -189,4 +189,3 @@ Status GetRedisSubDocument(
 
 }  // namespace docdb
 }  // namespace yb
-

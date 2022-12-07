@@ -66,4 +66,3 @@ typename std::invoke_result<Functor>::type WithMaskedYsqlSignals(Functor callbac
 }
 
 } // namespace yb
-

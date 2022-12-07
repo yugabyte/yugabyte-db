@@ -47,4 +47,3 @@ class PerformFuture {
 
 } // namespace pggate
 } // namespace yb
-

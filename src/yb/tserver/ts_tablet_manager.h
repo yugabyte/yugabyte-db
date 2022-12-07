@@ -29,8 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TS_TABLET_MANAGER_H
-#define YB_TSERVER_TS_TABLET_MANAGER_H
 
 #pragma once
 
@@ -165,6 +163,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
   ThreadPool* full_compaction_pool() const { return full_compaction_pool_.get(); }
+  ThreadPool* wait_queue_pool() const { return wait_queue_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -355,7 +354,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
   // Trigger asynchronous compactions concurrently on the provided tablets.
-  Status TriggerCompactionAndWait(const TabletPtrs& tablets);
+  Status TriggerAdminCompactionAndWait(const TabletPtrs& tablets);
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
@@ -436,8 +435,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Calls to this method are expected to be externally synchronized, typically
   // using the transition_in_progress_ map.
   Status RegisterTablet(const TabletId& tablet_id,
-                                const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                RegisterTabletPeerMode mode);
+                        const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                        RegisterTabletPeerMode mode);
 
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
@@ -612,6 +611,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for admin triggered compactions for tablets.
   std::unique_ptr<ThreadPool> admin_triggered_compaction_pool_;
 
+  std::unique_ptr<ThreadPool> wait_queue_pool_;
+
   std::unique_ptr<rpc::Poller> tablets_cleaner_;
 
   // Used for verifying tablet data integrity.
@@ -717,5 +718,3 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
 
 } // namespace tserver
 } // namespace yb
-
-#endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

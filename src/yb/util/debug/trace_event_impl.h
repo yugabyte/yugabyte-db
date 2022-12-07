@@ -30,7 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/atomicops.h"
@@ -747,4 +747,3 @@ void EnableTraceEvents();
 
 }  // namespace debug
 }  // namespace yb
-

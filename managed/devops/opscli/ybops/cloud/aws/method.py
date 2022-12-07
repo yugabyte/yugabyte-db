@@ -31,7 +31,7 @@ class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
                               get_root_label(host_info["region"], host_info["ami"]))
 
     def _host_info_with_current_root_volume(self, args, host_info):
-        return (host_info, host_info["root_volume"])
+        return (host_info, host_info.get("root_volume"))
 
 
 class AwsListInstancesMethod(ListInstancesMethod):

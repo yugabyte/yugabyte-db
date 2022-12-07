@@ -142,4 +142,3 @@ class PgColumn {
 
 }  // namespace pggate
 }  // namespace yb
-

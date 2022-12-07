@@ -50,4 +50,3 @@ class TruncateOperation : public OperationBase<OperationType::kTruncate, LWTrunc
 
 }  // namespace tablet
 }  // namespace yb
-

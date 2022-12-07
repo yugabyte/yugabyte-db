@@ -200,4 +200,3 @@ std::size_t hash_value(const StronglyTypedUuid<Tag>& u) noexcept {
 }
 
 } // namespace yb
-

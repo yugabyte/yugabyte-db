@@ -373,4 +373,3 @@ template<> struct GoodFastHash<GStringPiece> {
 
 // allow GStringPiece to be logged
 extern std::ostream& operator<<(std::ostream& o, GStringPiece piece);
-

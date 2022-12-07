@@ -178,9 +178,9 @@ class QLEnv {
 
   // Create (user-defined) type with the given arguments.
   Status CreateUDType(const std::string& keyspace_name,
-                              const std::string& type_name,
-                              const std::vector<std::string>& field_names,
-                              const std::vector<std::shared_ptr<QLType>>& field_types);
+                      const std::string& type_name,
+                      const std::vector<std::string>& field_names,
+                      const std::vector<std::shared_ptr<QLType>>& field_types);
 
   // Delete (user-defined) type by name.
   virtual Status DeleteUDType(const std::string& keyspace_name,
@@ -234,4 +234,3 @@ class QLEnv {
 
 }  // namespace ql
 }  // namespace yb
-

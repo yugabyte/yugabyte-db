@@ -162,4 +162,3 @@ inline char* Arena::Allocate(size_t bytes) {
 extern size_t OptimizeBlockSize(size_t block_size);
 
 }  // namespace rocksdb
-

@@ -77,4 +77,3 @@ class TransactionStatusResolver {
 
 } // namespace tablet
 } // namespace yb
-

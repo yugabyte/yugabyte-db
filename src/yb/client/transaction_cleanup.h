@@ -25,7 +25,7 @@
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/range/iterator_range.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client_fwd.h"
 
@@ -52,4 +52,3 @@ void CleanupTransaction(
 
 } // namespace client
 } // namespace yb
-

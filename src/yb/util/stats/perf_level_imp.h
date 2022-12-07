@@ -31,4 +31,3 @@ extern __thread PerfLevel perf_level;
 #endif
 
 }  // namespace yb
-

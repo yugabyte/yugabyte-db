@@ -267,4 +267,3 @@ class LexProcessor : public yyFlexLexer {
 
 }  // namespace ql
 }  // namespace yb
-

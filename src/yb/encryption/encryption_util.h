@@ -186,4 +186,3 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 } // namespace encryption
 } // namespace yb
-

@@ -16,18 +16,27 @@
 #include <thread>
 #include <unordered_map>
 
+#include <gflags/gflags.h>
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_counter(pg_response_cache_queries);
+METRIC_DECLARE_counter(pg_response_cache_hits);
+DECLARE_bool(ysql_enable_read_request_caching);
 
 namespace yb {
 namespace pgwrapper {
@@ -37,13 +46,24 @@ Status EnableCatcacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-class PgCatalogPerfTest : public PgMiniTestBase {
+template<bool CacheEnabled>
+class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    FLAGS_ysql_enable_read_request_caching = CacheEnabled;
     PgMiniTestBase::SetUp();
-    read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    read_rpc_watcher_ = std::make_unique<MetricWatcher>(
         *cluster_->mini_master()->master(),
         METRIC_handler_latency_yb_tserver_TabletServerService_Read);
+    auto& tserver = *cluster_->mini_tablet_server(0)->server();
+    response_cache_queries_ = std::make_unique<MetricWatcher>(
+        tserver, METRIC_pg_response_cache_queries);
+    response_cache_hits_ = std::make_unique<MetricWatcher>(
+        tserver, METRIC_pg_response_cache_hits);
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -57,7 +77,7 @@ class PgCatalogPerfTest : public PgMiniTestBase {
     // So run simplest possible query which doesn't produce RPC in a loop until number of
     // RPC will be greater than 0.
     for (;;) {
-      const auto result = VERIFY_RESULT(read_rpc_watcher_->Delta([&conn]() {
+      const auto result = VERIFY_RESULT(read_rpc_watcher_->Delta([&conn] {
         return conn.Execute("ROLLBACK");
       }));
       if (result) {
@@ -80,8 +100,25 @@ class PgCatalogPerfTest : public PgMiniTestBase {
     });
   }
 
-  std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
+  Result<std::pair<uint64_t, uint64_t>> ResponseCacheCountersDelta(
+    const MetricWatcher::DeltaFunctor& functor) {
+    uint64_t queries = 0;
+    auto hits = VERIFY_RESULT(response_cache_hits_->Delta([this, &functor, &queries]() -> Status {
+      queries = VERIFY_RESULT(response_cache_queries_->Delta([&functor] {
+        return functor();
+      }));
+      return Status::OK();
+    }));
+    return std::make_pair(queries, hits);
+  }
+
+  std::unique_ptr<MetricWatcher> read_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> response_cache_queries_;
+  std::unique_ptr<MetricWatcher> response_cache_hits_;
 };
+
+using PgCatalogPerfTest = ConfigurablePgCatalogPerfTest<false>;
+using PgCatalogWithCachePerfTest = ConfigurablePgCatalogPerfTest<true>;
 
 } // namespace
 
@@ -144,6 +181,59 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSel
     return static_cast<Status>(Status::OK());
   }));
   ASSERT_EQ(master_rpc_count_for_select, 3);
+}
+
+// The test checks number of hits in response cache in case of multiple connections and aggressive
+// sys catalog changes. Which causes catalog cache refresh in each established connection.
+TEST_F_EX(PgCatalogPerfTest,
+          YB_DISABLE_TEST_IN_TSAN(ResponseCacheEfficiency),
+          PgCatalogWithCachePerfTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (r INT PRIMARY KEY)"));
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v INT"));
+  std::vector<PGConn> conns;
+  constexpr size_t kConnectionCount = 20;
+  constexpr size_t kAlterTableCount = 10;
+  for (size_t i = 0; i < kConnectionCount; ++i) {
+    conns.push_back(ASSERT_RESULT(Connect()));
+    ASSERT_RESULT(conns.back().Fetch("SELECT * FROM t"));
+  }
+  ASSERT_RESULT(aux_conn.Fetch("SELECT * FROM t"));
+  size_t read_rpc_counter = 0;
+  auto cache_counters = ASSERT_RESULT(ResponseCacheCountersDelta(
+    [this, &conn, &conns, &read_rpc_counter] {
+      read_rpc_counter = VERIFY_RESULT(read_rpc_watcher_->Delta([&conn, &conns] {
+        for (size_t i = 0; i < kAlterTableCount; ++i) {
+          RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN v_$0 INT", i));
+          TestThreadHolder holder;
+          size_t conn_idx = 0;
+          for (auto& c : conns) {
+            holder.AddThread([&c, idx = conn_idx, i] {
+              ASSERT_OK(c.ExecuteFormat("INSERT INTO t VALUES($0)", idx * 100 + i));
+            });
+            ++conn_idx;
+          }
+        }
+        return static_cast<Status>(Status::OK());
+      }));
+      return static_cast<Status>(Status::OK());
+    }));
+  const auto items_count = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM t"));
+  constexpr size_t kExpectedColumnCount = kAlterTableCount + 2;
+  const auto column_count = PQnfields(ASSERT_RESULT(conn.Fetch("SELECT * FROM t limit 1")).get());
+  ASSERT_EQ(kExpectedColumnCount, column_count);
+  const auto aux_column_count =
+      PQnfields(ASSERT_RESULT(aux_conn.Fetch("SELECT * FROM t limit 1")).get());
+  ASSERT_EQ(kExpectedColumnCount, aux_column_count);
+  ASSERT_EQ(items_count, kAlterTableCount * kConnectionCount);
+  constexpr size_t kUniqueQueriesPerRefresh = 3;
+  const auto unique_queries = kAlterTableCount * kUniqueQueriesPerRefresh;
+  const auto total_queries = kConnectionCount * unique_queries;
+  ASSERT_EQ(cache_counters.first, total_queries);
+  ASSERT_LE(cache_counters.second, total_queries - unique_queries);
+  ASSERT_GE(cache_counters.second, total_queries - 2 * unique_queries);
+  ASSERT_LE(read_rpc_counter, 720);
 }
 
 } // namespace pgwrapper

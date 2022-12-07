@@ -41,7 +41,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
@@ -256,7 +256,7 @@ void InboundCall::SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetr
   }
 }
 
-void InboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void InboundCall::Serialize(ByteBlocks* output) {
   size_t old_size = output->size();
   DoSerialize(output);
   if (rpc_method_response_bytes_) {

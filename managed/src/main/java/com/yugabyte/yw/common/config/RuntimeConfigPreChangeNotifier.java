@@ -39,6 +39,7 @@ public class RuntimeConfigPreChangeNotifier {
   }
 
   public void notifyListeners(UUID scopeUUID, String path, String newValue) {
+    // TODO(Aayush): dataTypeValidator.validate(scope, path, newValue)
     if (!listenerMap.containsKey(path)) {
       return;
     }

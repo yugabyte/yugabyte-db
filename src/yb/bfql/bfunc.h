@@ -32,4 +32,3 @@
 #include "yb/util/logging.h"
 
 // Include all builtin function templates.
-

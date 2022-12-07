@@ -29,6 +29,7 @@ from yb.common_util import (
     read_file,
     write_file,
     shlex_join,
+    create_symlink,
 )
 from yb.build_paths import BuildPaths
 
@@ -618,7 +619,8 @@ def link_whole_program(
         run_linker: bool,
         lto_output_suffix: Optional[str],
         lto_output_path: Optional[str],
-        lto_type: str) -> None:
+        lto_type: str,
+        symlink_as: List[str]) -> None:
     if os.environ.get('YB_SKIP_FINAL_LTO_LINK') == '1':
         raise ValueError('YB_SKIP_FINAL_LTO_LINK is set, the final LTO linking step should not '
                          'have been invoked. Perhaps yb_build.sh should be invoked with '
@@ -657,3 +659,9 @@ def link_whole_program(
         if not run_linker:
             return
         link_helper.run_linker()
+
+    for symlink_name in symlink_as:
+        create_symlink(
+            os.path.basename(link_helper.final_output_name),
+            os.path.join(os.path.dirname(link_helper.final_output_name),
+                         symlink_name))

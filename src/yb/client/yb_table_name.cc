@@ -20,7 +20,7 @@
 #include "yb/common/redis_constants_common.h"
 
 #include "yb/master/master_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
 namespace yb {
 namespace client {

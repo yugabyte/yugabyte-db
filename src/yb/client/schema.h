@@ -286,7 +286,7 @@ class YBSchema {
 
   // DEPRECATED: will be removed soon.
   Status Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
-                       const TableProperties& table_properties) WARN_UNUSED_RESULT;
+               const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   void Reset(std::unique_ptr<Schema> schema);
 
@@ -373,4 +373,3 @@ inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
 
 } // namespace client
 } // namespace yb
-

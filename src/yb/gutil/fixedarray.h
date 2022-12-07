@@ -190,4 +190,3 @@ inline FixedArray<T, S>::~FixedArray() {
     }
   }
 }
-

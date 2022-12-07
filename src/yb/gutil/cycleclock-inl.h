@@ -225,4 +225,3 @@ inline int64 CycleClock::Now() {
 // available.
 #error You need to define CycleTimer for your O/S and CPU
 #endif
-

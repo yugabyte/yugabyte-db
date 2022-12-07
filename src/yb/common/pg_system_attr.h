@@ -43,4 +43,3 @@ enum class PgSystemAttrNum : int {
 };
 
 } // namespace yb
-

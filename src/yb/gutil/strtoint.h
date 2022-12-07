@@ -101,4 +101,3 @@ inline int32 atoi32(const std::string &s) {
 inline int64 atoi64(const std::string &s) {
   return atoi64(s.c_str());
 }
-

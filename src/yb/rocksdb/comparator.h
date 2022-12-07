@@ -102,4 +102,3 @@ extern const Comparator* ReverseBytewiseComparator();
 extern const Comparator* Uint64Comparator();
 
 }  // namespace rocksdb
-

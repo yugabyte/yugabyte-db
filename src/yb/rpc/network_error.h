@@ -40,4 +40,3 @@ typedef StatusErrorCodeImpl<NetworkErrorTag> NetworkError;
 
 } // namespace rpc
 } // namespace yb
-

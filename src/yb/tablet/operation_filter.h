@@ -56,4 +56,3 @@ std::unique_ptr<OperationFilter> MakeFunctorOperationFilter(const F& f) {
 
 }  // namespace tablet
 }  // namespace yb
-

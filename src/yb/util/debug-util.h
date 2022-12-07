@@ -145,4 +145,3 @@ std::string DemangleName(const char* name);
   TEST_PAUSE_IF_FLAG_WITH_PREFIX(flag_name, LogPrefix())
 
 } // namespace yb
-

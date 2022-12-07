@@ -52,4 +52,3 @@ class RpcCall : public OutboundData {
 
 }  // namespace rpc
 }  // namespace yb
-

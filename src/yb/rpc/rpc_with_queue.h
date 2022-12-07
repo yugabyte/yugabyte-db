@@ -117,4 +117,3 @@ class ConnectionContextWithQueue : public ConnectionContextBase,
 
 } // namespace rpc
 } // namespace yb
-

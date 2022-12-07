@@ -47,4 +47,3 @@ struct TableSizeInfo {
 
 }  // namespace client
 }  // namespace yb
-

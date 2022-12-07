@@ -19,7 +19,7 @@
 #include <memory>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/blocking_queue.h"
@@ -231,4 +231,3 @@ void TaskStream<T>::ProcessItem(T* item) {
 }
 
 }  // namespace yb
-

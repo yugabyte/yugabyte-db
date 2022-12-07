@@ -31,4 +31,3 @@ struct RpcMetrics {
 
 } // namespace rpc
 } // namespace yb
-

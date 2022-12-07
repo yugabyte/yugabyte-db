@@ -83,7 +83,7 @@ Status EndpointFromHostPortPB(const HostPortPB& host_portpb, Endpoint* endpoint)
 // Adds addresses in 'addrs' to 'pbs'. If an address is a wildcard (e.g., "0.0.0.0"),
 // then the local machine's FQDN or its network interface address is used in its place.
 Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
-                              google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
+                      google::protobuf::RepeatedPtrField<HostPortPB>* pbs);
 
 // Simply convert the list of host ports into a repeated list of corresponding PB's.
 void HostPortsToPBs(const std::vector<HostPort>& addrs,
@@ -202,4 +202,3 @@ struct SplitChildTabletIdsTag : yb::StringVectorBackedErrorTag {
 typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;
 
 } // namespace yb
-

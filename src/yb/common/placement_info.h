@@ -59,4 +59,3 @@ class PlacementInfoConverter {
 };
 
 } // namespace yb
-

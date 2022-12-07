@@ -223,6 +223,19 @@ public class GcpEARServiceUtil {
     return locationId;
   }
 
+  public ProtectionLevel getConfigProtectionLevel(ObjectNode authConfig) {
+    String protectionLevel = "";
+    if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)) {
+      protectionLevel = authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText();
+    } else {
+      log.info(
+          "Could not get GCP config protection level from auth config. "
+              + "'PROTECTION_LEVEL_FIELDNAME' not found.");
+      return null;
+    }
+    return ProtectionLevel.valueOf(protectionLevel);
+  }
+
   /**
    * Gets the KeyRing object from the config object. KeyRing must exist already.
    *
@@ -415,7 +428,23 @@ public class GcpEARServiceUtil {
           String.format("Key ring doesn't exist, while checking for crypto key '%s'", cryptoKeyRN));
       return false;
     }
-    return getCryptoKey(authConfig) != null;
+    CryptoKey cryptoKey = getCryptoKey(authConfig);
+    if (cryptoKey == null) {
+      return false;
+    }
+    // Sets the correct protection level for existing crypto key
+    CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
+    ProtectionLevel configProtectionLevel = getConfigProtectionLevel(authConfig);
+    if (cryptoKeyVersion != null
+        && !cryptoKeyVersion.getProtectionLevel().equals(configProtectionLevel)) {
+      log.info(
+          "Found existing key with different protection level. "
+              + "Changed protection level from {} to {}.",
+          configProtectionLevel,
+          cryptoKeyVersion.getProtectionLevel());
+      authConfig.put(PROTECTION_LEVEL_FIELDNAME, cryptoKeyVersion.getProtectionLevel().toString());
+    }
+    return true;
   }
 
   /**

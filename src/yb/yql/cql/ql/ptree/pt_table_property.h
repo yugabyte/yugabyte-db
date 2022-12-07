@@ -271,4 +271,3 @@ struct Transactions {
 
 } // namespace ql
 } // namespace yb
-

@@ -83,9 +83,9 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   }
 
   Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override {
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

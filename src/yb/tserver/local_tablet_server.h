@@ -35,4 +35,3 @@ class LocalTabletServer {
 
 } // namespace tserver
 } // namespace yb
-

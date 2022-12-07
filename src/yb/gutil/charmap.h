@@ -97,4 +97,3 @@ class Charmap {
   }
 };
 DECLARE_POD(Charmap);
-

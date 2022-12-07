@@ -334,4 +334,3 @@ class BlockBasedTable : public TableReader {
 };
 
 }  // namespace rocksdb
-

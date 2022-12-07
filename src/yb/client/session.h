@@ -286,4 +286,3 @@ bool ShouldSessionRetryError(const Status& status);
 
 } // namespace client
 } // namespace yb
-

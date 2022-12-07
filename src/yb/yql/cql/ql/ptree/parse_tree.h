@@ -159,4 +159,3 @@ class ParseTree {
 
 }  // namespace ql
 }  // namespace yb
-

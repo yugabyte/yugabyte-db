@@ -136,8 +136,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // out of order.
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
-      bool external_transaction = false);
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
 
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
@@ -248,4 +247,3 @@ class TransactionParticipant : public TransactionStatusManager {
 
 } // namespace tablet
 } // namespace yb
-

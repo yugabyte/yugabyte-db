@@ -40,4 +40,3 @@ struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
 typedef StatusErrorCodeImpl<TransactionErrorTag> TransactionError;
 
 } // namespace yb
-

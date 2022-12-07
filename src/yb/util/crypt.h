@@ -48,4 +48,3 @@ int bcrypt_checkpw(const char* passwd, const char hash[kBcryptHashSize]);
 
 }  // namespace util
 }  // namespace yb
-

@@ -125,7 +125,12 @@ func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []s
 	if provider.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-	options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
+
+	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
+		options = append(options, "--yb_home_dir", "'"+homeDir+"'")
+	} else {
+		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
+	}
 
 	if data := provider.SshPort; data != 0 {
 		options = append(options, "--ssh_port", fmt.Sprint(data))

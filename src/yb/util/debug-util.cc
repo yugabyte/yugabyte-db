@@ -67,6 +67,7 @@
 #include "yb/util/source_location.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
@@ -76,7 +77,7 @@ constexpr bool kDefaultUseLibbacktrace = true;
 constexpr bool kDefaultUseLibbacktrace = false;
 #endif
 
-DEFINE_bool(use_libbacktrace, kDefaultUseLibbacktrace,
+DEFINE_UNKNOWN_bool(use_libbacktrace, kDefaultUseLibbacktrace,
             "Whether to use the libbacktrace library for symbolizing stack traces");
 
 // Evil hack to grab a few useful functions from glog

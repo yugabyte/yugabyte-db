@@ -32,4 +32,3 @@ static constexpr int64_t kRedisMinTtlMillis = std::numeric_limits<int64_t>::min(
   yb::MonoTime::kNanosecondsPerMillisecond;
 // SET with the EX flag does not support negative values. However, SETEX does.
 static constexpr int64_t kRedisMinTtlSetExSeconds = 1;
-

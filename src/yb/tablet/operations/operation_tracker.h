@@ -142,4 +142,3 @@ class OperationTracker {
 
 }  // namespace tablet
 }  // namespace yb
-

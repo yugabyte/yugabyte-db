@@ -111,4 +111,3 @@ class YBClientBuilder::Data {
 
 }  // namespace client
 }  // namespace yb
-

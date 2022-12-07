@@ -98,4 +98,3 @@ extern Status BuildTable(
     TableProperties* table_properties = nullptr);
 
 }  // namespace rocksdb
-

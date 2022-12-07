@@ -2,16 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import javax.inject.Inject;
-
-import org.apache.commons.lang3.tuple.Pair;
-
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -23,7 +13,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -32,16 +21,16 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public class CertsRotate extends UpgradeTaskBase {
-
-  private static final String KEY_CERT_ROTATE_SUPPORTED_VERSIONS =
-      "yb.features.cert_rotate.supportedVersions";
-
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
   protected CertsRotate(BaseTaskDependencies baseTaskDependencies) {
@@ -82,13 +71,13 @@ public class CertsRotate extends UpgradeTaskBase {
             createCertUpdateTasks(allNodes, CertRotateAction.APPEND_NEW_ROOT_CERT);
 
             // Add task to use the updated certs
-            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE);
+            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
             // Copy new server certs to all nodes
             createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
 
             // Add task to use the updated certs
-            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE);
+            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
             // Remove old root cert from the ca.crt
             createCertUpdateTasks(allNodes, CertRotateAction.REMOVE_OLD_ROOT_CERT);
@@ -102,7 +91,8 @@ public class CertsRotate extends UpgradeTaskBase {
             createUniverseSetTlsParamsTask(getTaskSubGroupType());
 
             // Add task to use the updated certs
-            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE);
+            createActivateCertsTask(
+                getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().ybcInstalled);
 
           } else {
             // Update the rootCA in platform to have both old cert and new cert
@@ -117,7 +107,8 @@ public class CertsRotate extends UpgradeTaskBase {
                 taskParams().clientRootCARotationType);
 
             // Add task to use the updated certs
-            createActivateCertsTask(getUniverse(), nodes, taskParams().upgradeOption);
+            createActivateCertsTask(
+                getUniverse(), nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
 
             // Reset the old rootCA content in platform
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
@@ -197,11 +188,13 @@ public class CertsRotate extends UpgradeTaskBase {
    * @param universe
    * @param nodes nodes which are to be activated with new certs
    * @param upgradeOption
+   * @param ybcInstalled
    */
   private void createActivateCertsTask(
       Universe universe,
       Pair<List<NodeDetails>, List<NodeDetails>> nodes,
-      UpgradeOption upgradeOption) {
+      UpgradeOption upgradeOption,
+      boolean ybcInstalled) {
 
     if (isCertReloadable(universe)) {
       // cert rotate can be performed
@@ -211,33 +204,28 @@ public class CertsRotate extends UpgradeTaskBase {
     } else {
       // Do a rolling restart
       log.info("adding a cert rotate via restart task ...");
-      createRestartTasks(nodes, upgradeOption, false);
+      createRestartTasks(nodes, upgradeOption, ybcInstalled);
     }
   }
 
   private boolean isCertReloadable(Universe universe) {
-    List<?> supportedVersions =
+    if (!Boolean.parseBoolean(
+        this.runtimeConfigFactory
+            .globalRuntimeConf()
+            .getString("yb.features.cert_reload.enabled"))) {
+      log.debug("hot cert reload disabled in reference.conf");
+      return false;
+    }
+    List<String> supportedVersions =
         this.runtimeConfigFactory
             .staticApplicationConf()
-            .getAnyRefList(KEY_CERT_ROTATE_SUPPORTED_VERSIONS);
+            .getStringList("yb.features.cert_reload.supportedVersions");
     Version ybSoftwareVersion =
         new Version(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    Optional<?> matchingSupportedVersion =
-        supportedVersions
-            .stream()
-            .filter(
-                v -> {
-                  log.debug(
-                      "comparing universe version {} with supported version {}",
-                      ybSoftwareVersion,
-                      v);
-                  Version supportedVersion = new Version(v.toString());
-                  int comparisonValue = supportedVersion.compareTo(ybSoftwareVersion);
-                  log.debug("comparison result = {}", comparisonValue);
-                  return comparisonValue == 0;
-                })
-            .findFirst();
-    return matchingSupportedVersion.isPresent();
+    return supportedVersions
+        .stream()
+        .map(Version::new)
+        .anyMatch(supportedVersion -> (supportedVersion.compareTo(ybSoftwareVersion) == 0));
   }
 
   protected void createCertReloadTask(

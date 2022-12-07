@@ -78,4 +78,3 @@ class YsqlUpgradeHelper {
 
 }  // namespace pgwrapper
 }  // namespace yb
-

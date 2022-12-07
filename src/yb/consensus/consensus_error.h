@@ -34,4 +34,3 @@ typedef StatusErrorCodeImpl<ConsensusErrorTag> ConsensusError;
 
 } // namespace consensus
 } // namespace yb
-

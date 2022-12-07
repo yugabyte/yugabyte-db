@@ -15,7 +15,7 @@ type: docs
 
   <li >
     <a href="../postgres-npgsql/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>
   </li>

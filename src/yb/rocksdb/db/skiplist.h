@@ -650,4 +650,3 @@ class SingleWriterInlineSkipList :
 };
 
 }  // namespace rocksdb
-

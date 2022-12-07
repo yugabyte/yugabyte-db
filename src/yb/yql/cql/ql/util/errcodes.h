@@ -161,4 +161,3 @@ typedef StatusErrorCodeImpl<QLErrorTag> QLError;
 
 }  // namespace ql
 }  // namespace yb
-

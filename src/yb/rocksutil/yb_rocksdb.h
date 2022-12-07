@@ -26,4 +26,3 @@ namespace yb {
 void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options);
 
 }  // namespace yb
-

@@ -101,9 +101,9 @@ class ClusterVerifier {
   // Implementation for CheckRowCount -- returns a Status instead of firing
   // gtest assertions.
   Status DoCheckRowCount(const client::YBTableName& table_name,
-                                 ComparisonMode mode,
-                                 size_t expected_row_count,
-                                 YBConsistencyLevel consistency);
+                         ComparisonMode mode,
+                         size_t expected_row_count,
+                         YBConsistencyLevel consistency);
 
 
   MiniClusterBase* cluster_;

@@ -15,22 +15,22 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -165,7 +165,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
 
   For example, for a GKE version earlier than 1.17, you would run a command similar to the following:
-  
+
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
     --version {{<yb-version version="preview" format="short">}} \

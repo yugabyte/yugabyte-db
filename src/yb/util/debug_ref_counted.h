@@ -65,4 +65,3 @@ class DebugRefCountedThreadSafe : public RefCountedThreadSafe<T, Traits> {
 };
 
 } // namespace yb
-

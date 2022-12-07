@@ -44,15 +44,20 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 ## Prepare the host
 
-You prepare the host as follows:
+The requirements depend on the type of your YugabyteDB Anywhere installation:
 
-- For a Docker-based installation, YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
+- You prepare a [Docker-based installation](#docker-based-installations) via Replicated.
+- A [Kubernetes-based installation](#kubernetes-based-installations) requires you to address concerns related to security and core dump collection.
 
-  Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
+### Docker-based installations
 
-- For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+For a Docker-based installation, YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
-### Airgapped hosts
+Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
+
+Installing on airgapped hosts requires additional configurations, as described in [Airgapped hosts](#airgapped-hosts).
+
+#### Airgapped hosts
 
 Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Internet traffic (inbound or outbound) requires the following:
 
@@ -60,7 +65,7 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
   `https://downloads.yugabyte.com`
   `https://download.docker.com`
 
-- Ensuring that Docker Engine version 19.03.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+- Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 - Ensuring that the following ports are open on the YugabyteDB Anywhere host:
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Anywhere UI
@@ -69,7 +74,36 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
 - Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte license agreement. Contact Yugabyte Support for more information.
 
-### Pull and push YugabyteDB Docker images to private container registry
+### Kubernetes-based installations
+
+For a [Kubernetes-based installation](#kubernetes-based-installations), you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+
+In addition, you need to ensure that core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](#specify-ulimit-and-remember-the-location-of-core-dumps). 
+
+#### Specify ulimit and remember the location of core dumps
+
+The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.
+
+You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps). 
+
+To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core(5)](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming of core dump files).
+
+To inspect the value of the sysctl within a Kubernetes pod or node, execute the following:
+
+```sh
+cat /proc/sys/kernel/core_pattern
+```
+
+If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
+
+If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis. 
+
+Note the following:
+
+- ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod. 
+- New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node. 
+
+#### Pull and push YugabyteDB Docker images to private container registry
 
 Due to security concerns, some Kubernetes environments use internal container registries such as  Harbor and Nexus. In this type of setup, YugabyteDB deployment must be able to pull images from and push images to a private registry.
 
@@ -91,16 +125,12 @@ Generally, the process involves the following:
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
-![img](/images/yp/docker-pull.png)<br><br>
-
-
+![img](/images/yp/docker-pull.png)
 
 You need to perform the following steps:
 
-1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file.
-
-   To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
-
+1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+   
    ```sh
    docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
    
@@ -110,6 +140,8 @@ You need to perform the following steps:
 1. Fetch the YugabyteDB Helm chart on your desktop (install Helm on your desktop). Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
 
    ```sh
+   helm repo add yugabytedb https://charts.yugabyte.com 
+   helm repo update 
    helm fetch yugabytedb/yugaware - - version= {{ version }}
    tar zxvf yugaware-{{ version }}.tgz
    cd yugaware
@@ -118,28 +150,26 @@ You need to perform the following steps:
    
    ```properties
    image:
-	commonRegistry: ""
+   commonRegistry: ""
     	repository: **quay.io/yugabyte/yugaware**
-   ```
-
- 	tag: **{{ version.build }}**
- 	pullPolicy: IfNotPresent
- 	pullSecret: yugabyte-k8s-pull-secret
- 	thirdparty-deps:
- 		registry: quay.io
- 		tag: **latest**
- 		name: **yugabyte/thirdparty-deps** 
- 	prometheus:
- 		registry: ""
- 		tag:  **{{ version.prometheus }}**
- 		name: **prom/prometheus**
- 	nginx:
- 		registry: ""
- 		tag: **{{ version.nginx }}**
- 		name: nginx
+    	tag: **{{ version.build }}**
+   pullPolicy: IfNotPresent
+   pullSecret: yugabyte-k8s-pull-secret
+   thirdparty-deps:
+   	registry: quay.io
+   	tag: **latest**
+   	name: **yugabyte/thirdparty-deps** 
+   prometheus:
+   	registry: ""
+   	tag:  **{{ version.prometheus }}**
+   	name: **prom/prometheus**
+   nginx:
+   	registry: ""
+   	tag: **{{ version.nginx }}**
+   	name: nginx
    ```
    
-2. Pull images to your Docker Desktop, as follows:
+1. Pull images to your Docker Desktop, as follows:
 
    ```sh
    docker pull quay.io/yugabyte/yugaware:{{ version.build }}
@@ -193,7 +223,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull postgres: {{}}
+   docker pull postgres:11.5
    ```
 
    ```output
@@ -218,7 +248,7 @@ You need to perform the following steps:
    ```
 
    ```sh
-   docker pull prom/prometheus: {{}}
+   docker pull prom/prometheus:v2.2.1
    ```
 
    ```output
@@ -309,7 +339,7 @@ You need to perform the following steps:
    ```
    ![img](/images/yp/docker-image.png)
    
-7. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
+1. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
 
    ```properties
    image:

@@ -68,4 +68,3 @@ class SplitOperation
 
 }  // namespace tablet
 }  // namespace yb
-

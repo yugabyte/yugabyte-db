@@ -71,4 +71,3 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
 }  // namespace tserver
 }  // namespace yb
-

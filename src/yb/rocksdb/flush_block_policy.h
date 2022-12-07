@@ -78,4 +78,3 @@ class FlushBlockBySizePolicyFactory : public FlushBlockPolicyFactory {
 };
 
 }  // namespace rocksdb
-

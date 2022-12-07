@@ -7,21 +7,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,55 +82,6 @@ public class UpgradeUniverseHandlerTest {
 
     String result = UpgradeUniverseHandler.generateTypeName(userIntent, requestParams);
     Assert.assertEquals(expected, result);
-  }
-
-  @Test
-  public void testMergeResizeNodeParamsWithIntent() {
-    UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
-    intent.providerType = Common.CloudType.aws;
-    intent.deviceInfo = new DeviceInfo();
-    intent.deviceInfo.volumeSize = 100;
-    intent.deviceInfo.numVolumes = 2;
-    intent.replicationFactor = 35;
-    intent.instanceType = DEFAULT_INSTANCE_TYPE;
-    UUID universeCA = UUID.randomUUID();
-    Universe universe = new Universe();
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.clusters =
-        Collections.singletonList(
-            new UniverseDefinitionTaskParams.Cluster(
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY, intent));
-    taskParams.nodeDetailsSet = Collections.emptySet();
-    UUID clusterId = UUID.randomUUID();
-    taskParams.clusters.get(0).uuid = clusterId;
-    universe.setUniverseDetails(taskParams);
-    universe.getUniverseDetails().rootCA = universeCA;
-    universe.getUniverseDetails().clientRootCA = universeCA;
-
-    ResizeNodeParams resizeNodeParams = new ResizeNodeParams();
-    resizeNodeParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
-    resizeNodeParams.rootCA = UUID.randomUUID();
-    resizeNodeParams.clientRootCA = UUID.randomUUID();
-    UniverseDefinitionTaskParams.UserIntent requestIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    requestIntent.deviceInfo = new DeviceInfo();
-    requestIntent.deviceInfo.volumeSize = 150;
-    requestIntent.instanceType = NEW_INSTANCE_TYPE;
-    resizeNodeParams.clusters =
-        Collections.singletonList(
-            new UniverseDefinitionTaskParams.Cluster(
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY, requestIntent));
-    resizeNodeParams.clusters.get(0).uuid = clusterId;
-
-    handler.mergeResizeNodeParamsWithIntent(resizeNodeParams, universe);
-    Assert.assertEquals(universeCA, resizeNodeParams.rootCA);
-    Assert.assertEquals(universeCA, resizeNodeParams.clientRootCA);
-    UniverseDefinitionTaskParams.UserIntent submitIntent =
-        resizeNodeParams.getPrimaryCluster().userIntent;
-    Assert.assertEquals(35, submitIntent.replicationFactor);
-    Assert.assertEquals(NEW_INSTANCE_TYPE, submitIntent.instanceType);
-    Assert.assertEquals(150, submitIntent.deviceInfo.volumeSize.intValue());
-    Assert.assertEquals(2, submitIntent.deviceInfo.numVolumes.intValue());
   }
 
   @Test

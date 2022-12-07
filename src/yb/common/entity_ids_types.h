@@ -50,4 +50,3 @@ using FlushRequestId = std::string;
 using RedisConfigKey = std::string;
 
 }  // namespace yb
-

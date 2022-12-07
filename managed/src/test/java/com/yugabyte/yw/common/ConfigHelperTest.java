@@ -13,13 +13,21 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.FileData;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -35,13 +43,20 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigHelperTest extends FakeDBApplication {
-  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/releases";
+  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName();
 
   @InjectMocks ConfigHelper configHelper;
 
   @Mock Util util;
 
   @Mock Application application;
+
+  Customer customer;
+
+  @Before
+  public void setUp() {
+    customer = ModelFactory.testCustomer();
+  }
 
   @Before
   public void beforeTest() throws IOException {
@@ -55,14 +70,14 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   private InputStream asYamlStream(Map<String, Object> map) throws IOException {
     Yaml yaml = new Yaml();
-    String fileName = createTempFile("file.yml", yaml.dump(map));
+    String fileName = createTempFile(TMP_STORAGE_PATH, "file.yml", yaml.dump(map));
     File initialFile = new File(fileName);
     return new FileInputStream(initialFile);
   }
 
   private InputStream asJsonStream(Map<String, Object> map) throws IOException {
     JsonNode jsonNode = Json.toJson(map);
-    String fileName = createTempFile("file.json", jsonNode.toString());
+    String fileName = createTempFile(TMP_STORAGE_PATH, "file.json", jsonNode.toString());
     File initialFile = new File(fileName);
     return new FileInputStream(initialFile);
   }
@@ -172,5 +187,41 @@ public class ConfigHelperTest extends FakeDBApplication {
         configHelper.getRegionMetadata(Common.CloudType.docker).get("region"),
         allOf(notNullValue(), equalTo("docker-data")));
     assertTrue(configHelper.getRegionMetadata(Common.CloudType.onprem).isEmpty());
+  }
+
+  @Test
+  public void testSyncFileData() throws IOException {
+    Provider p = ModelFactory.awsProvider(customer);
+    String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
+    for (String diskFileName : diskFileNames) {
+      String filePath = "/keys/" + p.uuid + "/";
+      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
+    }
+    for (String diskFileName : diskFileNames) {
+      String filePath = "/node-agent/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
+      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
+    }
+    configHelper.syncFileData(TMP_STORAGE_PATH, false);
+
+    String[] dbFileNames = {"testFile4.txt", "testFile5", "testFile6.root.crt"};
+    for (String dbFileName : dbFileNames) {
+      UUID parentUUID = UUID.randomUUID();
+      String filePath = "/keys/" + parentUUID + "/" + dbFileName;
+      String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
+      FileData.create(parentUUID, filePath, dbFileName, content);
+    }
+    for (String dbFileName : dbFileNames) {
+      UUID parentUUID = UUID.randomUUID();
+      String filePath = "/node-agent/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
+      String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
+      FileData.create(parentUUID, filePath, dbFileName, content);
+    }
+
+    configHelper.syncFileData(TMP_STORAGE_PATH, true);
+    List<FileData> fd = FileData.getAll();
+    assertEquals(fd.size(), 12);
+    Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
+    assertEquals(diskFiles.size(), 12);
+    FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 }

@@ -20,7 +20,7 @@
 #include <string>
 
 #include <boost/thread/locks.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/util/shared_lock.h"
 
@@ -94,4 +94,3 @@ class QLSession {
 
 }  // namespace ql
 }  // namespace yb
-

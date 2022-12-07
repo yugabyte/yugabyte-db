@@ -401,4 +401,3 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
   RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 } // namespace yb
-

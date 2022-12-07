@@ -112,4 +112,3 @@ class RedisClient {
 
 } // namespace redisserver
 } // namespace yb
-

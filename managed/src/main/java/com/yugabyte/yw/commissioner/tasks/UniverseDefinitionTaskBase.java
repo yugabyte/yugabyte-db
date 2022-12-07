@@ -771,6 +771,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.deleteTags = deleteTags;
       // Add needed tags.
       params.tags = tagsToSet;
+
+      params.creatingUser = taskParams().creatingUser;
+      params.platformUrl = taskParams().platformUrl;
+
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
@@ -1035,7 +1039,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       fillCreateParamsForNode(params, userIntent, node);
-
+      params.creatingUser = taskParams().creatingUser;
+      params.platformUrl = taskParams().platformUrl;
       // Create the Ansible task to setup the server.
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
@@ -2097,9 +2102,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String ybcSoftwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    if (taskSubType == UpgradeTaskSubType.PackageReInstall) {
-      params.updatePackages = true;
-    } else if (softwareVersion == null) {
+    if (softwareVersion == null) {
       UserIntent userIntent =
           getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

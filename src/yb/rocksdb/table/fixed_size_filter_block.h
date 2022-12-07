@@ -110,4 +110,3 @@ class FixedSizeFilterBlockReader : public FilterBlockReader {
 
 };
 }  // namespace rocksdb
-

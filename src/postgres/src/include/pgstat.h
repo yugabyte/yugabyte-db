@@ -1103,6 +1103,12 @@ typedef struct PgBackendStatus
 	ProgressCommandType st_progress_command;
 	Oid			st_progress_command_target;
 	int64		st_progress_param[PGSTAT_NUM_PROGRESS_PARAM];
+
+	/*
+	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
+	 * + pggate memory usage + cached memory - memory that was freed but not recycled
+	 */
+	int64_t yb_st_allocated_mem_bytes;
 } PgBackendStatus;
 
 /*
@@ -1202,6 +1208,9 @@ typedef struct LocalPgBackendStatus
 	 * not.
 	 */
 	TransactionId backend_xmin;
+
+	/* Backend's RSS memory usage */
+	int64_t yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
 /*
@@ -1456,4 +1465,9 @@ extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
 extern PgStat_GlobalStats *pgstat_fetch_global(void);
 extern PgBackendStatus **getBackendStatusArrayPointer(void);
 
+/* ----------
+ * YB functions called from backends
+ * ----------
+ */
+extern void yb_pgstat_report_allocated_mem_bytes(void);
 #endif							/* PGSTAT_H */

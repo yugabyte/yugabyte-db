@@ -108,8 +108,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle,
-              provider.getK8sPodAddrTemplate());
+              newNamingStyle);
 
       // validate clusters
       for (Cluster cluster : taskParams().clusters) {
@@ -128,7 +127,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().getPrimaryCluster(),
               universeDetails.getPrimaryCluster(),
               masterAddresses,
-              /*restartAllPods*/ false);
+              false /* restartAllPods */);
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -193,15 +192,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
-    // Update disk size if there is a change
-    boolean diskSizeChanged = curIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
-    if (diskSizeChanged) {
-      log.info(
-          "Creating task for disk size change from {} to {}",
-          curIntent.deviceInfo.volumeSize,
-          newIntent.deviceInfo.volumeSize);
-      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
-    }
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
@@ -357,9 +347,27 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
+    // Finally, update disk size if there is a change
+    boolean diskSizeChanged =
+        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+    if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
+      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
+    }
+
     // Update the universe to the new state.
     createSingleKubernetesExecutorTask(
         KubernetesCommandExecutor.CommandType.POD_INFO, newPI, isReadOnlyCluster);
+
+    if (!mastersToAdd.isEmpty()) {
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+    }
+
     return !mastersToAdd.isEmpty();
   }
 

@@ -24,7 +24,6 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
-#if !defined(ROCKSDB_LITE)
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
@@ -1467,14 +1466,9 @@ TEST_F(DBTestUniversalCompaction, IncludeFilesSmallerThanThreshold) {
 
 }  // namespace rocksdb
 
-#endif  // !defined(ROCKSDB_LITE)
 
 int main(int argc, char** argv) {
-#if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-#else
-  return 0;
-#endif
 }

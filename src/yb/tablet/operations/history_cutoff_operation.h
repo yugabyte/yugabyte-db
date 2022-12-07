@@ -37,4 +37,3 @@ class HistoryCutoffOperation
 
 } // namespace tablet
 } // namespace yb
-

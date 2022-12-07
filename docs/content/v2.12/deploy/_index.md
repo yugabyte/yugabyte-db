@@ -67,7 +67,7 @@ type: indexpage
     <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
         <div class="icon">
-          <i class="fab fa-docker"></i>
+          <i class="fa-brands fa-docker"></i>
         </div>
         <div class="articles">2 articles</div>
         <div class="title">Docker</div>

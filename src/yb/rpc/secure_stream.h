@@ -43,7 +43,7 @@ class SecureContext {
 
   // Generates and uses temporary keys, should be used only during testing.
   Status TEST_GenerateKeys(int bits, const std::string& common_name,
-                                   MatchingCertKeyPair matching_cert_key_pair);
+                           MatchingCertKeyPair matching_cert_key_pair);
 
  private:
   class Impl;
@@ -67,4 +67,3 @@ std::string GetCipherSuites();
 
 } // namespace rpc
 } // namespace yb
-

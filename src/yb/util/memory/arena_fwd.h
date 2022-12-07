@@ -41,4 +41,3 @@ template<class T>
 using ThreadSafeArenaAllocator = internal::ArenaAllocatorBase<T, internal::ThreadSafeArenaTraits>;
 
 } // namespace yb
-

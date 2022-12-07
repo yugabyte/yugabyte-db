@@ -42,4 +42,3 @@ class UpdateTxnOperation
 
 } // namespace tablet
 } // namespace yb
-

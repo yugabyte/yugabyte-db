@@ -27,10 +27,6 @@ import java.util.concurrent.TimeUnit;
 public class MiscUtil {
   private static final Logger LOG = LoggerFactory.getLogger(MiscUtil.class);
 
-  public interface ThrowingRunnable {
-    void run() throws Exception;
-  }
-
   public interface ThrowingCallable<T, E extends Throwable> {
     T call() throws E;
   }

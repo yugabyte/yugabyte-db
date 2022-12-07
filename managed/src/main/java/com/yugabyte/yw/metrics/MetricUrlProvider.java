@@ -2,24 +2,22 @@
 
 package com.yugabyte.yw.metrics;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.Util;
 import java.net.URLEncoder;
 import java.util.TimeZone;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import play.Configuration;
 
 @Slf4j
 @Singleton
 public class MetricUrlProvider {
-
-  public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
-  private final play.Configuration appConfig;
+  private final Config appConfig;
 
   @Inject
-  public MetricUrlProvider(Configuration appConfig) {
+  public MetricUrlProvider(Config appConfig) {
     this.appConfig = appConfig;
   }
 

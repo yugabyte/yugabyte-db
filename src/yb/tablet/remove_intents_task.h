@@ -48,4 +48,3 @@ class RemoveIntentsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-

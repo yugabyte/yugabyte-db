@@ -281,4 +281,3 @@ size_t memrm(char* str, size_t strlen, char c);
 // ----------------------------------------------------------------------
 size_t strrmm(char* str, const char* chars);
 size_t strrmm(std::string* str, const std::string& chars);
-

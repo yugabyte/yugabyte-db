@@ -54,4 +54,3 @@ constexpr uint32_t kSysCatalogSchemaVersion = 1;
 
 }  // namespace master
 }  // namespace yb
-

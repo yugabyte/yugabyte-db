@@ -1097,10 +1097,10 @@ ROLLBACK;
 BEGIN;
 EXPLAIN (costs off)
 DECLARE c1 CURSOR FOR SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';
-              QUERY PLAN
----------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  Seq Scan on onek
-   Filter: (stringu1 = 'DZAAAA'::name)
+   Remote Filter: (stringu1 = 'DZAAAA'::name)
 (2 rows)
 
 DECLARE c1 CURSOR FOR SELECT stringu1 FROM onek WHERE stringu1 = 'DZAAAA';

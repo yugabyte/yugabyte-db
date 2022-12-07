@@ -146,13 +146,15 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
-  "com.azure" % "azure-core" % "1.13.0",
-  "com.azure" % "azure-identity" % "1.2.3",
-  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
-  "com.azure" % "azure-storage-blob" % "12.7.0",
+  // Used below azure versions from azure-sdk-bom:1.2.6
+  "com.azure" % "azure-core" % "1.32.0",
+  "com.azure" % "azure-identity" % "1.6.0",
+  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
+  "com.azure" % "azure-storage-blob" % "12.19.1",
   "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
@@ -303,13 +305,20 @@ cleanPlatform := {
   cleanModules.value
 }
 
+lazy val moveYbcPackageEnvName = "MOVE_YBC_PKG"
+lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
+
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  if (moveYbcPackage) {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -s", baseDirectory.value).!
+  } else {
+    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+  }
   status
 }
 
@@ -416,8 +425,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.33-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b9"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.35-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b2"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -429,6 +439,9 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+// SSO functionality only works on the older version of nimbusds.
+// Azure library upgrade tries to upgrade nimbusds to latest version.
+dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

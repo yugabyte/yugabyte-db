@@ -146,4 +146,3 @@ class RedisReadOperation {
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -120,4 +120,3 @@ Status CopyDirectory(
 }
 
 }  // namespace yb
-

@@ -30,7 +30,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 
 DBImplReadOnly::DBImplReadOnly(const DBOptions& db_options,
                                const std::string& dbname)
@@ -186,20 +185,5 @@ Status DB::OpenForReadOnly(
   return s;
 }
 
-#else  // !ROCKSDB_LITE
-
-Status DB::OpenForReadOnly(const Options& options, const std::string& dbname,
-                           DB** dbptr, bool error_if_log_file_exist) {
-  return STATUS(NotSupported, "Not supported in ROCKSDB_LITE.");
-}
-
-Status DB::OpenForReadOnly(
-    const DBOptions& db_options, const std::string& dbname,
-    const std::vector<ColumnFamilyDescriptor>& column_families,
-    std::vector<ColumnFamilyHandle*>* handles, DB** dbptr,
-    bool error_if_log_file_exist) {
-  return STATUS(NotSupported, "Not supported in ROCKSDB_LITE.");
-}
-#endif  // !ROCKSDB_LITE
 
 }   // namespace rocksdb

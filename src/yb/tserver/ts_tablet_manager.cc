@@ -99,7 +99,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -116,7 +116,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_int32(num_tablets_to_open_simultaneously, 0,
+DEFINE_UNKNOWN_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
              "is set to 0 (the default), then the number of bootstrap threads will "
              "be set based on the number of data directories. If the data directories "
@@ -124,12 +124,12 @@ DEFINE_int32(num_tablets_to_open_simultaneously, 0,
              "may make sense to manually tune this.");
 TAG_FLAG(num_tablets_to_open_simultaneously, advanced);
 
-DEFINE_int32(tablet_start_warn_threshold_ms, 500,
+DEFINE_UNKNOWN_int32(tablet_start_warn_threshold_ms, 500,
              "If a tablet takes more than this number of millis to start, issue "
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_int32(cleanup_split_tablets_interval_sec, 60,
+DEFINE_UNKNOWN_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
              "needed. Setting this to 0 disables cleanup of split tablets.");
 
@@ -194,33 +194,33 @@ DEFINE_test_flag(bool, pause_apply_tablet_split, false,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-DEFINE_int32(verify_tablet_data_interval_sec, 0,
+DEFINE_UNKNOWN_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
 
-DEFINE_int32(cleanup_metrics_interval_sec, 60,
+DEFINE_UNKNOWN_int32(cleanup_metrics_interval_sec, 60,
              "The tick interval time for the metrics cleanup background task. "
              "If set to 0, it disables the background task.");
 
-DEFINE_int32(send_wait_for_report_interval_ms, 60000,
+DEFINE_UNKNOWN_int32(send_wait_for_report_interval_ms, 60000,
              "The tick interval time to trigger updating all transaction coordinators with wait-for"
              " relationships.");
 
-DEFINE_bool(skip_tablet_data_verification, false,
+DEFINE_UNKNOWN_bool(skip_tablet_data_verification, false,
             "Skip checking tablet data for corruption.");
 
-DEFINE_int32(read_pool_max_threads, 128,
+DEFINE_UNKNOWN_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
              "to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
-DEFINE_int32(read_pool_max_queue_size, 128,
+DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
 
-DEFINE_int32(post_split_trigger_compaction_pool_max_threads, 1,
+DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
              "DEPRECATED. Use full_compaction_pool_max_threads.");
-DEFINE_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
+DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
              "DEPRECATED. Use full_compaction_pool_max_queue_size.");
 
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
@@ -242,10 +242,10 @@ DEFINE_NON_RUNTIME_int32(scheduled_full_compaction_check_interval_min, 15,
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
+DEFINE_UNKNOWN_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
-DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
+DECLARE_bool(enable_wait_queues);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -306,6 +306,10 @@ THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
 
 THREAD_POOL_METRICS_DEFINE(server, full_compaction_pool,
     "Thread pool for tserver-triggered full compaction jobs.");
+
+THREAD_POOL_METRICS_DEFINE(
+    server, wait_queue_resume_waiter_pool,
+    "Thread pool for wait queue to resume waiting operations.");
 
 ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
 
@@ -441,6 +445,12 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
                   server_->metric_entity(), full_compaction_pool))
               .Build(&full_compaction_pool_));
+  CHECK_OK(ThreadPoolBuilder("wait-queue")
+              .set_min_threads(1)
+              .unlimited_threads()
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), wait_queue_resume_waiter_pool))
+              .Build(&wait_queue_pool_));
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_post_split_compaction_added_ =
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
@@ -507,7 +517,7 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
-  if (FLAGS_enable_wait_queue_based_pessimistic_locking) {
+  if (FLAGS_enable_wait_queues) {
     waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
         client_future(), scoped_refptr<server::Clock>(server_->clock()));
   }
@@ -1538,6 +1548,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         return server->TransactionManager();
       },
       .waiting_txn_registry = waiting_txn_registry_.get(),
+      .wait_queue_pool = wait_queue_pool_.get(),
       .full_compaction_pool = full_compaction_pool(),
       .post_split_compaction_added = ts_post_split_compaction_added_
     };
@@ -1613,16 +1624,26 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   }
 }
 
-Status TSTabletManager::TriggerCompactionAndWait(const TabletPtrs& tablets) {
+Status TSTabletManager::TriggerAdminCompactionAndWait(const TabletPtrs& tablets) {
   CountDownLatch latch(tablets.size());
   auto token = admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+  std::vector<TabletId> tablet_ids;
+  auto start_time = CoarseMonoClock::Now();
+  uint64_t total_size = 0U;
   for (auto tablet : tablets) {
     RETURN_NOT_OK(token->SubmitFunc([&latch, tablet]() {
-      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(), "Failed to submit compaction for tablet.");
+      WARN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kAdminCompaction),
+          "Failed to submit compaction for tablet.");
       latch.CountDown();
     }));
+    tablet_ids.push_back(tablet->tablet_id());
+    total_size += tablet->GetCurrentVersionSstFilesSize();
   }
+  VLOG(1) << yb::Format("Beginning batch admin compaction for tablets $0, $1 bytes",
+      tablet_ids, total_size);
   latch.Wait();
+  LOG(INFO) << yb::Format("Admin compaction finished for tablets $0, $1 bytes took $2 seconds",
+      tablet_ids, total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
   return Status::OK();
 }
 
@@ -1741,6 +1762,10 @@ void TSTabletManager::CompleteShutdown() {
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
   }
+  if (wait_queue_pool_) {
+    wait_queue_pool_->Shutdown();
+  }
+
   {
     std::lock_guard<RWMutex> l(mutex_);
     tablet_map_.clear();
@@ -2595,6 +2620,9 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
 HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   auto schedules = metadata->SnapshotSchedules();
   if (schedules.empty()) {
+    if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
+      return metadata->cdc_sdk_safe_time();
+    }
     return HybridTime::kMax;
   }
   std::vector<SnapshotScheduleId> schedules_to_remove;
@@ -2635,6 +2663,9 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
       return HybridTime::kMin;
     }
     result = std::min(result, it->second);
+  }
+  if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
+    result = std::min(result, metadata->cdc_sdk_safe_time());
   }
   return result;
 }

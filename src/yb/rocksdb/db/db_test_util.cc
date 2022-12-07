@@ -128,22 +128,6 @@ void DBHolder::CreateEncryptedEnv() {
 }
 
 bool DBHolder::ShouldSkipOptions(int option_config, int skip_mask) {
-#ifdef ROCKSDB_LITE
-    // These options are not supported in ROCKSDB_LITE
-  if (option_config == kHashSkipList ||
-      option_config == kPlainTableFirstBytePrefix ||
-      option_config == kPlainTableCappedPrefix ||
-      option_config == kPlainTableCappedPrefixNonMmap ||
-      option_config == kPlainTableAllBytesPrefix ||
-      option_config == kVectorRep || option_config == kHashLinkList ||
-      option_config == kUniversalCompaction ||
-      option_config == kUniversalCompactionMultiLevel ||
-      option_config == kUniversalSubcompactions ||
-      option_config == kFIFOCompaction ||
-      option_config == kConcurrentSkipList) {
-    return true;
-    }
-#endif
 
     if ((skip_mask & kSkipDeletesFilterFirst) &&
         option_config == kDeletesFilterFirst) {
@@ -275,7 +259,6 @@ Options DBHolder::CurrentOptions(
   BlockBasedTableOptions table_options;
   bool set_block_based_table_factory = true;
   switch (option_config_) {
-#ifndef ROCKSDB_LITE
     case kHashSkipList:
       options.prefix_extractor.reset(NewFixedPrefixTransform(1));
       options.memtable_factory.reset(NewHashSkipListRepFactory(16));
@@ -316,7 +299,6 @@ Options DBHolder::CurrentOptions(
       options.memtable_factory.reset(
           NewHashLinkListRepFactory(4, 0, 3, true, 4));
       break;
-#endif  // ROCKSDB_LITE
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
       break;
@@ -695,7 +677,6 @@ std::string DBHolder::AllEntriesFor(const Slice& user_key, int cf) {
   return result;
 }
 
-#ifndef ROCKSDB_LITE
 int DBHolder::NumSortedRuns(int cf) {
   ColumnFamilyMetaData cf_meta;
   if (cf == 0) {
@@ -753,7 +734,6 @@ size_t DBHolder::CountLiveFiles() {
   db_->GetLiveFilesMetaData(&metadata);
   return metadata.size();
 }
-#endif  // ROCKSDB_LITE
 
 int DBHolder::NumTableFilesAtLevel(int level, int cf) {
   std::string property;

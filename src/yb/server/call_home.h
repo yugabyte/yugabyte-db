@@ -60,6 +60,9 @@ class CallHome {
       const std::string& webserver_dir, const std::set<std::string>& additional_collections,
       ServerType* server);
 
+  template <class ServerType, class CallHomeType>
+  friend void TestGFlagsCallHome(ServerType* server);
+
   template <typename T>
   void AddCollector() {
     collectors_.emplace_back(std::make_unique<T>(server_));

@@ -42,4 +42,3 @@ std::shared_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-

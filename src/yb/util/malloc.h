@@ -52,4 +52,3 @@ struct FreeDeleter {
 };
 
 } // namespace yb
-

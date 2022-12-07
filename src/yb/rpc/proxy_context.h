@@ -56,4 +56,3 @@ class ProxyContext {
 
 } // namespace rpc
 } // namespace yb
-

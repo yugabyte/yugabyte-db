@@ -437,4 +437,3 @@ using yb::down_cast;
 using yb::implicit_cast;
 using yb::narrow_cast;
 using yb::trim_cast;
-

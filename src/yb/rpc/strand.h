@@ -75,4 +75,3 @@ class Strand : public ThreadPoolTask {
 
 } // namespace rpc
 } // namespace yb
-

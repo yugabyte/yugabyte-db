@@ -142,4 +142,3 @@ class PTKeyspacePropertyMap : public PTKeyspaceProperty {
 
 } // namespace ql
 } // namespace yb
-

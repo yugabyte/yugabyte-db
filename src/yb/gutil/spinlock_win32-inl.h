@@ -70,4 +70,3 @@ void SpinLockWake(volatile Atomic32 *w, bool all) {
 } // namespace internal
 } // namespace base
 } // namespace yb
-

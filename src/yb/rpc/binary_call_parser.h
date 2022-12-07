@@ -67,4 +67,3 @@ bool ShouldThrottleRpc(
 
 } // namespace rpc
 } // namespace yb
-

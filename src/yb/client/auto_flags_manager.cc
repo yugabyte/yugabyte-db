@@ -19,12 +19,13 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
-DEFINE_bool(disable_auto_flags_management, false,
+DEFINE_UNKNOWN_bool(disable_auto_flags_management, false,
     "Disables AutoFlags management. A safety switch to turn off automatic promotion of AutoFlags. "
     "More information about AutoFlags can be found in "
     "https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md. Use at "
@@ -37,14 +38,14 @@ DEFINE_RUNTIME_AUTO_bool(
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     auto_flags_load_from_master_backoff_increment_ms, 100,
     "Number of milliseconds added to the delay between reties of fetching AutoFlags config from "
     "master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, stable);
 TAG_FLAG(auto_flags_load_from_master_backoff_increment_ms, advanced);
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     auto_flags_load_from_master_max_backoff_sec, 3,
     "Maximum number of seconds to delay between reties of fetching AutoFlags config from master "
     "leader. This delay is applied after the RPC reties have been exhausted.");

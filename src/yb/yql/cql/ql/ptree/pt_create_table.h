@@ -193,16 +193,16 @@ class PTCreateTable : public TreeNode {
   }
 
   Status AppendColumn(SemContext *sem_context,
-                              PTColumnDefinition *column,
-                              bool check_duplicate = false);
+                      PTColumnDefinition *column,
+                      bool check_duplicate = false);
 
   Status AppendPrimaryColumn(SemContext *sem_context,
-                                     PTColumnDefinition *column,
-                                     bool check_duplicate = false);
+                             PTColumnDefinition *column,
+                             bool check_duplicate = false);
 
   Status AppendHashColumn(SemContext *sem_context,
-                                  PTColumnDefinition *column,
-                                  bool check_duplicate = false);
+                          PTColumnDefinition *column,
+                          bool check_duplicate = false);
 
   virtual Status CheckPrimaryType(SemContext *sem_context,
                                           const PTColumnDefinition *column) const;
@@ -238,4 +238,3 @@ class PTCreateTable : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

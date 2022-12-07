@@ -141,4 +141,3 @@ Status SyncReplicateChangeMetadataOperation(
 
 }  // namespace tablet
 }  // namespace yb
-

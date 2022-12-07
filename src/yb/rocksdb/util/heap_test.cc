@@ -32,8 +32,8 @@
 #ifndef GFLAGS
 const int64_t FLAGS_iters = 100000;
 #else
-#include <gflags/gflags.h>
-DEFINE_int64(iters, 100000, "number of pseudo-random operations in each test");
+#include "yb/util/flags.h"
+DEFINE_UNKNOWN_int64(iters, 100000, "number of pseudo-random operations in each test");
 #endif  // GFLAGS
 
 /*

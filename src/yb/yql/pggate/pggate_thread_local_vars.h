@@ -75,4 +75,3 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 
 } // namespace pggate
 } // namespace yb
-

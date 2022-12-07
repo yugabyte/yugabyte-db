@@ -24,6 +24,7 @@ class CompactionFeed;
 class DB;
 class Env;
 class MemTable;
+class Iterator;
 class Statistics;
 class UserFrontiers;
 class WriteBatch;
@@ -38,4 +39,3 @@ struct TableProperties;
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 } // namespace rocksdb
-

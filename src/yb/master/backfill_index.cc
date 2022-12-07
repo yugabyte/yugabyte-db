@@ -63,7 +63,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
@@ -126,6 +126,10 @@ DEFINE_test_flag(
 DEFINE_test_flag(
     bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
+
+DEFINE_test_flag(
+    bool, block_do_backfill, false,
+    "Block DoBackfill from proceeding.");
 
 namespace yb {
 namespace master {
@@ -887,6 +891,11 @@ Status BackfillTable::DoLaunchBackfill() {
 }
 
 Status BackfillTable::DoBackfill() {
+  while (FLAGS_TEST_block_do_backfill) {
+    constexpr auto kSpinWait = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
+    SleepFor(kSpinWait);
+  }
   VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
                       << read_time_for_backfill_;
   auto tablets = indexed_table_->GetTablets();

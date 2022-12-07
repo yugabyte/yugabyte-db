@@ -158,4 +158,3 @@ class RocksDBOptionsParser {
 };
 
 }  // namespace rocksdb
-

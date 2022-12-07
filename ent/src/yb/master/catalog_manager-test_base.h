@@ -88,4 +88,3 @@ void SetupClusterConfigEnt(
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb
-

@@ -19,14 +19,15 @@
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
 using std::string;
 
-DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration of snapshots");
+DEFINE_UNKNOWN_bool(consistent_restore, false,
+    "Whether to enable consistent restoration of snapshots");
 
 DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
                  "Whether to modify flushed frontier after "

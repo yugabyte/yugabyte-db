@@ -178,8 +178,6 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc11
   gcc12
   clang
-  clang12
-  clang13
   clang14
   clang15
 )
@@ -196,7 +194,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -489,11 +486,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
-        YB_COMPILER_TYPE=clang13
-      else
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -520,14 +513,6 @@ is_gcc() {
 
 is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
-}
-
-build_compiler_if_necessary() {
-  # Sometimes we have to build the compiler before we can run CMake.
-  if is_clang && is_linux; then
-    log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
-  fi
 }
 
 set_compiler_type_based_on_jenkins_job_name() {
@@ -2489,6 +2474,9 @@ set_prebuilt_thirdparty_url() {
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
       fi
+      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+        thirdparty_tool_cmd_line+=( "--allow-older-os" )
+      fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
@@ -2637,10 +2625,12 @@ build_clangd_index() {
   log "Building Clangd index at ${clangd_index_path}"
   (
     set -x
+    # The location of the final compilation database file needs to be consistent with that in the
+    # compile_commands.py module.
     time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
         --executor=all-TUs \
         "--format=${format}" \
-        "${BUILD_ROOT}/compile_commands.json" \
+        "${BUILD_ROOT}/compile_commands/combined_postprocessed/compile_commands.json" \
         >"${clangd_index_path}"
   )
 }

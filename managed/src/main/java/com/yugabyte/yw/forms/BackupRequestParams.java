@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -54,6 +56,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   public boolean disableMultipart = false;
 
   @ApiModelProperty(value = "Backup info")
+  @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
   public List<KeyspaceTable> keyspaceTableList;
 
   // The number of concurrent commands to run on nodes over SSH
@@ -107,6 +110,13 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit;
 
+  // Intermediate states to resume ybc backups
+  public UUID backupUUID;
+
+  public int currentIdx;
+
+  public String currentYbcTaskId;
+
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
@@ -158,6 +168,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   }
 
   @ApiModel(description = "Keyspace and table info for backup")
+  @ToString
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
     public List<String> tableNameList;

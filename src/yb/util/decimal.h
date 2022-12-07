@@ -235,4 +235,3 @@ inline double CanonicalizeDouble(double d) {
 
 } // namespace util
 } // namespace yb
-

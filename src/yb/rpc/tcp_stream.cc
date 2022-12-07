@@ -18,7 +18,7 @@
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics.h"
@@ -182,7 +182,7 @@ TcpStream::FillIovResult TcpStream::FillIov(iovec* out) {
         continue;
       }
 
-      out[index].iov_base = bytes.data() + offset;
+      out[index].iov_base = const_cast<char*>(bytes.data()) + offset;
       out[index].iov_len = bytes.size() - offset;
       offset = 0;
       if (++index == kMaxIov) {

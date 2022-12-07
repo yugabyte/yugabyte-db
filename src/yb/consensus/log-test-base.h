@@ -400,4 +400,3 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
 
 } // namespace log
 } // namespace yb
-

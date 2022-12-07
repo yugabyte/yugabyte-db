@@ -14,17 +14,19 @@
 This module provides common utility functions.
 """
 
+import atexit
 import itertools
 import logging
 import os
 import re
-import sys
+import shutil
 import json
 import subprocess
 import shlex
 import io
 import platform
 import argparse
+import uuid
 
 import typing
 from typing import (
@@ -107,7 +109,25 @@ def make_set(obj: Union[str, List[Any]]) -> Set[Any]:
     return set(make_list(obj))
 
 
-def init_env(verbose: bool) -> None:
+g_init_logging_verbose_value: Optional[bool] = None
+
+
+def init_logging(verbose: bool) -> None:
+    global g_init_logging_verbose_value
+
+    if g_init_logging_verbose_value is not None:
+        # This function has already been called.
+        if verbose == g_init_logging_verbose_value:
+            # The same value of the verbose argument, skip.
+            return
+        logging.warning(
+            "init_logging(verbose=False) has already been called with verbose=%s, ignoring a "
+            "subsequent call with verbose=%s", g_init_logging_verbose_value, verbose
+        )
+        return
+
+    g_init_logging_verbose_value = verbose
+
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s [%(filename)s:%(lineno)d %(levelname)s] %(message)s")
@@ -253,12 +273,37 @@ def is_macos() -> bool:
     return platform.system() == 'Darwin'
 
 
+def transform_path_for_logging(p: str) -> str:
+    """
+    Transforms a path before logging by replacing the home directory path with ~.
+
+    >>> transform_path_for_logging(os.path.expanduser('~/foo'))
+    '~/foo'
+    >>> transform_path_for_logging(os.path.expanduser('~'))
+    '~'
+    >>> transform_path_for_logging(os.path.realpath(os.path.expanduser('~')))
+    '~'
+    >>> transform_path_for_logging('/usr/bin')
+    '/usr/bin'
+    """
+    for home_dir in get_home_dir_aliases():
+        if p == home_dir:
+            return '~'
+
+        home_dir_prefix = home_dir + '/'
+        if p.startswith(home_dir_prefix):
+            return '~/%s' % p[len(home_dir_prefix):]
+
+    return p
+
+
 def write_json_file(
         json_data: Any, output_path: str, description_for_log: Optional[str] = None) -> None:
     with open(output_path, 'w') as output_file:
         json.dump(json_data, output_file, indent=JSON_INDENTATION)
         if description_for_log is not None:
-            logging.info("Wrote %s: %s", description_for_log, output_path)
+            logging.info("Wrote %s: %s",
+                         description_for_log, transform_path_for_logging(output_path))
 
 
 def read_json_file(input_path: str) -> Any:
@@ -446,14 +491,30 @@ def arg_str_to_bool(v: Any) -> bool:
 
 
 g_home_dir: Optional[str] = None
+g_home_dir_aliases: Set[str] = set()
 
 
 def get_home_dir() -> str:
-    global g_home_dir
+    global g_home_dir, g_home_dir_aliases
     if g_home_dir is not None:
         return g_home_dir
-    g_home_dir = os.path.realpath(os.path.expanduser('~'))
+
+    home_dir_raw = os.path.expanduser('~')
+    home_dir_realpath = os.path.realpath(os.path.expanduser('~'))
+    g_home_dir = home_dir_realpath
+    g_home_dir_aliases = {home_dir_raw, home_dir_realpath}
     return g_home_dir
+
+
+def get_home_dir_aliases() -> Set[str]:
+    """
+    Returns aliases for the home directory (the home directory itself and its real path).
+    """
+    global g_home_dir_aliases
+    if not g_home_dir_aliases:
+        get_home_dir()
+    assert g_home_dir_aliases
+    return g_home_dir_aliases
 
 
 def get_relative_path_or_none(abs_path: str, relative_to: str) -> Optional[str]:
@@ -542,3 +603,68 @@ def assert_set_contains_all(a: Set[Any], b: Set[Any], message: str = '') -> None
             f"{set_to_str_one_element_per_line(b)}. "
             f"Elements in the second set but not in the first: "
             f"{set_to_str_one_element_per_line(d)}.")
+
+
+def create_temp_dir() -> str:
+    """
+    Create a temporary directory and return its path.
+    The directory is automatically deleted at program exit.
+    """
+    tmp_dir = os.path.join(YB_SRC_ROOT, "build", "yb_release_tmp_{}".format(str(uuid.uuid4())))
+    try:
+        os.mkdir(tmp_dir)
+    except OSError as e:
+        logging.error("Could not create directory at '{}'".format(tmp_dir))
+        raise e
+
+    atexit.register(lambda: shutil.rmtree(tmp_dir))
+    return tmp_dir
+
+
+def create_symlink(src: str, dst: str) -> None:
+    logging.info("Creating symbolic link %s -> %s", dst, src)
+    if os.path.islink(dst):
+        existing_link_src = os.readlink(dst)
+        if existing_link_src == src:
+            logging.info("Symlink %s already exists and points to %s", dst, src)
+            return
+        raise ValueError(
+                "Symlink %s already exists and points to %s instead of %s" % (
+                    dst, existing_link_src, src))
+    os.symlink(src, dst)
+
+
+def ensure_starts_with(s: str, prefix: str) -> str:
+    """
+    >>> ensure_starts_with('foo', 'a')
+    'afoo'
+    >>> ensure_starts_with('foo', 'f')
+    'foo'
+    """
+    if not s.startswith(prefix):
+        return prefix + s
+    return s
+
+
+def ensure_ends_with(s: str, suffix: str) -> str:
+    """
+    >>> ensure_ends_with('foo', 'f')
+    'foof'
+    >>> ensure_ends_with('foo', 'o')
+    'foo'
+    """
+    if not s.endswith(suffix):
+        return s + suffix
+    return s
+
+
+def ensure_enclosed_by(s: str, prefix: str, suffix: str) -> str:
+    """
+    >>> ensure_enclosed_by('abc', '{', '}')
+    '{abc}'
+    >>> ensure_enclosed_by('<abc', '<', '>')
+    '<abc>'
+    >>> ensure_enclosed_by('abc]', '[', ']')
+    '[abc]'
+    """
+    return ensure_ends_with(ensure_starts_with(s, prefix), suffix)

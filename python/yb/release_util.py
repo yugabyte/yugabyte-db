@@ -19,7 +19,6 @@ from xml.dom import minidom
 from yb.command_util import run_program, mkdir_p, copy_deep
 from yb.common_util import (
     get_thirdparty_dir,
-    is_macos,
     get_compiler_type_from_build_root,
 )
 

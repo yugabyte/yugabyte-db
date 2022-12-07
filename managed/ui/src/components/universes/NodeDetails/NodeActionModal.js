@@ -30,7 +30,7 @@ export default class NodeActionModal extends Component {
             node.state === nodeActionExpectedResult[actionType]
           ) {
             clearInterval(this.interval);
-            getNodeDetailsResponse(response.payload)
+            getNodeDetailsResponse(response.payload);
             return;
           }
           getNodeDetailsResponse(response.payload);

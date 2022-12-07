@@ -65,4 +65,3 @@ class PgTable {
 
 }  // namespace pggate
 }  // namespace yb
-

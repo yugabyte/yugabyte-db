@@ -18,7 +18,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -46,10 +46,10 @@ class FlushManager {
 
   // API to start a table flushing.
   Status FlushTables(const FlushTablesRequestPB* req,
-                             FlushTablesResponsePB* resp);
+                     FlushTablesResponsePB* resp);
 
   Status IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
-                                   IsFlushTablesDoneResponsePB* resp);
+                           IsFlushTablesDoneResponsePB* resp);
 
   void HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                   const TabletServerId& ts_uuid,

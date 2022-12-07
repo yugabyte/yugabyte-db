@@ -68,4 +68,3 @@ void DumpRocksDBToLog(
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -34,7 +34,7 @@
 #include <string>
 #include <unordered_map>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_util.h"
@@ -109,4 +109,3 @@ class PeerManager {
 
 } // namespace consensus
 } // namespace yb
-

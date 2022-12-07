@@ -40,7 +40,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"

@@ -51,13 +51,13 @@ const maxNodeDetasils = {
   num_insert: 800,
   num_update: 300,
   num_delete: 400
-}
+};
 const otherNodesDetails = {
   num_select: 100,
   num_insert: 200,
   num_update: 300,
   num_delete: 200
-}
+};
 const mockResponseQuerySkew: QueryData = {
   type: RecommendationTypeEnum.QueryLoadSkew,
   target: 'cluster-n1',
@@ -86,7 +86,7 @@ const mockConnectionSkewRecommendation: QueryData = {
       value: 1.75
     }
   }
-}
+};
 
 const mockCPUSkewRecommendation: QueryData = {
   type: RecommendationTypeEnum.CpuSkew,
@@ -101,14 +101,14 @@ const mockCPUSkewRecommendation: QueryData = {
       value: 20.789
     }
   }
-}
+};
 
 const mockCPUUsageRecommendation: QueryData = {
   type: RecommendationTypeEnum.CpuUsage,
   target: 'cluster-n1',
   indicator: 80.0,
   timeDurationSec: 600
-}
+};
 
 /** Generates unique string based on recommendation type for the purpose of setting unique key on React component */
 const generateUniqueId = (type: string, ...identifiers: string[]) => {
@@ -242,7 +242,7 @@ export const PerfAdvisor: FC = () => {
       lastUpdated: currentScanTime
     }));
     setIsScanningLoading(false);
-  }
+  };
 
 
   useEffect(() => {
@@ -374,7 +374,7 @@ export const PerfAdvisor: FC = () => {
         />
       }
 
-       {/* // This dialog is shown when there are multiple recommendation options */}
+      {/* // This dialog is shown when there are multiple recommendation options */}
       {displayedRecomendations.length &&
         <div>
           <div className="perfAdvisor__containerTitleFlex">

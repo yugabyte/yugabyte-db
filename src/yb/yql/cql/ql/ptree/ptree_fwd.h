@@ -111,4 +111,3 @@ YB_STRONGLY_TYPED_BOOL(NullIsAllowed);
 
 }  // namespace ql
 }  // namespace yb
-

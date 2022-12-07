@@ -38,4 +38,3 @@
 // repository.
 
 #define INTERNAL_TRACE_MEMORY(category_group, name)
-

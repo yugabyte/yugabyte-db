@@ -27,4 +27,3 @@ std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_m
 
 } // namespace encryption
 } // namespace yb
-

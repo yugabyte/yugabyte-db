@@ -761,8 +761,7 @@ public class TablesControllerTest extends FakeDBApplication {
     UUID tableUUID = UUID.randomUUID();
     Universe universe = createUniverse(customer.getCustomerId());
     universe =
-        Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdater("host", null, true));
+        Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater("host", null));
     String url =
         "/api/customers/"
             + customer.uuid
@@ -860,8 +859,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testCreateMultiBackupFailureInProgress() {
     Universe universe = createUniverse(customer.getCustomerId());
     universe =
-        Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdater("host", null, true));
+        Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater("host", null));
     String url =
         "/api/customers/"
             + customer.uuid

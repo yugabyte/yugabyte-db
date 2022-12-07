@@ -33,9 +33,9 @@ public final class CommandUtil {
 
   public static CommandResult runShellCommand(String cmd) throws IOException {
     File outputFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stdout_"  +
-        RandomNumberUtil.randomNonNegNumber() + ".txt");
+        RandomUtil.randomNonNegNumber() + ".txt");
     File errorFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stderr_"  +
-        RandomNumberUtil.randomNonNegNumber() + ".txt");
+        RandomUtil.randomNonNegNumber() + ".txt");
     try {
 
       Process process = new ProcessBuilder().command(Arrays.asList(new String[]{

@@ -206,8 +206,8 @@ class MiniCluster : public MiniClusterBase {
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
   Status WaitForReplicaCount(const std::string& tablet_id,
-                                     int expected_count,
-                                     master::TabletLocationsPB* locations);
+                             int expected_count,
+                             master::TabletLocationsPB* locations);
 
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
@@ -373,4 +373,3 @@ Status WaitForAnySstFiles(
 void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
 }  // namespace yb
-

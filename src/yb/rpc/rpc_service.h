@@ -65,4 +65,3 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
 
 } // namespace rpc
 } // namespace yb
-

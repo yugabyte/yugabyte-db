@@ -52,7 +52,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
@@ -78,7 +78,7 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_int32(cdc_max_stream_intent_records, 1000,
+DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
              "Max number of intent records allowed in single cdc batch. ");
 
 namespace yb {
@@ -88,8 +88,8 @@ namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 Status ApplyIntent(RefCntPrefix key,
-                           const IntentTypeSet intent_types,
-                           LockBatchEntries *keys_locked) {
+                   const IntentTypeSet intent_types,
+                   LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
   size_t size = key.size();
@@ -811,8 +811,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
     write_id = stream_state->write_id;
     reverse_index_iter.Next();
   }
-  const uint64_t max_records = FLAGS_cdc_max_stream_intent_records;
-  const uint64_t write_id_limit = write_id + max_records;
+  const uint64_t& max_records = FLAGS_cdc_max_stream_intent_records;
+  uint64_t cur_records = 0;
 
   while (reverse_index_iter.Valid()) {
     const Slice key_slice(reverse_index_iter.key());
@@ -831,12 +831,9 @@ Result<ApplyTransactionState> GetIntentsBatch(
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.
-        if (write_id >= write_id_limit) {
+        if (cur_records >= max_records) {
           return ApplyTransactionState{
-              .key = key_slice.ToBuffer(),
-              .write_id = write_id,
-              .aborted = {},
-          };
+              .key = key_slice.ToBuffer(), .write_id = write_id, .aborted = {}};
         }
         {
           intent_iter.Seek(reverse_index_value);
@@ -871,8 +868,10 @@ Result<ApplyTransactionState> GetIntentsBatch(
             auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
 
             IntentKeyValueForCDC intent_metadata;
-            intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
-            intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
+            Slice(key_parts, &(intent_metadata.key_buf));
+            intent_metadata.key = intent.doc_path;
+            Slice(value_parts, &(intent_metadata.value_buf));
+            intent_metadata.value = decoded_value.body;
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
             intent_metadata.intent_ht = doc_ht;
@@ -882,6 +881,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
                     << (*key_value_intents).size();
+            ++cur_records;
             ++write_id;
           }
         }

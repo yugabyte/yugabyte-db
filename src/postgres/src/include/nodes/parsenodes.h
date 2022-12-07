@@ -2197,6 +2197,11 @@ typedef struct CreateTableGroupStmt
 	RoleSpec   *owner;
 	List 	   *options;
 	char 	   *tablespacename;
+	/*
+	 * Whether this tablegroup is created implicitly by YB
+	 * or created explicitly by users.
+	 */
+	bool		implicit;
 } CreateTableGroupStmt;
 
 /* ----------------------

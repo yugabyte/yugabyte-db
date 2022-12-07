@@ -59,9 +59,9 @@ class QLRocksDBStorage : public YQLStorageIf {
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override;
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override;
 
   Status GetIterator(
       const PgsqlReadRequestPB& request,

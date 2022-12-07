@@ -55,4 +55,3 @@ std::vector<std::string> ListDependencies(const google::protobuf::FileDescriptor
 
 } // namespace gen_yrpc
 } // namespace yb
-

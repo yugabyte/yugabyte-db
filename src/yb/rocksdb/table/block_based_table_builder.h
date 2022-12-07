@@ -149,4 +149,3 @@ class BlockBasedTableBuilder : public TableBuilder {
 };
 
 }  // namespace rocksdb
-

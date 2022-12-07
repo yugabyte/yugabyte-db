@@ -299,4 +299,3 @@ class WriteThread {
 };
 
 }  // namespace rocksdb
-

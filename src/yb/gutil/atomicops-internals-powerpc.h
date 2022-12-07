@@ -313,4 +313,3 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
 }  // namespace base
 
 #undef ATOMICOPS_COMPILER_BARRIER
-

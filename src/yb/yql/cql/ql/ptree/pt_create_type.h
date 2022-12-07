@@ -137,4 +137,3 @@ class PTCreateType : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

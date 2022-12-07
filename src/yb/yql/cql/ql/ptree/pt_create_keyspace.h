@@ -77,4 +77,3 @@ class PTCreateKeyspace : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

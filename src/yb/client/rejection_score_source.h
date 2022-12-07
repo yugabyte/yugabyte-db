@@ -44,4 +44,3 @@ class RejectionScoreSource {
 
 } // namespace client
 } // namespace yb
-

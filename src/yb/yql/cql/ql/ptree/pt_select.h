@@ -141,10 +141,10 @@ class SelectScanInfo : public MCBase, public AnalyzeStepState {
 
   // Collecting references of operators on WHERE clause.
   Status AddWhereExpr(SemContext *sem_context,
-                              const PTRelationExpr *expr,
-                              const ColumnDesc *col_desc,
-                              PTExprPtr value,
-                              PTExprListNode::SharedPtr col_args = nullptr);
+                      const PTRelationExpr *expr,
+                      const ColumnDesc *col_desc,
+                      PTExprPtr value,
+                      PTExprListNode::SharedPtr col_args = nullptr);
 
   // Setup for analyzing where clause.
   void set_analyze_where(bool val) { analyze_where_ = val; }
@@ -450,8 +450,8 @@ class PTSelectStmt : public PTDmlStmt {
   Status AnalyzeReferences(SemContext *sem_context);
   Status AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
   Status AnalyzeOrderByClause(SemContext *sem_context,
-                                      const TableId& index_id,
-                                      bool *is_forward_scan);
+                              const TableId& index_id,
+                              bool *is_forward_scan);
   Status SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
 
   // --- The parser will decorate this node with the following information --
@@ -505,4 +505,3 @@ class PTSelectStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-

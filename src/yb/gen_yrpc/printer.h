@@ -105,4 +105,3 @@ class ScopedSubstituter {
 
 } // namespace gen_yrpc
 } // namespace yb
-

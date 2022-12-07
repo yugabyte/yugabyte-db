@@ -23,13 +23,13 @@
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 
 using std::string;
 using std::vector;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
     "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");

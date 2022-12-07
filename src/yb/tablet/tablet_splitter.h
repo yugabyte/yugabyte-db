@@ -51,4 +51,3 @@ class TabletSplitter {
 
 }  // namespace tablet
 }  // namespace yb
-

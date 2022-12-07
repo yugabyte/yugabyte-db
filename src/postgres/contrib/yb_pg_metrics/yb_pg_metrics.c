@@ -348,12 +348,14 @@ webserver_worker_main(Datum unused)
    */
 
   YBCInitThreading();
+  /*
+   * We call YBCInit here so that HandleYBStatus can correctly report potential error.
+   */
+  HandleYBStatus(YBCInit(NULL /* argv[0] */, palloc, NULL /* cstring_to_text_with_len_fn */));
 
   backendStatusArrayPointer = getBackendStatusArrayPointer();
 
   BackgroundWorkerUnblockSignals();
-
-  HandleYBStatus(YBCInitGFlags(NULL /* argv[0] */));
 
   webserver = CreateWebserver(ListenAddresses, port);
 

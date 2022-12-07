@@ -252,4 +252,3 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
 } // namespace tserver
 } // namespace yb
-

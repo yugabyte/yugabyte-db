@@ -366,4 +366,3 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
       GTEST_SKIP() << "Skipping test in TSAN"; \
     } \
   } while (false)
-

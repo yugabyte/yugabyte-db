@@ -56,7 +56,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -236,10 +236,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    if (status.IsServiceUnavailable()) {
-      Overflow(call, "global", thread_pool_.options().queue_limit);
-      return;
-    }
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << LogPrefix()
         << call->method_name() << " request on " << service_->service_name() << " from "

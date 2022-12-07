@@ -80,7 +80,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -99,69 +98,71 @@ using yb::tablet::TabletPeer;
 using namespace yb::size_literals;
 using namespace std::placeholders;
 
-DEFINE_int32(tablet_server_svc_num_threads, -1,
+DEFINE_UNKNOWN_int32(tablet_server_svc_num_threads, -1,
              "Number of RPC worker threads for the TS service. If -1, it is auto configured.");
 TAG_FLAG(tablet_server_svc_num_threads, advanced);
 
-DEFINE_int32(ts_admin_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(ts_admin_svc_num_threads, 10,
              "Number of RPC worker threads for the TS admin service");
 TAG_FLAG(ts_admin_svc_num_threads, advanced);
 
-DEFINE_int32(ts_consensus_svc_num_threads, -1,
+DEFINE_UNKNOWN_int32(ts_consensus_svc_num_threads, -1,
              "Number of RPC worker threads for the TS consensus service. If -1, it is auto "
              "configured.");
 TAG_FLAG(ts_consensus_svc_num_threads, advanced);
 
-DEFINE_int32(ts_remote_bootstrap_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(ts_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC worker threads for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(tablet_server_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
-             "RPC queue length for the TS service.");
+DEFINE_UNKNOWN_int32(tablet_server_svc_queue_length,
+    yb::tserver::TabletServer::kDefaultSvcQueueLength,
+    "RPC queue length for the TS service.");
 TAG_FLAG(tablet_server_svc_queue_length, advanced);
 
-DEFINE_int32(ts_admin_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(ts_admin_svc_queue_length, 50,
              "RPC queue length for the TS admin service");
 TAG_FLAG(ts_admin_svc_queue_length, advanced);
 
-DEFINE_int32(ts_consensus_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
-             "RPC queue length for the TS consensus service.");
+DEFINE_UNKNOWN_int32(ts_consensus_svc_queue_length,
+    yb::tserver::TabletServer::kDefaultSvcQueueLength,
+    "RPC queue length for the TS consensus service.");
 TAG_FLAG(ts_consensus_svc_queue_length, advanced);
 
-DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
-DEFINE_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+DEFINE_UNKNOWN_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
 
-DEFINE_bool(enable_direct_local_tablet_server_call,
+DEFINE_UNKNOWN_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
 TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
 
-DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
-DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
+DEFINE_UNKNOWN_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
+DEFINE_UNKNOWN_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 
-DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
-DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+DEFINE_UNKNOWN_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
+DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
-DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_UNKNOWN_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
-DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
+DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
-DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
+    "Should metrics snapshotter be enabled");
 
-DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
+DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
 DECLARE_int32(num_concurrent_backfills_allowed);
-DECLARE_int32(svc_queue_length_default);
 
 constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
-DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+DEFINE_UNKNOWN_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
@@ -604,13 +605,17 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    GetTserverCatalogVersionInfoResponsePB *resp) const {
+    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (const auto it : ysql_db_catalog_version_map_) {
-    auto* entry = resp->add_entries();
-    entry->set_db_oid(it.first);
-    entry->set_shm_index(it.second.shm_index);
-    entry->set_current_version(it.second.current_version);
+  if (size_only) {
+    resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
+  } else {
+    for (const auto it : ysql_db_catalog_version_map_) {
+      auto* entry = resp->add_entries();
+      entry->set_db_oid(it.first);
+      entry->set_shm_index(it.second.shm_index);
+      entry->set_current_version(it.second.current_version);
+    }
   }
   return Status::OK();
 }
@@ -680,8 +685,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
         existing_entry.last_breaking_version = new_breaking_version;
         row_updated = true;
         shm_index = existing_entry.shm_index;
-        CHECK(shm_index >= 0 && shm_index < TServerSharedData::kMaxNumDbCatalogVersions)
-          << "Invalid shm_index: " << shm_index;
+        CHECK(
+            shm_index >= 0 &&
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+            << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
         LOG(DFATAL) << "Ignoring ysql db " << db_oid
                     << " catalog version update: new version too old. "
@@ -693,7 +700,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     } else {
       auto& inserted_entry = it.first->second;
       // Allocate a new free slot in shared memory array db_catalog_versions_ for db_oid.
-      int count = 0;
+      uint32_t count = 0;
       while (count < TServerSharedData::kMaxNumDbCatalogVersions) {
         if (!(*ysql_db_catalog_version_index_used_)[search_starting_index_]) {
           // Found a free slot, remember it.
@@ -740,7 +747,7 @@ void TabletServer::SetYsqlDBCatalogVersions(
     if (db_oid_set.count(db_oid) == 0) {
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
-            shm_index < TServerSharedData::kMaxNumDbCatalogVersions) << shm_index;
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
       // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
       (*ysql_db_catalog_version_index_used_)[shm_index] = false;
       it = ysql_db_catalog_version_map_.erase(it);
@@ -808,6 +815,39 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
     return tablet_server_service->GetMetric(metric).handler_latency;
   }
   return nullptr;
+}
+
+Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
+                                       ListMasterServersResponsePB* resp) const {
+  auto master_addresses = options().GetMasterAddresses();
+  auto peer_status = resp->mutable_master_server_and_type();
+  std::vector<Endpoint> master_entries;
+  for (const auto& list : *master_addresses) {
+    for (const auto& master_addr : list) {
+      Status s = master_addr.ResolveAddresses(&master_entries);
+      if (!s.ok()) {
+        VLOG(1) << "Could not resolve: " << master_addr.ToString();
+      }
+    }
+  }
+
+  // de-duplicate master entries.
+  std::sort(master_entries.begin(), master_entries.end());
+  master_entries.erase(
+      std::unique(master_entries.begin(), master_entries.end()), master_entries.end());
+
+  std::string leader = heartbeater_->get_leader_master_hostport();
+  for (const auto& master_endpoint : master_entries) {
+    auto master_entry = peer_status->Add();
+    auto master = HostPort(master_endpoint).ToString();
+    master_entry->set_master_server(master);
+    if (leader.compare(master) == 0) {
+      master_entry->set_is_leader(true);
+    } else {
+      master_entry->set_is_leader(false);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace tserver

@@ -360,11 +360,11 @@ export enum TableType {
   PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
 }
 
-export const TABLE_TYPE_MAP: Record<TableType, string> = {
+export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
   REDIS_TABLE_TYPE: 'REDIS'
-};
+} as const;
 
 export interface MetricsData {
   type: string;

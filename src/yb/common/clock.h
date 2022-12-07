@@ -41,4 +41,3 @@ class ClockBase : public RefCountedThreadSafe<ClockBase> {
 Result<HybridTime> WaitUntil(ClockBase* clock, HybridTime hybrid_time, CoarseTimePoint deadline);
 
 } // namespace yb
-

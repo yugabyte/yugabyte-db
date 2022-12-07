@@ -65,4 +65,3 @@ struct LogMetrics {
 
 } // namespace log
 } // namespace yb
-

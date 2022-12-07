@@ -12,7 +12,8 @@ type: docs
 
 ## Synopsis
 
-<b>`SUBSCRIBE channel [channel ...]`</b><br>
+**`SUBSCRIBE channel [channel ...]`**
+
 This command subscribes the client to the specified channel(s). The client will receive a message whenever a
 publisher sends a message to any of the channels that it has subscribed to.
 

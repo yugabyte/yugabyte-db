@@ -67,4 +67,3 @@ class PerfStepTimer {
 };
 
 }  // namespace yb
-

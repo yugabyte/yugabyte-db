@@ -44,4 +44,3 @@ class TestConsensusContext : public ConsensusContext {
 
 } // namespace consensus
 } // namespace yb
-

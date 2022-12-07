@@ -363,4 +363,3 @@ Result<std::string> WriteBatchToString(
 
 }  // namespace docdb
 }  // namespace yb
-

@@ -202,4 +202,3 @@ inline void DynamicBloom::AddHash(uint32_t h, const OrFunc& or_func) {
 }
 
 } // namespace rocksdb
-

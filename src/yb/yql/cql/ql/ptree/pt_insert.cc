@@ -88,7 +88,7 @@ Status PTInsertStmt::Analyze(SemContext *sem_context) {
 }
 
 Status PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
-                                                   SemContext* sem_context) {
+                                           SemContext* sem_context) {
   RETURN_NOT_OK(inserting_value->Analyze(sem_context));
   if (auto values_clause = dynamic_cast<PTInsertValuesClause*>(inserting_value)) {
     return AnanlyzeValuesClause(values_clause, sem_context);
@@ -100,7 +100,7 @@ Status PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
 }
 
 Status PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
-                                                  SemContext* sem_context) {
+                                          SemContext* sem_context) {
   if (values_clause->TupleCount() == 0) {
     return sem_context->Error(values_clause, ErrorCode::TOO_FEW_ARGUMENTS);
   }
@@ -213,7 +213,7 @@ Status PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
 }
 
 Status PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
-                                                SemContext* sem_context) {
+                                        SemContext* sem_context) {
   // Since JSON could be a PTBindVar, at this stage we don't have a clue about a JSON we've got
   // other than its type is a string.
   // However, INSERT JSON should initialize all non-mentioned columns to NULLs
@@ -225,9 +225,9 @@ Status PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
 }
 
 Status PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
-                                           const ColumnDesc* col_desc,
-                                           const PTExpr::SharedPtr& value_expr,
-                                           SemContext* sem_context) {
+                                   const ColumnDesc* col_desc,
+                                   const PTExpr::SharedPtr& value_expr,
+                                   SemContext* sem_context) {
   SemState sem_state(sem_context, col_desc->ql_type(), col_desc->internal_type(),
                      mc_col_name, col_desc);
 
@@ -252,7 +252,7 @@ Status PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
 // For INSERT JSON,   default behaviour is to replace missing columns with nulls - that is, unless
 // DEFAULT UNSET is specified
 Status PTInsertStmt::InitRemainingColumns(bool init_to_null,
-                                                  SemContext* sem_context) {
+                                          SemContext* sem_context) {
   if (!init_to_null) {
     // Not much we can do here
     return Status::OK();

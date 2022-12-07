@@ -150,4 +150,3 @@ void WriteToRocksDB(
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv);
 
 } // namespace yb
-

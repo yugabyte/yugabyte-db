@@ -23,10 +23,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
@@ -52,19 +52,19 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-                              QUERY PLAN                               
+                              QUERY PLAN
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = (t2.a + 1))
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[(t2.a + 1), ($1 + 1), ($2 + 1)]))
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-  a  | b  |  c   | a  | b  |  c   
+  a  | b  |  c   | a  | b  |  c
 -----+----+------+----+----+------
   46 | 21 | 0046 | 45 | 20 | 0045
   82 |  7 | 0082 | 81 |  6 | 0081
@@ -86,18 +86,18 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-                QUERY PLAN                
+                QUERY PLAN
 ------------------------------------------
  Nested Loop
    Join Filter: ((t1.a - 1) = (t2.a + 1))
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (6 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
- a  | b  |  c   | a  | b  |  c   
+ a  | b  |  c   | a  | b  |  c
 ----+----+------+----+----+------
  80 |  5 | 0080 | 78 |  3 | 0078
  92 | 17 | 0092 | 90 | 15 | 0090
@@ -143,15 +143,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  Seq Scan on p3 t3
-         Filter: (a <= 30)
+         Remote Filter: (a <= 30)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (a = ANY (ARRAY[t3.a, $1, $2]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
 (12 rows)
 
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
@@ -242,7 +242,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -272,7 +272,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.b)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -297,7 +297,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
  YB Batched Nested Loop Semi Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -324,7 +324,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
          ->  Seq Scan on p2 t2
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
 (8 rows)
 
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
@@ -429,6 +429,45 @@ DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
 DROP TABLE p4;
+CREATE TABLE s1(r1 int, r2 int, r3 int);
+CREATE TABLE s2(r1 int, r2 int, r3 int);
+CREATE TABLE s3(r1 int, r2 int);
+CREATE INDEX ON s3 (r1 asc, r2 asc);
+INSERT INTO s1 select i,i,i from generate_series(1,10) i;
+INSERT INTO s2 select i,i,i from generate_series(1,10) i;
+INSERT INTO s3 select i,i from generate_series(1,100) i;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Sort
+   Sort Key: s3.r1, s3.r2
+   ->  Nested Loop
+         ->  Seq Scan on s2
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((s2.r3 = s1.r3) AND (s1.r1 = s3.r1))
+               ->  Seq Scan on s1
+               ->  Index Only Scan using s3_r1_r2_idx on s3
+                     Index Cond: ((r1 = ANY (ARRAY[s1.r1, $1, $2])) AND (r2 = s2.r2))
+(9 rows)
+
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+ r1 | r2 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+DROP TABLE s3;
+DROP TABLE s2;
+DROP TABLE s1;
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
 SET yb_bnl_batch_size = 3;

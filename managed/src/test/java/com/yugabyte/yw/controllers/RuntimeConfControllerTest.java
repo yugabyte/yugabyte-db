@@ -383,7 +383,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({"yb.upgrade.vmImage", "yb.health.trigger_api.enabled"})
+  @Parameters({
+    "yb.upgrade.vmImage",
+    "yb.health.trigger_api.enabled",
+    "yb.security.custom_hooks.enable_api_triggered_hooks"
+  })
   public void configResolution(String key) {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);

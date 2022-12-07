@@ -156,12 +156,16 @@ typedef struct ImportQual
 #define parser_ybc_beta_feature(pos, feature, has_own_flag) \
 	check_beta_feature(pos, yyscanner, has_own_flag ? "FLAGS_ysql_beta_feature_" feature : NULL, feature)
 
+#define parser_ybc_deprecated_feature_warning(pos, feature) \
+	ybc_deprecated_feature_warning(pos, yyscanner, feature)
+
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
 static void ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
 static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static void check_beta_feature(int pos, core_yyscan_t yyscanner, const char* flag, const char* feature);
+static void ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature);
 
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
@@ -663,7 +667,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLUMN COLUMNS COMMENT COMMENTS COMMIT
+	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
 	CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
 	CROSS CSV CUBE CURRENT_P
@@ -981,7 +985,6 @@ stmt :
 			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateTableGroupStmt { parser_ybc_beta_feature(@1, "tablegroup", true); }
 			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
@@ -1016,6 +1019,9 @@ stmt :
 			| ReindexStmt
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
+
+			/* Deprecated statements */
+			| CreateTableGroupStmt
 		;
 
 /*****************************************************************************
@@ -3860,7 +3866,6 @@ ConstraintAttr:
 TableLikeClause:
 			LIKE qualified_name TableLikeOptionList
 				{
-					parser_ybc_signal_unsupported(@1, "LIKE clause", 1129);
 					TableLikeClause *n = makeNode(TableLikeClause);
 					n->relation = $2;
 					n->options = $3;
@@ -3875,41 +3880,15 @@ TableLikeOptionList:
 		;
 
 TableLikeOption:
-			COMMENTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE COMMENTS", 1129);
-					$$ = CREATE_TABLE_LIKE_COMMENTS;
-				}
-			| CONSTRAINTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE CONSTRAINTS", 1129);
-					$$ = CREATE_TABLE_LIKE_CONSTRAINTS;
-				}
-			| DEFAULTS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE DEFAULTS", 1129);
-					$$ = CREATE_TABLE_LIKE_DEFAULTS;
-				}
-			| IDENTITY_P
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE IDENTITY", 1129);
-					$$ = CREATE_TABLE_LIKE_IDENTITY;
-				}
-			| INDEXES
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE INDEXES", 1129);
-					$$ = CREATE_TABLE_LIKE_INDEXES;
-				}
-			| STATISTICS
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE STATISTICS", 1129);
-					$$ = CREATE_TABLE_LIKE_STATISTICS;
-				}
-			| STORAGE
-				{ parser_ybc_signal_unsupported(@1, "LIKE STORAGE", 1129); $$ = CREATE_TABLE_LIKE_STORAGE; }
-			| ALL { parser_ybc_signal_unsupported(@1, "LIKE ALL", 1129); $$ = CREATE_TABLE_LIKE_ALL; }
+				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
+				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
+				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
+				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
+				| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
+				| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
+				| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
+				| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
 		;
-
 
 /* ConstraintElem specifies constraint syntax which is not embedded into
  *	a column definition. ColConstraintElem specifies the embedded form.
@@ -4772,6 +4751,7 @@ CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions O
 					n->owner = $4;
 					n->options = $5;
 					n->tablespacename = $6;
+					n->implicit = false;
 					$$ = (Node *) n;
 				}
 		;
@@ -11018,8 +10998,14 @@ createdb_opt_name:
 			| TEMPLATE						{ $$ = pstrdup($1); }
 			| COLOCATED
 				{
+					ereport(WARNING,
+    						(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+							 errmsg("'colocated' syntax will be deprecated in a future release"),
+							 errhint("Use 'colocation' instead of 'colocated'."),
+							 parser_errposition(@1)));
 					$$ = pstrdup($1);
 				}
+			| COLOCATION				    { $$ = pstrdup($1); }
 		;
 
 /*
@@ -15999,6 +15985,7 @@ unreserved_keyword:
 			| CLOSE
 			| CLUSTER
 			| COLOCATED
+			| COLOCATION
 			| COLUMNS
 			| COMMENT
 			| COMMENTS
@@ -17403,5 +17390,18 @@ check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const cha
 					         (flag + 6), general_hint) :
 					 errhint("%s", general_hint),
 				 parser_errposition(pos)));
+		if (strcmp(feature, "tablegroup") == 0)
+		{
+			ybc_deprecated_feature_warning(pos, yyscanner, feature);
+		}
 	}
+}
+
+static void
+ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature)
+{
+	ereport(WARNING,
+		(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+		 errmsg("'%s' feature will be deprecated in a future release", feature),
+		 parser_errposition(pos)));
 }

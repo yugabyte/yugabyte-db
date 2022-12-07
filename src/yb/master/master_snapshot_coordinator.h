@@ -156,4 +156,3 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
 } // namespace master
 } // namespace yb
-

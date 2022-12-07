@@ -16,9 +16,10 @@
 #include <vector>
 #include <string>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/table_index.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -28,7 +29,6 @@
 #include "yb/util/status_fwd.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(use_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 
@@ -63,11 +63,10 @@ void SetDefaultInitialSysCatalogSnapshotFlags();
 // A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
 // is_transactional flags to true on YSQL system catalog tables.
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableInfoMap* table_ids_map,
+    TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term);
 
 }  // namespace master
 }  // namespace yb
-

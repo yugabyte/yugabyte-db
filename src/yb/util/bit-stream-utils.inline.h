@@ -232,4 +232,3 @@ inline bool BitReader::GetVlqInt(int32_t* v) {
 }
 
 } // namespace yb
-

@@ -319,4 +319,3 @@ class CatalogVersionChecker {
       return;                                                  \
     }                                                          \
   } while (0)
-

@@ -32,7 +32,7 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
   const onUniverseDropdownChanged = (universeName: string, universeUUID: string) => {
     setUniverseDropdownValue(universeName);
     setUniverseUUID(universeUUID);
-  }
+  };
 
   useEffect(() => {
     resetRuntimeConfigs();
@@ -47,7 +47,7 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
     );
   }
   if (universes.isLoading || (universes.isIdle && universes.data === undefined)) {
-    return <YBLoading />
+    return <YBLoading />;
   }
 
   const universesList = universes.data;
@@ -64,7 +64,8 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
         <span className="universe-runtime-config-container__label"> {"Select Universe:"}</span>
         &nbsp;&nbsp;
         <Dropdown
-          id="universe-runtime-config-dropdown"
+          id="universeRuntimeConfigDropdown"
+          className="universe-runtime-config-dropdown"
         >
           <Dropdown.Toggle>
             <span className="universe-config-dropdown-value">{universeDropdownValue}</span>
@@ -96,4 +97,4 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
       />
     </div>
   );
-}
+};

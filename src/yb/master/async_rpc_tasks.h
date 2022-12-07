@@ -862,4 +862,3 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
 
 } // namespace master
 } // namespace yb
-

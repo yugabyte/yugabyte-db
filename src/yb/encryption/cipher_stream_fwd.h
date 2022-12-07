@@ -24,4 +24,3 @@ class BlockAccessCipherStream;
 
 } // namespace encryption
 } // namespace yb
-

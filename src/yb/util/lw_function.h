@@ -102,4 +102,3 @@ auto make_lw_function(const Func& functor) {
 }
 
 } // namespace yb
-

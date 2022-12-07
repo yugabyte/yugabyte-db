@@ -66,4 +66,3 @@ class PgOperationBuffer {
 
 } // namespace pggate
 } // namespace yb
-

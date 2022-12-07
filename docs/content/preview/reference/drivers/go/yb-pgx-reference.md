@@ -56,12 +56,6 @@ The YugabyteDB PGX smart driver has the following load balancing features:
 
     Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware. The driver uses servers that are part of a set of geo-locations specified by topology keys. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-## Quick start
-
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Go application](../../../../develop/build-apps/go/ysql-yb-pgx/).
-
-This page provides details for getting started with [YugabyteDB PGX driver](https://github.com/yugabyte/pgx) for connecting to YugabyteDB YSQL API.
-
 ## Import the driver package
 
 You can import the YugabyteDB PGX driver package by adding the following import statement in your Go code.

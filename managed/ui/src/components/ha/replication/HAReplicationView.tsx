@@ -54,7 +54,7 @@ export const YB_HA_WS_RUNTIME_CONFIG_KEY = 'yb.ha.ws';
 
 const PEER_CERT_IDENTIFIER_LENGTH = 64;
 
-const EMPTY_YB_HA_WEBSERVICE = {
+export const EMPTY_YB_HA_WEBSERVICE = {
   ssl: {
     trustManager: {
       stores: []
@@ -62,7 +62,7 @@ const EMPTY_YB_HA_WEBSERVICE = {
   }
 };
 
-const getPeerCerts = (ybHAWebService: YbHAWebService) => {
+export const getPeerCerts = (ybHAWebService: YbHAWebService) => {
   return ybHAWebService?.ssl?.trustManager?.stores;
 };
 
@@ -71,7 +71,7 @@ const getPeerCerts = (ybHAWebService: YbHAWebService) => {
  * The identifier is the first 48 characters of data in the cert.
  * Whitespace is ignored.
  */
-const getPeerCertIdentifier = (peerCert: PeerCert) => {
+export const getPeerCertIdentifier = (peerCert: PeerCert) => {
   // PEM encoded certificates use base64 encoding.
   // We can ignore whitespace when selecting data to display as
   // an identifier.
@@ -125,9 +125,9 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
   const ybHAWebService: YbHAWebService =
     runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
       ? JSON.parse(
-          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-            .value
-        )
+        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+          .value
+      )
       : EMPTY_YB_HA_WEBSERVICE;
 
   // sort by is_leader to show active instance on the very top, then sort other items by address

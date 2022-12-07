@@ -141,7 +141,8 @@ export default class NodeAction extends Component {
       hideQueries,
       disableStop,
       disableRemove,
-      disabled
+      disabled,
+      clusterType
     } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
@@ -208,6 +209,7 @@ export default class NodeAction extends Component {
             currentRow={currentRow}
             providerUUID={providerUUID}
             label={this.getLabel('CONNECT', currentRow.dedicatedTo)}
+            clusterType={clusterType}
           />
         )}
         {isNonEmptyArray(currentRow.allowedActions) ? (

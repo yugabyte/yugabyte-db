@@ -229,8 +229,8 @@ class Executor : public QLExprExecutor {
 
   // Process the read/write op status.
   Status ProcessOpStatus(const PTDmlStmt* stmt,
-                                 const client::YBqlOpPtr& op,
-                                 ExecContext* exec_context);
+                         const client::YBqlOpPtr& op,
+                         ExecContext* exec_context);
 
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
@@ -261,22 +261,22 @@ class Executor : public QLExprExecutor {
   // Aggregate all result sets from all tablet servers to form the requested resultset.
   Status AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext* tnode_context);
   Status EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
-                           int column_index,
-                           QLValue *ql_value);
+                   int column_index,
+                   QLValue *ql_value);
   Status EvalMax(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         QLValue *ql_value);
+                 int column_index,
+                 QLValue *ql_value);
   Status EvalMin(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         QLValue *ql_value);
+                 int column_index,
+                 QLValue *ql_value);
   Status EvalSum(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         DataType data_type,
-                         QLValue *ql_value);
+                 int column_index,
+                 DataType data_type,
+                 QLValue *ql_value);
   Status EvalAvg(const std::shared_ptr<QLRowBlock>& row_block,
-                         int column_index,
-                         DataType data_type,
-                         QLValue *ql_value);
+                 int column_index,
+                 DataType data_type,
+                 QLValue *ql_value);
 
   // Invoke statement executed callback.
   void StatementExecuted(const Status& s, ResetAsyncCalls* reset_async_calls);
@@ -293,7 +293,7 @@ class Executor : public QLExprExecutor {
 
   // Constant expressions.
   Status PTConstToPB(const PTExprPtr& const_pt, QLValuePB *const_pb,
-                             bool negate = false);
+                     bool negate = false);
   Status PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb, bool negate);
   Status PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb, bool negate);
   Status PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb, bool negate);
@@ -317,7 +317,7 @@ class Executor : public QLExprExecutor {
   Status PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   Status PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
   Status PTJsonOperatorToPB(const PTJsonOperatorPtr& json_pt,
-                                    QLJsonOperationPB *op_pb);
+                            QLJsonOperationPB *op_pb);
 
   // Builtin calls.
   // Even though BFCall and TSCall are processed similarly in executor at this point because they
@@ -363,8 +363,8 @@ class Executor : public QLExprExecutor {
 
   // Convert INSERT JSON clause to protobuf.
   Status InsertJsonClauseToPB(const PTInsertStmt *insert_stmt,
-                                      const PTInsertJsonClause *json_clause,
-                                      QLWriteRequestPB *req);
+                              const PTInsertJsonClause *json_clause,
+                              QLWriteRequestPB *req);
 
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
@@ -382,9 +382,9 @@ class Executor : public QLExprExecutor {
 
   // Convert where clause to protobuf for write request.
   Status WhereClauseToPB(QLWriteRequestPB *req,
-                                 const MCVector<ColumnOp>& key_where_ops,
-                                 const MCList<ColumnOp>& where_ops,
-                                 const MCList<SubscriptedColumnOp>& subcol_where_ops);
+                         const MCVector<ColumnOp>& key_where_ops,
+                         const MCList<ColumnOp>& where_ops,
+                         const MCList<SubscriptedColumnOp>& subcol_where_ops);
 
   // Set a primary key in a read request.
   Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const QLRow& key);
@@ -410,11 +410,11 @@ class Executor : public QLExprExecutor {
 
   //------------------------------------------------------------------------------------------------
   Status UpdateIndexes(const PTDmlStmt *tnode,
-                               QLWriteRequestPB *req,
-                               TnodeContext* tnode_context);
+                       QLWriteRequestPB *req,
+                       TnodeContext* tnode_context);
   Status AddIndexWriteOps(const PTDmlStmt *tnode,
-                                  const QLWriteRequestPB& req,
-                                  TnodeContext* tnode_context);
+                          const QLWriteRequestPB& req,
+                          TnodeContext* tnode_context);
 
   int64_t num_async_calls() const {
     return num_async_calls_.load(std::memory_order_acquire);
@@ -539,4 +539,3 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
 
 }  // namespace ql
 }  // namespace yb
-

@@ -162,4 +162,3 @@ inline int memcount(const char* buf, size_t len, char c) {
   }
   return num;
 }
-

@@ -53,7 +53,6 @@
  */
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include <string>
 
@@ -321,4 +320,3 @@ class RedisListIterator {
 };
 
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

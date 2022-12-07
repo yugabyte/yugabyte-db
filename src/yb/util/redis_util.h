@@ -21,4 +21,3 @@ bool RedisPatternMatch(
     const std::string& pattern, const std::string& string, bool ignore_case);
 
 } // namespace yb
-

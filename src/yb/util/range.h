@@ -150,4 +150,3 @@ RangeObject<Int> RangeOfSize(Int start, Int size, Int step = 1) {
 }
 
 }  // namespace yb
-

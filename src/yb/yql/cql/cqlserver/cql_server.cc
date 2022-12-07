@@ -27,7 +27,7 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -36,7 +36,7 @@
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
-DEFINE_int32(cql_service_queue_length, 10000,
+DEFINE_UNKNOWN_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
 TAG_FLAG(cql_service_queue_length, advanced);
 
@@ -44,7 +44,7 @@ DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
     "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
+DEFINE_UNKNOWN_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
 namespace yb {
 namespace cqlserver {

@@ -23,14 +23,15 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using yb::operator"" _MB;
 
-DEFINE_bool(
+DEFINE_UNKNOWN_bool(
     binary_call_parser_reject_on_mem_tracker_hard_limit, true,
     "Whether to reject/ignore calls on hitting mem tracker hard limit.");
 
-DEFINE_int64(
+DEFINE_UNKNOWN_int64(
     rpc_throttle_threshold_bytes, 1048576,
     "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
     "Throttling is disabled if negative value is specified.");

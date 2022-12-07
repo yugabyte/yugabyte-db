@@ -66,5 +66,3 @@ class CDCRpcTasks {
 
 } // namespace master
 } // namespace yb
-
-

@@ -127,7 +127,7 @@ The following libraries are officially supported by YugabyteDB.
   <a class="section-link icon-offset" href="java/">
     <div class="head">
       <div class="icon">
-        <i class="icon-java"></i>
+        <i class="fa-brands fa-java"></i>
       </div>
       <div class="title">Java</div>
     </div>
@@ -141,7 +141,7 @@ The following libraries are officially supported by YugabyteDB.
   <a class="section-link icon-offset" href="nodejs/">
     <div class="head">
       <div class="icon">
-        <i class="icon-nodejs"></i>
+        <i class="fa-brands fa-node-js"></i>
       </div>
       <div class="title">NodeJS</div>
     </div>
@@ -155,7 +155,7 @@ The following libraries are officially supported by YugabyteDB.
   <a class="section-link icon-offset" href="golang/">
     <div class="head">
       <div class="icon">
-        <i class="icon-go"></i>
+        <i class="fa-brands fa-golang"></i>
       </div>
       <div class="title">Go</div>
     </div>
@@ -169,7 +169,7 @@ The following libraries are officially supported by YugabyteDB.
   <a class="section-link icon-offset" href="python/">
     <div class="head">
       <div class="icon">
-        <i class="icon-python"></i>
+        <i class="fa-brands fa-python"></i>
       </div>
       <div class="title">Python</div>
     </div>
@@ -211,7 +211,7 @@ The following libraries are officially supported by YugabyteDB.
   <a class="section-link icon-offset" href="php/ysql/">
     <div class="head">
       <div class="icon">
-        <i class="icon-php"></i>
+        <i class="fa-brands fa-php"></i>
       </div>
       <div class="title">PHP</div>
     </div>

@@ -190,4 +190,3 @@ class TablePropertiesCollectorFactory {
 extern uint64_t GetDeletedKeys(const UserCollectedProperties& props);
 
 }  // namespace rocksdb
-

@@ -470,6 +470,12 @@ public class CustomerTask extends Model {
     return taskUUID;
   }
 
+  public CustomerTask setTaskUUID(UUID newTaskUUID) {
+    this.taskUUID = newTaskUUID;
+    save();
+    return this;
+  }
+
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY, required = true)
@@ -530,6 +536,11 @@ public class CustomerTask extends Model {
 
   public Date getCompletionTime() {
     return completionTime;
+  }
+
+  public void resetCompletionTime() {
+    this.completionTime = null;
+    this.save();
   }
 
   @Column

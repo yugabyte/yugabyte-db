@@ -154,4 +154,3 @@ class RestorationState : public StateWithTablets {
 
 } // namespace master
 } // namespace yb
-

@@ -20,6 +20,7 @@
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/ref_counted.h"
 
@@ -31,6 +32,7 @@
 namespace yb {
 
 class RefCntBuffer;
+class RefCntSlice;
 class Slice;
 
 namespace rpc {
@@ -68,6 +70,7 @@ class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
+class Sidecars;
 class Strand;
 class StrandTask;
 class Stream;
@@ -149,7 +152,7 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
 using SidecarHolder = std::pair<RefCntBuffer, Slice>;
 using CallResponsePtr = std::shared_ptr<CallResponse>;
 using RpcCallParamsPtr = std::shared_ptr<RpcCallParams>;
+using ByteBlocks = boost::container::small_vector_base<RefCntSlice>;
 
 } // namespace rpc
 } // namespace yb
-

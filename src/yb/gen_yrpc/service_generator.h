@@ -34,4 +34,3 @@ class ServiceGenerator {
 
 } // namespace gen_yrpc
 } // namespace yb
-

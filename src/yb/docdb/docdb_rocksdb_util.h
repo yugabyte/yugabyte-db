@@ -40,6 +40,14 @@ void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 
+struct SeekStats {
+  int next = 0;
+  int seek = 0;
+};
+
+// Seek forward using Next call.
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key);
+
 // When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
 // this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
 // enough, does not perform a seek.
@@ -100,8 +108,11 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
+std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
+    scoped_refptr<yb::MetricEntity> entity);
+
 // Request RocksDB compaction and wait until it completes.
-Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush = SkipFlush::kFalse);
+Status ForceRocksDBCompact(rocksdb::DB* db, const rocksdb::CompactRangeOptions& options);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 
@@ -167,4 +178,3 @@ class RocksDBPatcher {
 
 }  // namespace docdb
 }  // namespace yb
-

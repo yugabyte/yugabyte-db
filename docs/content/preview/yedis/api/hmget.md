@@ -14,11 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HMGET key field [field ...]`</b><br>
+**`HMGET key field [field ...]`**
+
 This command fetches one or more values for the given fields of the hash that is associated with the given `key`.
 
-<li>For every given `field`, (null) is returned if either `key` or `field` does not exist.</li>
-<li>If `key` is associated with a non-hash data, an error is raised.</li>
+- For every given `field`, (null) is returned if either `key` or `field` does not exist.
+- If `key` is associated with a non-hash data, an error is raised.
 
 ## Return value
 

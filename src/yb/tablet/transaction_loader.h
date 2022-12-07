@@ -93,4 +93,3 @@ class TransactionLoader {
 
 } // namespace tablet
 } // namespace yb
-

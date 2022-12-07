@@ -277,4 +277,3 @@ inline BlockHandle::BlockHandle(uint64_t _offset, uint64_t _size)
     : offset_(_offset), size_(_size) {}
 
 }  // namespace rocksdb
-

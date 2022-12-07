@@ -78,4 +78,3 @@ class EvTimerHolder {
 };
 
 } // namespace yb
-

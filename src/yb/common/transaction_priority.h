@@ -30,4 +30,3 @@ constexpr uint64_t kRegularTxnLowerBound = 0;
 constexpr uint64_t kRegularTxnUpperBound = kHighPriTxnLowerBound - 1;
 
 } // namespace
-

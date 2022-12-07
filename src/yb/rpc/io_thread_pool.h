@@ -42,4 +42,3 @@ class IoThreadPool {
 
 } // namespace rpc
 } // namespace yb
-

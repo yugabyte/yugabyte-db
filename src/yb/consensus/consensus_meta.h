@@ -233,4 +233,3 @@ void CopyRegistration(ServerRegistrationPB source, RaftPeerPB* dest);
 
 } // namespace consensus
 } // namespace yb
-

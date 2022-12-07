@@ -24,8 +24,10 @@ import os
 import sys
 import time
 
-from typing import List, Dict
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type: ignore
+from typing import List, Dict, cast
+from yugabyte_pycommon import run_program, WorkDirContext  # type: ignore
+
+from yb.common_util import init_logging
 
 
 def get_auto_flags(
@@ -44,19 +46,64 @@ def get_auto_flags(
     return_dict[program_name] = auto_flags_result.stdout
 
 
+def is_json_subset(a: Dict[str, str], b: Dict[str, str]) -> bool:
+    subset = {}
+    for k, v in a.items():
+        if k in b:
+            subset[k] = b[k]
+    return subset == a
+
+
+def check_auto_flags_subset(
+        previous_auto_flags: Dict[str, List[Dict[str, List[Dict[str, str]]]]],
+        new_auto_flags: Dict[str, List[Dict[str, List[Dict[str, str]]]]]) -> None:
+    """
+    Once a AutoFlag is added to the code and shipped to customers it cannot be removed.
+    Check that the new AutoFlags JSON is a subset of the previous stabilized AutoFlags JSON.
+    """
+    for previous_program_flags in previous_auto_flags['auto_flags']:
+        program_validated = False
+        for program_flags in new_auto_flags['auto_flags']:
+            if program_flags['program'] != previous_program_flags['program']:
+                continue
+            else:
+                for previous_flag in previous_program_flags['flags']:
+                    flag_validated = False
+                    for flag in program_flags['flags']:
+                        if is_json_subset(previous_flag, flag):
+                            flag_validated = True
+                            break
+
+                    if not flag_validated:
+                        raise RuntimeError("AutoFlag {} in {} has been removed".format(
+                            previous_flag,
+                            previous_program_flags['program']))
+
+                program_validated = True
+                break
+
+        if not program_validated:
+            raise RuntimeError("AutoFlags for program {} has been removed".format(
+                previous_program_flags['program']))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--program_list', type=str, help="CSV list of programs")
     parser.add_argument('--dynamically_linked_exe_suffix', type=str,
                         help="Executable suffix used in case of dynamic linking")
     parser.add_argument('--output_file_path', type=str, help="Path to output file")
+    parser.add_argument('--previous_auto_flags_file',
+                        type=str,
+                        help="Path to previous AutoFlags file")
     args = parser.parse_args()
 
     start_time_sec = time.time()
     build_root = os.environ['YB_BUILD_ROOT']
 
     manager = multiprocessing.Manager()
-    return_dict: Dict[str, str] = manager.dict()
+    # manager.dict() returns DictProxy[Any, Any]
+    return_dict: Dict[str, str] = cast(Dict[str, str], manager.dict())
     process_list = []
     with WorkDirContext(build_root):
         for program_name in args.program_list.split(','):
@@ -76,18 +123,23 @@ def main() -> None:
             if process.exitcode:
                 sys.exit(process.exitcode)
 
-        auto_flags_json: Dict[str, List[Dict[str, str]]] = {}
+        auto_flags_json: Dict[str, List[Dict[str, List[Dict[str, str]]]]] = {}
         auto_flags_json['auto_flags'] = []
         for flags in return_dict.values():
             auto_flags_json['auto_flags'] += [json.loads(flags)]
 
-        with open(args.output_file_path, 'w', encoding='utf-8') as f:
-            json.dump(auto_flags_json, f, ensure_ascii=False, indent=2)
+        with open(args.previous_auto_flags_file, 'r', encoding='utf-8') as previous_auto_flags_file:
+            previous_auto_flags = json.load(previous_auto_flags_file)
+            check_auto_flags_subset(previous_auto_flags, auto_flags_json)
+
+        with open(args.output_file_path, 'w', encoding='utf-8') as new_auto_flags_file:
+            json.dump(auto_flags_json, new_auto_flags_file, ensure_ascii=False, indent=2)
+            new_auto_flags_file.write("\n")
 
         elapsed_time_sec = time.time() - start_time_sec
         logging.info("Generated AutoFlags JSON in %.1f sec" % elapsed_time_sec)
 
 
 if __name__ == '__main__':
-    init_logging()
+    init_logging(verbose=False)
     main()

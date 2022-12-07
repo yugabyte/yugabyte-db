@@ -90,7 +90,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
@@ -101,7 +101,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
-DEFINE_bool(skip_remove_old_recovery_dir, false,
+DEFINE_UNKNOWN_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
 TAG_FLAG(skip_remove_old_recovery_dir, hidden);
 
@@ -116,30 +116,30 @@ DEFINE_test_flag(double, fault_crash_during_log_replay, 0.0,
 
 DECLARE_uint64(max_clock_sync_error_usec);
 
-DEFINE_bool(force_recover_flushed_frontier, false,
+DEFINE_UNKNOWN_bool(force_recover_flushed_frontier, false,
             "Could be used to ignore the flushed frontier metadata from RocksDB manifest and "
             "recover it from the log instead.");
 TAG_FLAG(force_recover_flushed_frontier, hidden);
 TAG_FLAG(force_recover_flushed_frontier, advanced);
 
-DEFINE_bool(skip_flushed_entries, true,
+DEFINE_UNKNOWN_bool(skip_flushed_entries, true,
             "Only replay WAL entries that are not flushed to RocksDB or within the retryable "
             "request timeout.");
 
 DECLARE_int32(retryable_request_timeout_secs);
 
-DEFINE_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
+DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
               "The segment size for transaction status tablet log roll-overs, in bytes.");
 DEFINE_test_flag(int32, tablet_bootstrap_delay_ms, 0,
                  "Time (in ms) to delay tablet bootstrap by.");
 
 DEFINE_test_flag(bool, dump_docdb_before_tablet_bootstrap, false,
                  "Dump the contents of DocDB before tablet bootstrap. Should only be used when "
-                 "data is small.")
+                 "data is small.");
 
 DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
                  "Dump the contents of DocDB after tablet bootstrap. Should only be used when "
-                 "data is small.")
+                 "data is small.");
 
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");

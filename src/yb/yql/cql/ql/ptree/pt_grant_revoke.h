@@ -201,4 +201,3 @@ class PTGrantRevokePermission : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-

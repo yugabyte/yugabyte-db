@@ -131,10 +131,10 @@ class IdxPredicateState {
   }
 
   Status AnalyzeColumnOp(SemContext *sem_context,
-                                 const PTRelationExpr *expr,
-                                 const ColumnDesc *col_desc,
-                                 PTExprPtr value,
-                                 PTExprListNodePtr args = nullptr);
+                         const PTRelationExpr *expr,
+                         const ColumnDesc *col_desc,
+                         PTExprPtr value,
+                         PTExprListNodePtr args = nullptr);
 
   std::shared_ptr<std::set<uint32>>& column_refs() {
     return column_refs_;
@@ -150,4 +150,3 @@ class IdxPredicateState {
 
 }  // namespace ql
 }  // namespace yb
-

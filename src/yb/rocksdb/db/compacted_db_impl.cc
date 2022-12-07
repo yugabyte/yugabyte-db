@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/db/compacted_db_impl.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -174,4 +173,3 @@ Status CompactedDBImpl::Open(const Options& options,
 }
 
 }   // namespace rocksdb
-#endif  // ROCKSDB_LITE

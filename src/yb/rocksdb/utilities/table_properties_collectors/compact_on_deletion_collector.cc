@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/utilities/table_properties_collectors/compact_on_deletion_collector.h"
 
 #include <memory>
@@ -106,4 +105,3 @@ std::shared_ptr<TablePropertiesCollectorFactory>
           sliding_window_size, deletion_trigger));
 }
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

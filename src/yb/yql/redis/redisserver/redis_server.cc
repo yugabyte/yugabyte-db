@@ -15,7 +15,7 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/size_literals.h"
 
 #include "yb/yql/redis/redisserver/redis_rpc.h"
@@ -24,12 +24,12 @@
 using yb::rpc::ServiceIf;
 using namespace yb::size_literals;
 
-DEFINE_int32(redis_svc_queue_length, 5000,
+DEFINE_UNKNOWN_int32(redis_svc_queue_length, 5000,
              "RPC queue length for redis service");
 TAG_FLAG(redis_svc_queue_length, advanced);
 
-DEFINE_int64(redis_rpc_block_size, 1_MB, "Redis RPC block size");
-DEFINE_int64(redis_rpc_memory_limit, 0, "Redis RPC memory limit");
+DEFINE_UNKNOWN_int64(redis_rpc_block_size, 1_MB, "Redis RPC block size");
+DEFINE_UNKNOWN_int64(redis_rpc_memory_limit, 0, "Redis RPC memory limit");
 
 namespace yb {
 namespace redisserver {

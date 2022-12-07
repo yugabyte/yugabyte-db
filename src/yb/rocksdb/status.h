@@ -39,4 +39,3 @@ namespace rocksdb {
 typedef yb::Status Status;
 
 }  // namespace rocksdb
-

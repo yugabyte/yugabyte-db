@@ -94,4 +94,3 @@ struct StateChangeContext {
 
 } // namespace consensus
 } // namespace yb
-
