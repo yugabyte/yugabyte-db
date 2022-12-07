@@ -115,7 +115,7 @@ Examples:
 : The IP address of the existing yugabyted server to which the new yugabyted server will join.
 
 --config *config-file*
-: Yugabyted configuration file path. Refer to [Advanced Flags](#advanced-flags).
+: Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
 
 --base_dir *base-directory*
 : The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
@@ -146,7 +146,7 @@ Examples:
 : When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
-#### Advanced Flags
+#### Advanced flags
 
 Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
 
@@ -194,7 +194,7 @@ Note that the corresponding environment variables have higher priority than the 
 : Script format - YSQL `.sql`, YCQL `.cql`.
 : Initialization scripts are executed in sorted name order.
 
-#### Deprecated Flags
+#### Deprecated flags
 
 --daemon *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`.
@@ -234,7 +234,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 ./bin/yugabyted configure data_placement --fault_tolerance=zone
 ```
 
-#### data_placement Flags
+#### data_placement flags
 
 -h | --help
 : Print the command-line help and exit.
@@ -278,7 +278,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
-#### encrypt_at_rest Flags
+#### encrypt_at_rest flags
 
 -h | --help
 : Print the command-line help and exit.
