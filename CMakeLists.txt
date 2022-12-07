@@ -502,6 +502,7 @@ endif()
 include(YugabyteFindThirdParty)
 yb_find_third_party_installed_dir()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
+yb_put_vars_into_cache(YB_PREFIX_COMMON)
 
 if(IS_CLANG)
   YB_SETUP_CLANG()
