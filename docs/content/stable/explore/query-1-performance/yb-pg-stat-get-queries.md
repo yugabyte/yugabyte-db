@@ -5,7 +5,7 @@ description: Track planning and execution statistics for all SQL statements exec
 headerTitle: View terminated queries with yb_pg_stat_get_queries
 headcontent: See why a query failed
 menu:
-  preview:
+  stable:
     identifier: yb-pg-stat-get-queries
     parent: query-tuning
     weight: 350
@@ -39,9 +39,9 @@ List of functions
 Schema              | pg_catalog
 Name                | yb_pg_stat_get_queries
 Result data type    | SETOF record
-Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer, 
-                    | OUT query_text text, OUT termination_reason text, 
-                    | OUT query_start timestamp with time zone, 
+Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer,
+                    | OUT query_text text, OUT termination_reason text,
+                    | OUT query_start timestamp with time zone,
                     | OUT query_end timestamp with time zone
 Type                | func
 ```
@@ -206,7 +206,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL);
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
  SELECT 'db2' FROM generate_series(1, 123456789);
@@ -240,7 +240,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(13288)
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
 (1 row)
@@ -253,7 +253,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(17920)
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db2' FROM generate_series(1, 123456789);
 (1 row)
