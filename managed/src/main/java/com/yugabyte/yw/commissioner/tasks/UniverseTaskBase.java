@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -136,23 +139,6 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
-
-import javax.annotation.Nullable;
-import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -168,9 +154,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -3387,6 +3386,69 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  /**
+   * It checks if it is necessary to copy the source universe root certificate to the target
+   * universe for the xCluster replication config to work. If it is necessary, an optional
+   * containing the path to the source root certificate on the Platform host will be returned.
+   * Otherwise, it will be empty.
+   *
+   * @param sourceUniverse The source Universe in the xCluster replication config
+   * @param targetUniverse The target Universe in the xCluster replication config
+   * @return An optional File that is present if transferring the source root certificate is
+   *     necessary
+   * @throws IllegalArgumentException If setting up a replication config between a universe with
+   *     node-to-node TLS and one without; It is not supported by coreDB
+   */
+  public static Optional<File> getSourceCertificateIfNecessary(
+      Universe sourceUniverse, Universe targetUniverse) {
+    String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
+    String targetCertificatePath = targetUniverse.getCertificateNodetoNode();
+
+    if (sourceCertificatePath == null && targetCertificatePath == null) {
+      return Optional.empty();
+    }
+    if (sourceCertificatePath != null && targetCertificatePath != null) {
+      UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          targetUniverseDetails.getPrimaryCluster().userIntent;
+      // If the "certs_for_cdc_dir" gflag is set, it must be set on masters and tservers with the
+      // same value.
+      String gflagValueOnMasters =
+          userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+      String gflagValueOnTServers =
+          userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+      if ((gflagValueOnMasters != null || gflagValueOnTServers != null)
+          && !java.util.Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
+        throw new IllegalStateException(
+            String.format(
+                "The %s gflag must "
+                    + "be set on masters and tservers with the same value or not set at all: "
+                    + "gflagValueOnMasters: %s, gflagValueOnTServers: %s",
+                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                gflagValueOnMasters,
+                gflagValueOnTServers));
+      }
+      // If the "certs_for_cdc_dir" gflag is set on the target universe, the certificate must
+      // be transferred even though the universes are using the same certs.
+      if (!sourceCertificatePath.equals(targetCertificatePath)
+          || gflagValueOnMasters != null
+          || targetUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+        File sourceCertificate = new File(sourceCertificatePath);
+        if (!sourceCertificate.exists()) {
+          throw new IllegalStateException(
+              String.format("sourceCertificate file \"%s\" does not exist", sourceCertificate));
+        }
+        return Optional.of(sourceCertificate);
+      }
+      // The "certs_for_cdc_dir" gflag is not set and certs are equal, so the target universe does
+      // not need the source cert.
+      return Optional.empty();
+    }
+    throw new IllegalArgumentException(
+        "A replication config cannot be set between a universe with node-to-node encryption "
+            + "enabled and a universe with node-to-node encryption disabled.");
+  }
+
   protected SubTaskGroup createTransferXClusterCertsCopyTasks(
       Collection<NodeDetails> nodes,
       String replicationGroupName,
@@ -3394,6 +3456,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       File sourceRootCertDirPath) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
+    log.debug(
+        "Creating subtasks to transfer {} to {} on nodes {} in universe {}",
+        certificate,
+        sourceRootCertDirPath,
+        nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet()),
+        taskParams().universeUUID);
     for (NodeDetails node : nodes) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
       transferParams.universeUUID = taskParams().universeUUID;
@@ -3410,6 +3478,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  protected void createTransferXClusterCertsCopyTasks(
+      Collection<NodeDetails> nodes, Universe targetUniverse, SubTaskGroupType subTaskGroupType) {
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID)
+            .stream()
+            .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
+            .collect(Collectors.toList());
+
+    xClusterConfigs.forEach(
+        xClusterConfig -> {
+          Optional<File> sourceCertificate =
+              getSourceCertificateIfNecessary(
+                  Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID), targetUniverse);
+          sourceCertificate.ifPresent(
+              cert ->
+                  createTransferXClusterCertsCopyTasks(
+                          nodes,
+                          xClusterConfig.getReplicationGroupName(),
+                          cert,
+                          targetUniverse.getUniverseDetails().getSourceRootCertDirPath())
+                      .setSubTaskGroupType(subTaskGroupType));
+        });
   }
 
   protected SubTaskGroup createXClusterInfoPersistTask(
