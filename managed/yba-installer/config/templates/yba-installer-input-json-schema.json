@@ -122,19 +122,6 @@
             }
           },
           "required": [ "overrideWarning"]
-      },
-      "serviceUser": {
-        "description": "Config on user that will run the services",
-        "type": "object",
-        "properties": {
-          "bringOwn": {
-            "type": "boolean"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "required": ["bringOwn", "username"]
       }
     },
     "required": ["prometheus", "platform", "preflight"]
