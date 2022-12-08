@@ -69,9 +69,9 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 
 | Provider | VPC setup
 | :--- | :--- |
-| AWS | You need to create a VPC in each region where the cluster is to be deployed. If you intend to connect each region to the same application, ensure that the CIDRs of the VPCs do not overlap. |
-| GCP Global | Create a single global VPC; each region is deployed in the same VPC. |
-| GCP Custom | When creating the VPC, include each region where the cluster is to be deployed; each region is deployed in the same VPC |
+| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
+| GCP Global | Create a single global VPC; each region of the cluster is deployed in the same VPC. |
+| GCP Custom | When creating the VPC, add a region for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can't expand into new regions after the VPC is created_. |
 
 ### Set the CIDR and size your VPC
 
