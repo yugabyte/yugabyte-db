@@ -64,7 +64,7 @@ func PrintPreflightResults(results []checks.Result) {
 	fmt.Println("Preflight errors:")
 	fmt.Fprintln(preflightWriter, "#\tPreflight Check\tStatus\tError")
 	for ii, result := range results {
-		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s",
+		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
 			ii+1,
 			result.Check,
 			result.Status.String(),

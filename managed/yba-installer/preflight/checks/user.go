@@ -38,26 +38,24 @@ func (u userCheck) Execute() Result {
 		log.Debug("Skip user preflight check, we do not use an additional user as non-root")
 		return res
 	}
-	userName := viper.GetString("serviceUser.username")
-	_, err := osuser.Lookup(userName)
+	uname := viper.GetString("service_username")
+	_, err := osuser.Lookup(uname)
 	if err == nil {
-		log.Info("Found user '" + userName + "', no need to create a user")
+		log.Info("Found user '" + uname + "', no need to create a user")
 		return res
 	}
 
 	// User is not found, fail if we are not allowed to create it. Otherwise, ask for explicit
 	// permission. This is to ensure that the customer is okay with the user being created
 	// by the install workflow.
-	if viper.GetBool("serviceUser.bringOwn") {
-		res.Error = fmt.Errorf("user '%s' is expected to exist, please create the user or set "+
-			"'serviceUser.bringOwn' to false in the yba-installer-input.yml", userName)
+	if uname != "yugabyte" {
+		res.Error = fmt.Errorf("custom user '%s' is expected to exist, please create the user or "+
+			"update the config back to the default user.", uname)
 		res.Status = StatusCritical
 	}
-
-	prompt := fmt.Sprintf("Can yba-ctl create the '%s' user on this machine:", userName)
+	prompt := fmt.Sprintf("Can yba-ctl create the '%s' user on this machine:", uname)
 	if !common.UserConfirm(prompt, common.DefaultNone) {
-		res.Error = fmt.Errorf("please provide user '%s' and try the install again", userName)
-		res.Status = StatusCritical
+		log.Fatal("please provide user '" + uname + "' and try the install again")
 	}
 	return res
 }
