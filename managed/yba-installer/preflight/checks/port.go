@@ -39,22 +39,25 @@ func (p portCheck) Execute() Result {
 	}
 	var ports []int = []int{
 		viper.GetInt("prometheus.externalPort"),
-		viper.GetInt("platform.externalPort"),
+		viper.GetInt("platform.externalPort"), //This is currently the same port as postgres.
 		viper.GetInt("platform.containerExposedPort"),
 		viper.GetInt("postgres.port"),
 	}
 
-	usedPorts := make([]int, len(ports))
+	usedPorts := make([]int, 0, len(ports))
 	for _, port := range ports {
-		_, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+		listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 		if err != nil {
 			usedPorts = append(usedPorts, port)
 		} else {
 			log.Info(fmt.Sprintf("Connection to port: %d successful.", port))
 		}
+		if listener != nil {
+			listener.Close()
+		}
 	}
 	if len(usedPorts) > 0 {
-		err := fmt.Errorf("could not connect to port(s) %v", usedPorts)
+		err := fmt.Errorf("could not listen on port(s) %v - check they are free", usedPorts)
 		res.Error = err
 		res.Status = StatusCritical
 	}
