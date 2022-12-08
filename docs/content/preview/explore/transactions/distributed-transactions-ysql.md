@@ -156,9 +156,7 @@ Each update performed as a part of the transaction is replicated across multiple
 
 [Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*.
 
-{{< note title="Note" >}}
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
-{{</ note >}}
 
 ## Transaction options
 
