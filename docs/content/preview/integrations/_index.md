@@ -22,116 +22,130 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 <ul class="nav yb-pills">
 
   <li>
-    <a href="apache-kafka/" class="orange">
+    <a href="apache-kafka/">
+      <img src="/images/section_icons/develop/ecosystem/apache-kafka.png">
       Apache Kafka
     </a>
   </li>
 
   <li>
-    <a href="apache-spark/" class="orange">
-      <i class="icon-apache-spark"></i>
+    <a href="apache-spark/">
+      <img src="/images/develop/ecosystem-integrations/apache-spark.png">
       Apache Spark
     </a>
   </li>
 
   <li>
-    <a href="camunda/" class="orange">
+    <a href="camunda/">
       Camunda
     </a>
   </li>
 
   <li>
-    <a href="debezium/" class="orange">
+    <a href="debezium/">
       Debezium
     </a>
   </li>
 
   <li>
-    <a href="flyway/" class="orange">
+    <a href="flyway/">
+      <img src="/images/section_icons/develop/ecosystem/flyway.png">
       Flyway
     </a>
   </li>
 
   <li>
-    <a href="gorm/" class="orange">
+    <a href="gorm/">
+      <img src="/images/section_icons/develop/ecosystem/gorm.png">
       GORM
     </a>
   </li>
 
   <li>
-    <a href="hasura/" class="orange">
+    <a href="hasura/">
+      <img src="/images/section_icons/develop/ecosystem/hasura.png">
       Hasura
     </a>
   </li>
 
   <li>
-    <a href="janusgraph/" class="orange">
+    <a href="janusgraph/">
+      <img src="/images/section_icons/develop/ecosystem/janusgraph.png">
       JanusGraph
     </a>
   </li>
 
   <li>
-    <a href="kairosdb/" class="orange">
+    <a href="kairosdb/">
+      <img src="/images/section_icons/develop/ecosystem/kairosdb.png">
       KairosDB
     </a>
   </li>
 
   <li>
-    <a href="liquibase/" class="orange">
+    <a href="liquibase/">
+      <img src="/images/section_icons/develop/ecosystem/liquibase.png">
       Liquibase
     </a>
   </li>
 
   <li>
-    <a href="metabase/" class="orange">
+    <a href="metabase/">
+      <img src="/images/section_icons/develop/ecosystem/metabase.png">
       Metabase
     </a>
   </li>
 
   <li>
-    <a href="presto/" class="orange">
+    <a href="presto/">
+      <img src="/images/section_icons/develop/ecosystem/presto.png">
       Presto
     </a>
   </li>
 
   <li>
-    <a href="prisma/" class="orange">
+    <a href="prisma/">
+      <img src="/images/develop/graphql/prisma/prisma.png">
       Prisma
     </a>
   </li>
 
   <li>
-    <a href="sequelize/" class="orange">
+    <a href="sequelize/">
+      <img src="/images/section_icons/develop/ecosystem/sequelize.png">
       Sequelize
     </a>
   </li>
 
   <li>
-    <a href="spring-framework/" class="orange">
+    <a href="spring-framework/">
+      <img src="/images/section_icons/develop/ecosystem/spring.png">
       Spring
     </a>
   </li>
 
   <li>
-    <a href="sqlalchemy/" class="orange">
+    <a href="sqlalchemy/">
+      <img src="/images/section_icons/develop/ecosystem/sqlalchemy.png">
       SQLAlchemy
     </a>
   </li>
 
   <li>
-    <a href="wso2/" class="orange">
+    <a href="wso2/">
+      <img src="/images/section_icons/develop/ecosystem/wso2.png">
       WSO2 Identity Server
     </a>
   </li>
 
   <li>
-    <a href="aiopg/" class="orange">
+    <a href="aiopg/">
       YSQL Aiopg
     </a>
   </li>
 
   <li>
-    <a href="ysql-loader/" class="orange">
+    <a href="ysql-loader/">
       YSQL Loader
     </a>
   </li>
