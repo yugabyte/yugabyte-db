@@ -370,7 +370,7 @@ Percentage of `scheduled_full_compaction_frequency_hours` to be used as maximum 
 
 Jitter is deterministically computed when scheduling a compaction as a function of the tablet-id and the last full compaction time. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time. If no data is available about the tablet's last full compaction, then the jitter is instead used to schedule a full compaction as soon as possible while still preventing too many simultaneous full compactions.
 
-For example, if `scheduled_full_compaction_frequency_hours` is 720 hours (30 days), and `scheduled_full_compaction_jitter_factor_percentage` is 33 percent, each tablet's compaction schedule can range from 482 to 720 hours, a value which will change after each full compaction.
+For example, if `scheduled_full_compaction_frequency_hours` is 720 hours (30 days), and `scheduled_full_compaction_jitter_factor_percentage` is 33 percent, each tablet's compaction schedule can range from 482 to 720 hours, and will be pseudorandomly generated again after each full compaction.
 
 Default: `33`
 
