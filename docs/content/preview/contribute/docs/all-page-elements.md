@@ -2,7 +2,7 @@
 title: YugabyteDB Managed quick start
 headerTitle: Page with elements
 linkTitle: Page with elements
-headcontent: All page elements on a single page
+headcontent: Just about every page element on a single page
 description: YugabyteDB Documentation page elements on a single page.
 layout: single
 type: docs
@@ -13,57 +13,55 @@ menu:
     weight: 9000
 ---
 
-This page includes typical styles and widgets used for the YugabyteDB Documentation site.
+This page demonstrates styles and widgets used for the YugabyteDB Documentation site.
 
 ## Tab widgets
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../all-page-elements/" class="nav-link">
-        Top-level Tab Widget
-      </a>
-    </li>
-    <li>
-      <a href="../all-page-elements/" class="nav-link">
-        Tab 2
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../all-page-elements/" class="nav-link">
+      <img src="/icons/cloud-icon.svg" alt="Icon">
+      Top-level Tab Widget
+    </a>
+  </li>
+  <li>
+    <a href="../all-page-elements/" class="nav-link">
+      <img src="/icons/server-iconsvg.svg" alt="Icon">
+      Tab 2
+    </a>
+  </li>
+</ul>
 
 This is a top-level tab widget, that uses different files for each tab. Everything that follows is in this tab's file. If you change tabs, you get a whole new page. This style is possibly only used for the quick start.
 
 ### Second tab widget style
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../all-page-elements/" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../all-page-elements/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../all-page-elements/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../all-page-elements/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../all-page-elements/" class="nav-link">
+      <i class="fab fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../all-page-elements/" class="nav-link">
+      <i class="fab fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../all-page-elements/" class="nav-link">
+      <i class="fab fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../all-page-elements/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 This is a second-level tab widget, that uses different files for each tab - same as the one above, just styled differently. We should be using this style instead of the buttons for this type of tab. Many pages need to be changed to do that.
 
@@ -73,7 +71,7 @@ Everything that follows is in this tab's file. If you change tabs, you get a who
 
 This tab widget doesn't use separate files to fill in the content and then link between. Here the content is placed inside the `tabpane` shortcode.
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="Java" lang="java" %}}
 
@@ -93,8 +91,6 @@ To build and run the application, do the following:
 
     The application needs to establish a connection to the YugabyteDB cluster. To do this:
 
-    - Open the `app.properties` file located in the application `src/main/resources/` folder.
-
     - Set the following configuration parameters:
 
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
@@ -108,13 +104,13 @@ To build and run the application, do the following:
     $ java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
     ```
 
-If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
+The end of this tab.
 
   {{% /tab %}}
 
   {{% tab header="Go" lang="go" %}}
 
-The following tutorial shows a small [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](../drivers-orms/go/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Go.
+The contents of the next tab. You can keep adding tabs in similar fashion.
 
 ### Headings inside this widget don't show up in RightNav
 
@@ -128,27 +124,45 @@ To build and run the application, do the following:
 
 1. Provide connection parameters.
 
-    The application needs to establish a connection to the YugabyteDB cluster. To do this:
-
-    1. Open the `sample-app.go` file.
-
-    2. Set the following configuration parameter constants:
-
-        - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-        - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
-        - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
-
-    3. Save the file.
-
-1. Start the application.
-
-    ```sh
-    $ go run sample-app.go
-    ```
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+### Pills
+
+These pills automatically re-flow based on page width; just keep adding list items. Use these pills for landing pages or as an alternative to tabs.
+
+<ul class="nav yb-pills">
+
+  <li>
+    <a href="../../../develop/build-apps/java/cloud-ysql-yb-jdbc/" class="orange">
+      <i class="fa-brands fa-java"></i>
+      Java
+    </a>
+  </li>
+
+  <li>
+    <a href="../../../develop/build-apps/go/cloud-ysql-go/" class="orange">
+      <i class="fa-brands fa-golang"></i>
+      Go
+    </a>
+  </li>
+
+  <li>
+    <a href="../../../develop/build-apps/python/cloud-ysql-python/" class="orange">
+      <i class="fa-brands fa-python"></i>
+      Python
+    </a>
+  </li>
+
+  <li>
+    <a href="../../../develop/build-apps/nodejs/cloud-ysql-node/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      NodeJS
+    </a>
+  </li>
+
+</ul>
 
 ## Table
 
@@ -160,32 +174,19 @@ The following is a basic markdown table.
 | Another row | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
 | Another row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
 
-## Glossary entries
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-: Another paragraph in the definition.
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-: Another paragraph in the definition.
-
 ## Notes and blockquote
 
 An ordinary paragraph.
 
 >**Blockquote**
 >
->For content that is outside of a set of instructions; sort of explanatory but peripheral to the task at hand. Advice, what's happening here sort of thing. But not a full blown Note or Warning. It's actually a blockquote in markdown. I'm the only one who uses it. Sorry.
+>Blockquote text
 >
->The "heading" is just bold text.
+>Some more blockquote text.
 
 {{< note title="Note" >}}
 
-This is an actual Note. Maybe a bit overkill.
+This is an actual Note. Pay special attention to this thing, maybe.
 
 {{< /note >}}
 
@@ -207,7 +208,7 @@ What follows is an image:
 
 ![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
 
-What follows is an embedded youtube video:
+What follows is an embedded YouTube video:
 
 {{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
@@ -263,6 +264,19 @@ Some bullets:
 
 Refer to [Before you begin](../../../develop/build-apps/cloud-add-ip/).
 
+## Glossary entries
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list.
+: Another paragraph in the definition.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list.
+: Another paragraph in the definition.
+
 ## Details tag
 
 The details HTML tag is used to create an interactive widget that the user can open and close. By default, the widget is closed. When open, it expands, and displays the contents.
@@ -288,11 +302,11 @@ When you open `ysqlsh`, the following default flags (aka flags) are set so that 
 - port: `-p 5433`
 - user: `-U yugabyte`
 
----
-
 ## Horizontal rule
 
-Once in awhile, there is a horizontal rule. No, really.
+Once in awhile, there is a horizontal rule.
+
+---
 
 ## Flags
 
