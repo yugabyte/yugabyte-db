@@ -21,7 +21,7 @@
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
