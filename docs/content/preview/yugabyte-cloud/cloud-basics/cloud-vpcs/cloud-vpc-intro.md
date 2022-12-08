@@ -16,6 +16,8 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Within the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
+
 ![Peered VPCs](/images/yb-cloud/managed-vpc-diagram.png)
 
 ## Advantages
@@ -67,20 +69,22 @@ For AWS, you can only define a single region per VPC.
 
 Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations.
 
-| Provider | VPC setup
+| Provider | Regional VPC setup
 | :--- | :--- |
-| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
-| GCP Global | Create a single global VPC; each region of the cluster is deployed in the same VPC. |
-| GCP Custom | When creating the VPC, add a region for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can't expand into new regions after the VPC is created_. |
+| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
+| GCP Automated region selection | Create a single global VPC and let GCP assign network blocks to each region; each region of the cluster is deployed in the same VPC.  GCP does not recommend auto mode VPC networks for production; refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations). |
+| GCP Custom region selection | When creating the VPC, you provide network blocks for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can not expand into new regions after the VPC is created_. |
 
 ### Set the CIDR and size your VPC
 
-A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
+The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that the range doesn't overlap the range of addresses used by other resources in the network, namely the application VPC you will peer and other VPCs.
+
+Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
 When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
 | Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
-| --- | --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- | :--- |
 | GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
 | GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you can customize the regions for the VPC. |
 | AWS | /26 | 64 | In AWS, you assign the range to a single region. If you need multiple regions, you must create a separate VPC for each. |
@@ -102,23 +106,23 @@ You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conve
 Addresses have the following additional restrictions:
 
 - VPC addresses can overlap with other VPCs, but not in the following circumstances:
+  - You want to use the VPCs for the same cluster. For example, if you have two VPCs in different regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.
+
+  ![VPCs in the same cluster can't overlap](/images/yb-cloud/managed-vpc-overlap-cluster.png)
+
   - You want to peer the VPCs to the same application VPC. For example, if you have two different VPCs with overlapping addresses, you won't be able to peer them with the same application VPC.
 
-  ![VPCs with overlapping CIDRs](/images/yb-cloud/managed-vpc-overlap-cidr.png)
-
-  - You want to use the VPCs for the same cluster. For example, if you have two VPCs in diffferent regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.
-
-  ![VPCs with overlapping CIDRs in the same cluster](/images/yb-cloud/managed-vpc-overlap-cluster.png)
+  ![VPCs peering with the same application VPC can't overlap](/images/yb-cloud/managed-vpc-overlap-cidr.png)
 
   YugabyteDB Managed warns you when you enter an overlapping range.
 - Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
-  ![VPCs CIDR overlaps application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
+  ![VPC CIDR can't overlap application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
 
 YugabyteDB Managed reserves the following ranges for internal operations.
 
 | Provider | Range |
-| --- | --- |
+| :--- | :--- |
 | AWS | 10.3.0.0/16<br>10.4.0.0/16 |
 | GCP | 10.21.0.0/16 |
 
