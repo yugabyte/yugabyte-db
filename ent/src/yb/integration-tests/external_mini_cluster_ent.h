@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H
-#define ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H
+#pragma once
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
@@ -30,5 +29,3 @@ void StartSecure(
   const std::vector<std::string>& master_flags = std::vector<std::string>());
 
 } // namespace yb
-
-#endif // ENT_SRC_YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ENT_H

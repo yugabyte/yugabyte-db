@@ -17,10 +17,8 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
-#define YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H
+#pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include "yb/rocksdb/options.h"
@@ -74,6 +72,3 @@ class AdaptiveTableFactory : public TableFactory {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif  // YB_ROCKSDB_TABLE_ADAPTIVE_TABLE_FACTORY_H

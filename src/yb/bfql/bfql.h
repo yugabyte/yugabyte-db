@@ -70,8 +70,7 @@
 // The file "/yb/yql/cql/ql/ptree/pt_bfunc.cc" can be used as example at the moment.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFQL_H_
-#define YB_BFQL_BFQL_H_
+#pragma once
 
 #include <vector>
 #include <list>
@@ -369,5 +368,3 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
 // Because the tables must be initialized after the specification for "class BFExecApi", we have to
 // include header file "gen_bfunc_table.h" at the end of this file.
 #include "yb/bfql/gen_bfunc_table.h"
-
-#endif  // YB_BFQL_BFQL_H_

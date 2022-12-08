@@ -286,7 +286,7 @@ public class MiniYBCluster implements AutoCloseable {
     assert(SystemUtil.IS_LINUX);
     // On Linux we can use 127.x.y.z, so let's just pick a random address.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
-    final Random rng = RandomNumberUtil.getRandomGenerator();
+    final Random rng = RandomUtil.getRandomGenerator();
     for (int i = 0; i < 3; ++i) {
       // Do not use 0 or 255 for IP components.
       randomLoopbackIp.append("." + (1 + rng.nextInt(254)));
@@ -392,7 +392,7 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
-    Collections.shuffle(bindIps, RandomNumberUtil.getRandomGenerator());
+    Collections.shuffle(bindIps, RandomUtil.getRandomGenerator());
 
     for (int i = bindIps.size() - 1; i >= 0; --i) {
       String bindAddress = bindIps.get(i);

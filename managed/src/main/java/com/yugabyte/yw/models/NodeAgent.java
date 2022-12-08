@@ -244,17 +244,15 @@ public class NodeAgent extends Model {
         > 0;
   }
 
-  public void purge() {
-    String val = config == null ? null : config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isNotBlank(val)) {
-      Path certDirPath = Paths.get(val);
+  public void purge(Path certDir) {
+    if (certDir != null) {
       try {
-        File file = certDirPath.toFile();
+        File file = certDir.toFile();
         if (file.exists()) {
           FileUtils.deleteDirectory(file);
         }
       } catch (Exception e) {
-        log.warn("Error deleting cert directory {}", certDirPath, e);
+        log.warn("Error deleting cert directory {}", certDir, e);
       }
     }
     delete();
@@ -277,5 +275,20 @@ public class NodeAgent extends Model {
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  @JsonIgnore
+  public Path getCertFilePath(String certName) {
+    String certDirPath = config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isBlank(certDirPath)) {
+      throw new IllegalArgumentException(
+          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+    }
+    return Paths.get(certDirPath, certName);
+  }
+
+  @JsonIgnore
+  public Path getCaCertFilePath() {
+    return getCertFilePath(NodeAgent.ROOT_CA_CERT_NAME);
   }
 }

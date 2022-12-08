@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include <string>
 #include <vector>
@@ -80,4 +79,3 @@ class DBWithTTL : public StackableDB {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

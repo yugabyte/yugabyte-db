@@ -213,7 +213,7 @@ export default class AddCertificateForm extends Component {
       if (!values.vaultAddr) {
         errors.vaultAddr = 'Vault Address is Required';
       } else {
-        const exp = new RegExp(/^(?:http(s)?:\/\/)?[\w.-]+(?:[\w-]+)+:\d{1,5}$/);
+        const exp = new RegExp(/^(?:http(s)?:\/\/)?[\w.-]+:\d{1,5}(\/)?$/);
         if (!exp.test(values.vaultAddr))
           errors.vaultAddr = 'Vault Address must be a valid URL with port number';
       }
@@ -505,12 +505,12 @@ export default class AddCertificateForm extends Component {
                     />
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
                 {!isEditMode && (
@@ -598,12 +598,12 @@ export default class AddCertificateForm extends Component {
                     </div>
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
 
@@ -633,12 +633,12 @@ export default class AddCertificateForm extends Component {
 
                     {getPromiseState(addCertificate).isError() &&
                       isNonEmptyObject(addCertificate.error) && (
-                        <Alert bsStyle="danger" variant="danger">
+                      <Alert bsStyle="danger" variant="danger">
                           Certificate adding has been failed:
-                          <br />
-                          {JSON.stringify(addCertificate.error)}
-                        </Alert>
-                      )}
+                        <br />
+                        {JSON.stringify(addCertificate.error)}
+                      </Alert>
+                    )}
                   </Tab>
                 )}
               </Tabs>

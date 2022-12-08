@@ -1,0 +1,39 @@
+{
+  "auto_flags": [
+    {
+      "program": "yb-master",
+      "flags": [
+        {
+          "name": "TEST_auto_flags_initialized",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_tablet_split_of_xcluster_replicated_tables",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "regular_tablets_data_block_key_value_encoding",
+          "class": 3,
+          "is_runtime": true
+        }
+      ]
+    },
+    {
+      "program": "yb-tserver",
+      "flags": [
+        {
+          "name": "TEST_auto_flags_initialized",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "regular_tablets_data_block_key_value_encoding",
+          "class": 3,
+          "is_runtime": true
+        }
+      ]
+    }
+  ]
+}

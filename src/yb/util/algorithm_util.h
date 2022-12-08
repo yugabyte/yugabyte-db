@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ALGORITHM_UTIL_H
-#define YB_UTIL_ALGORITHM_UTIL_H
+#pragma once
 
 #include <algorithm>
 #include <bitset>
@@ -98,5 +97,3 @@ auto StableSorted(const Col& collection, const Extractor& extractor) {
 }
 
 };  // namespace yb
-
-#endif  // YB_UTIL_ALGORITHM_UTIL_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VTABLE_ITERATOR_H
-#define YB_MASTER_YQL_VTABLE_ITERATOR_H
+#pragma once
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -33,7 +32,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   void SkipRow() override;
 
-  Result<bool> HasNext() const override;
+  Result<bool> HasNext() override;
 
   std::string ToString() const override;
 
@@ -53,4 +52,3 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VTABLE_ITERATOR_H

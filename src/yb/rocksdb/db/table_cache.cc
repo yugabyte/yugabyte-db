@@ -69,7 +69,6 @@ static Slice GetSliceForFileNumber(const uint64_t* file_number) {
       sizeof(*file_number));
 }
 
-#ifndef ROCKSDB_LITE
 
 void AppendVarint64(IterKey* key, uint64_t v) {
   char buf[10];
@@ -77,7 +76,6 @@ void AppendVarint64(IterKey* key, uint64_t v) {
   key->TrimAppend(key->Size(), buf, ptr - buf);
 }
 
-#endif  // ROCKSDB_LITE
 
 }  // namespace
 
@@ -359,7 +357,6 @@ Status TableCache::Get(const ReadOptions& options,
   Cache::Handle* handle = nullptr;
   std::string* row_cache_entry = nullptr;
 
-#ifndef ROCKSDB_LITE
   IterKey row_cache_key;
   std::string row_cache_entry_buffer;
 
@@ -397,7 +394,6 @@ Status TableCache::Get(const ReadOptions& options,
     RecordTick(ioptions_.statistics, ROW_CACHE_MISS);
     row_cache_entry = &row_cache_entry_buffer;
   }
-#endif  // ROCKSDB_LITE
 
   if (!t) {
     s = FindTable(env_options_, internal_comparator, fd, &handle,
@@ -420,7 +416,6 @@ Status TableCache::Get(const ReadOptions& options,
     return Status::OK();
   }
 
-#ifndef ROCKSDB_LITE
   // Put the replay log in row cache only if something was found.
   if (s.ok() && row_cache_entry && !row_cache_entry->empty()) {
     size_t charge =
@@ -429,7 +424,6 @@ Status TableCache::Get(const ReadOptions& options,
     s = ioptions_.row_cache->Insert(row_cache_key.GetKey(), options.query_id, row_ptr, charge,
                                     &DeleteEntry<std::string>);
   }
-#endif  // ROCKSDB_LITE
 
   return s;
 }

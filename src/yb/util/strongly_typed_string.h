@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRONGLY_TYPED_STRING_H
-#define YB_UTIL_STRONGLY_TYPED_STRING_H
+#pragma once
 
 #include <string>
 
@@ -49,5 +48,3 @@ class StronglyTypedString {
 };
 
 }  // namespace yb
-
-#endif // YB_UTIL_STRONGLY_TYPED_STRING_H

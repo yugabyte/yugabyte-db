@@ -19,7 +19,6 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -317,8 +316,7 @@ public class UniverseResourceDetails {
                               nodeDetails ->
                                   new InstanceTypeKey()
                                       .setProviderUuid(
-                                          UUID.fromString(
-                                              ud.getPrimaryCluster().userIntent.provider))
+                                          getProviderByPlacementUUID(ud, nodeDetails.placementUuid))
                                       .setInstanceTypeCode(nodeDetails.cloudInfo.instance_type)))
               .collect(Collectors.toSet());
 
@@ -341,7 +339,7 @@ public class UniverseResourceDetails {
                           .map(
                               nodeDetails ->
                                   new ProviderAndRegion(
-                                      UUID.fromString(ud.getPrimaryCluster().userIntent.provider),
+                                      getProviderByPlacementUUID(ud, nodeDetails.placementUuid),
                                       nodeDetails.getRegion())))
               .collect(Collectors.toSet());
 
@@ -354,6 +352,18 @@ public class UniverseResourceDetails {
           PriceComponent.findByProvidersAndRegions(providersAndRegions)
               .stream()
               .collect(Collectors.toMap(PriceComponent::getIdKey, Function.identity()));
+    }
+
+    private UUID getProviderByPlacementUUID(UniverseDefinitionTaskParams ud, UUID placementUuid) {
+      String providerUUIDStr =
+          ud.clusters
+              .stream()
+              .filter(c -> c.uuid.equals(placementUuid))
+              .findFirst()
+              .get()
+              .userIntent
+              .provider;
+      return UUID.fromString(providerUUIDStr);
     }
 
     public Provider getProvider(UUID uuid) {

@@ -23,8 +23,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_POLLER_H
-#define ENT_SRC_YB_TSERVER_CDC_POLLER_H
+#pragma once
 
 namespace yb {
 
@@ -60,7 +59,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
       CDCConsumer* cdc_consumer,
       bool use_local_tserver,
       client::YBTablePtr global_transaction_status_table,
-      bool enable_replicate_transaction_status_table);
+      bool enable_replicate_transaction_status_table,
+      SchemaVersion last_compatible_consumer_schema_version);
   ~CDCPoller();
 
   void Shutdown();
@@ -70,7 +70,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 
   bool IsPolling() { return is_polling_; }
 
-  void SetSchemaVersion(uint32_t cur_version);
+  void SetSchemaVersion(SchemaVersion cur_version,
+                        SchemaVersion last_compatible_consumer_schema_version);
 
   std::string LogPrefixUnlocked() const;
 
@@ -81,7 +82,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
  private:
   bool CheckOffline();
 
-  void DoSetSchemaVersion(uint32 cur_version);
+  void DoSetSchemaVersion(SchemaVersion cur_version,
+                          SchemaVersion current_consumer_schema_version);
 
   void DoPoll();
   // Does the work of sending the changes to the output client.
@@ -105,7 +107,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   std::atomic<bool> shutdown_ = false;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
-  uint32_t validated_schema_version_ GUARDED_BY(data_mutex_);
+  SchemaVersion validated_schema_version_ GUARDED_BY(data_mutex_);
+  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(data_mutex_);
 
   Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
@@ -130,5 +133,3 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-
-#endif // ENT_SRC_YB_TSERVER_CDC_POLLER_H

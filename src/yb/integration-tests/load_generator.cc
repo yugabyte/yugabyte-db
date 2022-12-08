@@ -40,6 +40,7 @@
 #include "yb/util/status_log.h"
 
 #include "yb/yql/redis/redisserver/redis_client.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
@@ -73,20 +74,20 @@ using yb::client::YBSession;
 using yb::client::YBTable;
 using yb::redisserver::RedisReply;
 
-DEFINE_bool(load_gen_verbose,
+DEFINE_UNKNOWN_bool(load_gen_verbose,
             false,
             "Custom verbose log messages for debugging the load test tool");
 
-DEFINE_int32(load_gen_insertion_tracker_delay_ms,
+DEFINE_UNKNOWN_int32(load_gen_insertion_tracker_delay_ms,
              50,
              "The interval (ms) at which the load generator's \"insertion tracker thread\" "
              "wakes in up ");
 
-DEFINE_int32(load_gen_scanner_open_retries,
+DEFINE_UNKNOWN_int32(load_gen_scanner_open_retries,
              10,
              "Number of times to re-try when opening a scanner");
 
-DEFINE_int32(load_gen_wait_time_increment_step_ms,
+DEFINE_UNKNOWN_int32(load_gen_wait_time_increment_step_ms,
              100,
              "In retry loops used in the load test we increment the wait time by this number of "
              "milliseconds after every attempt.");

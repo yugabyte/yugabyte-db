@@ -129,9 +129,9 @@ const mapDispatchToProps = (dispatch) => {
             return dispatch(listAccessKeys(provider.uuid)).then((response) => {
               dispatch(listAccessKeysResponse(response.payload));
             });
-          })).then(()=>{
-            dispatch(listAccessKeysReqCompleted())
-          })
+          })).then(() => {
+            dispatch(listAccessKeysReqCompleted());
+          });
         }
         dispatch(getProviderListResponse(response.payload));
       });

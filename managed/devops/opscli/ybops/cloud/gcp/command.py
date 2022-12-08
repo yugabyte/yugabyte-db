@@ -14,7 +14,7 @@ from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod
     ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
     CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
     VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
-    WaitForSSHConnection, HardRebootInstancesMethod
+    WaitForSSHConnection
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
@@ -22,7 +22,7 @@ from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstanc
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
     GcpResumeInstancesMethod, GcpUpdateMountedDisksMethod, GcpDeleteRootVolumesMethod, \
-    GcpTagsMethod
+    GcpTagsMethod, GcpHardRebootInstancesMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -55,7 +55,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForSSHConnection(self))
-        self.add_method(HardRebootInstancesMethod(self))
+        self.add_method(GcpHardRebootInstancesMethod(self))
 
 
 class GcpQueryCommand(QueryCommand):

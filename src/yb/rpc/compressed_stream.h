@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_COMPRESSED_STREAM_H
-#define YB_RPC_COMPRESSED_STREAM_H
+#pragma once
 
 #include <boost/version.hpp>
 
@@ -29,5 +28,3 @@ StreamFactoryPtr CompressedStreamFactory(
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_COMPRESSED_STREAM_H

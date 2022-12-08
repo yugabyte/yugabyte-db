@@ -18,9 +18,12 @@ export function fetchUniversesList() {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 }
 
-export function fetchTablesInUniverse(universeUUID: string) {
-  const customerId = localStorage.getItem('customerId');
-  return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
+export function fetchTablesInUniverse(universeUUID: string | undefined) {
+  if (universeUUID) {
+    const customerId = localStorage.getItem('customerId');
+    return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
+  }
+  return Promise.reject('Querying universe tables failed: No universe UUID provided.');
 }
 
 export function createXClusterReplication(
@@ -94,7 +97,7 @@ export function fetchXClusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .get<XClusterConfig>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
-    .then((resp) => resp.data);
+    .then((response) => response.data);
 }
 
 export function editXClusterState(replication: XClusterConfig, state: XClusterConfigState) {
@@ -111,17 +114,26 @@ export function editXclusterName(replication: XClusterConfig) {
   });
 }
 
-export function editXClusterTables(replication: XClusterConfig) {
+export function editXClusterConfigTables(
+  xClusterUUID: string,
+  tables: string[],
+  bootstrapParams?: {
+    tables: string[];
+    backupRequestParams: any;
+  }
+) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
-    tables: replication.tables
+  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+    tables: tables,
+    ...(bootstrapParams !== undefined && { bootstrapParams })
   });
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   const customerId = localStorage.getItem('customerId');
   return axios.delete(
-    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`);
+    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`
+  );
 }
 
 export function queryLagMetricsForUniverse(

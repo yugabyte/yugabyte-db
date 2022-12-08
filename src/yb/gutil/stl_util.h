@@ -39,8 +39,7 @@
 // and Google friendly API.
 //
 
-#ifndef YB_GUTIL_STL_UTIL_H
-#define YB_GUTIL_STL_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
@@ -51,6 +50,7 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/integral_types.h"
@@ -1022,6 +1022,24 @@ struct StringHash {
   }
 };
 
+template<class T>
+struct PointerEqual {
+  using is_transparent = void;
+
+  bool operator()(const T* l, const T* r) const {
+    return std::equal_to<const T*>{}(l, r);
+  }
+};
+
+template<class T>
+struct PointerHash {
+  using is_transparent = void;
+
+  size_t operator()(const T* value) const {
+    return std::hash<const T*>{}(value);
+  }
+};
+
 } // namespace yb
 
 // For backward compatibility
@@ -1029,5 +1047,3 @@ using yb::STLAppendToString;
 using yb::STLAssignToString;
 using yb::STLStringResizeUninitialized;
 using yb::string_as_array;
-
-#endif  // YB_GUTIL_STL_UTIL_H

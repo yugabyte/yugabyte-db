@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_LOCAL_TABLET_SERVER_H
-#define YB_TSERVER_LOCAL_TABLET_SERVER_H
+#pragma once
 
 #include "yb/common/entity_ids_types.h"
 
@@ -36,5 +35,3 @@ class LocalTabletServer {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_LOCAL_TABLET_SERVER_H

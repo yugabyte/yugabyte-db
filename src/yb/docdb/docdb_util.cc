@@ -16,6 +16,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/rocksdb_writer.h"
@@ -41,6 +42,12 @@ using std::vector;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+const std::string kEmptyLogPrefix;
+
+}
+
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
@@ -50,10 +57,10 @@ Status SetValueFromQLBinaryWrapper(
       ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
 }
 
-DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
+DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(kEmptyLogPrefix, Schema(), 1) {}
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
-    : doc_read_context_(Schema(), 1), init_marker_behavior_(init_marker_behavior) {
+    : doc_read_context_(kEmptyLogPrefix, Schema(), 1), init_marker_behavior_(init_marker_behavior) {
 }
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
@@ -115,8 +122,9 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
   explicit DirectWriteToWriteBatchHandler(rocksdb::WriteBatch *write_batch)
       : write_batch_(write_batch) {}
 
-  void Put(const SliceParts& key, const SliceParts& value) override {
+  std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
     write_batch_->Put(key, value);
+    return std::pair(Slice(), Slice());
   }
 
   void SingleDelete(const Slice& key) override {
@@ -156,7 +164,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
     }
-    KeyValueWriteBatchPB kv_write_batch;
+    Arena arena;
+    LWKeyValueWriteBatchPB kv_write_batch(&arena);
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     TransactionalWriter writer(
         kv_write_batch, hybrid_time, *current_txn_id_, txn_isolation_level_,
@@ -332,9 +341,10 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      KeyValuePairPB kv_pair;
-      kv_pair.set_key(key_.ToStringBuffer());
-      kv_pair.set_value(value_.ToStringBuffer());
+      Arena arena;
+      LWKeyValuePairPB kv_pair(&arena);
+      kv_pair.dup_key(key_.AsSlice());
+      kv_pair.dup_value(value_.AsSlice());
       ExternalTxnApplyState external_txn_apply_state;
       AddExternalPairToWriteBatch(
           kv_pair, hybrid_time_, &external_txn_apply_state,
@@ -444,9 +454,9 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
-void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
+void DocDBRocksDBUtil::DocDBDebugDumpToConsole(const SchemaPackingStorage& schema_packing_storage) {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, schema_packing_storage, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {

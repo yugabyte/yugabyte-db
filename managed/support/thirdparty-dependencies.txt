@@ -9,3 +9,5 @@ https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
 https://github.com/prometheus/prometheus/releases/download/v2.39.0/prometheus-2.39.0.linux-amd64.tar.gz
 https://github.com/prometheus/alertmanager/releases/download/v0.5.1/alertmanager-0.5.1.linux-amd64.tar.gz
 https://files.pythonhosted.org/packages/b2/40/4e00501c204b457f10fe410da0c97537214b2265247bc9a5bc6edd55b9e4/setuptools-44.1.1.zip
+https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
+

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_TASKS_TRACKER_H
-#define YB_MASTER_TASKS_TRACKER_H
+#pragma once
 
 #include <vector>
 
@@ -61,4 +60,3 @@ class TasksTracker : public RefCountedThreadSafe<TasksTracker> {
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_TASKS_TRACKER_H

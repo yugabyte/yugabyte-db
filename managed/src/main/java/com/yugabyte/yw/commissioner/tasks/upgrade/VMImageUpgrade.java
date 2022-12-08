@@ -6,10 +6,9 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -17,6 +16,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -90,13 +90,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         continue;
       }
 
-      List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+      List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
       if (node.isMaster) processTypes.add(ServerType.MASTER);
       if (node.isTserver) processTypes.add(ServerType.TSERVER);
+      if (getUniverse().isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
+      // The node is going to be stopped. Ignore error because of previous error due to
+      // possibly detached root volume.
       processTypes.forEach(
           processType ->
-              createServerControlTask(node, processType, "stop")
+              createServerControlTask(
+                      node, processType, "stop", params -> params.isIgnoreError = true)
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
@@ -104,30 +108,31 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       List<NodeDetails> nodeList = Collections.singletonList(node);
       createSetupServerTasks(nodeList, p -> p.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-
-      UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
-      taskParams().rootCA = universeDetails.rootCA;
-      taskParams().clientRootCA = universeDetails.clientRootCA;
-      taskParams().rootAndClientRootCASame = universeDetails.rootAndClientRootCASame;
-      taskParams().allowInsecure = universeDetails.allowInsecure;
-      taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
       createConfigureServerTasks(
               nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       processTypes.forEach(
           processType -> {
-            createGFlagsOverrideTasks(
-                nodeList,
-                processType,
-                false /*isMasterInShellMode*/,
-                taskParams().vmUpgradeTaskType,
-                false /*ignoreUseCustomImageConfig*/);
-            createServerControlTask(node, processType, "start")
-                .setSubTaskGroupType(getTaskSubGroupType());
-            createWaitForServersTasks(new HashSet<>(nodeList), processType);
-            createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-                .setSubTaskGroupType(getTaskSubGroupType());
+            if (processType.equals(ServerType.CONTROLLER)) {
+              createStartYbcTasks(Arrays.asList(node)).setSubTaskGroupType(getTaskSubGroupType());
+
+              // Wait for yb-controller to be responsive on each node.
+              createWaitForYbcServerTask(new HashSet<>(Arrays.asList(node)))
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            } else {
+              createGFlagsOverrideTasks(
+                  nodeList,
+                  processType,
+                  false /*isMasterInShellMode*/,
+                  taskParams().vmUpgradeTaskType,
+                  false /*ignoreUseCustomImageConfig*/);
+              createServerControlTask(node, processType, "start")
+                  .setSubTaskGroupType(getTaskSubGroupType());
+              createWaitForServersTasks(new HashSet<>(nodeList), processType);
+              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
           });
 
       createWaitForKeyInMemoryTask(node);
@@ -138,6 +143,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
     }
+    // Delete after all the disks are replaced.
+    createDeleteRootVolumesTasks(getUniverse(), nodes, null /* volume Ids */)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   private SubTaskGroup createRootVolumeCreationTasks(Collection<NodeDetails> nodes) {

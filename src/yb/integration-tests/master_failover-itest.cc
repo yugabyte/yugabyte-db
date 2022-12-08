@@ -305,6 +305,35 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   ASSERT_OK(OpenTableAndScanner(table_name));
 }
 
+// Test that we can create a namespace, trigger a leader master failover, then verify that the
+// new namespace is usable.
+TEST_F(MasterFailoverTest, TestFailoverAfterNamespaceCreated) {
+  if (!AllowSlowTests()) {
+    LOG(INFO) << "This test can only be run in slow mode.";
+    return;
+  }
+
+  // Create namespace.
+  constexpr auto kNamespaceFailoverName = "testNamespaceFailover";
+  LOG(INFO) << "Issuing CreateNamespace for " << kNamespaceFailoverName;
+  ASSERT_OK(client_->CreateNamespace(kNamespaceFailoverName, YQLDatabase::YQL_DATABASE_PGSQL));
+
+  auto deadline = CoarseMonoClock::Now() + 90s;
+  ASSERT_OK(client_->data_->WaitForCreateNamespaceToFinish(
+      client_.get(), kNamespaceFailoverName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* namespace_id */,
+      deadline));
+
+  // Failover the leader.
+  LOG(INFO) << "Failing over master leader.";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // Create a table in new namespace to make sure it is usable.
+  YBTableName table_name(
+      YQL_DATABASE_PGSQL, kNamespaceFailoverName, "testNamespaceFailover" /* table_name */);
+  LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
+  ASSERT_OK(CreateTable(table_name, kWaitForCreate));
+}
+
 // Orchestrate a master failover at various points of a backfill,
 // ensure that the backfill eventually completes.
 TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {

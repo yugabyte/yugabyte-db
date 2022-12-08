@@ -21,7 +21,7 @@ import com.yugabyte.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.RandomNumberUtil;
+import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -218,7 +218,7 @@ public class TestPgTransactions extends BasePgSQLTest {
               "UPDATE counters SET v = ? WHERE k = ?");
           long attemptId =
               1000 * 1000 * 1000L * threadIndex +
-              1000 * 1000L * Math.abs(RandomNumberUtil.getRandomGenerator().nextInt(1000));
+              1000 * 1000L * Math.abs(RandomUtil.getRandomGenerator().nextInt(1000));
           while (numIncrementsDone < INCREMENTS_PER_THREAD && !hadErrors.get()) {
             ++attemptId;
             boolean committed = false;

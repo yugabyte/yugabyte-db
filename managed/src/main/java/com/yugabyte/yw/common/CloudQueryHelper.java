@@ -20,26 +20,41 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import org.apache.commons.lang.StringUtils;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudQueryHelper.class);
+  private static final List<String> AWS_METADATA_TYPES =
+      ImmutableList.of("instance-id", "vpc-id", "privateIp", "region");
 
   private static final String YB_CLOUD_COMMAND_TYPE = "query";
   private static final String DEFAULT_IMAGE_KEY = "default_image";
   public static final String ARCHITECTURE_KEY = "architecture";
+
+  private Map<Common.CloudType, JsonNode> cachedHostInfos = new ConcurrentHashMap<>();
 
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
   }
 
-  public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
+  public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
+    return cachedHostInfos.computeIfAbsent(
+        cloudType,
+        ct -> currentHostInfo(ct, ct == Common.CloudType.aws ? AWS_METADATA_TYPES : null));
+  }
+
+  private JsonNode currentHostInfo(
+      Common.CloudType cloudType, @Nullable List<String> metadataTypes) {
     List<String> commandArgs = new ArrayList<>();
     if (metadataTypes != null) {
       commandArgs.add("--metadata_types");
@@ -53,7 +68,8 @@ public class CloudQueryHelper extends DevopsBase {
   public List<String> getRegionCodes(Provider p) {
     List<String> commandArgs = new ArrayList<>();
     if (p.code.equals("gcp")) {
-      // TODO: ideally we shouldn't have this hardcoded string present in multiple places.
+      // TODO: ideally we shouldn't have this hardcoded string present in multiple
+      // places.
       String potentialGcpNetwork = p.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK");
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
@@ -93,27 +109,27 @@ public class CloudQueryHelper extends DevopsBase {
   /*
    * Example return from GCP:
    * {
-   *   "n1-standard-32": {
-   *     "prices": {
-   *         "us-west1": [
-   *         {
-   *           "price": 1.52,
-   *           "os": "Linux"
-   *         }
-   *       ],
-   *       "us-east1": [
-   *         {
-   *           "price": 1.52,
-   *           "os": "Linux"
-   *         }
-   *       ]
-   *     },
-   *     "numCores": 32,
-   *     "description": "32 vCPUs, 120 GB RAM",
-   *     "memSizeGb": 120,
-   *     "isShared": false
-   *   },
-   *   ...
+   * "n1-standard-32": {
+   * "prices": {
+   * "us-west1": [
+   * {
+   * "price": 1.52,
+   * "os": "Linux"
+   * }
+   * ],
+   * "us-east1": [
+   * {
+   * "price": 1.52,
+   * "os": "Linux"
+   * }
+   * ]
+   * },
+   * "numCores": 32,
+   * "description": "32 vCPUs, 120 GB RAM",
+   * "memSizeGb": 120,
+   * "isShared": false
+   * },
+   * ...
    * }
    */
   public JsonNode getInstanceTypes(List<Region> regionList, String customPayload) {
@@ -163,7 +179,7 @@ public class CloudQueryHelper extends DevopsBase {
 
   public String getImageArchitecture(Region region) {
 
-    if (region.ybImage == null || region.ybImage == "") {
+    if (StringUtils.isBlank(region.ybImage)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.code);
     }

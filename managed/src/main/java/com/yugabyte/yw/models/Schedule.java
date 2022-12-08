@@ -302,6 +302,16 @@ public class Schedule extends Model {
     save();
   }
 
+  public void updateIncrementalBackupFrequencyAndTimeUnit(
+      long incrementalBackupFrequency, TimeUnit incrementalBackupFrequencyTimeUnit) {
+    ObjectMapper mapper = new ObjectMapper();
+    BackupRequestParams params = mapper.convertValue(getTaskParams(), BackupRequestParams.class);
+    params.incrementalBackupFrequency = incrementalBackupFrequency;
+    params.incrementalBackupFrequencyTimeUnit = incrementalBackupFrequencyTimeUnit;
+    this.taskParams = Json.toJson(params);
+    save();
+  }
+
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
   public static Schedule create(

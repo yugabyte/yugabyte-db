@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_UTIL_H
-#define YB_MASTER_CATALOG_MANAGER_UTIL_H
+#pragma once
 
 #include <unordered_map>
 #include <vector>
@@ -232,5 +231,3 @@ struct Comparator {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CATALOG_MANAGER_UTIL_H

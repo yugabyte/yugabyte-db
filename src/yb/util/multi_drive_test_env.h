@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_MULTI_DRIVE_TEST_ENV_H
-#define YB_UTIL_MULTI_DRIVE_TEST_ENV_H
+#pragma once
 
 #include <shared_mutex>
 #include <set>
@@ -63,5 +62,3 @@ class MultiDriveTestEnv : public EnvWrapper, public MultiDriveTestEnvBase {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_MULTI_DRIVE_TEST_ENV_H

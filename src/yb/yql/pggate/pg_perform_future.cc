@@ -18,7 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pg_session.h"
 
 DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,
@@ -32,8 +32,10 @@ namespace pggate {
 namespace {
 
 Status PatchStatus(const Status& status, const PgObjectIds& relations) {
-  auto op_index = PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
-      ? OpIndex::ValueFromStatus(status) : boost::none;
+  if (PgsqlRequestStatus(status) != PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+    return status;
+  }
+  auto op_index = OpIndex::ValueFromStatus(status);
   if (op_index && *op_index < relations.size()) {
     return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
         .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));

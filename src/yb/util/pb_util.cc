@@ -65,7 +65,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
@@ -104,7 +104,7 @@ using strings::Utf8SafeCEscape;
 using yb::operator"" _MB;
 
 DEFINE_test_flag(bool, fail_write_pb_container, false,
-                 "Simulate a failure during WritePBContainer.")
+                 "Simulate a failure during WritePBContainer.");
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
@@ -123,7 +123,7 @@ COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
 // To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
 // bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
 // message length that may produce integer overflow warnings, so that's what we'll use.
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     protobuf_message_total_bytes_limit, 511_MB,
     "Limits single protobuf message size for deserialization.");
 TAG_FLAG(protobuf_message_total_bytes_limit, advanced);

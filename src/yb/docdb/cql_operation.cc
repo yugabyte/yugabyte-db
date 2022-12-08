@@ -36,7 +36,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/packed_row.h"
@@ -44,8 +44,9 @@
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
@@ -55,21 +56,21 @@
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");
 
-DEFINE_bool(ycql_consistent_transactional_paging, false,
+DEFINE_UNKNOWN_bool(ycql_consistent_transactional_paging, false,
             "Whether to enforce consistency of data returned for second page and beyond for YCQL "
             "queries on transactional tables. If true, read restart errors could be returned to "
             "prevent inconsistency. If false, no read restart errors are returned but the data may "
             "be stale. The latter is preferable for long scans. The data returned for the first "
             "page of results is never stale regardless of this flag.");
 
-DEFINE_bool(ycql_disable_index_updating_optimization, false,
+DEFINE_UNKNOWN_bool(ycql_disable_index_updating_optimization, false,
             "If true all secondary indexes must be updated even if the update does not change "
             "the index data.");
 TAG_FLAG(ycql_disable_index_updating_optimization, advanced);
 
-DEFINE_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
+DEFINE_UNKNOWN_bool(ycql_enable_packed_row, false, "Whether packed row is enabled for YCQL.");
 
-DEFINE_uint64(
+DEFINE_UNKNOWN_uint64(
     ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
 
@@ -97,7 +98,7 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
 // non-static column portions.
 Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
-                                 Schema* static_projection, Schema* non_static_projection) {
+                         Schema* static_projection, Schema* non_static_projection) {
   // The projection schemas are used to scan docdb.
   unordered_set<ColumnId> static_columns, non_static_columns;
 
@@ -128,8 +129,8 @@ Status CreateProjections(const Schema& schema, const QLReferencedColumnsPB& colu
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
-                           const size_t begin_idx, const size_t col_count,
-                           QLRow* row, size_t *col_idx) {
+                   const size_t begin_idx, const size_t col_count,
+                   QLRow* row, size_t *col_idx) {
   for (size_t i = begin_idx; i < begin_idx + col_count; i++) {
     RETURN_NOT_OK(table_row.GetValue(schema.column_id(i), row->mutable_column((*col_idx)++)));
   }
@@ -137,7 +138,7 @@ Status PopulateRow(const QLTableRow& table_row, const Schema& schema,
 }
 
 Status PopulateRow(const QLTableRow& table_row, const Schema& projection,
-                           QLRow* row, size_t* col_idx) {
+                   QLRow* row, size_t* col_idx) {
   return PopulateRow(table_row, projection, 0, projection.num_columns(), row, col_idx);
 }
 
@@ -204,12 +205,12 @@ bool JoinNonStaticRow(
 }
 
 Status FindMemberForIndex(const QLColumnValuePB& column_value,
-                                  int index,
-                                  rapidjson::Value* document,
-                                  rapidjson::Value::MemberIterator* memberit,
-                                  rapidjson::Value::ValueIterator* valueit,
-                                  bool* last_elem_object,
-                                  IsInsert is_insert) {
+                          int index,
+                          rapidjson::Value* document,
+                          rapidjson::Value::MemberIterator* memberit,
+                          rapidjson::Value::ValueIterator* valueit,
+                          bool* last_elem_object,
+                          IsInsert is_insert) {
   *last_elem_object = false;
 
   int64_t array_index;
@@ -1314,6 +1315,13 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         }
       }
 
+      // The index PK cannot be calculated if the table row has already been deleted.
+      if (existing_row.IsEmpty()) {
+        VLOG(3) << "Skip index entry delete of existing row for index_id=" << index->table_id() <<
+          " since existing row is not available";
+        continue;
+      }
+
       QLWriteRequestPB* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
@@ -1520,6 +1528,10 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const Schema& projection,
                                 QLResultSet* resultset,
                                 HybridTime* restart_read_ht) {
+  auto se = ScopeExit([resultset] {
+    resultset->Complete();
+  });
+
   const auto& schema = doc_read_context.schema;
   SimulateTimeoutIfTesting(&deadline);
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
@@ -1664,7 +1676,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                   const QLResultSet* resultset,
                                                   const size_t row_count_limit,
                                                   const size_t num_rows_skipped,
@@ -1706,24 +1718,25 @@ Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* it
   return Status::OK();
 }
 
-Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* out) {
+Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
   std::vector<KeyEntryValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
-  auto pair = out->mutable_read_pairs()->Add();
+  auto* pair = out->add_read_pairs();
   if (hashed_components.empty()) {
     // Empty hashed components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->set_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
+    pair->dup_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
   } else {
     DocKey doc_key(request_.hash_code(), hashed_components);
-    pair->set_key(doc_key.Encode().ToStringBuffer());
+    pair->dup_key(doc_key.Encode().AsSlice());
   }
-  pair->set_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
-  // Wait policies make sense only for YSQL to support different modes like waiting, erroring out
-  // or skipping on intent conflict. YCQL behaviour matches WAIT_ERROR (see proto for details).
+  pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+  // Wait policies make sense only for YSQL to support different modes like waiting, skipping, or
+  // failing on detecting intent conflicts. YCQL behaviour matches Fail-on-Conflict always (see
+  // proto for details).
   out->set_wait_policy(WAIT_ERROR);
   return Status::OK();
 }
@@ -1778,14 +1791,14 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
     RETURN_NOT_OK(spec->Match(row, &match));
     if (match) {
       if (*num_rows_skipped >= offset) {
-        (*match_count)++;
+        ++*match_count;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(spec, row, resultset));
         }
       } else {
-        (*num_rows_skipped)++;
+        ++*num_rows_skipped;
       }
     }
   }

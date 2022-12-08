@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_REACTOR_H_
-#define YB_RPC_REACTOR_H_
+#pragma once
 
 #include <pthread.h>
 #include <stdint.h>
@@ -49,7 +48,7 @@
 #include <boost/intrusive/list.hpp>
 #include <boost/utility.hpp>
 #include <ev++.h> // NOLINT
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/bind.h"
@@ -410,9 +409,9 @@ class Reactor {
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
   Status FindOrStartConnection(const ConnectionId &conn_id,
-                                       const std::string& hostname,
-                                       const MonoTime &deadline,
-                                       ConnectionPtr* conn);
+                               const std::string& hostname,
+                               const MonoTime &deadline,
+                               ConnectionPtr* conn);
 
   // Scan any open connections for idle ones that have been idle longer than
   // connection_keepalive_time_
@@ -527,5 +526,3 @@ class Reactor {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif // YB_RPC_REACTOR_H_

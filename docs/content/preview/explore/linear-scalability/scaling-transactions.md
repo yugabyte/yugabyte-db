@@ -83,7 +83,7 @@ Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
-Run the `SqlInserts` workload app against the local universe using the following command.
+Run the `SqlInserts` workload app against the local cluster using the following command.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
@@ -107,7 +107,7 @@ You can check a lot of the per-node stats by browsing to the [tablet-servers](ht
 
 ## Add node and observe linear scaling
 
-Add a node to the universe with the same flags.
+Add a node to the cluster with the same flags.
 
 ```sh
 $ ./bin/yugabyted start \
@@ -120,7 +120,7 @@ $ ./bin/yugabyted start \
 
 Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The 36 tablets will now get distributed evenly across all the 4 nodes, leading to each node having 9 tablets.
 
-The YugabyteDB universe automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
+The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
 ![Read and write IOPS with 4 nodes - Rebalancing in progress](/images/ce/transactions_newnode_adding_observe.png)
 
@@ -128,7 +128,7 @@ The YugabyteDB universe automatically lets the client know to use the newly adde
 
 ## Remove node and observe linear scale in
 
-Remove the recently added node from the universe.
+Remove the recently added node from the cluster as follows:
 
 ```sh
 $ ./bin/yugabyted stop \

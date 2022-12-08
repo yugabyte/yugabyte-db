@@ -16,7 +16,8 @@ import { YBButton } from '../../common/forms/fields';
 import {
   convertBackupToFormValues,
   FormatUnixTimeStampTimeToTimezone,
-  RevealBadge
+  RevealBadge,
+  calculateDuration
 } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
@@ -25,13 +26,14 @@ import {
   YSQLTableProps
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useQuery } from 'react-query';
 import { getKMSConfigs } from '../common/BackupAPI';
 
 import { BackupCreateModal } from './BackupCreateModal';
+import { YBTag } from '../../common/YBTag';
 import './BackupDetails.scss';
 
 interface BackupDetailsProps {
@@ -80,8 +82,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;
@@ -175,7 +177,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Table Type</div>
-                <div>{TABLE_TYPE_MAP[backupDetails.backupType]}</div>
+                <div>{TableTypeLabel[backupDetails.backupType]}</div>
               </div>
               <div>
                 <div className="header-text">Size</div>
@@ -186,7 +188,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   )}
                 </div>
               </div>
-              <div></div>
+              {!backupDetails.hasIncrementalBackups && (
+                <div>
+                  <div className="header-text">Duration</div>
+                  <div>
+                    {calculateDuration(
+                      backupDetails?.commonBackupInfo?.createTime,
+                      backupDetails?.commonBackupInfo?.completionTime
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="header-text">Created At</div>
                 <div>
@@ -249,9 +261,14 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <YBButton
-                    btnText="Add Incremental Backup"
+                    btnText={
+                      <>
+                        Add Incremental Backup<YBTag>Beta</YBTag>
+                      </>
+                    }
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
+                    disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
                     onConfirm={() => {}}
                     onClick={() => {
                       setFormValues(convertBackupToFormValues(backupDetails, storageConfig));

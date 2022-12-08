@@ -32,8 +32,8 @@
 
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/consensus.pb.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -201,8 +201,8 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
   };
 }
 
-consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type) {
-  auto result = std::make_shared<consensus::ReplicateMsg>();
+consensus::LWReplicateMsg* CreateReplicateMsg(Arena* arena, OperationType op_type) {
+  auto result = arena->NewObject<consensus::LWReplicateMsg>(arena);
   result->set_op_type(static_cast<consensus::OperationType>(op_type));
   return result;
 }

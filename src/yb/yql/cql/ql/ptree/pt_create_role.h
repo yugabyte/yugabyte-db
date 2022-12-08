@@ -15,8 +15,7 @@
 // Tree node definitions for CREATE ROLE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_ROLE_H
-#define YB_YQL_CQL_QL_PTREE_PT_CREATE_ROLE_H
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -243,5 +242,3 @@ class PTCreateRole : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_CREATE_ROLE_H

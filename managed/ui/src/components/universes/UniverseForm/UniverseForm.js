@@ -140,9 +140,11 @@ class UniverseForm extends Component {
     this.setState({ isSubmitting: true });
     if (type === 'Create') {
       this.createUniverse().then((response) => {
-        const { universeUUID, name } = response.payload.data;
-        this.transitionToDefaultRoute(universeUUID);
-        toast.success(`Creating universe "${name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+        const responseData = response?.payload?.data;
+        if (responseData) {
+          this.transitionToDefaultRoute(responseData.universeUUID);
+          toast.success(`Creating universe "${responseData.name}"`, { autoClose: TOAST_DISMISS_TIME_MS });
+        }
       });
     } else if (type === 'Async') {
       const {
@@ -246,8 +248,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    universeTaskParams.enableYbc =
+    if(!isEdit){
+      universeTaskParams.enableYbc =
       this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+    }
+    
     universeTaskParams.ybcSoftwareVersion = '';
   };
 
@@ -417,7 +422,7 @@ class UniverseForm extends Component {
     ) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
-      if (currentCluster && newCluster) {
+      if (currentCluster && newCluster && currentCluster.userIntent.providerType !== 'kubernetes') {
         const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
         const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
         const instanceChanged =
@@ -532,6 +537,14 @@ class UniverseForm extends Component {
             .map((userTag) => {
               return { name: userTag.name, value: userTag.value.trim() };
             });
+        }
+
+        if (formValues[clusterType]?.universeOverrides?.length !== 0) {
+          clusterIntent.universeOverrides = formValues[clusterType].universeOverrides;
+        }
+
+        if (formValues[clusterType]?.azOverrides?.length !== 0) {
+          clusterIntent.azOverrides = formValues[clusterType].azOverrides;
         }
       } else {
         if (isDefinedNotNull(formValues.primary)) {
@@ -818,12 +831,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-          (node) =>
-            node.nodeName &&
+        (node) =>
+          node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-        )
+      )
       : [];
 
     const resizePossible = this.isResizePossible();

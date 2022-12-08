@@ -157,7 +157,7 @@ Status Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *e
 }
 
 Status Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
-                                    QLExpressionPB *expr_pb) {
+                            QLExpressionPB *expr_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   auto col_pb = expr_pb->mutable_json_column();
   col_pb->set_column_id(col_desc->id());

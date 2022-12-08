@@ -20,6 +20,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
+#include "yb/client/external_transaction.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
@@ -30,7 +31,7 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/twodc_write_interface.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -39,9 +40,8 @@
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
-DEFINE_bool(cdc_force_remote_tserver, false,
+DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
     "Avoid local tserver apply optimization for CDC and force remote RPCs.");
-TAG_FLAG(cdc_force_remote_tserver, runtime);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
@@ -85,6 +85,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
     DCHECK(shutdown_);
   }
 
+  // Sets the last compatible consumer schema version
+  void SetLastCompatibleConsumerSchemaVersion(uint32_t schema_version) override;
+
   Status ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
   void Shutdown() override {
@@ -118,6 +121,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
         consumer_tablet_info_.tablet_id);
   }
 
+  void SetLastCompatibleConsumerSchemaVersionUnlocked(uint32_t schema_version) REQUIRES(lock_);
+
   // Process all records in twodc_resp_copy_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
   // the ddl + other changes after.
@@ -136,17 +141,23 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Result<bool> ProcessMetaOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
-  Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
+  Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record)
+      EXCLUDES(lock_);
+
+  Status ProcessCreateRecord(const std::string& status_tablet, const cdc::CDCRecordPB& record)
+      EXCLUDES(lock_);
 
   Status ProcessCommitRecord(
       const std::string& status_tablet,
       const std::vector<std::string>& involved_target_tablet_ids,
-      const cdc::CDCRecordPB& record);
+      const cdc::CDCRecordPB& record) EXCLUDES(lock_);
 
   Result<std::vector<TabletId>> GetInvolvedTargetTabletsFromCommitRecord(
       const cdc::CDCRecordPB& record);
 
-  Status SendTransactionCommits();
+  Result<TabletId> GetTargetTabletIdFromProducerTablet(const TabletId& producer_tablet_id);
+
+  Status SendTransactionUpdates();
 
   Status SendUserTableWrites();
 
@@ -193,6 +204,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
 
+  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
+
   // This will cache the response to an ApplyChanges() request.
   cdc::GetChangesResponsePB twodc_resp_copy_;
 
@@ -223,6 +236,21 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
         << "Aborting ApplyChanges since the output client is shutting down."; \
     return; \
   }
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersionUnlocked(
+    SchemaVersion schema_version) {
+  if (schema_version != cdc::kInvalidSchemaVersion &&
+      schema_version > last_compatible_consumer_schema_version_) {
+    LOG(INFO) << "Last compatible consumer schema version updated to  "
+              << schema_version;
+    last_compatible_consumer_schema_version_ = schema_version;
+  }
+}
+
+void TwoDCOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
+  std::lock_guard<decltype(lock_)> lock(lock_);
+  SetLastCompatibleConsumerSchemaVersionUnlocked(schema_version);
+}
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
   // ApplyChanges is called in a single threaded manner.
@@ -283,7 +311,7 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
     if (IsValidMetaOp(record)) {
       if (processed_write_record) {
         // We have existing write operations, so flush them first (see WriteCDCRecordDone and
-        // SendTransactionCommits).
+        // SendTransactionUpdates).
         break;
       }
       // No other records to process, so we can process the meta ops.
@@ -302,7 +330,7 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
         case cdc::CDCRecordPB::APPLY:
           RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
           break;
-        case cdc::CDCRecordPB::COMMITTED:
+        case cdc::CDCRecordPB::TRANSACTION_COMMITTED:
           // TODO(Rahul): Handle the non 1:1 case for the transaction status table.
           return STATUS(IllegalState, "Cannot currently handle COMMIT records when there is not a "
                                       "1 to 1 tablet mapping for the transaction status table.");
@@ -322,12 +350,19 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
 
   if (processed_write_record) {
     if (table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
-      return SendTransactionCommits();
+      return SendTransactionUpdates();
     } else {
       return SendUserTableWrites();
     }
   }
   return Status::OK();
+}
+
+Result<TabletId> TwoDCOutputClient::GetTargetTabletIdFromProducerTablet(
+    const TabletId& producer_tablet_id) {
+  auto consumer_tablet_info = VERIFY_RESULT(
+      cdc_consumer_->GetConsumerTableInfo(producer_tablet_id));
+  return consumer_tablet_info.tablet_id;
 }
 
 Result<std::vector<TabletId>> TwoDCOutputClient::GetInvolvedTargetTabletsFromCommitRecord(
@@ -356,29 +391,55 @@ Result<std::vector<TabletId>> TwoDCOutputClient::GetInvolvedTargetTabletsFromCom
   return std::vector<TabletId>(involved_target_tablets.begin(), involved_target_tablets.end());
 }
 
-Status TwoDCOutputClient::SendTransactionCommits() {
+Status TwoDCOutputClient::SendTransactionUpdates() {
   std::vector<client::ExternalTransactionMetadata> transaction_metadatas;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     transaction_metadatas = std::move(write_strategy_->GetTransactionMetadatas());
   }
-  std::vector<std::future<Status>> transaction_commit_futures;
-  for (const auto& transaction_metadata : transaction_metadatas) {
-    // Create the ExternalTransactions and COMMIT them locally.
-    auto* transaction_manager = cdc_consumer_->TransactionManager();
-    if (!transaction_manager) {
-      return STATUS(InvalidArgument, "Could not commit transactions");
+  std::vector<std::future<Status>> transaction_update_futures;
+  // Send all CREATEs to the coordinatory, wait till we've replicated all of them, then send all
+  // the COMMITs. This avoids a situation where the COMMMIT is processed by the coordinator before
+  // the CREATE.
+  for (const auto& operation_type : {client::ExternalTransactionMetadata::OperationType::CREATE,
+                                     client::ExternalTransactionMetadata::OperationType::COMMIT}) {
+    for (const auto& transaction_metadata : transaction_metadatas) {
+      if (transaction_metadata.operation_type != operation_type) {
+        continue;
+      }
+      // Create the ExternalTransactions and COMMIT them locally.
+      auto* transaction_manager = cdc_consumer_->TransactionManager();
+      if (!transaction_manager) {
+        return STATUS(InvalidArgument, "Could not commit transactions");
+      }
+      auto external_transaction =
+          std::make_shared<client::ExternalTransaction>(transaction_manager);
+      external_transactions_.push_back(external_transaction);
+
+      switch (operation_type) {
+        case client::ExternalTransactionMetadata::OperationType::CREATE: {
+          transaction_update_futures.push_back(external_transaction->CreateFuture(
+              transaction_metadata));
+          break;
+        }
+        case client::ExternalTransactionMetadata::OperationType::COMMIT: {
+          transaction_update_futures.push_back(external_transaction->CommitFuture(
+              transaction_metadata));
+          break;
+        }
+        default: {
+          return STATUS(IllegalState, Format("Unsupported OperationType $0",
+                                             transaction_metadata.OperationTypeToString()));
+        }
+      }
     }
-    auto external_tran =
-        std::make_shared<client::ExternalTransaction>(transaction_manager, transaction_metadata);
-    external_transactions_.push_back(external_tran);
-    transaction_commit_futures.push_back(external_tran->CommitFuture());
+    for (auto& future : transaction_update_futures) {
+      DCHECK(future.valid());
+      RETURN_NOT_OK(future.get());
+    }
+    transaction_update_futures.clear();
+    external_transactions_.clear();
   }
-  for (auto& future : transaction_commit_futures) {
-    DCHECK(future.valid());
-    RETURN_NOT_OK(future.get());
-  }
-  external_transactions_.clear();
 
   int next_record = 0;
   {
@@ -422,6 +483,13 @@ bool TwoDCOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
 }
 
+Status TwoDCOutputClient::ProcessCreateRecord(
+    const std::string& status_tablet,
+    const cdc::CDCRecordPB& record) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  return write_strategy_->ProcessCreateRecord(status_tablet, record);
+}
+
 Status TwoDCOutputClient::ProcessCommitRecord(
     const std::string& status_tablet,
     const std::vector<std::string>& involved_target_tablet_ids,
@@ -438,17 +506,18 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
     if (enable_replicate_transaction_status_table_ && record.has_transaction_state()) {
       // This is an intent record and we want to use the txn status table, so get the status tablet
       // for this txn id.
-      auto deadline = CoarseMonoClock::Now() +
-                      MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
-      status_tablet_id = VERIFY_RESULT(local_client_->client->LookupTabletByKeyFuture(
-          global_transaction_status_table_,
-          record.transaction_state().transaction_id(),
-          deadline).get())->tablet_id();
+      auto producer_status_tablet_id = record.transaction_state().external_status_tablet_id();
+      if (!producer_status_tablet_id.empty()) {
+        status_tablet_id = VERIFY_RESULT(GetTargetTabletIdFromProducerTablet(
+            producer_status_tablet_id));
+      }
+
     }
     auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
       .tablet_id = tablet_id,
       .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
-      .status_tablet_id = status_tablet_id
+      .status_tablet_id = status_tablet_id,
+      .last_compatible_consumer_schema_version = last_compatible_consumer_schema_version_
     }, record);
     if (!status.ok()) {
       error_status_ = status;
@@ -486,9 +555,14 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
 }
 
 Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
-  if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
+  const auto& operation = record.operation();
+  if (operation == cdc::CDCRecordPB::TRANSACTION_COMMITTED) {
     auto target_tablet_ids = VERIFY_RESULT(GetInvolvedTargetTabletsFromCommitRecord(record));
-    RETURN_NOT_OK(ProcessCommitRecord(consumer_tablet_info_.tablet_id, target_tablet_ids, record));
+    return ProcessCommitRecord(consumer_tablet_info_.tablet_id, target_tablet_ids, record);
+  }
+
+  if (operation == cdc::CDCRecordPB::TRANSACTION_CREATED) {
+    return ProcessCreateRecord(consumer_tablet_info_.tablet_id, record);
   }
 
   return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
@@ -501,6 +575,7 @@ bool TwoDCOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 
 Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
   uint32_t wait_for_version = 0;
+  uint32_t last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
   if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
     // Construct and send the update request.
     master::ProducerSplitTabletInfoPB split_info;
@@ -518,12 +593,17 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
-    bool should_halt = VERIFY_RESULT(local_client_->client->UpdateConsumerOnProducerMetadata(
+    master::UpdateConsumerOnProducerMetadataResponsePB resp;
+    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerMetadata(
         producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id,
-        record.change_metadata_request()));
-    if (should_halt) {
-      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id;
+        record.change_metadata_request(), &resp));
+    if (resp.should_wait()) {
       wait_for_version = record.change_metadata_request().schema_version();
+      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id
+                << " due to schema change. Waiting for Schema version: " << wait_for_version;
+    }
+    if (resp.has_last_compatible_consumer_schema_version()) {
+      last_compatible_consumer_schema_version = resp.last_compatible_consumer_schema_version();
     }
   }
 
@@ -533,6 +613,7 @@ Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
     wait_for_version_ = wait_for_version;
+    SetLastCompatibleConsumerSchemaVersionUnlocked(last_compatible_consumer_schema_version);
     DCHECK(wait_for_version == 0 || done); // If (should_wait) then done.
   }
   return done;

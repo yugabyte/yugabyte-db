@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_TEST_UTIL_H_
-#define YB_DOCDB_DOCDB_TEST_UTIL_H_
+#pragma once
 
 #include <random>
 #include <string>
@@ -245,5 +244,3 @@ std::string TrimDocDbDebugDumpStr(const std::string& debug_dump);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOCDB_TEST_UTIL_H_

@@ -22,23 +22,7 @@
 
 namespace rocksdb {
 
-/*
- * If ROCKSDB_XFTEST_FORCE has a value of 1, XFUNC is forced to be defined.
- * If ROCKSDB_XFTEST_FORCE has a value other than 1,
- *    XFUNC is forced to be undefined.
- * If ROCKSDB_XFTEST_FORCE is undefined, XFUNC is defined based on NDEBUG,
- *   with XFUNC only being set for debug builds.
- */
-#if defined(ROCKSDB_XFTEST_FORCE)
-#ifndef ROCKSDB_LITE
-#if (ROCKSDB_XFTEST_FORCE == 1)
-#define XFUNC
-#endif  // ROCKSDB_XFTEST_FORCE == 1
-#elif defined(NDEBUG)
-#else
-#define XFUNC
-#endif  // defined(ROCKSDB_XFTEST_FORCE)
-#endif  // !ROCKSDB_LITE
+// XFUNC is never defined. If we enable it, the code does not compile. We should get rid of it.
 
 #ifndef XFUNC
 #define XFUNC_TEST(condition, location, lfname, fname, ...)

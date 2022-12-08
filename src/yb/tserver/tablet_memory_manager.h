@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_MEMORY_MANAGER_H_
-#define YB_TSERVER_TABLET_MEMORY_MANAGER_H_
+#pragma once
 
 #include <memory>
 
@@ -108,5 +107,3 @@ class TabletMemoryManager {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif  // YB_TSERVER_TABLET_MEMORY_MANAGER_H_

@@ -157,7 +157,7 @@ class ListTableGrid extends Component {
     };
     const actions_disabled =
       isDisabled(currentCustomer.data.features, 'universes.backup') ||
-      currentUniverse.universeDetails.backupInProgress;
+      currentUniverse.universeDetails.updateInProgress;
     const disableManualBackup = currentUniverse?.universeConfig?.takeBackups === 'true';
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {

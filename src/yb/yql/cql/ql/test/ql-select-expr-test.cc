@@ -68,12 +68,12 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
   }
 
   void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
-    faststring buffer;
+    WriteBuffer buffer(1024);
     SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
 
     CQLMessage::Value msg_value;
     msg_value.name = name;
-    msg_value.value = buffer.ToString();
+    msg_value.value = buffer.ToBuffer();
     value_map.insert(NameToIndexMap::value_type(name, values.size()));
     values.push_back(msg_value);
   }

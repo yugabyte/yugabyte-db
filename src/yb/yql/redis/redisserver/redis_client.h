@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_CLIENT_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_CLIENT_H
+#pragma once
 
 #include <string>
 
@@ -113,5 +112,3 @@ class RedisClient {
 
 } // namespace redisserver
 } // namespace yb
-
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_CLIENT_H

@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.forms.PackagesRequestParams;
 import com.yugabyte.yw.forms.PackagesRequestParams.ArchitectureType;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -40,7 +41,7 @@ import play.mvc.Result;
 import play.test.WithApplication;
 
 @RunWith(MockitoJUnitRunner.class)
-public class PackagesControllerTest extends WithApplication {
+public class PackagesControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Mock Config mockConfig;
   @Mock Commissioner mockCommissioner;

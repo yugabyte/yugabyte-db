@@ -13,7 +13,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -67,9 +67,6 @@ public class PlacementInfoUtil {
 
   // List of replication factors supported currently for primary cluster.
   private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
-
-  // List of replication factors supported currently for read only clusters.
-  private static final List<Integer> supportedReadOnlyRFs = ImmutableList.of(1, 2, 3, 4, 5, 6, 7);
 
   // Mode of node distribution across the given AZ configuration.
   enum ConfigureNodesMode {
@@ -999,8 +996,10 @@ public class PlacementInfoUtil {
   // are the same.
   public static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
-
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
@@ -1076,9 +1075,10 @@ public class PlacementInfoUtil {
       throw new UnsupportedOperationException("Cluster type cannot be modified.");
     }
 
-    if (existingIntent.replicationFactor != userIntent.replicationFactor) {
+    if (oldCluster.clusterType == PRIMARY
+        && existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error(
-          "Replication factor cannot be changed from {} to {}",
+          "Replication factor for primary cluster cannot be changed from {} to {}",
           existingIntent.replicationFactor,
           userIntent.replicationFactor);
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
@@ -1112,15 +1112,16 @@ public class PlacementInfoUtil {
   // Helper API to verify number of nodes and replication factor requirements.
   public static void verifyNodesAndRF(
       ClusterType clusterType, int numNodes, int replicationFactor) {
+    if (replicationFactor < 1) {
+      throw new UnsupportedOperationException(
+          "Replication factor " + replicationFactor + " is not allowed, should be more than 1");
+    }
     // We only support a replication factor of 1,3,5,7 for primary cluster.
-    // And any value from 1 to 7 for read only cluster.
-    if ((clusterType == PRIMARY && !supportedRFs.contains(replicationFactor))
-        || (clusterType == ASYNC && !supportedReadOnlyRFs.contains(replicationFactor))) {
+    if (clusterType == PRIMARY && !supportedRFs.contains(replicationFactor)) {
       String errMsg =
           String.format(
               "Replication factor %d not allowed, must be one of %s.",
-              replicationFactor,
-              Joiner.on(',').join(clusterType == PRIMARY ? supportedRFs : supportedReadOnlyRFs));
+              replicationFactor, Joiner.on(',').join(supportedRFs));
       LOG.error(errMsg);
       throw new UnsupportedOperationException(errMsg);
     }
@@ -2668,19 +2669,19 @@ public class PlacementInfoUtil {
       String nodePrefix,
       Provider provider,
       int masterRpcPort,
-      boolean newNamingStyle,
-      String podAddressTemplate) {
-    List<String> masters = new ArrayList<String>();
+      boolean newNamingStyle) {
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
+      Map<String, String> azConfig = az.getUnmaskedConfig();
       String namespace =
           getKubernetesNamespace(
               isMultiAZ,
               nodePrefix,
               az.code,
-              az.getUnmaskedConfig(),
+              azConfig,
               newNamingStyle,
               false /*isReadOnlyCluster*/);
       String domain = azToDomain.get(entry.getKey());
@@ -2689,7 +2690,7 @@ public class PlacementInfoUtil {
       for (int idx = 0; idx < entry.getValue(); idx++) {
         String masterIP =
             formatPodAddress(
-                podAddressTemplate,
+                azConfig.getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE),
                 String.format("%syb-master-%d", helmFullName, idx),
                 helmFullName + "yb-masters",
                 namespace,

@@ -5,6 +5,10 @@ privacy_policy = "https://www.yugabyte.com/privacy-policy/"
 algolia_docsearch = true
 version_menu = "Releases"
 
+# Change version_menu_pagelinks to true to go to the same page when you switch
+# versions from the dropdown menu. Currently doesn't work with our setup.
+version_menu_pagelinks = false
+
 [algolia]
   index = "yugabyte"
   appID = "UMBCUJCBE8"

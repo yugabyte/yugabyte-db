@@ -17,7 +17,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/table/adaptive_table_factory.h"
 
@@ -121,4 +120,3 @@ extern TableFactory* NewAdaptiveTableFactory(
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

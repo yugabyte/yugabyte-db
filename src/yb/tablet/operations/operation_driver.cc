@@ -42,7 +42,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -62,7 +62,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -468,6 +468,12 @@ int64_t OperationDriver::SpaceUsed() {
     return consensus_round->replicate_msg()->SpaceUsedLong();
   }
   return operation()->request()->SpaceUsedLong();
+}
+
+size_t OperationDriver::ReplicateMsgSize() {
+  return consensus_round() && consensus_round()->replicate_msg()
+             ? consensus_round()->replicate_msg()->SerializedSize()
+             : 0;
 }
 
 }  // namespace tablet

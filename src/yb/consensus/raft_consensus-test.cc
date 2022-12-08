@@ -114,13 +114,13 @@ class MockQueue : public PeerMessageQueue {
   MOCK_METHOD1(TrackPeer, void(const string&));
   MOCK_METHOD1(UntrackPeer, void(const string&));
   MOCK_METHOD6(RequestForPeer, Status(const std::string& uuid,
-                                      ConsensusRequestPB* request,
-                                      ReplicateMsgsHolder* msgs_holder,
+                                      LWConsensusRequestPB* request,
+                                      LWReplicateMsgsHolder* msgs_holder,
                                       bool* needs_remote_bootstrap,
                                       PeerMemberType* member_type,
                                       bool* last_exchange_successful));
   MOCK_METHOD2(ResponseFromPeer, bool(const std::string& peer_uuid,
-                                      const ConsensusResponsePB& response));
+                                      const LWConsensusResponsePB& response));
   MOCK_METHOD0(Close, void());
 };
 
@@ -338,13 +338,13 @@ class RaftConsensusTest : public YBTest {
   // Create a ConsensusRequestPB suitable to send to a peer.
   ConsensusRequestPB MakeConsensusRequest(int64_t caller_term,
                                           const string& caller_uuid,
-                                          const OpIdPB& preceding_opid);
+                                          const OpId& preceding_opid);
 
   // Add a single no-op with the given OpId to a ConsensusRequestPB.
-  void AddNoOpToConsensusRequest(ConsensusRequestPB* request, const OpIdPB& noop_opid);
+  void AddNoOpToConsensusRequest(LWConsensusRequestPB* request, const OpId& noop_opid);
 
   scoped_refptr<ConsensusRound> AppendNoOpRound() {
-    auto replicate_ptr = std::make_shared<ReplicateMsg>();
+    auto replicate_ptr = rpc::MakeSharedMessage<LWReplicateMsg>();
     replicate_ptr->set_op_type(NO_OP);
     replicate_ptr->set_hybrid_time(clock_->Now().ToUint64());
     scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(),
@@ -396,19 +396,19 @@ class RaftConsensusTest : public YBTest {
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,
                                                            const string& caller_uuid,
-                                                           const OpIdPB& preceding_opid) {
+                                                           const OpId& preceding_opid) {
   ConsensusRequestPB request;
   request.set_caller_term(caller_term);
   request.set_caller_uuid(caller_uuid);
   request.set_tablet_id(kTestTablet);
-  *request.mutable_preceding_id() = preceding_opid;
+  preceding_opid.ToPB(request.mutable_preceding_id());
   return request;
 }
 
-void RaftConsensusTest::AddNoOpToConsensusRequest(ConsensusRequestPB* request,
-                                                  const OpIdPB& noop_opid) {
-  ReplicateMsg* noop_msg = request->add_ops();
-  *noop_msg->mutable_id() = noop_opid;
+void RaftConsensusTest::AddNoOpToConsensusRequest(LWConsensusRequestPB* request,
+                                                  const OpId& noop_opid) {
+  auto* noop_msg = request->add_ops();
+  noop_opid.ToPB(noop_msg->mutable_id());
   noop_msg->set_op_type(NO_OP);
   noop_msg->set_hybrid_time(clock_->Now().ToUint64());
   noop_msg->mutable_noop_request();
@@ -531,7 +531,7 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   ConsensusBootstrapInfo info;
   info.last_id.set_term(10);
   for (int i = 0; i < 10; i++) {
-    auto replicate = std::make_shared<ReplicateMsg>();
+    auto replicate = rpc::MakeSharedMessage<LWReplicateMsg>();
     replicate->set_op_type(NO_OP);
     info.last_id.set_index(100 + i);
     replicate->mutable_id()->CopyFrom(info.last_id);
@@ -685,18 +685,19 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   // - Op 2.5 from the previous leader's term
   // - Ops 3.6-3.9 from the new leader's term
   // - A new committed index of 3.6
-  ConsensusRequestPB request;
+  auto request_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+  auto& request = *request_ptr;
   request.set_caller_term(3);
   const string PEER_0_UUID = "peer-0";
-  request.set_caller_uuid(PEER_0_UUID);
-  request.set_tablet_id(kTestTablet);
+  request.ref_caller_uuid(PEER_0_UUID);
+  request.ref_tablet_id(kTestTablet);
   request.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
 
-  ReplicateMsg* replicate = request.add_ops();
+  auto* replicate = request.add_ops();
   replicate->mutable_id()->CopyFrom(MakeOpId(2, 5));
   replicate->set_op_type(NO_OP);
 
-  ReplicateMsg* noop_msg = request.add_ops();
+  auto* noop_msg = request.add_ops();
   noop_msg->mutable_id()->CopyFrom(MakeOpId(3, 6));
   noop_msg->set_op_type(NO_OP);
   noop_msg->set_hybrid_time(clock_->Now().ToUint64());
@@ -704,7 +705,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
   // Overwrite another 3 of the original rounds for a total of 4 overwrites.
   for (int i = 7; i < 10; i++) {
-    ReplicateMsg* replicate = request.add_ops();
+    auto* replicate = request.add_ops();
     replicate->mutable_id()->CopyFrom(MakeOpId(3, i));
     replicate->set_op_type(NO_OP);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
@@ -712,8 +713,8 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 
   request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 6));
 
-  ConsensusResponsePB response;
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  LWConsensusResponsePB response(&request.arena());
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());
 
   ASSERT_TRUE(Mock::VerifyAndClearExpectations(consensus_.get()));
@@ -724,11 +725,11 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
                 NonTrackedRoundReplicationFinished(RoundHasOpId(3, index), _, IsOk())).Times(1);
   }
 
-  request.mutable_ops()->Clear();
+  request.mutable_ops()->clear();
   request.mutable_preceding_id()->CopyFrom(MakeOpId(3, 9));
   request.mutable_committed_op_id()->CopyFrom(MakeOpId(3, 9));
 
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.has_error());
 }
 
@@ -750,32 +751,33 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
 
-  ConsensusRequestPB request;
-  ConsensusResponsePB response;
+  auto request_ptr = rpc::MakeSharedMessage<LWConsensusRequestPB>();
+  auto& request = *request_ptr;
+  LWConsensusResponsePB response(&request.arena());
   int64_t caller_term = 0;
   int64_t log_index = 0;
 
   caller_term = 1;
   string caller_uuid = config_.peers(0).permanent_uuid();
-  OpIdPB preceding_opid = MinimumOpId();
+  OpId preceding_opid = OpId::Min();
 
   // Heartbeat. This will cause the term to increment on the follower.
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
-  ASSERT_OPID_EQ(response.status().last_received(), MinimumOpId());
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), OpId::Min());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), OpId::Min());
 
   // Replicate a no-op.
-  OpIdPB noop_opid = MakeOpId(caller_term, ++log_index);
+  OpId noop_opid(caller_term, ++log_index);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
-  ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(),  noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), noop_opid);
 
   // New leader heartbeat. Term increase to 2.
   // Expect current term replicated to be nothing (MinimumOpId) but log
@@ -785,44 +787,45 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   preceding_opid = noop_opid;
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
-  ASSERT_OPID_EQ(response.status().last_received(), preceding_opid);
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), preceding_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), OpId::Min());
 
   // Append a no-op.
-  noop_opid = MakeOpId(caller_term, ++log_index);
+  noop_opid = OpId(caller_term, ++log_index);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
-  ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), noop_opid);
 
   // New leader heartbeat. The term should rev but we should get an LMP mismatch.
   caller_term = 3;
   caller_uuid = config_.peers(0).permanent_uuid();
-  preceding_opid = MakeOpId(caller_term, log_index + 1); // Not replicated yet.
+  preceding_opid = OpId(caller_term, log_index + 1); // Not replicated yet.
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_EQ(caller_term, response.responder_term());
-  ASSERT_OPID_EQ(response.status().last_received(), noop_opid); // Not preceding this time.
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), MinimumOpId());
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid); // Not preceding this time.
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), OpId::Min());
   ASSERT_TRUE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH, response.status().error().code());
 
   // Decrement preceding and append a no-op.
-  preceding_opid = MakeOpId(2, log_index);
-  noop_opid = MakeOpId(caller_term, ++log_index);
+  preceding_opid = OpId(2, log_index);
+  noop_opid = OpId(caller_term, ++log_index);
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
-  ASSERT_OPID_EQ(response.status().last_received(), noop_opid) << response.ShortDebugString();
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid)
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid)
+      << response.ShortDebugString();
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), noop_opid)
       << response.ShortDebugString();
 
   // Happy case. New leader with new no-op to append right off the bat.
@@ -830,15 +833,15 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
   caller_term = 4;
   caller_uuid = config_.peers(1).permanent_uuid();
   preceding_opid = noop_opid;
-  noop_opid = MakeOpId(caller_term, ++log_index);
+  noop_opid = OpId(caller_term, ++log_index);
   request = MakeConsensusRequest(caller_term, caller_uuid, preceding_opid);
   AddNoOpToConsensusRequest(&request, noop_opid);
   response.Clear();
-  ASSERT_OK(consensus_->Update(&request, &response, CoarseBigDeadline()));
+  ASSERT_OK(consensus_->Update(request_ptr, &response, CoarseBigDeadline()));
   ASSERT_FALSE(response.status().has_error()) << response.ShortDebugString();
   ASSERT_EQ(caller_term, response.responder_term());
-  ASSERT_OPID_EQ(response.status().last_received(), noop_opid);
-  ASSERT_OPID_EQ(response.status().last_received_current_leader(), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received()), noop_opid);
+  ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()), noop_opid);
 }
 
 }  // namespace consensus

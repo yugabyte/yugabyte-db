@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
-#define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
+#pragma once
 
 #include <condition_variable>
 #include <unordered_map>
@@ -65,6 +64,8 @@ struct CDCClient {
   ~CDCClient();
   void Shutdown();
 };
+
+typedef std::pair<SchemaVersion, SchemaVersion> SchemaVersionMapping;
 
 class CDCConsumer {
  public:
@@ -179,7 +180,7 @@ class CDCConsumer {
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, uint32_t> stream_to_schema_version_
+  std::unordered_map<std::string, SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
@@ -226,5 +227,3 @@ class CDCConsumer {
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb
-
-#endif // ENT_SRC_YB_TSERVER_CDC_CONSUMER_H

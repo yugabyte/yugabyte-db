@@ -1,7 +1,3 @@
--- These tests for UPDATE/DELETE single row operations are forked off of yb_dml_single_row
--- and test approximately same statements when expression pushdown is enabled
-SET yb_enable_expression_pushdown to on;
-
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
 --

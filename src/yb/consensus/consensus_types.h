@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_TYPES_H
-#define YB_CONSENSUS_CONSENSUS_TYPES_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 
@@ -28,5 +27,3 @@ struct ConsensusOptions {
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_CONSENSUS_TYPES_H

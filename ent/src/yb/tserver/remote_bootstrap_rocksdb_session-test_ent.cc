@@ -41,9 +41,9 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
 
   void CreateSnapshot() {
     LOG(INFO) << "Creating Snapshot " << kSnapshotId << " ...";
-    TabletSnapshotOpRequestPB request;
-    request.set_snapshot_id(kSnapshotId);
-    tablet::SnapshotOperation operation(tablet(), &request);
+    tablet::SnapshotOperation operation(tablet());
+    auto& request = *operation.AllocateRequest();
+    request.ref_snapshot_id(kSnapshotId);
     operation.set_hybrid_time(tablet()->clock()->Now());
     operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
     ASSERT_OK(tablet()->snapshots().Create(&operation));

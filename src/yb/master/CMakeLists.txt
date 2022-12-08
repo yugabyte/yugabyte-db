@@ -110,34 +110,36 @@ set(MASTER_SRCS
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc
-  tasks_tracker.cc
+  table_index.cc
   tablet_split_manager.cc
+  tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
   util/yql_vtable_helpers.cc
+  xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
-  yql_virtual_table.cc
-  yql_vtable_iterator.cc
-  yql_auth_roles_vtable.cc
-  yql_auth_role_permissions_vtable.cc
-  yql_auth_resource_role_permissions_index.cc
   yql_aggregates_vtable.cc
+  yql_auth_resource_role_permissions_index.cc
+  yql_auth_role_permissions_vtable.cc
+  yql_auth_roles_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc
   yql_functions_vtable.cc
   yql_indexes_vtable.cc
   yql_keyspaces_vtable.cc
-  yql_peers_vtable.cc
   yql_local_vtable.cc
+  yql_partitions_vtable.cc
+  yql_peers_vtable.cc
   yql_size_estimates_vtable.cc
   yql_tables_vtable.cc
   yql_triggers_vtable.cc
   yql_types_vtable.cc
   yql_views_vtable.cc
-  yql_partitions_vtable.cc
-  ysql_transaction_ddl.cc
+  yql_virtual_table.cc
+  yql_vtable_iterator.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
+  ysql_transaction_ddl.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS
@@ -209,18 +211,29 @@ ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
+Add_YB_TEST(table_index-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 
 foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})
 endforeach(ADDITIONAL_TEST)
 
-# Actual master executable
+# Actual master executable. In LTO mode, can also act as the tablet server if executed through a
+# symlink named as the tablet server executable.
 add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
+set(YB_MASTER_EXE_DEPS
+    master
+    ${YB_BASE_LIBS})
+if(NOT DEFINED YB_LTO_ENABLED)
+  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
+endif()
+if(YB_LTO_ENABLED)
+  # In LTO mode, the master executable can also function as the tablet server.
+  list(APPEND YB_MASTER_EXE_DEPS tserver_main_impl)
+endif()
 target_link_libraries(
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
-  master
-  ${YB_BASE_LIBS})
+  ${YB_MASTER_EXE_DEPS})
 
 # Generate master_flags.xml
 set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
@@ -236,7 +249,8 @@ set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
   "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
   "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
-  "--output_file_path" "${AUTO_FLAGS_FILE}")
+  "--output_file_path" "${AUTO_FLAGS_FILE}"
+  "--previous_auto_flags_file" "${YB_SRC_ROOT}/src/yb/previous_auto_flags.json")
 add_custom_target(
   gen_auto_flags_json ALL
   COMMAND ${GEN_AUTO_FLAGS_COMMAND}

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_ENCRYPTION_FWD_H
-#define YB_ENCRYPTION_ENCRYPTION_FWD_H
+#pragma once
 
 namespace yb {
 namespace encryption {
@@ -23,5 +22,3 @@ class UniverseKeysPB;
 
 }  // namespace encryption
 }  // namespace yb
-
-#endif  // YB_ENCRYPTION_ENCRYPTION_FWD_H

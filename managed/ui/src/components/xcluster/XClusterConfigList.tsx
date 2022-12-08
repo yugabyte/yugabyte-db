@@ -7,7 +7,10 @@ import { useInterval } from 'react-use';
 
 import { fetchXClusterConfig } from '../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
-import { TRANSITORY_STATES, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS } from './constants';
+import {
+  TRANSITORY_XCLUSTER_CONFIG_STATUSES,
+  XCLUSTER_METRIC_REFETCH_INTERVAL_MS
+} from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
 import { api } from '../../redesign/helpers/api';
 
@@ -54,17 +57,17 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
         xClusterConfig?.data?.status &&
-        _.includes(TRANSITORY_STATES, xClusterConfig.data.status)
+        _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
         queryClient.invalidateQueries(['Xcluster', xClusterConfig.data.uuid]);
       }
     });
-  }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
+  }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
-  if (universeQuery.isLoading) {
+  if (universeQuery.isLoading || universeQuery.isIdle) {
     return <YBLoading />;
   }
-  if (universeQuery.isError || universeQuery.data === undefined) {
+  if (universeQuery.isError) {
     return <YBErrorIndicator />;
   }
 

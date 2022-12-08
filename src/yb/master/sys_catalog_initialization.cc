@@ -28,27 +28,16 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 
 using std::string;
 
-DEFINE_string(initial_sys_catalog_snapshot_path, "",
+DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
 
-DEFINE_bool(use_initial_sys_catalog_snapshot, false,
-    "DEPRECATED: use --enable_ysql instead. "
-    "Initialize sys catalog tablet from a pre-existing snapshot instead of running initdb. "
-    "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be "
-    "auto-detected.");
+DEPRECATE_FLAG(bool, use_initial_sys_catalog_snapshot, "11_2022");
 
-DEFINE_bool(enable_ysql, true,
-    "Enable YSQL on cluster. This will initialize sys catalog tablet from a pre-existing snapshot "
-    "and start YSQL proxy. "
-    "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be auto-detected."
-    );
-
-DEFINE_bool(create_initial_sys_catalog_snapshot, false,
+DEFINE_UNKNOWN_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
@@ -125,15 +114,16 @@ Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term) {
-  TabletSnapshotOpRequestPB tablet_snapshot_req;
+  auto operation = std::make_unique<SnapshotOperation>(
+      VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe()));
+
+  auto& tablet_snapshot_req = *operation->AllocateRequest();
   tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
-  tablet_snapshot_req.add_tablet_id(kSysCatalogTabletId);
-  tablet_snapshot_req.set_snapshot_dir_override(
+  tablet_snapshot_req.mutable_tablet_id()->push_back(kSysCatalogTabletId);
+  tablet_snapshot_req.dup_snapshot_dir_override(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto tablet = VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe());
-  auto operation = std::make_unique<SnapshotOperation>(tablet, &tablet_snapshot_req);
 
   CountDownLatch latch(1);
   operation->set_completion_callback(
@@ -173,13 +163,12 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
   if (env_var_value && strcmp(env_var_value, "0") == 0) {
     LOG(INFO) << "Disabling the use of initial sys catalog snapshot: env var "
               << kUseInitialSysCatalogSnapshotEnvVar << " is set to 0";
-    FLAGS_use_initial_sys_catalog_snapshot = 0;
     FLAGS_enable_ysql = 0;
   }
 
   if (FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot &&
-      (FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql)) {
+      FLAGS_enable_ysql) {
     const char* kStaticDataParentDir = "share";
     const std::string search_for_dir = JoinPathSegments(
         kStaticDataParentDir, kDefaultInitialSysCatalogSnapshotDir,
@@ -200,7 +189,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
       VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
-      CHECK_OK(SetFlagDefaultAndCurrent("initial_sys_catalog_snapshot_path", candidate_dir));
+      CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(initial_sys_catalog_snapshot_path, candidate_dir));
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";
@@ -212,15 +201,13 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << FLAGS_initial_sys_catalog_snapshot_path << ", "
         << "FLAGS_create_initial_sys_catalog_snapshot="
         << FLAGS_create_initial_sys_catalog_snapshot << ", "
-        << "FLAGS_use_initial_sys_catalog_snapshot="
-        << FLAGS_use_initial_sys_catalog_snapshot << ", "
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableInfoMap* table_ids_map,
+    TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term) {
@@ -234,9 +221,9 @@ Status MakeYsqlSysCatalogTablesTransactional(
   }
 
   int num_updated_tables = 0;
-  for (const auto& iter : *table_ids_map) {
-    const auto& table_id = iter.first;
-    auto& table_info = *iter.second;
+  for (const auto& table : tables) {
+    const auto& table_id = table->id();
+    auto& table_info = *table;
 
     if (!IsPgsqlId(table_id)) {
       continue;

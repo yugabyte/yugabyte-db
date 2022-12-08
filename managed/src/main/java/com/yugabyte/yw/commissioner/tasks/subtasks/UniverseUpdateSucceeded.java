@@ -46,7 +46,7 @@ public class UniverseUpdateSucceeded extends UniverseTaskBase {
             public void run(Universe universe) {
               // If this universe is not being edited, fail the request.
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              if (!universeDetails.updateInProgress && !universeDetails.backupInProgress) {
+              if (!universeDetails.updateInProgress) {
                 log.error("Universe " + taskParams().universeUUID + " is not being edited.");
                 throw new RuntimeException(
                     "Universe " + taskParams().universeUUID + " is not being edited");

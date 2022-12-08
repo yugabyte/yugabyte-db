@@ -206,7 +206,7 @@ recordDependencyOnCurrentExtension(const ObjectAddress *object,
  * shared_insert means that the record will be inserted in ALL databases.
  */
 void
-YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert)
+YbRecordPinDependency(const ObjectAddress *referenced, bool shared_insert)
 {
 	Relation	dependDesc;
 	CatalogIndexState indstate;
@@ -241,6 +241,9 @@ YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert)
 	CatalogCloseIndexes(indstate);
 
 	heap_close(dependDesc, RowExclusiveLock);
+
+	YbPinObjectIfNeeded(referenced->classId, referenced->objectId,
+						false /* shared_dependency */);
 }
 
 /*
@@ -499,8 +502,9 @@ changeDependencyFor(Oid classId, Oid objectId,
 static bool
 isObjectPinned(const ObjectAddress *object, Relation rel)
 {
-	if (YBIsPinnedObjectsCacheAvailable())
-		return YBIsObjectPinned(object->classId, object->objectId);
+	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
+		return YbIsObjectPinned(object->classId, object->objectId,
+								false /* shared_dependency */);
 
 	bool		ret = false;
 	SysScanDesc scan;

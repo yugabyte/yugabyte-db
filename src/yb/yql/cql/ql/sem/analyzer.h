@@ -15,8 +15,7 @@
 // Entry point for the semantic analytical process.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_SEM_ANALYZER_H_
-#define YB_YQL_CQL_QL_SEM_ANALYZER_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"
@@ -59,5 +58,3 @@ class Analyzer {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_SEM_ANALYZER_H_

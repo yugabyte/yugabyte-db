@@ -83,7 +83,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 ### Load phase
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
 
 Before starting the workload, you need to load the data. Make sure to replace the IP addresses with that of the nodes in the cluster.
@@ -191,7 +191,7 @@ Once the loading is completed, execute the following command to enable the forei
 
 ### TPC-C Execute Phase
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
 
 You can run the workload against the database as follows:
@@ -253,7 +253,7 @@ You can then run the workload against the database from each client:
 
 ### TPC-C Benchmark Results
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 {{% tab header="10 warehouses" lang="10-wh" %}}
 
 **Cluster**: 3 nodes of type `c5d.large`

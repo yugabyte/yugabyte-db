@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_TXN_TEST_BASE_H
-#define YB_CLIENT_TXN_TEST_BASE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -153,5 +152,3 @@ class TransactionCustomLogSegmentSizeTest : public Base {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TXN_TEST_BASE_H

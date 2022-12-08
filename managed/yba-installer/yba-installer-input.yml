@@ -38,14 +38,17 @@
 # Prometheus service will be declared inactive. Defaults to 30s,
 # override if you wish for the inactivity threshold to be longer or
 # shorter.
+
+# restartSeconds: time in seconds for systemd to wait before restarting
+# prometheus
 prometheus:
     scrapeInterval: 15
-    evaluationInterval: 15
     scrapeTimeout: 10
     externalPort: 9090
     maxConcurrency: 20
     maxSamples: 5000000
     timeout: 30
+    restartSeconds: 10
 
 # Configurable parameters:
 
@@ -142,8 +145,15 @@ prometheus:
 # Default password is the empty string (in which case a random password
 # will be generated), override if you wish to change the
 # password.
+
+# logPath: Directory (relative to install root) to store YBA logs.
+
+# restartSeconds: time in seconds for systemd to wait before restarting
+# the platform
+
 platform:
-   platformDbUser: "postgres"
+   logPath: "data/logs"
+   platformDbUser: "yugabyte"
    platformDbPassword: ""
    useOauth: false
    ybSecurityType: ""
@@ -172,6 +182,7 @@ platform:
       ywUrl: "YW_URL"
       ybOidcScope: "YB_OIDC_SCOPE"
       ybOidcEmailAttr: "YB_OIDC_EMAIL_ATTR"
+   restartSeconds: 10
 
 # Configurable parameter: overrideWarning
 
@@ -199,11 +210,15 @@ additional: |
 # Platform Installation. Make sure you specify
 # all the required fields correctly, and specify
 # bringOwn = true (defaults to false).
+
+# restartSeconds: time in seconds for systemd to wait before restarting
+# postgress
 postgres:
    bringOwn: false
-   port: "5432"
+   port: 5432
    username: "postgres"
    password: ""
+   restartSeconds: 10
 
 # Edit this section if you are bringing in your
 # own version of Python to the Yugabyte
@@ -221,9 +236,14 @@ python:
 # during uninstalls of Yugabyte Platform, and add it to the corresponding
 # comma-separated service list.
 dataVolumes:
-   yb-platform: "data"
-   prometheus: "storage, swamper_targets, swamper_rules"
-   postgres: "data"
+   yb-platform:
+      - "data"
+   prometheus:
+      - "storage"
+      - "swamper_targets"
+      - "swamper_rules"
+   postgres:
+      - "data"
 
 # Service Management. For installation of Yugabyte Anywhere, you can choose
 # to have all of your services either be systemd managed or crontab managed,

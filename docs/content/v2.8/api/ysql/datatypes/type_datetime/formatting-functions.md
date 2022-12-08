@@ -397,7 +397,7 @@ The _"Too long"_ tests still fail. but the _"Too short"_ tests now succeed.
 
 {{< tip title="Avoid using 'years' substring values less than one to specify BC in 'to_date()' and 'to_timestamp()'." >}}
 
-The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE" target="_blank">Table 9.25. Template Pattern Modifiers for Date/Time Formatting <i class="fas fa-external-link-alt"></i></a> says this:
+The section "Usage notes for date/time formatting" on the page "9.8. Data Type Formatting Functions" just under <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIMEMOD-TABLE" target="_blank">Table 9.25. Template Pattern Modifiers for Date/Time Formatting <i class="fa-solid fa-up-right-from-square"></i></a> says this:
 
 > In to_timestamp and to_date, negative years are treated as signifying BC. If you write both a negative year and an explicit BC field, you get AD again. An input of year zero is treated as 1 BC.
 

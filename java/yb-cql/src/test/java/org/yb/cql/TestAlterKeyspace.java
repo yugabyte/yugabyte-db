@@ -27,7 +27,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.RandomNumberUtil;
+import org.yb.util.RandomUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
@@ -36,7 +36,7 @@ public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
   // We use a random keyspace name in each test to be sure that the keyspace does not exist in the
   // beginning of the test.
   private static String getRandomKeyspaceName() {
-    return "test_keyspace_" + RandomNumberUtil.randomNonNegNumber();
+    return "test_keyspace_" + RandomUtil.randomNonNegNumber();
   }
 
   private String alterKeyspaceStmt(String keyspaceName, String options) throws Exception {
@@ -79,7 +79,7 @@ public class TestAlterKeyspace extends BaseAuthenticationCQLTest {
 
   private ClusterAndSession createRoleAndLogin(String permission, String resourceType,
       String resource) throws Exception {
-    int suffix = RandomNumberUtil.randomNonNegNumber();
+    int suffix = RandomUtil.randomNonNegNumber();
     final String username = "test_role_" + suffix;
     final String password = "test_role_password_" + suffix;
 

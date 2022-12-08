@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef ENT_SRC_YB_CDC_CDC_UTIL_H
-#define ENT_SRC_YB_CDC_CDC_UTIL_H
+#pragma once
 
 #include <stdlib.h>
 #include <string>
@@ -31,6 +30,8 @@ namespace cdc {
 typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
 typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
 typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
+
+constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
 
 struct ConsumerTabletInfo {
   std::string tablet_id;
@@ -110,6 +111,3 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
 
 } // namespace cdc
 } // namespace yb
-
-
-#endif // ENT_SRC_YB_CDC_CDC_UTIL_H

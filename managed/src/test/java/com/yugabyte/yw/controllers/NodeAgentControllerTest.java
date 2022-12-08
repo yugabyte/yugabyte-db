@@ -10,6 +10,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
@@ -18,6 +21,8 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
@@ -65,17 +70,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeAgentHandler.enableConnectionValidation(false);
     RuntimeConfig<Provider> providerConfig = runtimeConfigFactory.forProvider(provider);
     String nodeAgentConfig = "yb.node_agent.preflight_checks.";
-    providerConfig.setValue(nodeAgentConfig + "internet_connection", "true");
-    providerConfig.setValue(nodeAgentConfig + "python_version", "2.7");
-    providerConfig.setValue(nodeAgentConfig + "prometheus_no_node_exporter", "true");
-    providerConfig.setValue(nodeAgentConfig + "ports", "true");
-    providerConfig.setValue(nodeAgentConfig + "ntp_service", "true");
+    providerConfig.setValue(nodeAgentConfig + "min_python_version", "2.7");
     providerConfig.setValue(nodeAgentConfig + "min_tmp_dir_space_mb", "100");
     providerConfig.setValue(nodeAgentConfig + "user", "fakeUser");
     providerConfig.setValue(nodeAgentConfig + "user_group", "fakeGroup");
     providerConfig.setValue(nodeAgentConfig + "min_prometheus_space_mb", "100");
-    providerConfig.setValue(nodeAgentConfig + "pam_limits_writable", "true");
-    providerConfig.setValue(nodeAgentConfig + "mount_points", "true");
     providerConfig.setValue(nodeAgentConfig + "min_home_dir_space_mb", "100");
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
@@ -85,9 +84,13 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     keyInfo.privateKey = "/path/to/private.key";
     keyInfo.vaultFile = "/path/to/vault_file";
     keyInfo.vaultPasswordFile = "/path/to/vault_password";
+    keyInfo.sshPort = 22;
     AccessKey.create(provider.uuid, "access-code1", keyInfo);
     InstanceType.upsert(
         provider.uuid, "c5.xlarge", 1 /* cores */, 2.0 /* mem in GB */, new InstanceTypeDetails());
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(response);
   }
 
   private Result registerNodeAgent(NodeAgentForm formData) {
@@ -168,9 +171,6 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.zone = zone.code;
     testNode.instanceType = "c5.xlarge";
     testNode.sshUser = "ssh-user";
-    // Missing node configurations in the payload.
-    result = assertPlatformException(() -> createNode(zone.uuid, testNode, jwt));
-    assertEquals(result.status(), BAD_REQUEST);
     // Accepted value for NTP_SERVICE_STATUS is "running".
     testNode.nodeConfigs = getTestNodeConfigsSet();
     result = createNode(zone.uuid, testNode, jwt);
@@ -183,7 +183,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
             .filter(n -> n.type == NodeConfig.Type.PAM_LIMITS_WRITABLE)
             .findFirst()
             .get();
-    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false");
+    NodeConfig errCheck = new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true");
     testNode.nodeConfigs.remove(pamNode);
     testNode.nodeConfigs.add(errCheck);
     // Set an unaccepted value.
@@ -289,12 +289,6 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.sshUser = "ssh-user";
     // Get a new JWT after the update.
     String updatedJwt = nodeAgentHandler.getClientToken(nodeAgentUuid, user.uuid);
-    NodeConfig nodeConfig = new NodeConfig(NodeConfig.Type.NTP_SERVICE_STATUS, "true");
-    testNode.nodeConfigs = Sets.newSet(nodeConfig);
-    // Missing preflight checks should return an error.
-    result = assertPlatformException(() -> createNode(zone.uuid, testNode, updatedJwt));
-    assertEquals(result.status(), BAD_REQUEST);
-    // Accepted value for NTP_SERVICE_STATUS is "running".
     testNode.nodeConfigs = getTestNodeConfigsSet();
     result = createNode(zone.uuid, testNode, updatedJwt);
     assertOk(result);
@@ -313,10 +307,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.INTERNET_CONNECTION, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.TMP_DIR_SPACE, "10000"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.PROMETHEUS_SPACE, "10000"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "true"));
+    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PAM_LIMITS_WRITABLE, "false"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.HOME_DIR_SPACE, "10000"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.PORTS, "{\"54422\":\"true\"}"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.MOUNT_POINTS, "{\"/home/yugabyte\":\"true\"}"));
+    nodeConfigs.add(new NodeConfig(NodeConfig.Type.SSH_PORT, "{\"54422\":\"true\"}"));
+    nodeConfigs.add(
+        new NodeConfig(NodeConfig.Type.MOUNT_POINTS_WRITABLE, "{\"/home/yugabyte\":\"true\"}"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.NTP_SERVICE_STATUS, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.CPU_CORES, "1"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.RAM_SIZE, "4096"));

@@ -109,7 +109,8 @@ struct ExternalMiniClusterOptions {
 
   static constexpr bool kDefaultStartCqlProxy = true;
 #if defined(__APPLE__)
-  static constexpr bool kBindToUniqueLoopbackAddress = false;
+  static constexpr bool kBindToUniqueLoopbackAddress = true; // Older Mac OS may need
+                                                             // to set this to false.
 #else
   static constexpr bool kBindToUniqueLoopbackAddress = true;
 #endif
@@ -440,8 +441,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This uses the 'force' flag on the RPC so that, even if the flag is considered unsafe to change
   // at runtime, it is changed.
   Status SetFlag(ExternalDaemon* daemon,
-                         const std::string& flag,
-                         const std::string& value);
+                 const std::string& flag,
+                 const std::string& value);
 
   // Sets the given flag on all masters.
   Status SetFlagOnMasters(const std::string& flag, const std::string& value);

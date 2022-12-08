@@ -4,7 +4,7 @@ headerTitle: Multi-Region Deployments
 linkTitle: Multi-region deployments
 description: Multi-Region Deployments in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
-image: /images/section_icons/secure/authorization.png
+image: /images/section_icons/explore/planet_scale.png
 menu:
   preview:
     identifier: explore-multi-region-deployments

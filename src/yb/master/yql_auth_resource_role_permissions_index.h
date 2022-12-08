@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_AUTH_RESOURCE_ROLE_PERMISSIONS_INDEX_H
-#define YB_MASTER_YQL_AUTH_RESOURCE_ROLE_PERMISSIONS_INDEX_H
+#pragma once
 
 #include "yb/master/yql_virtual_table.h"
 
@@ -38,4 +37,3 @@ class YQLAuthResourceRolePermissionsIndexVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_AUTH_RESOURCE_ROLE_PERMISSIONS_INDEX_H

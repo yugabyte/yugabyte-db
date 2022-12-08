@@ -15,8 +15,7 @@
 // Tree node definitions for expression.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
-#define YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -409,7 +408,7 @@ class PTCollectionExpr : public PTExpr {
 
   // Fill in udtype_field_values collection, copying values in accordance to UDT field order
   Status InitializeUDTValues(const QLTypePtr& expected_type,
-                                     ProcessContextBase* process_context);
+                             ProcessContextBase* process_context);
 
   int size() const {
     return static_cast<int>(values_.size());
@@ -1417,5 +1416,3 @@ class PTBindVar : public PTExpr {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_EXPR_H_

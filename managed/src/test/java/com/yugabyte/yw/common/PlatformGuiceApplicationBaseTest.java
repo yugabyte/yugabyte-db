@@ -9,6 +9,9 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import org.junit.After;
+import org.junit.BeforeClass;
+import org.mockito.Mockito;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.WithApplication;
 
@@ -29,5 +32,15 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
         .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(bind(AlertsGarbageCollector.class).toInstance(mockAlertsGarbageCollector));
+  }
+
+  @After
+  public void baseTearDown() {
+    TestHelper.shutdownDatabase();
+  }
+
+  @BeforeClass
+  public static void clearMocks() {
+    Mockito.framework().clearInlineMocks();
   }
 }

@@ -16,7 +16,7 @@
 #include <glog/logging.h>
 
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -26,13 +26,13 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<TruncatePB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, TruncatePB* request) {
-  replicate->set_allocated_truncate(request);
+void RequestTraits<LWTruncatePB>::SetAllocatedRequest(
+    consensus::LWReplicateMsg* replicate, LWTruncatePB* request) {
+  replicate->ref_truncate(request);
 }
 
 template <>
-TruncatePB* RequestTraits<TruncatePB>::MutableRequest(consensus::ReplicateMsg* replicate) {
+LWTruncatePB* RequestTraits<LWTruncatePB>::MutableRequest(consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_truncate();
 }
 

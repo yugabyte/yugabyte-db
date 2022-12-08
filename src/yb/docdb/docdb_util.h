@@ -13,8 +13,7 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_DOCDB_UTIL_H
-#define YB_DOCDB_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -103,7 +102,7 @@ class DocDBRocksDBUtil {
 
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   Status WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,
-                                        bool decode_dockey = true, bool increment_write_id = true);
+                                bool decode_dockey = true, bool increment_write_id = true);
 
   // Writes value fully determined by its index using DefaultWriteBatch.
   Status WriteSimple(int index);
@@ -180,7 +179,8 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
-  void DocDBDebugDumpToConsole();
+  void DocDBDebugDumpToConsole(
+      const SchemaPackingStorage& schema_packing_storage = SchemaPackingStorage());
 
   Status FlushRocksDbAndWait();
 
@@ -253,5 +253,3 @@ class DocDBRocksDBUtil {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOCDB_UTIL_H

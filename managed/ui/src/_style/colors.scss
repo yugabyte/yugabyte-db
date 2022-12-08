@@ -33,7 +33,7 @@ $YB_PENDING_COLOR: $YB_ORANGE;
 $YB_FAIL_COLOR: #e8473f;
 $YB_ERROR_TEXT_COLOR: #a94442;
 $YB_ERROR_ICON_COLOR: #e73e36;
-$YB_WARNING_ICON_COLOR: #C88900;
+$YB_WARNING_ICON_COLOR: #c88900;
 $YB_ERROR_LIGHT: #fdeceb;
 $YB_BLUE_COLOR: #35a3ff;
 $YB_FAIL_COLOR_ICON: darken($YB_FAIL_COLOR, 20%);
@@ -48,7 +48,7 @@ $YB_GRAY_HOVER: #e5e5e9;
 $YB_GRAY_BORDER: #cfcfd8;
 $YB_DARK_GRAY_2: #232329;
 $YB_LIGHT_GRAY_BORDER: #e3e3e5;
-$YB_LIGHT_GRAY: #F7FAFC;
+$YB_LIGHT_GRAY: #f7fafc;
 
 $YB_SUCCESS_COLOR_LIGHT: #f1f8f3;
 $YB_TEXT_BLACK: #333;
@@ -64,13 +64,37 @@ $YB_HELP_BLUE: #0068cd;
 
 $YB_FOOTER_BACKGROUND: #fff;
 
-//Banner
+// ------------------------------------------------------------------------
+// Banners
 $YB_BANNER_WARNING_BACKGROUND: #ffeec8;
 $YB_BANNER_WARNING_BORDER: #d0ba8b;
 
 $YB_BANNER_ERROR_BACKGROUND: #fde2e2;
 $YB_BANNER_ERROR_BORDER: #dcadad;
 
+$YB_VALIDATION_ERROR_BACKGROUND: #fee6e0;
+$YB_VALIDATION_ERROR_BORDER: #e73e36;
+$YB_VALIDATION_WARNING_BACKGROUND: #ffeec8;
+$YB_VALIDATION_WARNING_BORDER: #d0ba8b;
+// ------------------------------------------------------------------------
+// ------------------------------------------------------------------------
+//Labels
+$YB_LABEL_DANGER_TEXT: #8f0000;
+$YB_LABEL_DANGER_ICON: #da1515;
+$YB_LABEL_DANGER_BACKGROUND: #fde2e2;
+
+$YB_LABEL_WARNING_TEXT: #9d6c00;
+$YB_LABEL_WARNING_ICON: #ffa400;
+$YB_LABEL_WARNING_BACKGROUND: #ffeec8;
+
+$YB_LABEL_IN_PROGRESS_TEXT: #1a44a5;
+$YB_LABEL_IN_PROGRESS_ICON: #2b59c3;
+$YB_LABEL_IN_PROGRESS_BACKGROUND: #cbdaff;
+
+$YB_LABEL_GOOD_TEXT: #097245;
+$YB_LABEL_GOOD_ICON: #097245;
+$YB_LABEL_GOOD_BACKGROUND: #cdefe0;
+// ------------------------------------------------------------------------
 .yb-orange {
   color: $YB_ORANGE;
 }

@@ -51,6 +51,8 @@ message ProducerSchemaPB {
   // The upcoming Producer schema for ingest.  If present, Consumer needs ALTER for compatibility.
   uint32 pending_schema_version = 2;
   SchemaPB pending_schema = 3;
+  // The last Consumer schema version that was EquivalentForDataCopy with this Producer
+  uint32 last_compatible_consumer_schema_version = 4;
 }
 
 message StreamEntryPB {

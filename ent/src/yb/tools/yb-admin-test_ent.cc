@@ -13,7 +13,7 @@
 
 // Tests for the EE yb-admin command-line tool.
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -245,10 +245,7 @@ TEST_F(AdminCliTest, TestNonTLS) {
 
 // TODO: Enabled once ENG-4900 is resolved.
 TEST_F(AdminCliTest, DISABLED_TestTLS) {
-  const auto sub_dir = JoinPathSegments("ent", "test_certs");
-  auto root_dir = env_util::GetRootDir(sub_dir) + "/../../";
-  ASSERT_OK(RunAdminToolCommand(
-    "--certs_dir_name", JoinPathSegments(root_dir, sub_dir), "list_all_masters"));
+  ASSERT_OK(RunAdminToolCommand("--certs_dir_name", GetCertsDir(), "list_all_masters"));
 }
 
 TEST_F(AdminCliTest, TestCreateSnapshot) {

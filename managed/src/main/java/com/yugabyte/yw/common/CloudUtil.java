@@ -28,9 +28,6 @@ public interface CloudUtil extends StorageUtil {
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception;
 
-  // public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
-  //     throws Exception;
-
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {
       case Util.S3:

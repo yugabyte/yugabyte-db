@@ -105,11 +105,6 @@ This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976
 - Currently, certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a unique key constraint on a column in an active-active last writer wins mode is unsafe because a violation could be introduced by inserting different values on the two clusters, since each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
 - In the future, allowing detection of such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
-#### Scalability
-
-- When setting up replication, tables should be added in batches, until [#10611](https://github.com/yugabyte/yugabyte-db/issues/10611) is resolved.
-- When bootstrapping sink clusters, tables should be added in batches, until [#10065](https://github.com/yugabyte/yugabyte-db/issues/10065) is resolved.
-
 #### Kubernetes
 
 - Technically replication can be set up with Kubernetes deployed universes. However, the source and sink must be able to communicate by directly referencing the pods in the other universe. In practice, this either means that the two universes must be part of the same Kubernetes cluster, or that two Kubernetes clusters must have DNS and routing properly setup amongst themselves.

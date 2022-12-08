@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef ENT_SRC_YB_CDC_CDC_RPC_H
-#define ENT_SRC_YB_CDC_CDC_RPC_H
+#pragma once
 
 #include <functional>
 
@@ -65,5 +64,3 @@ MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
 
 } // namespace cdc
 } // namespace yb
-
-#endif // ENT_SRC_YB_CDC_CDC_RPC_H

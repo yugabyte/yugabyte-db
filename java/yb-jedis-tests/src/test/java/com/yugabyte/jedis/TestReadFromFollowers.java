@@ -211,7 +211,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE1),
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE2),
               ImmutableMap.of("placement_zone", PLACEMENT_ZONE2)));
-        });
+        }, Collections.emptyMap());
 
     waitForTServersAtMasterLeader();
 
@@ -320,7 +320,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
                   "TEST_follower_reject_update_consensus_requests_seconds", "300"),
               ImmutableMap.of(),
               ImmutableMap.of()));
-        });
+        }, Collections.emptyMap());
 
     // Setup the Jedis client.
     setUpJedis();
@@ -440,7 +440,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("lookup_cache_refresh_secs", "1"),
               ImmutableMap.of(),
               ImmutableMap.of()));
-        });
+        }, Collections.emptyMap());
 
     // Setup the Jedis client.
     setUpJedis();
@@ -561,7 +561,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
               ImmutableMap.of("placement_uuid", readReplicaUuid)));
 
           cb.perTServerFlags(perTserverFlags);
-        });
+        }, Collections.emptyMap());
 
     PlacementInfoPB livePlacementInfo =
         PlacementInfoPB.newBuilder()

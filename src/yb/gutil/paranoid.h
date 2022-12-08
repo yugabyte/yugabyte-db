@@ -16,8 +16,7 @@
 //
 // can use logging.
 
-#ifndef YB_GUTIL_PARANOID_H
-#define YB_GUTIL_PARANOID_H
+#pragma once
 
 #include <glog/logging.h>
 
@@ -101,5 +100,3 @@ inline bool IsSaneBool(bool b) {
   return *p <= 1;
 #endif
 }
-
-#endif  // YB_GUTIL_PARANOID_H

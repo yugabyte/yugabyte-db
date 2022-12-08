@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_RWC_LOCK_H
-#define YB_UTIL_RWC_LOCK_H
+#pragma once
 
 #ifndef NDEBUG
 #include <unordered_map>
@@ -166,4 +165,3 @@ class RWCLock {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_RWC_LOCK_H */

@@ -9,23 +9,37 @@
 
 import React, { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { Backup_States, fetchIncrementalBackup, IBackup, ICommonBackupInfo } from '..';
-import { YBButton } from '../../common/forms/fields';
+import {
+  Backup_States,
+  fetchIncrementalBackup,
+  IBackup,
+  ICommonBackupInfo,
+  deleteIncrementalBackup
+} from '..';
+import { YBButton, YBModal } from '../../common/forms/fields';
 import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
-import { useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { calculateDuration, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 import './BackupTableList.scss';
+
+export enum BackupTypes {
+  FULL_BACKUP = 'FULL BACKUP',
+  INCREMENT_BACKUP = 'INCREMENT'
+}
 export interface YSQLTableProps {
   keyspaceSearch?: string;
   onRestore: Function;
   backup: IBackup;
+  backupType?: BackupTypes;
   hideRestore?: boolean;
+  incrementalBackup?: ICommonBackupInfo;
 }
 
 const COLLAPSED_ICON = <i className="fa fa-caret-right expand-keyspace-icon" />;
@@ -33,11 +47,17 @@ const EXPANDED_ICON = <i className="fa fa-caret-down expand-keyspace-icon" />;
 
 export const YSQLTableList: FC<YSQLTableProps> = ({
   backup,
+  backupType,
   keyspaceSearch,
   onRestore,
-  hideRestore = false
+  hideRestore = false,
+  incrementalBackup
 }) => {
-  const databaseList = backup.commonBackupInfo.responseList
+  const dbList =
+    backupType === BackupTypes.INCREMENT_BACKUP
+      ? incrementalBackup?.responseList
+      : backup.commonBackupInfo.responseList;
+  const filteredDBList = (dbList || [])
     .filter((e) => {
       return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
     })
@@ -49,9 +69,10 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
         index
       };
     });
+
   return (
     <div className="backup-table-list">
-      <BootstrapTable data={databaseList} tableHeaderClass="table-list-header">
+      <BootstrapTable data={filteredDBList} tableHeaderClass="table-list-header">
         <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Database Name</TableHeaderColumn>
         <TableHeaderColumn
@@ -101,9 +122,11 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
 
 export const YCQLTableList: FC<YSQLTableProps> = ({
   backup,
+  backupType,
   keyspaceSearch,
   onRestore,
-  hideRestore
+  hideRestore,
+  incrementalBackup
 }) => {
   const expandTables = (row: any) => {
     return (
@@ -123,13 +146,17 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
       </div>
     );
   };
-  const dblist = backup.commonBackupInfo.responseList.filter((e) => {
+  const dbList =
+    backupType === BackupTypes.INCREMENT_BACKUP
+      ? incrementalBackup?.responseList
+      : backup.commonBackupInfo.responseList;
+  const filteredDBList = (dbList || []).filter((e) => {
     return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
   });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
-        data={dblist}
+        data={filteredDBList}
         expandableRow={() => true}
         expandComponent={expandTables}
         expandColumnOptions={{
@@ -239,8 +266,13 @@ const IncrementalBackupCard = ({
   ...rest
 }: { backup: IBackup; incrementalBackup: ICommonBackupInfo } & YSQLTableProps) => {
   const backup_type =
-    incrementalBackup.backupUUID === incrementalBackup.baseBackupUUID ? 'FULL BACKUP' : 'INCREMENT';
+    incrementalBackup.backupUUID === incrementalBackup.baseBackupUUID
+      ? BackupTypes.FULL_BACKUP
+      : BackupTypes.INCREMENT_BACKUP;
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
+
+  const queryClient = useQueryClient();
 
   let listComponent = null;
   if (isExpanded) {
@@ -248,11 +280,38 @@ const IncrementalBackupCard = ({
       backup.backupType === TableType.YQL_TABLE_TYPE ||
       backup.backupType === TableType.REDIS_TABLE_TYPE
     ) {
-      listComponent = <YCQLTableList backup={backup} {...rest} />;
+      listComponent = (
+        <YCQLTableList
+          backup={backup}
+          incrementalBackup={incrementalBackup}
+          backupType={backup_type}
+          {...rest}
+        />
+      );
     } else {
-      listComponent = <YSQLTableList backup={backup} {...rest} />;
+      listComponent = (
+        <YSQLTableList
+          backup={backup}
+          incrementalBackup={incrementalBackup}
+          backupType={backup_type}
+          {...rest}
+        />
+      );
     }
   }
+
+  const doDeleteBackup = useMutation(() => deleteIncrementalBackup(incrementalBackup), {
+    onSuccess: () => {
+      toast.success('Incremental backup deletion is in progress');
+      queryClient.invalidateQueries([
+        'incremental_backups',
+        backup.commonBackupInfo.baseBackupUUID
+      ]);
+    },
+    onError: (err: any) => {
+      toast.error(createErrorMessage(err));
+    }
+  });
 
   return (
     <div className="incremental-card" key={incrementalBackup.backupUUID}>
@@ -276,11 +335,36 @@ const IncrementalBackupCard = ({
       </div>
       <div className="incremental-backup-actions">
         <StatusBadge statusType={incrementalBackup.state as any} />
-        {!rest.hideRestore && (
+        {[Backup_States.FAILED, Backup_States.FAILED_TO_DELETE, Backup_States.STOPPED].includes(
+          incrementalBackup.state
+        ) && (
+          <>
+            <YBButton
+              btnIcon="fa fa-trash-o"
+              btnText="Delete"
+              className="incremental-backup-action-button incremental-backup-delete-button"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                setShowDeleteConfirmDialog(true);
+              }}
+            />
+            <YBModal
+              name="delete-incremental-backup"
+              title="Confirm Delete"
+              className="backup-modal"
+              showCancelButton
+              onFormSubmit={() => doDeleteBackup.mutate()}
+              onHide={() => setShowDeleteConfirmDialog(false)}
+              visible={showDeleteConfirmDialog}
+            >
+              Are you sure you want to delete this incremental backup?
+            </YBModal>
+          </>
+        )}
+        {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
           <YBButton
             btnText="Restore to this point"
-            disabled={incrementalBackup.state !== Backup_States.COMPLETED}
-            className="incremental-backup-restore-button"
+            className="incremental-backup-action-button incremental-backup-restore-button"
             onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
               const { onRestore } = rest;
               e.stopPropagation();

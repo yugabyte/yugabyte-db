@@ -76,7 +76,7 @@ public class TestGetTabletsApiCdc extends CDCBaseClass {
 
     // Since there is one tablet only, verify its tablet ID.
     TabletCheckpointPair pair = respBeforeSplit.getTabletCheckpointPairList().get(0);
-    assertEquals(tabletId, pair.getTabletId().toStringUtf8());
+    assertEquals(tabletId, pair.getTabletLocations().getTabletId().toStringUtf8());
 
     ybClient.flushTable(testSubscriber.getTableId());
 

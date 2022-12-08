@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_METADATA_H
-#define YB_ROCKSDB_METADATA_H
+#pragma once
 
 #include <stdint.h>
 
@@ -356,5 +355,3 @@ struct LiveFileMetaData : SstFileMetaData {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_METADATA_H

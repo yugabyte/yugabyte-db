@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_LOCAL_TABLET_WRITER_H_
-#define YB_TABLET_LOCAL_TABLET_WRITER_H_
+#pragma once
 
 #include <future>
 #include <vector>
@@ -79,4 +78,3 @@ class LocalTabletWriter : public WriteQueryContext {
 
 }  // namespace tablet
 }  // namespace yb
-#endif  // YB_TABLET_LOCAL_TABLET_WRITER_H_

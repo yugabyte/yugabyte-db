@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_INDEX_READER_H
-#define YB_ROCKSDB_TABLE_INDEX_READER_H
+#pragma once
 
 #include <stddef.h>
 
@@ -225,5 +224,3 @@ class MultiLevelIndexReader : public IndexReader {
 };
 
 } // namespace rocksdb
-
-#endif  // YB_ROCKSDB_TABLE_INDEX_READER_H

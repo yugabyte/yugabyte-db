@@ -13,7 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"

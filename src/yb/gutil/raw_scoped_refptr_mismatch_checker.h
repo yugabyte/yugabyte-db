@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
-#define YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/template_util.h"
@@ -139,5 +138,3 @@ struct ParamsUseScopedRefptrCorrectly<Tuple8<A, B, C, D, E, F, G, H> > {
 }  // namespace internal
 
 }  // namespace yb
-
-#endif // YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_

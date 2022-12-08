@@ -33,8 +33,7 @@
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
-#ifndef YB_UTIL_SLICE_H_
-#define YB_UTIL_SLICE_H_
+#pragma once
 
 #include <compare>
 #include <string>
@@ -60,6 +59,8 @@ class Slice {
   Slice(const uint8_t* d, size_t n) : begin_(d), end_(d + n) {}
   // Create a slice that refers to d[0,n-1].
   Slice(const char* d, size_t n) : Slice(to_uchar_ptr(d), n) {}
+
+  Slice(const std::byte* d, size_t n) : Slice(pointer_cast<const uint8_t*>(d), n) {}
 
   // Create a slice that refers to [begin, end).
   Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {}
@@ -149,6 +150,9 @@ class Slice {
   void CopyTo(void* buffer) const {
     memcpy(buffer, begin_, size());
   }
+
+  void AppendTo(std::string* out) const;
+  void AssignTo(std::string* out) const;
 
   // Truncate the slice to "n" bytes
   void truncate(size_t n);
@@ -409,5 +413,3 @@ typedef yb::Slice Slice;
 typedef yb::SliceParts SliceParts;
 
 }  // namespace rocksdb
-
-#endif // YB_UTIL_SLICE_H_

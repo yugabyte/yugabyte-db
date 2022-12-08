@@ -177,8 +177,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Restore the backup.
     backup.ifPresent(replicationManager::restoreBackup);
 
-    // Fail any incomplete tasks that may be leftover from the backup that was restored.
-    taskManager.failAllPendingTasks();
+    // Handle any incomplete tasks that may be leftover from the backup that was restored.
+    taskManager.handleAllPendingTasks();
 
     // Promote the local instance.
     PlatformInstance.getByAddress(localInstanceAddr)

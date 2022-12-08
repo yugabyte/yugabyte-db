@@ -32,7 +32,7 @@ loop:
 	elapasedTime := time.Since(start)
 	expectedMinTime := time.Duration(int(time.Second)*2*maxCount - 1)
 	if elapasedTime < expectedMinTime {
-		t.Errorf("Elpased time (%d) expected to be lesser than %d", elapasedTime, expectedMinTime)
+		t.Fatalf("Elapsed time (%d) expected to be lesser than %d", elapasedTime, expectedMinTime)
 	}
 	cancelFunc()
 	instance.WaitOnShutdown()

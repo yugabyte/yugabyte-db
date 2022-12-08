@@ -4,6 +4,7 @@ import React, { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
+
 import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
@@ -13,24 +14,23 @@ import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicke
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
-  MetricTraceName,
   METRIC_TIME_RANGE_OPTIONS,
   REPLICATION_LAG_ALERT_NAME,
   TABLE_LAG_GRAPH_EMPTY_METRIC,
   TIME_RANGE_TYPE
 } from '../constants';
+
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  YBTable,
   StandardMetricTimeRangeOption,
   Metrics
 } from '../XClusterTypes';
+import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './TableLagGraph.module.scss';
+import { getMaxNodeLagMetric } from '../ReplicationUtils';
 
-const COMMITTED_LAG_METRIC_TRACE_NAME =
-  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
 const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60_000;
 const GRAPH_WIDTH = 850;
 const GRAPH_HEIGHT = 600;
@@ -52,7 +52,6 @@ interface Props {
 
 export const TableLagGraph: FC<Props> = ({
   tableDetails: { tableName, tableUUID },
-  replicationUUID,
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -106,7 +105,11 @@ export const TableLagGraph: FC<Props> = ({
   const alertConfigQuery = useQuery(['alert', 'configurations', configurationFilter], () =>
     getAlertConfigurations(configurationFilter)
   );
-  const maxAcceptableLag = alertConfigQuery.data?.[0]?.thresholds?.SEVERE.threshold;
+  const maxAcceptableLag = Math.min(
+    ...alertConfigQuery.data.map(
+      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+    )
+  );
 
   if (tableMetricsQuery.isError) {
     return <YBErrorIndicator />;
@@ -120,14 +123,12 @@ export const TableLagGraph: FC<Props> = ({
   };
 
   /**
-   * Look for the trace that we are plotting ({@link METRIC_TRACE_NAME}).
-   * If found, then we try to add a trace for the max acceptable lag.
+   * Look for the traces that we are plotting ({@link METRIC_TRACE_NAME}).
+   * If found, then we also try to add a trace for the max acceptable lag.
    * If not found, then we just show no data.
    */
   const setTracesToPlot = (graphMetric: Metrics<'tserver_async_replication_lag_micros'>) => {
-    const metric = graphMetric.tserver_async_replication_lag_micros;
-    const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-    const trace = metric.data.find((trace) => trace.name === traceAlias);
+    const trace = getMaxNodeLagMetric(graphMetric);
 
     if (typeof maxAcceptableLag === 'number' && trace) {
       graphMetric.tserver_async_replication_lag_micros.data = [

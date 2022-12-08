@@ -17,7 +17,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -39,7 +38,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -257,9 +255,7 @@ public class UniverseInfoController extends AuthenticatedController {
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
-          InputStream is = FileUtils.getInputStreamOrFail(file);
-          file.delete(); // TODO: should this be done in finally?
-          // return the file to client
+          InputStream is = FileUtils.getInputStreamOrFail(file, true /* deleteOnClose */);
           response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
           return ok(is).as("application/x-compressed");
         },

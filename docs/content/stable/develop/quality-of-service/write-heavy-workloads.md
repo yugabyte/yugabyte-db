@@ -4,7 +4,7 @@ headerTitle: Write-heavy workloads
 linkTitle: Write-heavy workloads
 description: Write-heavy workloads in YugabyteDB.
 headcontent: Write-heavy workloads in YugabyteDB.
-image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   stable:
     name: Write-heavy workloads

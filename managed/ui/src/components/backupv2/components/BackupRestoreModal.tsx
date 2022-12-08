@@ -67,7 +67,8 @@ interface RestoreModalProps {
 
 const TEXT_RESTORE = 'Restore';
 const TEXT_RENAME_DATABASE = 'Next: Rename Databases/Keyspaces';
-
+const RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG =
+  'Cannot restore ybc backup to non-ybc universe';
 const STEPS = [
   {
     title: 'Restore Backup',
@@ -115,14 +116,23 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-        return { value: config.metadata.configUUID, label: labelName };
-      })
+      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+      return { value: config.metadata.configUUID, label: labelName };
+    })
     : [];
 
   const restore = useMutation(
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
-      if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
+      const isYBCEnabledinTargetUniverse = isYBCEnabledInUniverse(
+        universeList!,
+        values['targetUniverseUUID'].value
+      );
+      if (backup_details.category === 'YB_CONTROLLER' && !isYBCEnabledinTargetUniverse) {
+        toast.error(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+        return Promise.reject(RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG);
+      }
+
+      if (isYBCEnabledinTargetUniverse && backup_details.category === 'YB_CONTROLLER') {
         values = omit(values, 'parallelThreads');
       }
       if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
@@ -269,11 +279,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     keyspaces:
       currentStep === 1
         ? Yup.array(
-            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-              message: 'Invalid keyspace name',
-              excludeEmptyString: true
-            })
-          )
+          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+            message: 'Invalid keyspace name',
+            excludeEmptyString: true
+          })
+        )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(1, 'Parallel threads should be greater than or equal to 1')
@@ -387,12 +397,17 @@ function RestoreChooseUniverseForm({
   }
 
   let isYbcEnabledinCurrentUniverse = false;
-
+  let showParallelThread = true;
+  
   if (isDefinedNotNull(values['targetUniverseUUID']?.value)) {
     isYbcEnabledinCurrentUniverse = isYBCEnabledInUniverse(
       universeList,
       values['targetUniverseUUID']?.value
     );
+  }
+
+  if(isYbcEnabledinCurrentUniverse && backup_details.category === 'YB_CONTROLLER'){
+    showParallelThread = false;
   }
 
   return (
@@ -414,6 +429,14 @@ function RestoreChooseUniverseForm({
           <h5>Restore to</h5>
         </Col>
       </Row>
+      {backup_details.category === 'YB_CONTROLLER' &&
+        isDefinedNotNull(values['targetUniverseUUID']?.value) &&
+        !isYbcEnabledinCurrentUniverse && (
+        <div>
+          <Alert bsStyle="danger">{RESTORE_YBC_BACKUP_TO_NON_BACKUP_UNIVERSE_MSG}</Alert>
+        </div>
+      )}
+
       <Row>
         <Col lg={8} className="no-padding">
           <Field
@@ -523,7 +546,7 @@ function RestoreChooseUniverseForm({
           </Col>
         </Row>
       )}
-      {!isYbcEnabledinCurrentUniverse && (
+      {showParallelThread && (
         <Row>
           <Col lg={8} className="no-padding">
             <Field
@@ -580,36 +603,37 @@ export function RenameKeyspace({
               values['searchText'] &&
               keyspace.keyspace &&
               keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
-                <Row key={index}>
-                  <Col lg={6} className="keyspaces-input no-padding">
-                    <Field
-                      name={`keyspaces[${index}]`}
-                      component={YBInputField}
-                      input={{
-                        disabled: true,
-                        value: keyspace.keyspace
-                      }}
-                    />
-                    {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
-                      <span className="err-msg">Name already exists. Rename to proceed</span>
-                    )}
-                  </Col>
-                  <Col lg={6}>
-                    <Field
-                      name={`keyspaces[${index}]`}
-                      component={YBInputField}
-                      input={{
-                        value: values['keyspaces'][`${index}`]
-                      }}
-                      onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
-                      placeHolder="Add new name"
-                    />
-                    {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
-                      <span className="err-msg">{errors['keyspaces'][index]}</span>
-                    )}
-                  </Col>
-                </Row>
-              )
+                // eslint-disable-next-line react/jsx-indent
+                  <Row key={index}>
+                    <Col lg={6} className="keyspaces-input no-padding">
+                      <Field
+                        name={`keyspaces[${index}]`}
+                        component={YBInputField}
+                        input={{
+                          disabled: true,
+                          value: keyspace.keyspace
+                        }}
+                      />
+                      {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
+                        <span className="err-msg">Name already exists. Rename to proceed</span>
+                      )}
+                    </Col>
+                    <Col lg={6}>
+                      <Field
+                        name={`keyspaces[${index}]`}
+                        component={YBInputField}
+                        input={{
+                          value: values['keyspaces'][`${index}`]
+                        }}
+                        onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
+                        placeHolder="Add new name"
+                      />
+                      {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
+                        <span className="err-msg">{errors['keyspaces'][index]}</span>
+                      )}
+                    </Col>
+                  </Row>
+                )
           )
         }
       />

@@ -21,9 +21,8 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -73,8 +72,7 @@ public class SupportBundleController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     // Do not create support bundle when either backup, update, or universe is paused
-    if (universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress
+    if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -100,6 +98,15 @@ public class SupportBundleController extends AuthenticatedController {
           BAD_REQUEST,
           "Creating support bundle for k8s universes is not enabled. "
               + "Please set k8s_enabled=true to create support bundle");
+    }
+
+    if (cloudType != CloudType.kubernetes
+        && bundleData.components.contains(ComponentType.K8sInfo)) {
+      bundleData.components.remove(ComponentType.K8sInfo);
+      log.warn(
+          "Component 'K8sInfo' is only applicable for kubernetes universes, not cloud type = "
+              + cloudType.toString()
+              + ". Continuing without it.");
     }
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
@@ -141,7 +148,7 @@ public class SupportBundleController extends AuthenticatedController {
       produces = "application/x-compressed")
   public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     SupportBundle bundle = SupportBundle.getOrBadRequest(bundleUUID);
 
     if (bundle.getStatus() != SupportBundleStatusType.Success) {

@@ -15,20 +15,22 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/schema_packing.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -794,24 +796,23 @@ void DocWriteBatch::Clear() {
   cache_.Clear();
 }
 
-void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
-  kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
+// TODO(lw_uc) allocate entries on the same arena, then just reference them.
+void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) {
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->swap(entry.key);
-    kv_pair->mutable_value()->swap(entry.value);
+    auto* kv_pair = kv_pb->add_write_pairs();
+    kv_pair->dup_key(entry.key);
+    kv_pair->dup_value(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }
 }
 
-void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
-  kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
+void DocWriteBatch::TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->assign(entry.key);
-    kv_pair->mutable_value()->assign(entry.value);
+    auto* kv_pair = kv_pb->add_write_pairs();
+    kv_pair->dup_key(entry.key);
+    kv_pair->dup_value(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());

@@ -20,7 +20,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/utilities/table_properties_collectors.h"
 namespace rocksdb {
 
@@ -115,4 +114,3 @@ class CompactOnDeletionCollector : public TablePropertiesCollector {
   bool need_compaction_;
 };
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

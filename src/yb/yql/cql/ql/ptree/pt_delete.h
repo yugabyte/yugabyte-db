@@ -15,8 +15,7 @@
 // Tree node definitions for DELETE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DELETE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_DELETE_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -89,5 +88,3 @@ class PTDeleteStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_DELETE_H_

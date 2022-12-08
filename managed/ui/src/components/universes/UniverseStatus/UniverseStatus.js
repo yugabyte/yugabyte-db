@@ -2,8 +2,10 @@
 
 import React, { Component } from 'react';
 import { ProgressBar } from 'react-bootstrap';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { browserHistory } from 'react-router';
 
+import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { YBButton } from '../../common/forms/fields';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
   getUniversePendingTask,
@@ -24,7 +26,7 @@ export default class UniverseStatus extends Component {
     } = this.props;
 
     if (
-      (universeDetails.updateInProgress || universeDetails.backupInProgress) &&
+      (universeDetails.updateInProgress) &&
       !hasPendingTasksForUniverse(universeUUID, customerTaskList) &&
       hasPendingTasksForUniverse(universeUUID, prevProps.tasks.customerTaskList)
     ) {
@@ -32,12 +34,18 @@ export default class UniverseStatus extends Component {
     }
   }
 
+  redirectToTaskLogs = (taskUUID, universeUUID) => {
+    taskUUID ? browserHistory.push(`/tasks/${taskUUID}`)
+      : browserHistory.push(`/universes/${universeUUID}/tasks`);
+  }
+
   render() {
     const {
       currentUniverse,
       showLabelText,
       tasks: { customerTaskList },
-      showAlertsBadge
+      showAlertsBadge,
+      shouldDisplayTaskButton
     } = this.props;
 
     const universeStatus = getUniverseStatus(currentUniverse);
@@ -99,10 +107,24 @@ export default class UniverseStatus extends Component {
       universeStatus.state === universeState.BAD ||
       universeStatus.state === universeState.WARNING
     ) {
+      const currentUniverseFailedTask = customerTaskList?.filter((task) => {
+        return ((task.targetUUID === currentUniverse.universeUUID) && (
+          task.status === "Failure" || task.status === "Aborted"
+        ));
+      });
+      const failedTask = currentUniverseFailedTask?.[0];
       statusDisplay = (
-        <div>
+        <div className={showLabelText ? "status-error" : ""}>
           <i className="fa fa-warning" />
-          {showLabelText && universeStatus.state.text && <span>{universeStatus.state.text}</span>}
+          {showLabelText && (failedTask ?
+            <span className="status-error__reason">{`${failedTask.type} ${failedTask.target} failed`}</span>
+            : <span>{universeStatus.state.text}</span>)
+          }
+          {shouldDisplayTaskButton
+            && !universePendingTask
+            && <YBButton btnText={'View Details'} btnClass="btn btn-default view-task-details-btn" onClick={() =>
+                this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)} />
+          }
         </div>
       );
     }

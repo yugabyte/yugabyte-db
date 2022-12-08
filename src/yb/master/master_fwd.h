@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_FWD_H
-#define YB_MASTER_MASTER_FWD_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -80,6 +79,7 @@ class SysRowEntries;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
+class XClusterSafeTimeService;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlTablegroupManager;
@@ -96,7 +96,6 @@ using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
 
 class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;
-using TableInfoMap = std::map<TableId, TableInfoPtr>;
 
 class TabletInfo;
 using TabletInfoPtr = scoped_refptr<TabletInfo>;
@@ -141,5 +140,3 @@ class CatalogManager;
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_FWD_H

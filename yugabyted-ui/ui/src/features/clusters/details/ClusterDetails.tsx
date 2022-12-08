@@ -8,8 +8,8 @@ import {
   Box,
 } from '@material-ui/core';
 
-import { OverviewTab } from '@app/features/clusters/details/overview/OverviewTab';
-import { TablesTab } from '@app/features/clusters/details/tables/TablesTab';
+// import { OverviewTab } from '@app/features/clusters/details/overview/OverviewTab';
+// import { TablesTab } from '@app/features/clusters/details/tables/TablesTab';
 import { NodesTab } from '@app/features/clusters/details/nodes/NodesTab';
 
 // import { PerformanceTab } from '@app/features/clusters/details/performance/PerformanceTab';
@@ -95,16 +95,16 @@ export interface ITabListItem {
 }
 
 const tabList: ITabListItem[] = [
-  {
-    name: 'tabOverview',
-    component: OverviewTab,
-    testId: 'ClusterTabList-Overview'
-  },
-  {
-    name: 'tabTables',
-    component: TablesTab,
-    testId: 'ClusterTabList-Tables'
-  },
+//   {
+//     name: 'tabOverview',
+//     component: OverviewTab,
+//     testId: 'ClusterTabList-Overview'
+//   },
+//   {
+//     name: 'tabTables',
+//     component: TablesTab,
+//     testId: 'ClusterTabList-Tables'
+//   },
   {
     name: 'tabNodes',
     component: NodesTab,

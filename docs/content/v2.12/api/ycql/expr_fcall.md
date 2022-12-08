@@ -16,19 +16,19 @@ Use a function call expression to apply the specified function to given argument
 
 ## Syntax
 
-```
+```sql
 function_call ::= function_name '(' [ arguments ... ] ')'
 ```
 
-## Builtin Functions
+## Built-in Functions
 
 | Function | Return Type | Argument Type | Description |
 |----------|-------------|---------------|-------------|
 | BlobAs\<Type> | \<Type> | ([`BLOB`](../type_blob)) | Converts a value from `BLOB` |
 | \<Type>AsBlob | [`BLOB`](../type_blob) | (\<Type>) | Converts a value to `BLOB` |
 | [DateOf](../function_datetime/#dateof) | [`TIMESTAMP`](../type_datetime) | ([`TIMEUUID`](../type_uuid)) | Conversion |
-| MaxTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time uuid  |
-| MinTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time uuid  |
+| MaxTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated max time UUID  |
+| MinTimeUuid | [`TIMEUUID`](../type_uuid) | ([`TIMESTAMP`](../type_datetime)) | Returns the associated min time UUID  |
 | [CurrentDate](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`DATE`](../type_datetime) | () | Return the system current date |
 | [CurrentTime](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIME`](../type_datetime) | () | Return the system current time of day |
 | [CurrentTimestamp](../function_datetime/#currentdate-currenttime-and-currenttimestamp) | [`TIMESTAMP`](../type_datetime) | () | Return the system current timestamp |
@@ -60,19 +60,23 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 ## Semantics
 
-<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
-<li>Function execution will return a value of the specified type by the function definition.</li>
-<li>YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+- The argument data types must be convertible to the expected type for that argument that was specified by the function definition.
+- Function execution will return a value of the specified type by the function definition.
+- YugabyteDB allows function calls to be used any where that expression is allowed.
 
-## Cast function
-
-```
-cast_call ::= CAST '(' column AS type ')'
-```
+## CAST function
 
 CAST function converts the value returned from a table column to the specified data type.
 
-| Source Column Type | Target Data Type |
+### Syntax
+
+```sql
+cast_call ::= CAST '(' column AS type ')'
+```
+
+The following table lists the column data types and the target data types.
+
+| Source column type | Target data type |
 |--------------------|------------------|
 | `BIGINT` | `SMALLINT`, `INT`, `TEXT` |
 | `BOOLEAN` | `TEXT` |
@@ -85,18 +89,39 @@ CAST function converts the value returned from a table column to the specified d
 | `TIMESTAMP` | `DATE`, `TEXT` |
 | `TIMEUUID` | `DATE`, `TIMESTAMP` |
 
+### Example
+
+```sql
+ycqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
+```
+
+```sql
+ycqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
+```
+
+```sql
+ycqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
+```
+
+```output
+ cast(ts as date)
+------------------
+       2018-10-09
+```
 
 ## partition_hash function
+
 `partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
 The hash values used for partitioning fall in the `0-65535` (uint16) range.
 Tables are partitioned into tablets, with each tablet being responsible for a range of partition values.
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
-`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown
+`partition_hash` can be beneficial for querying a subset of the data to get approximate row counts or to break down
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
+
 One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
 For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 
@@ -104,11 +129,14 @@ For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 create table t (h1 int, h2 int, r1 int, r2 int, v int,
                          primary key ((h1, h2), r1, r2));
 ```
-We can use this function to query a subset of the data (in this case, 1/128 of the data):
+
+You can use this function to query a subset of the data (in this case, 1/128 of the data) as follows:
+
 ```sql
 select count(*) from t where partition_hash(h1, h2) >= 0 and
                                       partition_hash(h1, h2) < 512;
 ```
+
 The value `512` comes from dividing the full hash partition range by the number of subsets that you want to query (`65536/128=512`).
 
 ### Parallel full table scans
@@ -129,7 +157,7 @@ and so on, till the last segment/range of `512` in the partition space:
 .. where partition_hash(h1, h2) >= 65024;
 ```
 
-Here is a full implementation of a parallel table scan using `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc).
+Refer to `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc) for full implementation of a parallel table scan.
 
 ## WriteTime function
 
@@ -159,26 +187,6 @@ SELECT TTL(views) FROM page_views;
       86367
 
 (1 rows)
-```
-
-## Examples
-
-```sql
-ycqlsh:example> CREATE TABLE test_cast (k INT PRIMARY KEY, ts TIMESTAMP);
-```
-
-```sql
-ycqlsh:example> INSERT INTO test_cast (k, ts) VALUES (1, '2018-10-09 12:00:00');
-```
-
-```sql
-ycqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
-```
-
-```
- cast(ts as date)
-------------------
-       2018-10-09
 ```
 
 ## See also

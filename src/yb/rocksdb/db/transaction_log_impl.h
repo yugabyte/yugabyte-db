@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #pragma once
 #include <vector>
 
@@ -138,4 +137,3 @@ class TransactionLogIteratorImpl : public TransactionLogIterator {
   Status OpenLogReader(const LogFile* file);
 };
 }  //  namespace rocksdb
-#endif  // ROCKSDB_LITE

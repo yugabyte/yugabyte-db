@@ -8,7 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
@@ -37,7 +37,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,8 +91,24 @@ public class GFlagsUtil {
   public static final String CERT_NODE_FILENAME = "cert_node_filename";
   public static final String CERTS_DIR = "certs_dir";
   public static final String CERTS_FOR_CLIENT_DIR = "certs_for_client_dir";
+  public static final String WEBSERVER_REDIRECT_HTTP_TO_HTTPS = "webserver_redirect_http_to_https";
+  public static final String WEBSERVER_CERTIFICATE_FILE = "webserver_certificate_file";
+  public static final String WEBSERVER_PRIVATE_KEY_FILE = "webserver_private_key_file";
+  public static final String WEBSERVER_CA_CERTIFICATE_FILE = "webserver_ca_certificate_file";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
+  public static final String TSERVER_DIR = "/tserver";
+  public static final String POSTGRES_BIN_DIR = "/postgres/bin";
+  public static final String TSERVER_BIN_DIR = TSERVER_DIR + "/bin";
+  public static final String TSERVER_POSTGRES_BIN_DIR = TSERVER_DIR + POSTGRES_BIN_DIR;
+  public static final String YB_ADMIN_PATH = TSERVER_BIN_DIR + "/yb-admin";
+  public static final String YB_CTL_PATH = TSERVER_BIN_DIR + "/yb-ctl";
+  public static final String YSQL_DUMP_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysql_dump";
+  public static final String YSQL_DUMPALL_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysql_dumpall";
+  public static final String YSQLSH_PATH = TSERVER_POSTGRES_BIN_DIR + "/ysqlsh";
+  public static final String YCQLSH_PATH = TSERVER_BIN_DIR + "/ycqlsh";
+  public static final String REDIS_CLI_PATH = TSERVER_BIN_DIR + "/redis-cli";
+  public static final String CORES_DIR_PATH = "/cores";
   public static final String YBC_MAX_CONCURRENT_UPLOADS = "max_concurrent_uploads";
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
@@ -192,7 +207,7 @@ public class GFlagsUtil {
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
-    } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.name())) {
+    } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -251,6 +266,14 @@ public class GFlagsUtil {
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
+    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
     ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     if (node.isMaster) {
       ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
@@ -412,6 +435,19 @@ public class GFlagsUtil {
     }
     if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
       gflags.put(CERTS_FOR_CLIENT_DIR, certsForClientDir);
+    }
+
+    boolean httpsEnabledUI =
+        universe.getConfig().getOrDefault(Universe.HTTPS_ENABLED_UI, "false").equals("true");
+    if (httpsEnabledUI) {
+      gflags.put(
+          WEBSERVER_CERTIFICATE_FILE,
+          String.format("%s/node.%s.crt", certsDir, node.cloudInfo.private_ip));
+      gflags.put(
+          WEBSERVER_PRIVATE_KEY_FILE,
+          String.format("%s/node.%s.key", certsDir, node.cloudInfo.private_ip));
+      gflags.put(WEBSERVER_CA_CERTIFICATE_FILE, String.format("%s/ca.crt", certsDir));
+      gflags.put(WEBSERVER_REDIRECT_HTTP_TO_HTTPS, "true");
     }
     return gflags;
   }
@@ -707,5 +743,14 @@ public class GFlagsUtil {
         return (userIntent, s) -> setter.accept(userIntent, Boolean.valueOf(s));
       }
     };
+  }
+
+  public static Set<String> getDeletedGFlags(
+      Map<String, String> currentGFlags, Map<String, String> updatedGFlags) {
+    return currentGFlags
+        .keySet()
+        .stream()
+        .filter(flag -> !updatedGFlags.containsKey(flag))
+        .collect(Collectors.toSet());
   }
 }

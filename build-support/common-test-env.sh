@@ -962,7 +962,7 @@ handle_cxx_test_failure() {
     test_failed=true
   fi
 
-  if [[ ${test_failed} == "true" ]]; then
+  if [[ ${test_failed} == "true" || ${YB_FORCE_REWRITE_TEST_LOGS:-0} == "1" ]]; then
     (
       rewrite_test_log "${test_log_path}"
       echo
@@ -1021,8 +1021,11 @@ run_postproces_test_result_script() {
       --fatal-details-path-prefix "$YB_FATAL_DETAILS_PATH_PREFIX"
     )
   fi
-  "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
-    "${args[@]}" "$@"
+  (
+    export PYTHONPATH=${YB_SRC_ROOT}/python
+    "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
+      "${args[@]}" "$@"
+  )
 }
 
 rewrite_test_log() {
@@ -1742,6 +1745,7 @@ run_java_test() {
   fi
 
   if [[ -f ${test_log_path} ]]; then
+    # On Jenkins, this will only happen for failed tests. (See the logic above.)
     rewrite_test_log "${test_log_path}"
   fi
   if should_gzip_test_logs; then

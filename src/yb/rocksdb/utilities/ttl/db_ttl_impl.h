@@ -16,12 +16,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
-#define YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <deque>
 #include <string>
 #include <vector>
@@ -338,6 +335,3 @@ class TtlMergeOperator : public MergeOperator {
   Env* env_;
 };
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H

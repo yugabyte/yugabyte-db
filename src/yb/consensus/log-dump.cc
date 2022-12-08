@@ -36,7 +36,6 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/schema.h"
@@ -44,6 +43,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 
@@ -63,31 +63,31 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
-DEFINE_bool(print_headers, true, "print the log segment headers/footers");
-DEFINE_bool(filter_log_segment, false, "filter the input log segment");
-DEFINE_string(print_entries, "decoded",
+DEFINE_UNKNOWN_bool(print_headers, true, "print the log segment headers/footers");
+DEFINE_UNKNOWN_bool(filter_log_segment, false, "filter the input log segment");
+DEFINE_UNKNOWN_string(print_entries, "decoded",
               "How to print entries:\n"
               "  false|0|no = don't print\n"
               "  true|1|yes|decoded = print them decoded\n"
               "  pb = print the raw protobuf\n"
               "  id = print only their ids");
-DEFINE_int32(truncate_data, 100,
+DEFINE_UNKNOWN_int32(truncate_data, 100,
              "Truncate the data fields to the given number of bytes "
              "before printing. Set to 0 to disable");
 
-DEFINE_int64(min_op_term_to_omit, yb::OpId::Invalid().term,
+DEFINE_UNKNOWN_int64(min_op_term_to_omit, yb::OpId::Invalid().term,
              "Term of first record (inclusive) to omit from the result for --filter_log_segment");
 
-DEFINE_int64(min_op_index_to_omit, yb::OpId::Invalid().index,
+DEFINE_UNKNOWN_int64(min_op_index_to_omit, yb::OpId::Invalid().index,
              "Index of first record (inclusive) to omit from the result for --filter_log_segment");
 
-DEFINE_int64(max_op_term_to_omit, yb::OpId::Invalid().term,
+DEFINE_UNKNOWN_int64(max_op_term_to_omit, yb::OpId::Invalid().term,
              "Term of last record (inclusive) to omit from the result for --filter_log_segment");
 
-DEFINE_int64(max_op_index_to_omit, yb::OpId::Invalid().index,
+DEFINE_UNKNOWN_int64(max_op_index_to_omit, yb::OpId::Invalid().index,
              "Index of last record (inclusive) to omit from the result for --filter_log_segment");
 
-DEFINE_string(output_wal_dir, "", "WAL directory for the output of --filter_log_segment");
+DEFINE_UNKNOWN_string(output_wal_dir, "", "WAL directory for the output of --filter_log_segment");
 
 namespace yb {
 namespace log {
@@ -183,18 +183,18 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   Schema tablet_schema;
   RETURN_NOT_OK(SchemaFromPB(segment->header().schema(), &tablet_schema));
 
-  for (const auto& entry : read_entries.entries) {
-
+  for (const auto& lw_entry : read_entries.entries) {
+    auto entry = lw_entry->ToGoogleProtobuf();
     if (print_type == PRINT_PB) {
       if (FLAGS_truncate_data > 0) {
-        pb_util::TruncateFields(entry.get(), FLAGS_truncate_data);
+        pb_util::TruncateFields(&entry, FLAGS_truncate_data);
       }
 
-      cout << "Entry:\n" << entry->DebugString();
+      cout << "Entry:\n" << entry.DebugString();
     } else if (print_type == PRINT_DECODED) {
-      RETURN_NOT_OK(PrintDecoded(*entry, tablet_schema));
+      RETURN_NOT_OK(PrintDecoded(entry, tablet_schema));
     } else if (print_type == PRINT_ID) {
-      PrintIdOnly(*entry);
+      PrintIdOnly(entry);
     }
   }
   if (FLAGS_print_headers && segment->HasFooter()) {
@@ -345,9 +345,7 @@ Status FilterLogSegment(const string& segment_path) {
       num_omitted++;
       continue;
     }
-    RETURN_NOT_OK(log->Append(
-        entry_ptr.release(), read_entries.entry_metadata[i],
-        /* skip_wal_rewrite */ false));
+    RETURN_NOT_OK(log->Append(entry_ptr, read_entries.entry_metadata[i], SkipWalWrite::kFalse));
     num_included++;
   }
   LOG(INFO) << "Included " << num_included << " entries, omitted " << num_omitted << " entries";

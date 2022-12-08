@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
@@ -245,6 +246,7 @@ public class UniverseCRUDHandler {
         } catch (Exception e) {
           LOG.error("Failed to calculate update options", e);
         }
+        UniverseResp.fillClusterRegions(taskParams.clusters);
       } catch (IllegalStateException | UnsupportedOperationException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
@@ -494,6 +496,23 @@ public class UniverseCRUDHandler {
     if (taskParams.getPrimaryCluster() != null) {
       UniverseDefinitionTaskParams.UserIntent userIntent =
           taskParams.getPrimaryCluster().userIntent;
+
+      if (taskParams.enableYbc) {
+        if (Util.compareYbVersions(
+                userIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+            < 0) {
+          taskParams.enableYbc = false;
+          LOG.error(
+              "Ybc installation is skipped on universe with DB version lower than "
+                  + Util.YBC_COMPATIBLE_DB_VERSION);
+        } else {
+          taskParams.ybcSoftwareVersion =
+              StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+                  ? taskParams.ybcSoftwareVersion
+                  : ybcManager.getStableYbcVersion();
+        }
+      }
+
       if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
         taskParams.setTxnTableWaitCountFlag = true;
       }
@@ -518,6 +537,9 @@ public class UniverseCRUDHandler {
         }
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
+      for (Cluster readOnlyCluster : taskParams.getReadOnlyClusters()) {
+        validateConsistency(taskParams.getPrimaryCluster(), readOnlyCluster);
       }
     }
 
@@ -546,30 +568,16 @@ public class UniverseCRUDHandler {
 
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
-      if (taskParams.enableYbc) {
-        taskParams.ybcSoftwareVersion =
-            StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
-                ? taskParams.ybcSoftwareVersion
-                : ybcManager.getStableYbcVersion();
-      }
-
       if (primaryCluster != null) {
         UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
-        if (taskParams.enableYbc
-            && Util.compareYbVersions(
-                    primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
-                < 0) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "Cannot install universe with DB version lower than "
-                  + Util.YBC_COMPATIBLE_DB_VERSION);
-        }
+
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
               ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+          universe.save();
           // TODO(bhavin192): remove the flag once the new naming style
           // is stable enough.
           if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.use_new_helm_naming")) {
@@ -613,9 +621,14 @@ public class UniverseCRUDHandler {
             taskParams.cmkArn = new String(cmkArnBytes);
           }
         }
+        if (Universe.shouldEnableHttpsUI(
+            primaryIntent.enableNodeToNodeEncrypt, primaryIntent.ybSoftwareVersion)) {
+          universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
+        }
       }
 
       universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
+      universe.save();
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
       if (cloudEnabled) {
@@ -624,6 +637,7 @@ public class UniverseCRUDHandler {
         AvailabilityZone zone = provider.regions.get(0).zones.get(0);
         if (zone.secondarySubnet != null) {
           universe.updateConfig(ImmutableMap.of(Universe.DUAL_NET_LEGACY, "false"));
+          universe.save();
         }
       }
 
@@ -631,6 +645,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.USE_CUSTOM_IMAGE,
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
+      universe.save();
 
       Ebean.commitTransaction();
 
@@ -698,6 +713,10 @@ public class UniverseCRUDHandler {
 
     // Update Primary cluster
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    for (Cluster readOnlyCluster : u.getUniverseDetails().getReadOnlyClusters()) {
+      validateConsistency(primaryCluster, readOnlyCluster);
+    }
+
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -714,6 +733,7 @@ public class UniverseCRUDHandler {
   private UUID updateCluster(
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
+    validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
     TaskType taskType = TaskType.EditUniverse;
@@ -897,6 +917,13 @@ public class UniverseCRUDHandler {
               + universe.universeUUID);
     }
 
+    if (universe.isYbcEnabled()) {
+      taskParams.installYbc = true;
+      taskParams.enableYbc = true;
+      taskParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      taskParams.ybcInstalled = true;
+    }
+
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();
     List<Cluster> existingReadOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -950,7 +977,6 @@ public class UniverseCRUDHandler {
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     taskParams.clusters.add(primaryCluster);
-    // validateConsistency(primaryCluster, readOnlyCluster); // TODO: do we need this?
 
     // Set the provider code.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(addOnCluster.userIntent.provider));
@@ -1585,9 +1611,16 @@ public class UniverseCRUDHandler {
               taskParams.enableClientToNodeEncrypt,
               taskParams.rootAndClientRootCASame);
 
-      TlsToggleParams tlsToggleParams = new TlsToggleParams();
-      tlsToggleParams.enableNodeToNodeEncrypt = taskParams.enableNodeToNodeEncrypt;
-      tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
+      // taskParams has the same subset of overridable fields as TlsToggleParams.
+      // taskParams is already merged with universe details.
+      TlsToggleParams tlsToggleParams;
+      try {
+        tlsToggleParams =
+            Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), TlsToggleParams.class);
+      } catch (JsonProcessingException e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
+
       tlsToggleParams.allowInsecure =
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
       tlsToggleParams.rootCA =
@@ -1596,10 +1629,6 @@ public class UniverseCRUDHandler {
           isClientRootCA
               ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
               : null;
-      tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
-      tlsToggleParams.upgradeOption = taskParams.upgradeOption;
-      tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
-      tlsToggleParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
       return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
     }
 
@@ -1629,9 +1658,15 @@ public class UniverseCRUDHandler {
               universeDetails.nodePrefix,
               customer.uuid);
     }
-
-    CertsRotateParams certsRotateParams =
-        CertsRotateParams.mergeUniverseDetails(taskParams, universe.getUniverseDetails());
+    // taskParams has the same subset of overridable fields as CertsRotateParams.
+    // taskParams is already merged with universe details.
+    CertsRotateParams certsRotateParams;
+    try {
+      certsRotateParams =
+          Json.mapper().treeToValue(Json.mapper().valueToTree(taskParams), CertsRotateParams.class);
+    } catch (JsonProcessingException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }

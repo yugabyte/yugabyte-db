@@ -17,8 +17,7 @@
 // executed.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
-#define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
+#pragma once
 
 #include <string>
 
@@ -86,8 +85,8 @@ class QueryPagingState {
 
   // Load the paging state in DocDB responses.
   Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
-                                          int64_t number_of_new_rows,
-                                          bool has_nested_query);
+                                  int64_t number_of_new_rows,
+                                  bool has_nested_query);
 
   // Access functions to query_pb_.
   const std::string& table_id() const {
@@ -563,5 +562,3 @@ class ExecContext : public ProcessContextBase {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_

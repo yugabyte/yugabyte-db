@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_
-#define YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_
+#pragma once
 
 #include <memory>
 #include <string>
@@ -39,7 +38,7 @@ using PrefetchedDataHolder =
 // GetData method is used to access particular table data.
 class PgSysTablePrefetcher {
  public:
-  PgSysTablePrefetcher();
+  explicit PgSysTablePrefetcher(uint64_t latest_known_ysql_catalog_version);
   ~PgSysTablePrefetcher();
 
   // Register new sys table to be read on a first GetData method call.
@@ -55,5 +54,3 @@ class PgSysTablePrefetcher {
 
 } // namespace pggate
 } // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SYS_TABLE_PREFETCHER_H_

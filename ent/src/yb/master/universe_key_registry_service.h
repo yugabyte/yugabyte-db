@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
-#define ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
+#pragma once
 
 #include <string>
 
@@ -32,12 +31,10 @@ Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& univ
 
 // Rotate a new universe key into the sys catalog. Triggered by the user (yb-admin or YW).
 Status RotateUniverseKey(const Slice& old_universe_key,
-                                 const Slice& new_universe_key,
-                                 const std::string& new_key_version_id,
-                                 bool enable,
-                                 EncryptionInfoPB* encryption_info);
+                         const Slice& new_universe_key,
+                         const std::string& new_key_version_id,
+                         bool enable,
+                         EncryptionInfoPB* encryption_info);
 } // namespace enterprise
 } // namespace master
 } // namespace yb
-
-#endif // ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H

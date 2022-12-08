@@ -17,8 +17,7 @@
 // under the License.
 //
 
-#ifndef YB_GUTIL_REF_COUNTED_MEMORY_H_
-#define YB_GUTIL_REF_COUNTED_MEMORY_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -161,5 +160,3 @@ class BASE_EXPORT RefCountedMallocedMemory : public RefCountedMemory {
 };
 
 }  // namespace yb
-
-#endif // YB_GUTIL_REF_COUNTED_MEMORY_H_

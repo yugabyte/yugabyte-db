@@ -70,6 +70,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private String ns, ns1, ns2, ns3;
   private Map<String, String> expectedNodeNameToIP;
 
+  private AvailabilityZone az1, az2, az3;
   private Map<String, String> config = new HashMap<>();
   private Map<String, String> config1 = new HashMap<>();
   private Map<String, String> config2 = new HashMap<>();
@@ -80,9 +81,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private void setupUniverseMultiAZ(
       boolean setMasters, boolean enabledYEDIS, boolean setNamespace, boolean newNamingStyle) {
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
+    az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
+    az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
             defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -101,6 +102,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
     nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
     nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
@@ -121,8 +123,12 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       config2.put("KUBENAMESPACE", ns2);
 
       az1.updateConfig(config1);
+      az1.save();
       az2.updateConfig(config2);
+      az2.save();
       az3.updateConfig(config3);
+      az3.save();
+
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);
@@ -216,6 +222,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
     ns = NODE_PREFIX;
     if (setNamespace) {
@@ -223,6 +230,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       config.put("KUBECONFIG", "test-kc");
       config.put("KUBENAMESPACE", ns);
       az.updateConfig(config);
+      az.save();
     } else {
       config.put("KUBECONFIG", "test");
       defaultProvider.setConfig(config);
@@ -586,9 +594,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         true /* YEDIS/REDIS enabled */,
         false /* set namespace */,
         false /* new naming */);
-    config.put("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
-    defaultProvider.setConfig(config);
-    defaultProvider.save();
+    Map<String, String> azConfig =
+        ImmutableMap.of("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
+    az1.updateConfig(azConfig);
+    az1.save();
+    az2.updateConfig(azConfig);
+    az2.save();
+    az3.updateConfig(azConfig);
+    az3.save();
+
     setupCommon();
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();

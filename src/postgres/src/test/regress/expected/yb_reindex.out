@@ -122,10 +122,10 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                           QUERY PLAN
-----------------------------------------------------------------
+                              QUERY PLAN
+-----------------------------------------------------------------------
  YB Seq Scan on pg_depend
-   Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
+   Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
 /*+SeqScan(pg_depend) */
@@ -191,10 +191,10 @@ SELECT i FROM tmp WHERE j = -5;
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-          QUERY PLAN
--------------------------------
+              QUERY PLAN
+--------------------------------------
  YB Seq Scan on yb
-   Filter: (j = '-5'::integer)
+   Remote Filter: (j = '-5'::integer)
 (2 rows)
 
 /*+SeqScan(yb) */
@@ -390,10 +390,10 @@ EXPLAIN (costs off)
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-                           QUERY PLAN
-----------------------------------------------------------------
+                              QUERY PLAN
+-----------------------------------------------------------------------
  YB Seq Scan on pg_depend
-   Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
+   Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
 /*+SeqScan(pg_depend) */
@@ -425,10 +425,10 @@ SELECT deptype FROM pg_depend
 EXPLAIN (costs off)
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-          QUERY PLAN
--------------------------------
+              QUERY PLAN
+--------------------------------------
  YB Seq Scan on yb
-   Filter: (j = '-5'::integer)
+   Remote Filter: (j = '-5'::integer)
 (2 rows)
 
 /*+SeqScan(yb) */

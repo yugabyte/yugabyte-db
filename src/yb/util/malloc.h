@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MALLOC_H
-#define YB_UTIL_MALLOC_H
+#pragma once
 
 #include <cstdlib>
 
@@ -53,5 +52,3 @@ struct FreeDeleter {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_MALLOC_H

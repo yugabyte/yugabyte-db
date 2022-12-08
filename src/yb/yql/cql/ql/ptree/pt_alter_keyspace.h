@@ -15,8 +15,7 @@
 // Tree node definitions for ALTER KEYSPACE statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_ALTER_KEYSPACE_H_
-#define YB_YQL_CQL_QL_PTREE_PT_ALTER_KEYSPACE_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
@@ -72,5 +71,3 @@ class PTAlterKeyspace : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_ALTER_KEYSPACE_H_

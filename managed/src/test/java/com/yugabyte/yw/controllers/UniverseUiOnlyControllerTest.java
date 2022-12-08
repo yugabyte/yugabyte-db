@@ -19,6 +19,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -375,6 +376,31 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Result result = sendPrimaryCreateConfigureRequest(topJson);
     assertOk(result);
     assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testCreateRegionsFilled() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+
+    List<AvailabilityZone> azList = new ArrayList<>();
+    azList.add(az1);
+
+    UniverseDefinitionTaskParams taskParams = setupOnPremTestData(6, p, r, azList);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
+
+    updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
+
+    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
+    Result result = sendPrimaryCreateConfigureRequest(topJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    ArrayNode regionsArray = (ArrayNode) resultJson.get("clusters").get(0).get("regions");
+    assertFalse(regionsArray.isEmpty());
+    Region resultReginon = Json.fromJson(regionsArray.get(0), Region.class);
+    assertThat(resultReginon, equalTo(r));
   }
 
   @Test

@@ -34,13 +34,3 @@ Create a database user and provide the user with READ access to all the resource
    ```
 
    The `ybvoyager` user can now be used for migration.
-
-1. You'll need to provide the user and the source database details in the subsequent invocations of yb-voyager. For convenience, you can populate the information in the following environment variables:
-
-   ```sh
-   export SOURCE_DB_TYPE=mysql
-   export SOURCE_DB_HOST=localhost
-   export SOURCE_DB_USER=ybvoyager
-   export SOURCE_DB_PASSWORD=Password#123
-   export SOURCE_DB_NAME=source_db_name
-   ```

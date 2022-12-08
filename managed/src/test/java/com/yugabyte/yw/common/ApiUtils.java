@@ -4,7 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -54,11 +54,6 @@ public class ApiUtils {
 
   public static Universe.UniverseUpdater mockUniverseUpdater(
       final String nodePrefix, final Common.CloudType cloudType) {
-    return mockUniverseUpdater(nodePrefix, cloudType, false);
-  }
-
-  public static Universe.UniverseUpdater mockUniverseUpdater(
-      final String nodePrefix, final Common.CloudType cloudType, final boolean backupState) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -80,7 +75,7 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
-        universeDetails.backupInProgress = backupState;
+        universeDetails.updateInProgress = true;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -177,7 +172,7 @@ public class ApiUtils {
             node.azUuid = azUUIDList.get(azIndex);
           }
           if (userIntent.dedicatedNodes) {
-            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.TSERVER;
+            node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
           }
           universeDetails.nodeDetailsSet.add(node);
         }
@@ -187,7 +182,7 @@ public class ApiUtils {
               idx++) {
             NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true);
             node.isTserver = false;
-            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.MASTER;
+            node.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
             node.placementUuid = universeDetails.getPrimaryCluster().uuid;
             if (azUUIDList != null) {
               int azIndex = (idx - 1) % azUUIDList.size();

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_TRANSACTION_DUMP_H
-#define YB_DOCDB_TRANSACTION_DUMP_H
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
@@ -27,13 +26,14 @@ namespace yb {
 namespace docdb {
 
 YB_DEFINE_ENUM(TransactionDumpOp,
-               ((kApplyIntents, 1)) // Apply intents at participant.
+               ((kApplyIntent, 1)) // Apply intents at participant.
                ((kRead, 2)) // Any read.
                ((kCommit, 3)) // Transaction committed.
                ((kStatus, 4)) // Transaction status received.
                ((kConflicts, 5)) // Transaction conflicts.
                ((kApplied, 6)) // Transaction applied on all involved tablets.
                ((kRemove, 7)) // Transaction removed from participant.
+               ((kRemoveIntent, 8)) // Remove intents at participant.
                );
 
 void TransactionDump(const SliceParts& parts);
@@ -86,5 +86,3 @@ void TransactionDump(TransactionDumpOp op, Args&&... args) {
 
 } // namespace docdb
 } // namespace yb
-
-#endif  // YB_DOCDB_TRANSACTION_DUMP_H

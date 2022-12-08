@@ -16,14 +16,14 @@ type: docs
 
   <li>
     <a href="../cloud-add-vpc-aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../cloud-add-vpc-gcp/" class="nav-link active">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -52,9 +52,11 @@ For information on VPC network peering in GCP, refer to [VPC Network Peering ove
 
 To avoid cross-region data transfer costs, deploy your VPC in the same region as the application VPC you are peering with.
 
-> **What you need**<br>The CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
->
-> **Where to find it**<br>Navigate to the GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< tip title="What you need" >}}
+The CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
+
+**Where to find it**<br>Navigate to the GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< /tip >}}
 
 To create a VPC, do the following:
 
@@ -87,7 +89,7 @@ To deploy a cluster in a VPC:
 1. Choose **Dedicated**.
 1. Enter a name for the cluster, choose **GCP**, and click **Next**.
 1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
-For a **Multi-Region Deployment**, specify a VPC for each region.
+For a **Multi-Region Deployment**, select a region where the cluster is to be deployed, then select the VPC. The same VPC is used for all regions.
 
 For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
@@ -95,13 +97,15 @@ For more information on creating clusters, refer to [Create a cluster](../../cre
 
 After creating a VPC in YugabyteDB Managed that uses GCP, you can peer it with a GCP application VPC.
 
-> **What you need**<br>The following details for the GCP application VPC you are peering with:
->
-> - GCP project ID
-> - VPC name
-> - VPC CIDR address
->
-> **Where to find it**<br>Navigate to your GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< tip title="What you need" >}}
+The following details for the GCP application VPC you are peering with:
+
+- GCP project ID
+- VPC name
+- VPC CIDR address
+
+**Where to find it**<br>Navigate to your GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< /tip >}}
 
 To create a peering connection, do the following:
 
@@ -119,18 +123,20 @@ The peering connection is created with a status of _Pending_.
 
 To complete a _Pending_ GCP peering connection, you need to sign in to GCP and create a peering connection.
 
-> **What you need**<br>The **Project ID** and **VPC network name** of the YugabyteDB Managed VPC you are peering with.
->
-> **Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
+{{< tip title="What you need" >}}
+The **Project ID** and **VPC network name** of the YugabyteDB Managed VPC you are peering with.
+
+**Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
+{{< /tip >}}
 
 In the Google Cloud Console, do the following:
 
-1. Under **VPC network**, select [VPC network peering](https://console.cloud.google.com/networking/peering) and click **Create Peering Connection**.\
-\
+1. Under **VPC network**, select [VPC network peering](https://console.cloud.google.com/networking/peering) and click **Create Peering Connection**.
+
     ![VPC network peering in GCP](/images/yb-cloud/cloud-peer-gcp-1.png)
 
-1. Click **Continue** to display the **Create peering connection** details.\
-\
+1. Click **Continue** to display the **Create peering connection** details.
+
     ![Create peering connection in GCP](/images/yb-cloud/cloud-peer-gcp-2.png)
 
 1. Enter a name for the GCP peering connection.
@@ -144,9 +150,11 @@ When finished, the status of the peering connection in YugabyteDB Managed change
 
 To enable the peered application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
 
-> **What you need**<br>The CIDR address for the GCP application VPC you are peering with.
->
-> **Where to find it**<br>Navigate to the GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< tip title="What you need" >}}
+The CIDR address for the GCP application VPC you are peering with.
+
+**Where to find it**<br>Navigate to the GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+{{< /tip >}}
 
 To add the application VPC to the cluster IP allow list:
 

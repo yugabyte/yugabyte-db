@@ -43,13 +43,22 @@ COLOCATED_NAME_SUFFIX = '.colocated.parent.tablename'
 COLOCATED_UUID_RE_STR = UUID_RE_STR + COLOCATED_UUID_SUFFIX
 UUID_ONLY_RE = re.compile('^' + UUID_RE_STR + '$')
 NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
-COLOCATED_NEW_OLD_UUID_RE = re.compile(COLOCATED_UUID_RE_STR + '[ ]*\t' + COLOCATED_UUID_RE_STR)
+COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATED_UUID_RE_STR + '[ ]*\t' + COLOCATED_UUID_RE_STR)
+TABLEGROUP_UUID_SUFFIX = '.tablegroup.parent.uuid'
+TABLEGROUP_NAME_SUFFIX = '.tablegroup.parent.tablename'
+TABLEGROUP_UUID_RE_STR = UUID_RE_STR + TABLEGROUP_UUID_SUFFIX
+TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    TABLEGROUP_UUID_RE_STR + '[ ]*\t' + TABLEGROUP_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
 
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
+
+ACCESS_TOKEN_RE = re.compile(r'(.*?)--access_token=.*?( |\')')
+ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
 
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
@@ -82,10 +91,6 @@ SLEEP_IN_LEADERS_SEARCHING_ROUND_SEC = 20  # 5*(100 + 20) sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
-XXH64HASH_TOOL_PATH = '/usr/bin/xxh64sum'
-XXH64_FILE_EXT = 'xxh64'
-SHA_TOOL_PATH = '/usr/bin/sha256sum'
-SHA_FILE_EXT = 'sha256'
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 DEFAULT_REMOTE_YB_ADMIN_PATH = os.path.join(YB_HOME_DIR, 'master/bin/yb-admin')
@@ -96,6 +101,13 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/version_metadata.json')
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
+
+XXH64HASH_TOOL_PATH = os.path.join(YB_HOME_DIR, 'bin/xxhash')
+XXH64_FILE_EXT = 'xxh64'
+XXH64_X86_BIN = 'xxhsum_x86'
+XXH64_AARCH_BIN = 'xxhsum_aarch'
+SHA_TOOL_PATH = '/usr/bin/sha256sum'
+SHA_FILE_EXT = 'sha256'
 
 DISABLE_SPLITTING_MS = 30000
 DISABLE_SPLITTING_FREQ_SEC = 10
@@ -369,20 +381,26 @@ def compare_checksums_cmd(checksum_file1, checksum_file2, error_on_failure=False
 
 
 def get_db_name_cmd(dump_file):
-    return "sed -n '/CREATE DATABASE/{s|CREATE DATABASE||;s|WITH.*||;p}' " + pipes.quote(dump_file)
+    return r"sed -n 's/CREATE DATABASE\(.*\)WITH.*/\1/p' " + pipes.quote(dump_file)
 
 
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
-    return "sed -i '{}' {}".format(reg_exp, pipes.quote(dump_file))
+    return r"sed -i -e $'{}' {}".format(reg_exp, pipes.quote(dump_file))
 
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
     return apply_sed_edit_reg_exp_cmd(
         dump_file,
-        "s|DATABASE {0}|DATABASE {1}|;"
-        "s|\\\\connect {0}|\\\\connect {1}|;"
-        "s|\\\\connect {2}|\\\\connect {1}|;"
-        "s|\\\\connect -reuse-previous=on \\\"dbname=\\x27{2}\\x27\\\"|\\\\connect {1}|".format(
+        # Replace in YSQLDump:
+        #     CREATE DATABASE old_name ...                     -> CREATE DATABASE new_name ...
+        #     ALTER DATABASE old_name ...                      -> ALTER DATABASE new_name ...
+        #     \connect old_name                                -> \connect new_name
+        #     \connect "old_name"                              -> \connect new_name
+        #     \connect -reuse-previous=on "dbname='old_name'"  -> \connect new_name
+        r's|DATABASE {0}|DATABASE {1}|;'
+        r's|\\\\connect {0}|\\\\connect {1}|;'
+        r's|\\\\connect {2}|\\\\connect {1}|;'
+        r's|\\\\connect -reuse-previous=on \\"dbname=\x27{2}\x27\\"|\\\\connect {1}|'.format(
                 old_name, new_name, old_name.replace('"', "")))
 
 
@@ -403,19 +421,24 @@ def keyspace_type(keyspace):
     return 'ysql' if ('.' in keyspace) and (keyspace.split('.')[0].lower() == 'ysql') else 'ycql'
 
 
-def is_parent_colocated_table_name(table_name):
-    return table_name.endswith(COLOCATED_NAME_SUFFIX)
+def is_parent_table_name(table_name):
+    return table_name.endswith(COLOCATED_NAME_SUFFIX) or table_name.endswith(TABLEGROUP_NAME_SUFFIX)
 
 
 def get_postgres_oid_from_table_id(table_id):
-    return table_id[-4:]
+    # Table oid occupies the last 4 bytes in table UUID
+    return int(table_id[-8:], 16)
 
 
-def verify_colocated_table_ids(old_id, new_id):
-    # Assert that the postgres oids are the same.
-    if (get_postgres_oid_from_table_id(old_id) != get_postgres_oid_from_table_id(new_id)):
-        raise BackupException('Colocated tables have different oids: Old oid: {}, New oid: {}'
-                              .format(old_id, new_id))
+def verify_tablegroup_parent_table_ids(old_id, new_id):
+    # Perform check on tablegroup parent tables
+    if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+        # Assert that the postgres tablegroup oids are the same.
+        old_oid = get_postgres_oid_from_table_id(old_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
+        new_oid = get_postgres_oid_from_table_id(new_id.replace(TABLEGROUP_UUID_SUFFIX, ''))
+        if (old_oid != new_oid):
+            raise BackupException('Tablegroup parent table have different tablegroup oids: '
+                                  'Old oid: {}, New oid: {}'.format(old_oid, new_oid))
 
 
 def keyspace_name(keyspace):
@@ -575,6 +598,8 @@ class S3BackupStorage(AbstractBackupStorage):
                 % self.options.cloud_cfg_file_path]
         if self.options.args.disable_multipart:
             args.append('--disable-multipart')
+        if self.options.access_token:
+            args.append('--access_token=%s' % self.options.access_token)
         return args
 
     def upload_file_cmd(self, src, dest):
@@ -646,6 +671,9 @@ class NfsBackupStorage(AbstractBackupStorage):
         return ["rm", "-rf", pipes.quote(dest)]
 
     def backup_obj_size_cmd(self, backup_obj_location):
+        # On MAC 'du -sb' does not work: '-b' is not supported.
+        # It's possible to use another approach: size = 'du -sk'*1024.
+        # But it's not implemented because MAC is not the production platform now.
         return ["du", "-sb", backup_obj_location]
 
 
@@ -761,7 +789,8 @@ class YBTSConfig:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
         url = "{}:{}/varz?raw=1".format(tserver_ip, web_port)
-        output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
+        output = self.backup.run_program(
+            ['curl', url, '--silent', '--show-error', '--insecure', '--location'], num_retry=10)
 
         # Read '--placement_region'.
         if read_region:
@@ -1316,10 +1345,12 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
+            access_token = None
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     if metadata:
+                        access_token = metadata[2]
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
@@ -1356,6 +1387,11 @@ class YBBackup:
 
             os.chmod(self.cloud_cfg_file_path, 0o400)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
+            # access_token: Used when AWS credentials are used from IAM role. It
+            # is the identifier for temporary credentials, passed as command-line
+            # param with s3cmd, so that s3cmd does not try to refresh credentials
+            # on it's own.
+            options.access_token = access_token
         elif self.is_gcs():
             credentials = os.getenv('GCS_CREDENTIALS_JSON')
             if not credentials:
@@ -1402,12 +1438,36 @@ class YBBackup:
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
 
-        if self.args.mac:
-            XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
-            SHA_TOOL_PATH = '/usr/bin/shasum'
-
-        if self.args.disable_checksums:
+        if not self.args.disable_checksums:
+            live_tservers = self.get_live_tservers()
+            if live_tservers:
+                # Need to check the architecture for only first node, rest
+                # will be same in the cluster.
+                global XXH64HASH_TOOL_PATH
+                tserver = live_tservers[0]
+                try:
+                    self.run_ssh_cmd("[ -d '{}' ]".format(XXH64HASH_TOOL_PATH), tserver).strip()
+                    node_machine_arch = self.run_ssh_cmd(['uname', '-m'], tserver).strip()
+                    if node_machine_arch and 'x86' not in node_machine_arch:
+                        xxh64_bin = XXH64_AARCH_BIN
+                    else:
+                        xxh64_bin = XXH64_X86_BIN
+                    XXH64HASH_TOOL_PATH = os.path.join(XXH64HASH_TOOL_PATH, xxh64_bin)
+                    self.use_xxhash_checksum = True
+                except Exception:
+                    logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
+                    self.use_xxhash_checksum = False
+            else:
+                raise BackupException("No Live Tserver exists. "
+                                      "Check the tserver nodes status & try again.")
+        else:
             self.use_xxhash_checksum = False
+
+        if self.args.mac:
+            # As this arg is used only for the purpose of tests & we use hardcoded paths only
+            # defaulting it to shasum.
+            global SHA_TOOL_PATH
+            SHA_TOOL_PATH = '/usr/bin/shasum'
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -1825,7 +1885,7 @@ class YBBackup:
                         # all tables just add a single table from each colocation group to the table
                         # list.
                         if (not data.get('colocated', False)
-                                or is_parent_colocated_table_name(data['name'])):
+                                or is_parent_table_name(data['name'])):
                             snapshot_keyspaces.append(keyspaces[data['namespace_id']])
                             snapshot_tables.append(data['name'])
                             snapshot_table_uuids.append(object_id)
@@ -2198,9 +2258,9 @@ class YBBackup:
                 for data_dir in data_dirs:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                        ['find', data_dir,
-                         '!', '-readable', '-prune', '-o',
-                         '-name', TABLET_MASK,
+                        ['find', data_dir] +
+                        ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
+                        ['-name', TABLET_MASK,
                          '-and',
                          '-wholename', TABLET_DIR_GLOB.format(table_id),
                          '-print'],
@@ -2262,9 +2322,9 @@ class YBBackup:
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
         output = self.run_ssh_cmd(
-            ['find', data_dir,
-             '!', '-readable', '-prune', '-o',
-             '-name', snapshot_id, '-and',
+            ['find', data_dir] +
+            ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
+            ['-name', snapshot_id, '-and',
              '-wholename', SNAPSHOT_DIR_GLOB,
              '-print'],
             tserver_ip)
@@ -2385,53 +2445,6 @@ class YBBackup:
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
-
-    def check_if_use_xxhash_checksum(self):
-        # Checking the xxh64 binaries on single node(master leader).
-        # In case if the binary is absent on other host, script will fail during execution.
-        if self.args.disable_xxhash_checksum:
-            # Disable the xxhash checksum in case client specifies so.
-            self.use_xxhash_checksum = False
-        else:
-            try:
-                host_ip = self.get_main_host_ip()
-                if self.is_k8s():
-                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_addr_to_cfg)
-                    return self.run_program([
-                        'kubectl',
-                        'exec',
-                        '-t',
-                        '-n={}'.format(k8s_details.namespace),
-                        # For k8s, pick the first qualified name, if given a CNAME.
-                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
-                        env=k8s_details.env_config)
-                elif self.args.no_ssh:
-                    self.run_program([
-                        'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
-                    ])
-                else:
-                    ssh_key_path = self.args.ssh_key_path
-                    if self.ip_to_ssh_key_map:
-                        ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
-                    self.run_program([
-                        'ssh',
-                        '-o', 'StrictHostKeyChecking=no',
-                        '-o', 'UserKnownHostsFile=/dev/null',
-                        '-o', 'ControlMaster=auto',
-                        '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
-                        '-o', 'ControlPersist=1m',
-                        '-i', ssh_key_path,
-                        '-p', self.args.ssh_port,
-                        '-q',
-                        '%s@%s' % (self.args.ssh_user, host_ip),
-                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
-                    ])
-                self.use_xxhash_checksum = True
-            except subprocess.CalledProcessError as e:
-                self.use_xxhash_checksum = False
-                logging.warning(
-                    "Tool {} not found on host {}. Error: {}"
-                    .format(XXH64HASH_TOOL_PATH, host_ip, e))
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
         assert self.use_xxhash_checksum is not None
@@ -2685,6 +2698,22 @@ class YBBackup:
         del_cmd = self.storage.delete_obj_cmd(backup_path)
         if self.is_nfs():
             self.run_ssh_cmd(' '.join(del_cmd), self.get_leader_master_ip())
+
+            # Backup location of a keyspace is typically of the format
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-<keyspace>
+            # If there are 2 keyspaces keyspace1, keyspace2 in a universe, then the locations are
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace1 and
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace2.
+            # While deleting these backups we are deleting the directories multi-table-keyspace1
+            # and multi-table-keyspace2 but not deleting the empty directory backup-<backup_time>.
+            # The change here is to delete the backup-<backup_time> directory if empty.
+            del_dir_cmd = ["rm", "-df", pipes.quote(re.search('.*(?=/)', backup_path)[0])]
+            try:
+                self.run_ssh_cmd(' '.join(del_dir_cmd), self.get_leader_master_ip())
+            except Exception as ex:
+                if "Directory not empty" not in str(ex.output.decode('utf-8')):
+                    raise ex
+
         else:
             self.run_program(del_cmd)
 
@@ -2928,9 +2957,6 @@ class YBBackup:
         Creates a backup of the given table by creating a snapshot and uploading it to the provided
         backup location.
         """
-        if not self.args.disable_checksums:
-            # Define a tool for checksum calculation.
-            self.check_if_use_xxhash_checksum()
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
@@ -3092,10 +3118,6 @@ class YBBackup:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
             self.create_remote_tmp_dir(self.get_main_host_ip())
-
-        if not self.args.disable_checksums:
-            # Define a tool for checksum calculation.
-            self.check_if_use_xxhash_checksum()
 
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
@@ -3277,19 +3299,21 @@ class YBBackup:
                 elif entity == 'Snapshot':
                     snapshot_metadata['snapshot_id']['old'] = old_id
                     snapshot_metadata['snapshot_id']['new'] = new_id
-            elif COLOCATED_NEW_OLD_UUID_RE.search(line):
-                (entity, old_id, new_id) = split_by_tab(line)
-                if entity == 'ParentColocatedTable':
-                    verify_colocated_table_ids(old_id, new_id)
-                    snapshot_metadata['table'][new_id] = old_id
-                    logging.info('Imported colocated table id was changed from {} to {}'
-                                 .format(old_id, new_id))
                 elif entity == 'ColocatedTable':
-                    # A colocated table's tablets are kept under its corresponding parent colocated
-                    # table, so we just need to verify the table ids now.
-                    verify_colocated_table_ids(old_id, new_id)
                     logging.info('Imported colocated table id was changed from {} to {}'
                                  .format(old_id, new_id))
+            elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                # Parent colocated/tablegroup table
+                (entity, old_id, new_id) = split_by_tab(line)
+                assert entity == 'ParentColocatedTable'
+                if old_id.endswith(TABLEGROUP_UUID_SUFFIX):
+                    verify_tablegroup_parent_table_ids(old_id, new_id)
+                snapshot_metadata['table'][new_id] = old_id
+                # Colocated parent table includes both tablegroup parent table
+                # and colocated database parent table.
+                logging.info('Imported colocated parent table id was changed from {} to {}'
+                             .format(old_id, new_id))
 
         tablet_locations = {}
         if self.manifest.is_loaded():
@@ -3667,10 +3691,40 @@ class YBBackup:
             self.timer.print_summary()
 
 
+class RedactingFormatter(logging.Formatter):
+    """
+    Replaces portions of log with the desired replacements. The class
+    uses re.sub(pattern, replacement, orig_str) function to modify original log-lines.
+    The object of this class is added to the logging handler.
+    Constructor params:
+        - orig_formatter: The original formatter for the logging.
+        - sub_list: A list of format (matching-pattern, replacement). The format
+                    function iterates through this list and makes replacements.
+    """
+    def __init__(self, orig_formatter, sub_list):
+        self.orig_formatter = orig_formatter
+        self._sub_list = sub_list
+
+    def format(self, record):
+        log_line = self.orig_formatter.format(record)
+        for (pattern, sub) in self._sub_list:
+            log_line = re.sub(pattern, sub, log_line)
+        return log_line
+
+    def __getattr__(self, attr):
+        return getattr(self.orig_formatter, attr)
+
+
 if __name__ == "__main__":
     # Setup logging. By default in the config the output stream is: stream=sys.stderr.
     # Set custom output format and logging level=INFO (DEBUG messages will not be printed).
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    # Redact access_token param contents, appending to list can handle more redacts.
+    # The log-line after formatting: s3cmd ... --access_token=REDACTED ... .
+    for handler in logging.root.handlers:
+        handler.setFormatter(RedactingFormatter(handler.formatter,
+                             [(ACCESS_TOKEN_RE, ACCESS_TOKEN_REDACT_RE)]))
+
     # Registers the signal handlers.
     yb_backup = YBBackup()
     with terminating(ThreadPool(1)) as pool:

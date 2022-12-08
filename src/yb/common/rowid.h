@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_ROWID_H
-#define YB_COMMON_ROWID_H
+#pragma once
 
 #include <inttypes.h>
 
@@ -71,5 +70,3 @@ inline bool DecodeRowId(Slice *s, rowid_t *rowid) {
 }
 
 } // namespace yb
-
-#endif // YB_COMMON_ROWID_H

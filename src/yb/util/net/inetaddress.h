@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NET_INETADDRESS_H
-#define YB_UTIL_NET_INETADDRESS_H
+#pragma once
 
 #include <string.h>
 
@@ -113,5 +112,3 @@ void FilterAddresses(const std::string &transform_spec,
                      std::vector<boost::asio::ip::address> *addresses);
 
 } // namespace yb
-
-#endif // YB_UTIL_NET_INETADDRESS_H

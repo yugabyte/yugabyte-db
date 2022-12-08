@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_H
-#define YB_MASTER_MASTER_H
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -183,6 +182,9 @@ class Master : public tserver::DbServerBase {
       return &master_metrics_;
   }
 
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+
  protected:
   virtual Status RegisterServices();
 
@@ -250,4 +252,3 @@ class Master : public tserver::DbServerBase {
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_MASTER_H

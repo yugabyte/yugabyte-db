@@ -1,3 +1,0 @@
-https://get.enterprisedb.com/postgresql/postgresql-9.6.24-1-linux-x64-binaries.tar.gz
-https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u345-b01/OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz
-https://github.com/jimmidyson/pemtokeystore/releases/download/v0.2.0/pemtokeystore-linux-amd64

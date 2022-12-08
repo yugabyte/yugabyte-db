@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_STORAGE_INTERFACE_H
-#define YB_DOCDB_QL_STORAGE_INTERFACE_H
+#pragma once
 
 #include <limits>
 #include <string>
@@ -107,5 +106,3 @@ class YQLStorageIf {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_QL_STORAGE_INTERFACE_H

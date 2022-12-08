@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_SHARED_MEM_H
-#define YB_TSERVER_TSERVER_SHARED_MEM_H
+#pragma once
 
 #include <atomic>
 
@@ -24,14 +23,14 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/slice.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 namespace yb {
 namespace tserver {
 
 class TServerSharedData {
  public:
-  // In per-db catalog version mode, this puts a limit on the maximum number of databases
-  // that can exist in a cluster.
-  static constexpr int32 kMaxNumDbCatalogVersions = 10000;
+  static constexpr uint32_t kMaxNumDbCatalogVersions = kYBCMaxNumDbCatalogVersions;
 
   TServerSharedData() {
     // All atomics stored in shared memory must be lock-free. Non-robust locks
@@ -68,14 +67,12 @@ class TServerSharedData {
     return catalog_version_.load(std::memory_order_acquire);
   }
 
-  void SetYsqlDbCatalogVersion(int index, uint64_t version) {
-    DCHECK_GE(index, 0);
+  void SetYsqlDbCatalogVersion(size_t index, uint64_t version) {
     DCHECK_LT(index, kMaxNumDbCatalogVersions);
     db_catalog_versions_[index].store(version, std::memory_order_release);
   }
 
-  uint64_t ysql_db_catalog_version(int index) const {
-    DCHECK_GE(index, 0);
+  uint64_t ysql_db_catalog_version(size_t index) const {
     DCHECK_LT(index, kMaxNumDbCatalogVersions);
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }
@@ -101,5 +98,3 @@ class TServerSharedData {
 
 }  // namespace tserver
 }  // namespace yb
-
-#endif // YB_TSERVER_TSERVER_SHARED_MEM_H

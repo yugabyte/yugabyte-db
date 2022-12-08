@@ -111,6 +111,13 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
+    try (KubernetesClient client = getClient(config)) {
+      return client.pods().inNamespace(namespace).withName(podName).get();
+    }
+  }
+
+  @Override
   public String getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
@@ -120,17 +127,22 @@ public class NativeKubernetesManager extends KubernetesManager {
     String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
     String appName = isMaster ? "yb-master" : "yb-tserver";
     try (KubernetesClient client = getClient(config)) {
-      // TODO(bhavin192): this might need to be changed when we
-      // support multi-cluster environments.
+      // We don't use service-type=endpoint selector for backwards
+      // compatibility with old charts which don't have service-type
+      // label on endpoint/exposed services.
       List<Service> services =
           client
               .services()
               .inNamespace(namespace)
               .withLabel(appLabel, appName)
               .withLabel("release", universePrefix)
-              .withoutLabel("service-type", "headless")
+              .withLabelNotIn("service-type", "headless", "non-endpoint")
               .list()
               .getItems();
+      // TODO: PLAT-5625: This might need a change when we have one
+      // common TServer/Master endpoint service across multiple Helm
+      // releases. Currently we call getPreferredServiceIP for each AZ
+      // deployment/Helm release, and return all the IPs.
       if (services.size() != 1) {
         throw new RuntimeException(
             "There must be exactly one Master or TServer endpoint service, got " + services.size());
@@ -268,5 +280,75 @@ public class NativeKubernetesManager extends KubernetesManager {
   public boolean storageClassAllowsExpansion(Map<String, String> config, String storageClassName) {
     // TODO: Implement when switching to native client implementation
     return true;
+  }
+
+  @Override
+  public void diff(Map<String, String> config, String inputYamlFilePath) {
+    // TODO(anijhawan): Implement this when we get a chance.
+  }
+
+  @Override
+  public String getCurrentContext(Map<String, String> azConfig) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String execCommandProcessErrors(Map<String, String> config, List<String> commandList) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sResource(
+      Map<String, String> config, String k8sResource, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getEvents(Map<String, String> config, String namespace, String string) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getK8sVersion(Map<String, String> config, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getPlatformNamespace() {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getHelmValues(
+      Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public List<RoleData> getAllRoleDataForServiceAccountName(
+      Map<String, String> config, String serviceAccountName) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getServiceAccountPermissions(
+      Map<String, String> config, RoleData roleData, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
+  public String getStorageClass(
+      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+    // TODO Auto-generated method stub
+    return null;
   }
 }

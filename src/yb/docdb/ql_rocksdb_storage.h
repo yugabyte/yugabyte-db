@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROCKSDB_STORAGE_H
-#define YB_DOCDB_QL_ROCKSDB_STORAGE_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -60,9 +59,9 @@ class QLRocksDBStorage : public YQLStorageIf {
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
   Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override;
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override;
 
   Status GetIterator(
       const PgsqlReadRequestPB& request,
@@ -90,4 +89,3 @@ class QLRocksDBStorage : public YQLStorageIf {
 
 }  // namespace docdb
 }  // namespace yb
-#endif // YB_DOCDB_QL_ROCKSDB_STORAGE_H

@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <rapidjson/document.h>
 
@@ -78,6 +77,7 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -90,7 +90,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -119,7 +119,7 @@ using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::StateChangeReason;
 
-DEFINE_bool(notify_peer_of_removal_from_cluster, true,
+DEFINE_UNKNOWN_bool(notify_peer_of_removal_from_cluster, true,
             "Notify a peer after it has been removed from the cluster.");
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
@@ -138,8 +138,9 @@ METRIC_DEFINE_counter(
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
-DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
-DEFINE_uint64(copy_tables_batch_bytes, 500_KB, "Max bytes per batch for copy pg sql tables");
+DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
+DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
+    "Max bytes per batch for copy pg sql tables");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -147,7 +148,12 @@ DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
 namespace yb {
 namespace master {
 
+namespace {
+
 constexpr int32_t kDefaultMasterBlockCacheSizePercentage = 25;
+const std::string kLogPrefix = "system tablet: ";
+
+}
 
 std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
 
@@ -158,7 +164,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
-          BuildTableSchema(), kSysCatalogSchemaVersion)),
+          kLogPrefix, BuildTableSchema(), kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
@@ -331,6 +337,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   DCHECK_EQ(1, partitions.size());
 
   auto table_info = std::make_shared<tablet::TableInfo>(
+      consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
@@ -578,8 +585,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->auto_flags_manager(),
-      // We don't support splitting the catalog tablet, these fields are unneeded.
-      .post_split_compaction_pool = nullptr,
+      // We won't be doing full compactions on the catalog tablet.
+      .full_compaction_pool = nullptr,
+      // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr
   };
   tablet::BootstrapTabletData data = {
@@ -672,7 +680,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
-      tablet, resp.get());
+      tablet, nullptr, resp.get());
   query->set_client_request(writer->req());
   query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
@@ -1085,6 +1093,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
 Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t database_oid,
+    bool is_colocated_database,
     TableToTablespaceIdMap *table_tablespace_map) {
   TRACE_EVENT0("master", "ReadTablespaceInfoFromPgYbTablegroup");
 
@@ -1130,7 +1139,9 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
 
     const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
-    const TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
+    const TableId parent_table_id = is_colocated_database ?
+                                      GetColocationParentTableId(tablegroup_id) :
+                                      GetTablegroupParentTableId(tablegroup_id);
     boost::optional<TablespaceId> tablespace_id = boost::none;
 
     // If no valid tablespace found, then this tablegroup has no placement info
@@ -1673,9 +1684,11 @@ Status SysCatalogTable::CopyPgsqlTables(
   return Status::OK();
 }
 
-Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
-  tablet_peer()->tablet_metadata()->RemoveTable(table_id);
-  return Status::OK();
+Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id, int64_t term) {
+  tablet::ChangeMetadataRequestPB change_req;
+  change_req.set_tablet_id(kSysCatalogTabletId);
+  change_req.set_remove_table_id(table_id);
+  return tablet::SyncReplicateChangeMetadataOperation(&change_req, tablet_peer().get(), term);
 }
 
 const Schema& SysCatalogTable::schema() {

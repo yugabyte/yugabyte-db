@@ -17,10 +17,8 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H
-#define YB_ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H
+#pragma once
 
-#ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <memory>
 #include <string>
@@ -192,6 +190,3 @@ class PlainTableFactory : public TableFactory {
 };
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H

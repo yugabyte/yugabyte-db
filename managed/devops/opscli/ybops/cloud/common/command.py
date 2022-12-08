@@ -16,8 +16,7 @@ from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesM
     UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
     UpdateMountedDisksMethod, DeleteRootVolumesMethod, TransferXClusterCerts, VerifySSHConnection, \
-    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForSSHConnection, \
-    HardRebootInstancesMethod
+    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForSSHConnection
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -50,7 +49,6 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(AddAuthorizedKey(self))
         self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
-        self.add_method(HardRebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForSSHConnection(self))
 

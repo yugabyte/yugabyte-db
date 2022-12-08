@@ -14,17 +14,19 @@ type: docs
 
 ## Synopsis
 
-<b>`TSADD key timestamp value [timestamp value ...] [EXPIRE_IN TTL] [EXPIRE_AT UNIX_TIMESTAMP]`</b><br>
+**`TSADD key timestamp value [timestamp value ...] [EXPIRE_IN TTL] [EXPIRE_AT UNIX_TIMESTAMP]`**
+
 This command sets the data for the given `timestamp` with the given `value` in the time series that
 is specified by `key`. This is useful in storing time series like data where the `key` could be a
 metric, the `timestamp` is the time when the metric was generated and `value` is the value of the
 metric at the given `timestamp`.
-<li>If the given `timestamp` already exists in the specified time series, this command overwrites the existing value with the given `value`.</li>
-<li>If the given `key` does not exist, a new time series is created for the `key`, and the given values are inserted to the associated given fields.</li>
-<li>If the given `key` exists, but is not of time series type, an error is raised.</li>
-<li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
-<li>`EXPIRE_IN TTL` sets the TTL (time-to-live) in seconds for the entries being added.</li>
-<li>`EXPIRE_AT UNIX_TIMESTAMP` ensures that the entries added would expire by the given [`UNIX_TIMESTAMP`](https://en.wikipedia.org/wiki/Unix_time) (seconds since January 1, 1970).</li>
+
+- If the given `timestamp` already exists in the specified time series, this command overwrites the existing value with the given `value`.
+- If the given `key` does not exist, a new time series is created for the `key`, and the given values are inserted to the associated given fields.
+- If the given `key` exists, but is not of time series type, an error is raised.
+- If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.
+- `EXPIRE_IN TTL` sets the TTL (time-to-live) in seconds for the entries being added.
+- `EXPIRE_AT UNIX_TIMESTAMP` ensures that the entries added would expire by the given [`UNIX_TIMESTAMP`](https://en.wikipedia.org/wiki/Unix_time) (seconds since January 1, 1970).
 
 ## Return value
 

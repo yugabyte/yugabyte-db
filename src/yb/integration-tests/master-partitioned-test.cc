@@ -46,6 +46,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
@@ -69,7 +70,7 @@ DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 
-DEFINE_int32(num_test_tablets, 60, "Number of tablets for stress test");
+DEFINE_UNKNOWN_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
 using std::string;
 using std::vector;

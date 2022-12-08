@@ -20,8 +20,6 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-DECLARE_bool(disable_hybrid_scan);
-
 namespace yb {
 
 using std::vector;
@@ -102,6 +100,18 @@ auto GetColumnValue(const Col& col) {
   return ResultType();
 }
 
+namespace {
+
+LWQLValuePB CopyValue(const LWQLValuePB& source) {
+  return LWQLValuePB(&source.arena(), source);
+}
+
+QLValuePB CopyValue(const QLValuePB& source) {
+  return QLValuePB(source);
+}
+
+} // namespace
+
 template <class Cond>
 void QLScanRange::Init(const Cond& condition) {
   // If there is no range column, return.
@@ -177,7 +187,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_LESS_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
@@ -198,7 +208,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_GREATER_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
@@ -241,7 +251,7 @@ void QLScanRange::Init(const Cond& condition) {
           }
 
           // We can only process strict inequalities if we're using hybridscan
-          if (operands.size() == 5 && !FLAGS_disable_hybrid_scan) {
+          if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
               lower_bound_inclusive = it->value().bool_value();
@@ -288,8 +298,8 @@ void QLScanRange::Init(const Cond& condition) {
               size_t num_cols = col_ids.size();
               auto options_itr = options.begin();
 
-              auto lower = *options.begin();
-              auto upper = *options.begin();
+              auto lower = CopyValue(*options.begin());
+              auto upper = CopyValue(*options.begin());
 
               while(options_itr != options.end()) {
                 DCHECK(options_itr->has_tuple_value());

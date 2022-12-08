@@ -68,10 +68,12 @@ public class AllowedActionsHelper {
    * @return error string if the node is not allowed to perform the action otherwise null.
    */
   private String nodeActionErrOrNull(NodeActionType action) {
+    // Temporarily no validation for Hard Reboot task to unblock cloud.
+    // Starting a discussion on desired impl of removeMasterErrOrNull and
+    // removeSingleNodeErrOrNull. We will add validation after.
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
-        || action == NodeActionType.REBOOT
-        || action == NodeActionType.HARD_REBOOT) {
+        || action == NodeActionType.REBOOT) {
       String errorMsg = removeMasterErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;

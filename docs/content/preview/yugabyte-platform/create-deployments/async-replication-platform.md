@@ -37,9 +37,9 @@ You can set up xCluster replication as follows:
 
 2. Select the universe you want to replicate and navigate to **Replication**.
 
-3. Click **Configure Replication** to open the dialog shown in the following illustration:<br><br>
+3. Click **Configure Replication** to open the dialog shown in the following illustration:<br>
 
-   ![Configure Replication](/images/yp/asynch-replication-2.png)<br><br>
+   ![Configure Replication](/images/yp/asynch-replication-2.png)<br>
 
 4. Provide the name for your replication.
 
@@ -47,7 +47,7 @@ You can set up xCluster replication as follows:
 
 6. Click **Next: Select Tables**.
 
-7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br><br>
+7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br>
 
    ![Create Replication](/images/yp/asynch-replication-3.png)
 
@@ -57,17 +57,15 @@ You can configure an existing replication as follows:
 
 1. Open the YugabyteDB Anywhere UI and navigate to **Universes**.
 
-2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
+2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br>
 
-   ![Replication](/images/yp/asynch-replication-1.png)<br><br>
+   ![Replication](/images/yp/asynch-replication-1.png)<br>
 
-3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up-replication).
+3. Click **Configure Replication** and perform steps 4 through 7 from [Set up replication](#set-up-replication).
 
 ## View, manage, and monitor replication
 
 To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown in the following illustration:
-
-<br>
 
 ![Replication Details](/images/yp/asynch-replication-4.png)
 
@@ -77,35 +75,35 @@ This page allows you to do the following:
 
 - View and modify the list of tables included in the replication, as follows:
 
-  - Select **Tables**, as per the following illustration:<br><br>
+  - Select **Tables**, as per the following illustration:<br>
 
-    ![Tables](/images/yp/asynch-replication-7.png)<br><br>
+    ![Tables](/images/yp/asynch-replication-7.png)<br>
 
   - Click **Modify Tables**.
 
-  - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
+  - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br>
 
-    ![Change Tables](/images/yp/asynch-replication-8.png)<br><br>
+    ![Change Tables](/images/yp/asynch-replication-8.png)<br>
 
-    The following illustration shows the **Add tables to the replication** dialog after modifications:<br><br>
+    The following illustration shows the **Add tables to the replication** dialog after modifications:<br>
 
-    ![Change Tables](/images/yp/asynch-replication-9.png)<br><br>
+    ![Change Tables](/images/yp/asynch-replication-9.png)<br>
 
 - Configure the replication, as follows:
 
   - Click **Actions > Edit replication configuration**.
 
-  - Make changes using the **Edit cluster replication** dialog shown in the following illustration:<br><br>
+  - Make changes using the **Edit cluster replication** dialog shown in the following illustration:<br>
 
-    ![Edit Replication](/images/yp/asynch-replication-5.png)<br><br>
+    ![Edit Replication](/images/yp/asynch-replication-5.png)<br>
 
 - Set up monitoring by configuring alerts, as follows:
 
   - Click **Configure Alert**.
 
-  - Use the **Configure Replication Alert** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:<br><br>
+  - Use the **Configure Replication Alert** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:<br>
 
-    ![Alert](/images/yp/asynch-replication-6.png)<br><br>
+    ![Alert](/images/yp/asynch-replication-6.png)<br>
 
 - Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 

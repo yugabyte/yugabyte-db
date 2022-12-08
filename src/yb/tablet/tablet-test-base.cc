@@ -108,8 +108,8 @@ void TabletTestPreBase::InsertTestRows(int32_t first_row,
 }
 
 Status TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
-                                                int32_t key_idx,
-                                                int32_t val) {
+                                        int32_t key_idx,
+                                        int32_t val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_INSERT);
   BuildRow(&req, key_idx, val);
@@ -117,8 +117,8 @@ Status TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
 }
 
 Status TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
-                                                int32_t key_idx,
-                                                int32_t new_val) {
+                                        int32_t key_idx,
+                                        int32_t new_val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_UPDATE);
   BuildRowKey(&req, key_idx);

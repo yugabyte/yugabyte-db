@@ -24,7 +24,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);

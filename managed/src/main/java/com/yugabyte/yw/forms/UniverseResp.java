@@ -16,6 +16,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -73,10 +74,17 @@ public class UniverseResp {
   }
 
   private static void fillRegions(List<Universe> universes) {
-    Set<UUID> regionUuids =
+    fillClusterRegions(
         universes
             .stream()
             .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
+            .collect(Collectors.toList()));
+  }
+
+  public static void fillClusterRegions(List<Cluster> clusters) {
+    Set<UUID> regionUuids =
+        clusters
+            .stream()
             .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
             .flatMap(cluster -> cluster.userIntent.regionList.stream())
             .collect(Collectors.toSet());
@@ -87,9 +95,8 @@ public class UniverseResp {
         Region.findByUuids(regionUuids)
             .stream()
             .collect(Collectors.toMap(region -> region.uuid, Function.identity()));
-    universes
+    clusters
         .stream()
-        .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
         .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
         .forEach(
             cluster -> {

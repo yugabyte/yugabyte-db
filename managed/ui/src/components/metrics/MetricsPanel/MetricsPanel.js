@@ -39,13 +39,13 @@ const DEFAULT_CONTAINER_WIDTH = 1200;
 
 export default class MetricsPanel extends Component {
   constructor(props) {
-    super(props)
+    super(props);
     this.outlierButtonsRef = React.createRef();
     this.state = {
       outlierButtonsWidth: null,
       focusedButton: null,
       isItemInDropdown: false
-    }
+    };
   }
 
   static propTypes = {
@@ -101,7 +101,8 @@ export default class MetricsPanel extends Component {
             ? dataItem['instanceName'] + (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
             : MetricConsts.NODE_AVERAGE;
         } else if (metricType === MetricTypes.OUTLIER_TABLES) {
-          dataItem['name'] = dataItem['tableName'];
+          dataItem['name'] = dataItem['namespaceName'] ?
+            `${dataItem['namespaceName']}.${dataItem['tableName']}` : dataItem['tableName'];
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -131,7 +132,11 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
-        data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        if (metricType === MetricTypes.OUTLIER_TABLES && data?.namespaceName) {
+          data.hovertemplate = '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
+        } else {
+          data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
+        }
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -283,7 +288,7 @@ export default class MetricsPanel extends Component {
       </Tooltip>
     );
     const getMetricsUrl = (internalUrl) => {
-      var url = new URL(internalUrl);
+      const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
     };
@@ -319,7 +324,7 @@ export default class MetricsPanel extends Component {
                   )}
                   key={idx}
                   active={operation === focusedButton}
-                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>)
+                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>);
             })
           }
           {showDropdown && metricOperationsDropdown.length >= 1 &&
@@ -336,7 +341,7 @@ export default class MetricsPanel extends Component {
                     // className='outlier-button'
                     key={idx}
                     active={operation === focusedButton}
-                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>)
+                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>);
                 })
               }
             </DropdownButton>

@@ -22,10 +22,10 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.CascadeType;
@@ -36,6 +36,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import javax.persistence.Version;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -90,6 +91,10 @@ public class Provider extends Model {
   @Encrypted
   private Map<String, String> config;
 
+  @Column(nullable = false, columnDefinition = "TEXT")
+  @DbJson
+  public ProviderDetails details = new ProviderDetails();
+
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference(value = "provider-regions")
   public List<Region> regions;
@@ -121,58 +126,67 @@ public class Provider extends Model {
 
   // Custom SSH user to login to machines.
   // Default: created and managed by YB.
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String sshUser = null;
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setSshUser(String sshUser) {
+    this.details.sshUser = sshUser;
+  }
 
-  // Whether provider should use airgapped install.
-  // Default: false.
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public boolean airGapInstall = false;
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setSshPort(Integer sshPort) {
+    this.details.sshPort = sshPort;
+  }
 
-  // Port to open for connections on the instance.
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public Integer sshPort = 22;
+  /**
+   * Whether provider should use airgapped install. Default: false.
+   *
+   * @deprecated - Use details.airGapInstall
+   */
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setAirGapInstall(boolean v) {
+    details.airGapInstall = v;
+  }
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String hostVpcId = null;
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setNtpServers(List<String> ntpServers) {
+    this.details.ntpServers = ntpServers;
+  }
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String hostVpcRegion = null;
+  /**
+   * Whether or not to set up NTP
+   *
+   * @deprecated use details.setUpChrony
+   */
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setSetUpChrony(boolean v) {
+    details.setUpChrony = v;
+  }
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public List<String> customHostCidrs = new ArrayList<>();
-  // TODO(bogdan): only used/needed for GCP.
+  /**
+   * Indicates whether the provider was created before or after PLAT-3009 True if it was created
+   * after, else it was created before. Dictates whether or not to show the set up NTP option in the
+   * provider UI
+   */
+  @Deprecated
+  @ApiModelProperty(hidden = true)
+  public void setShowSetUpChrony(boolean showSetUpChrony) {
+    this.details.showSetUpChrony = showSetUpChrony;
+  }
 
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public String destVpcId = null;
+  @ApiModelProperty public String hostVpcId = null;
 
+  @ApiModelProperty public String hostVpcRegion = null;
+
+  @ApiModelProperty public String destVpcId = null;
+
+  @Deprecated // should be a runtime config at customer level
   @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  @ApiModelProperty(value = TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST, hidden = true)
   public boolean overrideKeyValidate = false;
-
-  // Whether or not to set up NTP
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public boolean setUpChrony = false;
-
-  // NTP servers to connect to
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public List<String> ntpServers = new ArrayList<>();
-
-  // Indicates whether the provider was created before or after PLAT-3009
-  // True if it was created after, else it was created before.
-  // Dictates whether or not to show the set up NTP option in the provider UI
-  @Transient
-  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
-  public boolean showSetUpChrony = true;
 
   // Hosted Zone for the deployment
   @Transient
@@ -180,6 +194,19 @@ public class Provider extends Model {
   public String hostedZoneId = null;
 
   // End Transient Properties
+
+  @Column(nullable = false)
+  @Version
+  @ApiModelProperty(value = "Provider version", accessMode = READ_ONLY)
+  private long version;
+
+  public long getVersion() {
+    return version;
+  }
+
+  public void setVersion(long version) {
+    this.version = version;
+  }
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
@@ -338,6 +365,18 @@ public class Provider extends Model {
     return find.byId(providerUuid);
   }
 
+  public static Optional<Provider> maybeGet(UUID providerUUID) {
+    // Find the Provider.
+    Provider provider = find.byId(providerUUID);
+    if (provider == null) {
+      LOG.trace("Cannot find provider {}", providerUUID);
+      return Optional.empty();
+    }
+
+    // Return the provider object.
+    return Optional.of(provider);
+  }
+
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
@@ -373,7 +412,6 @@ public class Provider extends Model {
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);
-    this.save();
   }
 
   // Used for GCP providers to pass down region information. Currently maps regions to
@@ -388,13 +426,13 @@ public class Provider extends Model {
     }
 
     List<Region> regions = Region.getByProvider(this.uuid);
-    if (regions == null || regions.isEmpty()) {
+    if (regions.isEmpty()) {
       return newParams;
     }
 
     for (Region r : regions) {
       List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
-      if (zones == null || zones.isEmpty()) {
+      if (zones.isEmpty()) {
         continue;
       }
       PerRegionMetadata regionData = new PerRegionMetadata();
@@ -403,16 +441,5 @@ public class Provider extends Model {
       newParams.perRegionMetadata.put(r.code, regionData);
     }
     return newParams;
-  }
-
-  // Specific to Kubernetes providers. This template is used to
-  // calculate per pod address. The default value is the Kubernetes
-  // FQDN, it can be changed for multi-cluster setups like Istio.
-  @JsonIgnore
-  public String getK8sPodAddrTemplate() {
-    return this.getUnmaskedConfig()
-        .getOrDefault(
-            "KUBE_POD_ADDRESS_TEMPLATE",
-            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}");
   }
 }

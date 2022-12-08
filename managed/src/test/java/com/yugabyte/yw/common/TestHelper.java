@@ -8,12 +8,21 @@ import ch.qos.logback.core.read.ListAppender;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import io.ebean.Ebean;
+import io.ebean.EbeanServer;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.slf4j.LoggerFactory;
 import play.test.Helpers;
 
@@ -64,5 +73,40 @@ public class TestHelper {
         // Needed because we're using 'value' as column name. This makes H2 be happy with that./
         // PostgreSQL works fine with 'value' column as is.
         Helpers.inMemoryDatabase("default", ImmutableMap.of("NON_KEYWORDS", "VALUE")));
+  }
+
+  public static void shutdownDatabase() {
+    EbeanServer server = Ebean.getServer("default");
+    if (server != null) {
+      server.shutdown(false, false);
+    }
+  }
+
+  public static void createTarGzipFiles(List<Path> paths, Path output) throws IOException {
+
+    try (OutputStream fOut = Files.newOutputStream(output);
+        BufferedOutputStream buffOut = new BufferedOutputStream(fOut);
+        GzipCompressorOutputStream gzOut = new GzipCompressorOutputStream(buffOut);
+        TarArchiveOutputStream tOut = new TarArchiveOutputStream(gzOut)) {
+
+      for (Path path : paths) {
+
+        if (!Files.isRegularFile(path)) {
+          throw new IOException("Support only file!");
+        }
+
+        TarArchiveEntry tarEntry =
+            new TarArchiveEntry(path.toFile(), path.getFileName().toString());
+
+        tOut.putArchiveEntry(tarEntry);
+
+        // copy file to TarArchiveOutputStream
+        Files.copy(path, tOut);
+
+        tOut.closeArchiveEntry();
+      }
+
+      tOut.finish();
+    }
   }
 }

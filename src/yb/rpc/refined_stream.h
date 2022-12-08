@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_REFINED_STREAM_H
-#define YB_RPC_REFINED_STREAM_H
+#pragma once
 
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/stream.h"
@@ -127,5 +126,3 @@ class RefinedStreamFactory : public StreamFactory {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_REFINED_STREAM_H

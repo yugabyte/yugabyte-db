@@ -323,7 +323,13 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     incremental_backup_frequency: Yup.number().test({
       message: 'Incremental backup interval must be less than full backup',
       test: function (value) {
-        if (!isScheduledBackup) return true;
+        if (
+          !isScheduledBackup ||
+          !this.parent.is_incremental_backup_enabled ||
+          this.parent.use_cron_expression
+        )
+          return true;
+
         return (
           value *
             MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
@@ -354,7 +360,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
         if (isScheduledBackup) {
           if (isEditMode) {
-            doEditBackupSchedule.mutateAsync({
+            const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
               frequency:
                 values['policy_interval'] *
@@ -362,7 +368,16 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               cronExpression: values.cronExpression,
               status: values.scheduleObj.status,
               frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
-            });
+            };
+            if (values['is_incremental_backup_enabled']) {
+              editPayloadValues['incrementalBackupFrequency'] =
+                values['incremental_backup_frequency'] *
+                MILLISECONDS_IN[values['incremental_backup_frequency_type'].value.toUpperCase()];
+              editPayloadValues['incrementalBackupFrequencyTimeUnit'] = values[
+                'incremental_backup_frequency_type'
+              ].value.toUpperCase();
+            }
+            doEditBackupSchedule.mutateAsync(editPayloadValues);
           } else {
             doCreateBackupSchedule.mutateAsync({
               ...values,
@@ -608,7 +623,9 @@ function BackupConfigurationForm({
                             setFieldValue('show_select_ycql_table', true);
                           }}
                         >
-                          <i className="fa fa-pencil" /> Edit selection
+                          <i className="fa fa-pencil" />
+                          &nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                         </span>
                       </span>
                     )}
@@ -753,7 +770,6 @@ function BackupConfigurationForm({
                           value: values['incremental_backup_frequency']
                         }}
                         minVal={0}
-                        readOnly={isEditMode}
                       />
                     </Col>
                     <Col lg={4}>
@@ -761,7 +777,6 @@ function BackupConfigurationForm({
                         name="incremental_backup_frequency_type"
                         component={YBFormSelect}
                         options={INCREMENTAL_BACKUP_DURATION_OPTIONS}
-                        isDisabled={isEditMode}
                       />
                     </Col>
                   </div>
@@ -914,26 +929,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-                return (
-                  <div className="selected-table-item" key={t.tableUUID}>
-                    {t.tableName}
-                    <span
-                      className="remove-selected-table"
-                      onClick={() => {
-                        if (isEditMode) return;
-                        setFieldValue(
-                          'selected_ycql_tables',
-                          values['selected_ycql_tables'].filter(
-                            (f: ITable) => f.tableUUID !== t.tableUUID
-                          )
-                        );
-                      }}
-                    >
-                      <img alt="Remove" src={Close} width="22" />
-                    </span>
-                  </div>
-                );
-              })}
+              return (
+                <div className="selected-table-item" key={t.tableUUID}>
+                  {t.tableName}
+                  <span
+                    className="remove-selected-table"
+                    onClick={() => {
+                      if (isEditMode) return;
+                      setFieldValue(
+                        'selected_ycql_tables',
+                        values['selected_ycql_tables'].filter(
+                          (f: ITable) => f.tableUUID !== t.tableUUID
+                        )
+                      );
+                    }}
+                  >
+                    <img alt="Remove" src={Close} width="22" />
+                  </span>
+                </div>
+              );
+            })}
         </Col>
       </Row>
     </YBModalForm>

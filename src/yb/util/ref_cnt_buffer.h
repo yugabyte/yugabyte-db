@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_REF_CNT_BUFFER_H
-#define YB_UTIL_REF_CNT_BUFFER_H
+#pragma once
 
 #include <stdlib.h>
 #include <string.h>
@@ -212,6 +211,39 @@ struct RefCntPrefixHash {
   }
 };
 
-} // namespace yb
+class RefCntSlice {
+ public:
+  RefCntSlice() = default;
 
-#endif // YB_UTIL_REF_CNT_BUFFER_H
+  explicit RefCntSlice(RefCntBuffer holder)
+      : holder_(std::move(holder)), slice_(holder_.AsSlice()) {}
+
+  RefCntSlice(RefCntBuffer holder, const Slice& slice)
+      : holder_(std::move(holder)), slice_(slice) {}
+
+  explicit operator bool() const {
+    return static_cast<bool>(holder_);
+  }
+
+  Slice AsSlice() const {
+    return slice_;
+  }
+
+  size_t size() const {
+    return slice_.size();
+  }
+
+  const uint8_t* udata() const {
+    return slice_.data();
+  }
+
+  const char* data() const {
+    return slice_.cdata();
+  }
+
+ private:
+  RefCntBuffer holder_;
+  Slice slice_;
+};
+
+} // namespace yb

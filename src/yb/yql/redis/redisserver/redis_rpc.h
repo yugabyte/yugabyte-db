@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
-#define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -95,8 +94,8 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   // Takes ownership of data content.
   Status HandleInboundCall(const rpc::ConnectionPtr& connection,
-                                   size_t commands_in_batch,
-                                   rpc::CallData* data);
+                           size_t commands_in_batch,
+                           rpc::CallData* data);
 
   std::unique_ptr<RedisParser> parser_;
   rpc::GrowableBuffer read_buffer_;
@@ -124,7 +123,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(rpc::ByteBlocks* output) override;
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;
@@ -178,5 +177,3 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
 } // namespace redisserver
 } // namespace yb
-
-#endif // YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H

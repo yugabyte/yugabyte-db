@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_EXPIRATION_H
-#define YB_DOCDB_EXPIRATION_H
+#pragma once
 
 #include "yb/docdb/value.h"
 
@@ -53,5 +52,3 @@ struct Expiration {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_EXPIRATION_H

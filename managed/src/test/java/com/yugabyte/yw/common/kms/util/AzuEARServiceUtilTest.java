@@ -14,11 +14,11 @@ package com.yugabyte.yw.common.kms.util;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.azure.core.credential.TokenCredential;
 import com.azure.security.keyvault.keys.KeyClient;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
 import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
@@ -99,7 +99,7 @@ public class AzuEARServiceUtilTest extends FakeDBApplication {
         .unwrapKey(KeyWrapAlgorithm.RSA_OAEP, fakeWrappedUniverseKey);
     doReturn(mockCryptographyClient)
         .when(mockAzuEARServiceUtil)
-        .getCryptographyClient(fakeAuthConfig);
+        .getCryptographyClient(eq(fakeAuthConfig), any());
     KeyProperties fakeKeyProperties = new KeyProperties();
     fakeKeyProperties.setEnabled(true).setExpiresOn(null).setNotBefore(null);
     doReturn(fakeKeyProperties).when(mockKeyVaultKey).getProperties();

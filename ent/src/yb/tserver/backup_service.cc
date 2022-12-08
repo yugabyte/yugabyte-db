@@ -24,7 +24,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
@@ -104,7 +104,8 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
-  auto operation = std::make_unique<SnapshotOperation>(tablet.tablet, req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet.tablet);
+  operation->AllocateRequest()->CopyFrom(*req);
 
   auto clock = tablet_manager_->server()->Clock();
   operation->set_completion_callback(

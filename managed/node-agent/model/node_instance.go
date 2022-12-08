@@ -19,7 +19,6 @@ type Provider struct {
 	Cuuid               string            `json:"customerUUID"`
 	AirGapInstall       bool              `json:"airGapInstall"`
 	SshPort             int               `json:"sshPort"`
-	CustomHostCidrs     []string          `json:"customHostCidrs"`
 	OverrideKeyValidate bool              `json:"overrideKeyValidate"`
 	SetUpChrony         bool              `json:"setUpChrony"`
 	NtpServers          []string          `json:"ntpServers"`
@@ -51,6 +50,7 @@ type AccessKeyInfo struct {
 	SetUpChrony            bool     `json:"setUpChrony"`
 	NtpServers             []string `json:"ntpServers"`
 	CreatetionDate         Date     `json:"creationDate"`
+	SkipProvisioning       bool     `json:"skipProvisioning"`
 }
 
 type AccessKey struct {
@@ -111,7 +111,6 @@ type VolumeDetails struct {
 
 type PreflightCheckVal struct {
 	Value string `json:"value"`
-	Error string `json:"error"`
 }
 
 type NodeInstances struct {

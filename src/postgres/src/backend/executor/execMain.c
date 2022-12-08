@@ -2003,11 +2003,11 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
-			if (mtstate && mtstate->yb_mt_is_single_row_update_or_delete &&
+			if (mtstate && !mtstate->yb_fetch_target_tuple &&
 			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
 			{
 				/*
-				 * For single-row-updates, we only know the values of the
+				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */

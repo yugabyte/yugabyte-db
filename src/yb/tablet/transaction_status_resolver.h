@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
-#define YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -78,5 +77,3 @@ class TransactionStatusResolver {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_STATUS_RESOLVER_H

@@ -17,13 +17,13 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
     AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod, \
     AwsChangeInstanceTypeMethod, AwsUpdateMountedDisksMethod, AwsQueryImageMethod, \
-    AwsDeleteRootVolumesMethod
+    AwsDeleteRootVolumesMethod, AwsHardRebootInstancesMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
     InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, \
     TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    RebootInstancesMethod, RunHooks, WaitForSSHConnection, HardRebootInstancesMethod
+    RebootInstancesMethod, RunHooks, WaitForSSHConnection
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -56,7 +56,7 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForSSHConnection(self))
-        self.add_method(HardRebootInstancesMethod(self))
+        self.add_method(AwsHardRebootInstancesMethod(self))
 
 
 class AwsNetworkCommand(NetworkCommand):

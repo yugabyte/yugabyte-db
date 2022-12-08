@@ -2,10 +2,11 @@
 
 import _ from 'lodash';
 import React, { Component } from 'react';
+import { toast } from 'react-toastify';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
+import { createErrorMessage, isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import {
   isKubernetesUniverse,
@@ -22,6 +23,7 @@ import clsx from 'clsx';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import WarningIcon from './images/warning.svg';
 import { sortVersion } from '../../../releases';
+import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -67,6 +69,7 @@ export default class RollingUpgradeForm extends Component {
       resetLocation,
       featureFlags
     } = this.props;
+    let systemdBoolean = false;
 
     const payload = {};
     switch (visibleModal) {
@@ -92,7 +95,7 @@ export default class RollingUpgradeForm extends Component {
       case 'systemdUpgrade': {
         payload.taskType = 'Systemd';
         payload.upgradeOption = 'Rolling';
-        var systemdBoolean = true;
+        systemdBoolean = true;
         break;
       }
       case 'gFlagsModal': {
@@ -130,6 +133,11 @@ export default class RollingUpgradeForm extends Component {
         payload.upgradeOption = 'Rolling';
         break;
       }
+      case 'helmOverridesModal':
+        payload.taskType = 'kubernetes_overrides';
+        payload.universeOverrides = values.universeOverrides;
+        payload.azOverrides = values.azOverrides;
+        break;
       default:
         return;
     }
@@ -157,6 +165,12 @@ export default class RollingUpgradeForm extends Component {
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
     primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
     primaryCluster.userIntent.useSystemd = systemdBoolean;
+
+    if (visibleModal === 'helmOverridesModal') {
+      primaryCluster.userIntent.universeOverrides = values.universeOverrides;
+      primaryCluster.userIntent.azOverrides = values.azOverrides;
+    }
+
     payload.clusters = [primaryCluster];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
@@ -169,7 +183,7 @@ export default class RollingUpgradeForm extends Component {
       }
     }
 
-    if (!isDefinedNotNull(primaryCluster.enableYbc))
+    if (!isDefinedNotNull(primaryCluster.enableYbc) && payload.taskType === 'Software')
       payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
 
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
@@ -183,6 +197,8 @@ export default class RollingUpgradeForm extends Component {
         } else {
           this.resetAndClose();
         }
+      } else {
+        toast.error(createErrorMessage(response.payload), { autoClose: 3000 });
       }
     });
   };
@@ -321,6 +337,41 @@ export default class RollingUpgradeForm extends Component {
           </YBModal>
         );
       }
+      case 'helmOverridesModal':
+        const editValues = {};
+        const { universeDetails } = this.props.universe.currentUniverse.data;
+        const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+        const { universeOverrides, azOverrides } = primaryCluster.userIntent;
+        if (universeOverrides) {
+          editValues['universeOverrides'] = universeOverrides;
+        }
+        if (azOverrides) {
+          editValues['azOverrides'] = Object.keys(azOverrides).map(
+            (k) => k + `:\n${azOverrides[k]}`
+          );
+        }
+
+        //no instance tags for k8s
+        delete editValues.instaceTags;
+
+        return (
+          <HelmOverridesModal
+            visible={true}
+            onHide={this.resetAndClose}
+            submitLabel="Upgrade"
+            getConfiguretaskParams={() => {
+              return universeDetails;
+            }}
+            setHelmOverridesData={(helmYaml) => {
+              this.props.change('universeOverrides', helmYaml.universeOverrides);
+              this.props.change('azOverrides', helmYaml.azOverrides);
+              submitAction();
+            }}
+            editValues={editValues}
+            editMode={true}
+            forceUpdate={true}
+          />
+        );
       case 'gFlagsModal': {
         return (
           <YBModal
@@ -420,17 +471,18 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
-                <YBCheckBox
-                  label="Confirm TLS Changes"
-                  input={{
-                    checked: this.state.formConfirmed,
-                    onChange: this.toggleConfirmValidation
-                  }}
-                />
-              ) : (
-                <span>Select new CA signed cert from the list</span>
-              )
+              universe.currentUniverse?.data?.universeDetails?.rootCA ?
+                (
+                  <YBCheckBox
+                    label="Confirm TLS Changes"
+                    input={{
+                      checked: this.state.formConfirmed,
+                      onChange: this.toggleConfirmValidation
+                    }}
+                  />
+                ) : (
+                  <span>Select new CA signed cert from the list</span>
+                )
             }
             asyncValidating={
               !this.state.formConfirmed ||

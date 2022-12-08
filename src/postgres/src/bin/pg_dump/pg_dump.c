@@ -15782,7 +15782,10 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 {
 	DumpOptions *dopt = fout->dopt;
 
-	/* do nothing, if --no-tablegroups or --no-tablegroup-creation is supplied */
+	/*
+	 * Do nothing, if include_yb_metadata is not supplied
+	 * or if --no-tablegroups or --no-tablegroup-creation is supplied.
+	 */
 	if (!dopt->include_yb_metadata || dopt->no_tablegroups || dopt->no_tablegroup_creations)
 		return;
 
@@ -15792,6 +15795,17 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 
 	if (!tginfo->dobj.dump || dopt->dataOnly)
 		return;
+
+	/*
+	 * Set the next tablegroup oid to be used in yb_binary_restore mode.
+	 * It's necessary to reuse the old tablegroup oid during the backup
+	 * restoring to match tablegroup parent table.
+	 */
+	appendPQExpBufferStr(q,
+						 "\n-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid\n");
+	appendPQExpBuffer(q,
+					  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+					  tginfo->dobj.catId.oid);
 
 	namecopy = pg_strdup(fmtId(tginfo->dobj.name));
 
@@ -16221,7 +16235,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/* Get the table properties from YB, if relevant. */
 		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
-			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
+			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
+			 || tbinfo->relkind == RELKIND_MATVIEW))
 		{
 			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
@@ -16238,7 +16253,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		destroyPQExpBuffer(yb_reloptions);
 
 		/* Additional properties for YB table or index. */
-		if (yb_properties != NULL)
+		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
 		{
 			if (yb_properties->num_hash_key_columns > 0)
 				/* For hash-table. */
@@ -16248,6 +16263,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				/* For range-table. */
 				char *range_split_clause = getYbSplitClause(fout, tbinfo);
 				appendPQExpBuffer(q, "\n%s", range_split_clause);
+				free(range_split_clause);
 			}
 			/* else - single shard table - supported, no need to add anything */
 
@@ -19097,7 +19113,7 @@ getYbSplitClause(Archive *fout, TableInfo *tbinfo)
 	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
 	int i_range_split_clause = PQfnumber(res, "range_split_clause");
 
-	char *range_split_clause = PQgetvalue(res, 0, i_range_split_clause);
+	char *range_split_clause = pg_strdup(PQgetvalue(res, 0, i_range_split_clause));
 
 	PQclear(res);
 	destroyPQExpBuffer(query);

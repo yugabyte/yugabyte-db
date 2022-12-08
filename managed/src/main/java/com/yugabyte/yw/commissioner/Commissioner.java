@@ -84,8 +84,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if abortable.
    */
-  public static boolean isTaskAbortable(TaskType taskType) {
-    return TaskExecutor.isTaskAbortable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskAbortable(TaskType taskType) {
+    return TaskExecutor.isTaskAbortable(taskType.getTaskClass());
   }
 
   /**
@@ -94,8 +94,8 @@ public class Commissioner {
    * @param taskType the task type.
    * @return true if retryable.
    */
-  public static boolean isTaskRetryable(TaskType taskType) {
-    return TaskExecutor.isTaskRetryable(TaskExecutor.getTaskClass(taskType));
+  public boolean isTaskRetryable(TaskType taskType) {
+    return TaskExecutor.isTaskRetryable(taskType.getTaskClass());
   }
 
   /**
@@ -103,7 +103,6 @@ public class Commissioner {
    *
    * @param taskType the task type.
    * @param taskParams the task parameters.
-   * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
@@ -220,17 +219,17 @@ public class Commissioner {
       // Task is abortable only when it is running.
       responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
     }
+
     // Set retryable if eligible.
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
-        && task.getTarget().isUniverseTarget()
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      // Retryable depends on the updating task UUID in the Universe.
+      // Retryable depends on the updating Task UUID in the Universe.
       Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
           .ifPresent(
-              updatingTaskUUID -> {
+              updatingTask -> {
                 responseJson.put(
-                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
+                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
               });
     }
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
@@ -266,7 +265,7 @@ public class Commissioner {
 
   private int getSubTaskPositionFromContext(String property) {
     int position = -1;
-    String value = (String) MDC.get(property);
+    String value = MDC.get(property);
     if (!Strings.isNullOrEmpty(value)) {
       try {
         position = Integer.parseInt(value);
@@ -307,14 +306,13 @@ public class Commissioner {
     final int subTaskPausePosition = getSubTaskPositionFromContext(SUBTASK_PAUSE_POSITION_PROPERTY);
     if (subTaskAbortPosition >= 0) {
       // Handle abort of subtask.
-      Consumer<TaskInfo> abortConsumer =
+      consumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskAbortPosition) {
               LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
               throw new CancellationException("Subtask cancelled");
             }
           };
-      consumer = abortConsumer;
     }
     if (subTaskPausePosition >= 0) {
       // Handle pause of subtask.
@@ -369,9 +367,7 @@ public class Commissioner {
             getClass().getSimpleName(),
             Duration.ZERO, // InitialDelay
             checkInterval,
-            () -> {
-              scheduleRunner(runningTasks);
-            });
+            () -> scheduleRunner(runningTasks));
       }
     }
 

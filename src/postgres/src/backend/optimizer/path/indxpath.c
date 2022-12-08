@@ -663,6 +663,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	unbatchablerelids = bms_del_member(unbatchablerelids,
 									   index->rel->relid);
 
+	Assert(!root->yb_curbatchedrelids);
+	Assert(!root->yb_curunbatchedrelids);
+	root->yb_curbatchedrelids = batchedrelids;
+	root->yb_curunbatchedrelids = unbatchablerelids;
+
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
 	 * clauses only if the index AM supports them natively, and skip any such
@@ -707,52 +712,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	foreach(lc, indexpaths)
 	{
 		IndexPath  *ipath = (IndexPath *) lfirst(lc);
-		ParamPathInfo *param_info = ipath->path.param_info;
-
-		if (param_info)
-		{
-			ListCell *lc2;
-			/* See if we have any unbatchable filters. */
-			foreach(lc2, param_info->ppi_clauses)
-			{
-				RestrictInfo *rinfo = lfirst(lc2);
-				RestrictInfo *batched =
-					get_batched_restrictinfo(rinfo,
-											 rinfo->required_relids,  index->rel->relids);
-				
-				/* See if we have already batched this filter. */
-				Relids left_var_attnos = NULL;
-				if (!batched ||
-					!bms_equal(batched->left_relids, index->rel->relids) ||
-					!bms_is_subset(batched->right_relids, batchedrelids))
-				{
-					unbatchablerelids = bms_union(unbatchablerelids,
-												  rinfo->clause_relids);
-				}
-
-				if (batched &&
-					bms_equal(batched->left_relids, index->rel->relids) &&
-					bms_is_subset(batched->right_relids, batchedrelids))
-				{
-					pull_varattnos(get_leftop(batched->clause),
-								   index->rel->relid,
-								   &left_var_attnos);
-					if (!bms_is_subset(left_var_attnos, batched_inner_attnos))
-						unbatchablerelids = bms_union(unbatchablerelids,
-												  	  rinfo->clause_relids);
-				}
-				bms_free(left_var_attnos);
-			}
-
-			unbatchablerelids = bms_del_member(unbatchablerelids,
-											   index->rel->relid);
-
-			batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
-			/* Add batching info. */
-			param_info->yb_ppi_req_outer_batched = batchedrelids;
-			param_info->yb_ppi_req_outer_unbatched = unbatchablerelids;
-
-		}
 
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
@@ -762,6 +721,9 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
 	}
+
+	root->yb_curbatchedrelids = NULL;
+	root->yb_curunbatchedrelids = NULL;
 }
 
 /*

@@ -2967,7 +2967,7 @@ ORDER BY ref_0."C 1";
                Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
                ->  Seq Scan on "S 1"."T 1" ref_0
                      Output: ref_0."C 1", ref_0.c2, ref_0.c3, ref_0.c4, ref_0.c5, ref_0.c6, ref_0.c7, ref_0.c8
-                     Filter: (ref_0."C 1" < 10)
+                     Remote Filter: (ref_0."C 1" < 10)
                ->  Foreign Scan on public.ft1 ref_1
                      Output: ref_1.c3, ref_0.c2
                      Remote Filter: (ref_1.c3 = '00001'::text)
@@ -3617,7 +3617,7 @@ FETCH c;
 
 SAVEPOINT s;
 SELECT * FROM ft1 WHERE 1 / (c1 - 1) > 0;  -- ERROR
-ERROR:  division by zero
+ERROR:  Query error: division by zero
 CONTEXT:  remote SQL command: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" WHERE (((1 / ("C 1" - 1)) > 0))
 ROLLBACK TO s;
 FETCH c;

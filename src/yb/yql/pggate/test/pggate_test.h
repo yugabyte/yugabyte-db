@@ -13,8 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
-#define YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
+#pragma once
 
 #include <dirent.h>
 #include <stdint.h>
@@ -131,5 +130,3 @@ YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_TEST_PGGATE_TEST_H_

@@ -27,7 +27,6 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
-#ifndef ROCKSDB_LITE
 
 namespace rocksdb {
 
@@ -228,7 +227,6 @@ TEST_F(DBTablePropertiesTest, GetPropertiesOfTablesInRange) {
 }
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_LITE
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();

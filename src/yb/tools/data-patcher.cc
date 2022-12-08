@@ -16,6 +16,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
@@ -667,7 +668,7 @@ Status ChangeTimeInWalDir(
       };
 
       auto add_entry = [&write_entry_batch, &batch, &last_index, &committed_op_id](
-          std::unique_ptr<log::LogEntryPB> entry) -> Status {
+          std::shared_ptr<log::LWLogEntryPB> entry) -> Status {
         if (entry->has_replicate() && entry->replicate().id().index() <= last_index) {
           RETURN_NOT_OK(write_entry_batch(/* last_batch_of_segment= */ false));
         }
@@ -676,7 +677,7 @@ Status ChangeTimeInWalDir(
             entry->replicate().has_committed_op_id()) {
           committed_op_id = OpId::FromPB(entry->replicate().committed_op_id());
         }
-        batch.mutable_entry()->AddAllocated(entry.release());
+        entry->ToGoogleProtobuf(batch.add_entry());
         return Status::OK();
       };
 

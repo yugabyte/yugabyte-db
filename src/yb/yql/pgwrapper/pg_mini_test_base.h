@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
+#pragma once
 
 #include <functional>
 
@@ -87,10 +86,10 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   HostPort pg_host_port_;
 };
 
-class HistogramMetricWatcher {
+class MetricWatcher {
  public:
   using DeltaFunctor = std::function<Status()>;
-  HistogramMetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
+  MetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
 
   Result<size_t> Delta(const DeltaFunctor& functor) const;
 
@@ -103,5 +102,3 @@ class HistogramMetricWatcher {
 
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H

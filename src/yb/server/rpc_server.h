@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_SERVER_RPC_SERVER_H
-#define YB_SERVER_RPC_SERVER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -118,5 +117,3 @@ class RpcServer {
 
 } // namespace server
 } // namespace yb
-
-#endif // YB_SERVER_RPC_SERVER_H

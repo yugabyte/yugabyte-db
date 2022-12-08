@@ -14,8 +14,9 @@
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(cql_raise_index_where_clause_error, false,
+DEFINE_UNKNOWN_bool(cql_raise_index_where_clause_error, false,
             "Raise unsupported error if where clause is specified for create index");
 
 namespace yb {

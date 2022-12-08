@@ -16,6 +16,7 @@ public class SupportBundleComponentFactory {
   private final ConsensusMetaComponent consensusMetaComponent;
   private final TabletMetaComponent tabletMetaComponent;
   private final YbcLogsComponent ybcLogsComponent;
+  private final K8sInfoComponent k8sInfoComponent;
 
   @Inject
   public SupportBundleComponentFactory(
@@ -27,7 +28,8 @@ public class SupportBundleComponentFactory {
       InstanceComponent instanceComponent,
       ConsensusMetaComponent consensusMetaComponent,
       TabletMetaComponent tabletMetaComponent,
-      YbcLogsComponent ybcLogsComponent) {
+      YbcLogsComponent ybcLogsComponent,
+      K8sInfoComponent k8sInfoComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
     this.outputFilesComponent = outputFilesComponent;
@@ -37,6 +39,7 @@ public class SupportBundleComponentFactory {
     this.consensusMetaComponent = consensusMetaComponent;
     this.tabletMetaComponent = tabletMetaComponent;
     this.ybcLogsComponent = ybcLogsComponent;
+    this.k8sInfoComponent = k8sInfoComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -71,6 +74,8 @@ public class SupportBundleComponentFactory {
       case YbcLogs:
         supportBundleComponent = this.ybcLogsComponent;
         break;
+      case K8sInfo:
+        supportBundleComponent = this.k8sInfoComponent;
       default:
         break;
     }

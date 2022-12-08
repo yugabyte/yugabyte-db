@@ -12,6 +12,6 @@
     "|log_(sync_latency_[^_]+|group_commit_latency_[^_]+",
     "|append_latency_[^_]+|bytes_logged|reader_bytes_read",
     "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
-    "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight"
+    "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+"
   ]
 }

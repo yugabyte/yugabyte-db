@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQLSERVER_FWD_H
-#define YB_YQL_CQL_CQLSERVER_CQLSERVER_FWD_H
+#pragma once
 
 namespace yb {
 namespace cqlserver {
@@ -23,5 +22,3 @@ using CQLProcessorListPos = CQLProcessorList::iterator;
 
 }  // namespace cqlserver
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_CQLSERVER_CQLSERVER_FWD_H

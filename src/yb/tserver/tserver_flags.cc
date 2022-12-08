@@ -13,15 +13,15 @@
 
 #include "yb/tserver/tserver_flags.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_string(tserver_master_addrs, "127.0.0.1:7100",
+DEFINE_UNKNOWN_string(tserver_master_addrs, "127.0.0.1:7100",
               "Comma separated addresses of the masters which the "
               "tablet server should connect to. The CQL proxy reads this flag as well to "
               "determine the new set of masters");
 TAG_FLAG(tserver_master_addrs, stable);
 
-DEFINE_uint64(tserver_master_replication_factor, 0,
+DEFINE_UNKNOWN_uint64(tserver_master_replication_factor, 0,
     "Number of master replicas. By default it is detected based on tserver_master_addrs option, "
     "but could be specified explicitly together with passing one or more master service domain "
     "name and port through tserver_master_addrs for masters auto-discovery when running on "

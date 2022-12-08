@@ -97,7 +97,8 @@ METRIC_DEFINE_gauge_uint64(
 METRIC_DEFINE_gauge_uint64(
     cdcsdk, cdcsdk_last_sent_physicaltime, "CDCSDK Last Read Physical TIme.",
     yb::MetricUnit::kMicroseconds,
-    "Physical Time of the Last Read Operation from a CDCSDK GetChanges request");
+    "Physical Time of the Last Read Operation from a CDCSDK GetChanges request",
+    {0, yb::AggregationFunction::kMax});
 
 METRIC_DEFINE_gauge_bool(cdc,
                          is_bootstrap_required,

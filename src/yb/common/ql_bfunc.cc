@@ -41,8 +41,8 @@ Status ExecBfunc(
 }
 
 Status ExecBfunc(
-    bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result) {
-  return bfpg::BFExecApi<LWQLValuePB, LWQLValuePB>::ExecPgsqlOpcode(opcode, params, result);
+    bfpg::BFOpcode opcode, std::vector<LWQLValuePB*>* params, LWQLValuePB *result) {
+  return bfpg::BFExecApi<LWQLValuePB, LWQLValuePB>::ExecPgsqlOpcode(opcode, *params, result);
 }
 
 } // namespace yb

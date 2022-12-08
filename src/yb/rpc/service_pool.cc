@@ -56,7 +56,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -72,16 +72,13 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-DEFINE_int64(max_time_in_queue_ms, 6000,
-             "Fail calls that get stuck in the queue longer than the specified amount of time "
-                 "(in ms)");
+DEFINE_RUNTIME_int64(max_time_in_queue_ms, 6000,
+    "Fail calls that get stuck in the queue longer than the specified amount of time (in ms)");
 TAG_FLAG(max_time_in_queue_ms, advanced);
-TAG_FLAG(max_time_in_queue_ms, runtime);
-DEFINE_int64(backpressure_recovery_period_ms, 600000,
-             "Once we hit a backpressure/service-overflow we will consider dropping stale requests "
-             "for this duration (in ms)");
+DEFINE_RUNTIME_int64(backpressure_recovery_period_ms, 600000,
+    "Once we hit a backpressure/service-overflow we will consider dropping stale requests "
+    "for this duration (in ms)");
 TAG_FLAG(backpressure_recovery_period_ms, advanced);
-TAG_FLAG(backpressure_recovery_period_ms, runtime);
 DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
@@ -239,10 +236,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    if (status.IsServiceUnavailable()) {
-      Overflow(call, "global", thread_pool_.options().queue_limit);
-      return;
-    }
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << LogPrefix()
         << call->method_name() << " request on " << service_->service_name() << " from "

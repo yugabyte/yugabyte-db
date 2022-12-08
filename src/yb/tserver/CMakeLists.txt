@@ -41,6 +41,7 @@ YB_INCLUDE_EXTENSIONS()
 
 YRPC_GENERATE(
   TSERVER_PROTO_SRCS TSERVER_PROTO_HDRS TSERVER_PROTO_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES tserver.proto tserver_types.proto)
@@ -60,10 +61,12 @@ ADD_YB_LIBRARY(tserver_proto
 
 YRPC_GENERATE(
   BACKUP_YRPC_SRCS BACKUP_YRPC_HDRS BACKUP_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES backup.proto)
 set(BACKUP_YRPC_LIBS
+  any_yrpc
   yrpc
   tserver_proto)
 ADD_YB_LIBRARY(backup_proto
@@ -171,6 +174,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
   db_server_base.cc
+  full_compaction_manager.cc
   heartbeater.cc
   heartbeater_factory.cc
   metrics_snapshotter.cc
@@ -178,6 +182,7 @@ set(TSERVER_SRCS
   pg_client_session.cc
   pg_create_table.cc
   pg_table_cache.cc
+  pg_response_cache.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc
@@ -239,14 +244,21 @@ ADD_YB_LIBRARY(yb-tserver_util
 # yb-tserver
 #########################################
 
-add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}" tablet_server_main.cc)
-target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}"
-  tserver
-  yb-tserver_util
-  yb-cql
-  yb-redis
-  yb_pgwrapper
-  ${YB_BASE_LIBS})
+set(TSERVER_MAIN_DEPS
+    tserver
+    yb-tserver_util
+    yb-cql
+    yb-redis
+    yb_pgwrapper
+    ${YB_BASE_LIBS})
+
+ADD_YB_LIBRARY(tserver_main_impl
+  SRCS tablet_server_main_impl.cc
+  DEPS ${TSERVER_MAIN_DEPS})
+
+add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}"
+               tablet_server_main.cc)
+target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}" tserver_main_impl)
 
 #########################################
 # Generate tserver_flags.xml

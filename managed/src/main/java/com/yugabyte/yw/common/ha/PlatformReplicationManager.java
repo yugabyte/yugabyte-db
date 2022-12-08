@@ -18,6 +18,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -51,17 +52,28 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
+  public static final String STORAGE_PATH = "yb.storage.path";
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
 
   private final PlatformReplicationHelper replicationHelper;
 
+  private final ConfigHelper configHelper;
+
+  private final play.Configuration appConfig;
+
   @Inject
   public PlatformReplicationManager(
-      PlatformScheduler platformScheduler, PlatformReplicationHelper replicationHelper) {
+      PlatformScheduler platformScheduler,
+      PlatformReplicationHelper replicationHelper,
+      ConfigHelper configHelper,
+      play.Configuration appConfig) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
+    this.configHelper = configHelper;
+    this.appConfig = appConfig;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -492,6 +504,9 @@ public class PlatformReplicationManager {
     ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
     if (response.code != 0) {
       log.error("Restore failed: " + response.message);
+    } else {
+      // Sync the files stored in DB to FS in case restore is successful.
+      configHelper.syncFileData(appConfig.getString(STORAGE_PATH), true);
     }
 
     return response.code == 0;

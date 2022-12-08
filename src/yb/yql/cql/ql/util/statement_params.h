@@ -15,8 +15,7 @@
 // Parameters for executing a SQL statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
-#define YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -122,5 +121,3 @@ class StatementParameters {
 
 } // namespace ql
 } // namespace yb
-
-#endif  // YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_

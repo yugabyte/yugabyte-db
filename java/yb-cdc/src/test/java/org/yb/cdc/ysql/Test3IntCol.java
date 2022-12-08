@@ -141,38 +141,87 @@ public class Test3IntCol extends CDCBaseClass {
   public void testLongRunningScript() {
     try {
       ExpectedRecord3Proto[] expectedRecords = {
+        // insert into test values (1,2,3);
         new ExpectedRecord3Proto(1, 2, 3, CdcService.RowMessage.Op.INSERT),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
+
+        // update test set c=c+1 where a=1;
         new ExpectedRecord3Proto(1, 2, 4, CdcService.RowMessage.Op.UPDATE),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // UPDATE PK: update test set a=a+1 where a=1;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(1, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(2, 2, 4, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // NO RECORDS FOR:
+        // begin;
+        // insert into test values(7,8,9);
+        // rollback;
+
+        // begin;
+        // insert into test values(7,8,9);
+        // update test set b=b+9 where a=7;
+        // end transaction;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(7, 8, 9, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(7, 17, 9, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // insert into test values(6,7,8);
+        // update test set c=c+9 where a=6;
+        // update test set a=a+9 where a=6;
+        // commit;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(6, 7, 8, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(6, 7, 17, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(6, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(15, 7, 17, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // NO RECORDS FOR: update test set b=b+1, c=c+1 where a=1;
+
+        // NO RECORDS FOR:
+        // begin;
+        // update test set b=b+1, c=c+1 where a=1;
+        // end;
+
+        // begin;
+        // insert into test values(11,12,13);
+        // update test set b=b+1, c=c+1 where a=11;
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(11, 12, 13, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(11, 13, 14, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // insert into test values(12,112,113);
+        // delete from test where a=12;
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(12, 112, 113, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(12, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // insert into test values(13,113,114);
+        // update test set c=c+1 where a=13;
+        // update test set a=a+1 where a=13;
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(13, 113, 114, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(13, 113, 115, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(13, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(14, 113, 115, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // insert into test values(17,114,115);
+        // update test set c=c+1 where a=17;
+        // update test set a=a+1 where a=17;
+        // update test set b=b+1, c=c+1 where a=18;
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(17, 114, 115, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(17, 114, 116, CdcService.RowMessage.Op.UPDATE),
@@ -180,6 +229,13 @@ public class Test3IntCol extends CDCBaseClass {
         new ExpectedRecord3Proto(18, 114, 116, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(18, 115, 117, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // update test set b=b+1, c=c+1 where a=18;
+        // insert into test values(20,21,22);
+        // update test set b=b+1, c=c+1 where a=20;
+        // update test set a=a+1 where a=20;
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(18, 116, 118, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(20, 21, 22, CdcService.RowMessage.Op.INSERT),
@@ -187,30 +243,50 @@ public class Test3IntCol extends CDCBaseClass {
         new ExpectedRecord3Proto(20, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(21, 22, 23, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // update test set b=b+1, c=c+1 where a=21;
+        // delete from test where a=21;
+        // insert into test values(21,23,24);
+        // end;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(21, 23, 24, CdcService.RowMessage.Op.UPDATE),
         new ExpectedRecord3Proto(21, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(21, 23, 24, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // begin;
+        // insert into test values (-1,-2,-3), (-4,-5,-6);
+        // insert into test values (-11, -12, -13);
+        // delete from test where a=-1;
+        // commit;
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(-1, -2, -3, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-4, -5, -6, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-11, -12, -13, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, 0, 0, CdcService.RowMessage.Op.DELETE),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // insert into test values (404, 405, 406), (104, 204, 304);
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
         new ExpectedRecord3Proto(404, 405, 406, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(104, 204, 304, CdcService.RowMessage.Op.INSERT),
         new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // insert into test values(41,43,44);
         new ExpectedRecord3Proto(41, 43, 44, CdcService.RowMessage.Op.INSERT),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
+
+        // update test set b=b+1, c=c+1 where a=41;
         new ExpectedRecord3Proto(41, 44, 45, CdcService.RowMessage.Op.UPDATE),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT),
+
+        // delete from test where a=41;
         new ExpectedRecord3Proto(41, 0, 0, CdcService.RowMessage.Op.DELETE),
+
+        // insert into test values(41,43,44);
         new ExpectedRecord3Proto(41, 43, 44, CdcService.RowMessage.Op.INSERT),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.BEGIN),
+
+        // update test set b=b+1, c=c+1 where a=41;
         new ExpectedRecord3Proto(41, 44, 45, CdcService.RowMessage.Op.UPDATE),
-        new ExpectedRecord3Proto(-1, -1, -1, CdcService.RowMessage.Op.COMMIT)
       };
 
       executeScriptAssertRecords(expectedRecords, "cdc_long_script.sql");

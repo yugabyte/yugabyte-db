@@ -58,10 +58,10 @@ func (authenticator *Authenticator) StreamInterceptor() grpc.StreamServerInterce
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		err := authenticator.authorize(ctx, info.FullMethod)
+		err := authenticator.authorize(stream.Context(), info.FullMethod)
 		if err != nil {
 			return err
 		}
-		return handler(ctx, stream)
+		return handler(srv, stream)
 	})
 }

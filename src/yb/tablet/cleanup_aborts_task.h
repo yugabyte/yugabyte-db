@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_CLEANUP_ABORTS_TASK_H
-#define YB_TABLET_CLEANUP_ABORTS_TASK_H
+#pragma once
 
 #include <condition_variable>
 #include <mutex>
@@ -59,5 +58,3 @@ class CleanupAbortsTask : public rpc::StrandTask {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_CLEANUP_ABORTS_TASK_H

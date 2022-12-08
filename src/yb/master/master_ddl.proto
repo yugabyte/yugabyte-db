@@ -295,6 +295,7 @@ message GetBackfillJobsResponsePB {
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
   optional bool is_index_table = 2 [ default = false ];
+  optional TransactionMetadataPB transaction = 3;
 }
 
 message DeleteTableResponsePB {
@@ -534,6 +535,8 @@ message GetNamespaceInfoResponsePB {
 
   optional NamespaceIdentifierPB namespace = 2;
   optional bool colocated = 3;
+  // This denotes if a colocated database is a legacy colocated database.
+  optional bool legacy_colocated_database = 4;
 }
 
 // ============================================================================

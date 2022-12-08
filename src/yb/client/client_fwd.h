@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CLIENT_CLIENT_FWD_H
-#define YB_CLIENT_CLIENT_FWD_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -69,6 +68,7 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 struct FlushStatus;
 using FlushCallback = boost::function<void(FlushStatus*)>;
 using CommitCallback = boost::function<void(const Status&)>;
+using CreateCallback = boost::function<void(const Status&)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
@@ -108,6 +108,8 @@ using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
 using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
+using YBPgsqlReadOpPtr = std::shared_ptr<YBPgsqlReadOp>;
+using YBPgsqlWriteOpPtr = std::shared_ptr<YBPgsqlWriteOp>;
 
 enum class YBTableType;
 
@@ -156,5 +158,3 @@ class AsyncClientInitialiser;
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_CLIENT_FWD_H

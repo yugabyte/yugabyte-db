@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
-#define YB_MASTER_YQL_VIRTUAL_TABLE_H
+#pragma once
 
 #include "yb/common/ql_rowblock.h"
 
@@ -84,9 +83,9 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   }
 
   Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override {
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -147,4 +146,3 @@ extern const std::string kSystemTablesReleaseVersionColumn;
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VIRTUAL_TABLE_H

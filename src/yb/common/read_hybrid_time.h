@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_READ_HYBRID_TIME_H
-#define YB_COMMON_READ_HYBRID_TIME_H
+#pragma once
 
 #include <functional>
 
@@ -139,5 +138,3 @@ inline bool operator==(const ReadHybridTime& lhs, const ReadHybridTime& rhs) {
 }
 
 } // namespace yb
-
-#endif // YB_COMMON_READ_HYBRID_TIME_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_OP_H
-#define YB_YQL_PGGATE_PG_OP_H
+#pragma once
 
 #include "yb/util/status.h"
 
@@ -135,8 +134,6 @@ class PgsqlReadOp : public PgsqlOp {
   bool read_from_followers_ = false;
 };
 
-using PgsqlReadOpPtr = std::shared_ptr<PgsqlReadOp>;
-
 std::shared_ptr<PgsqlReadRequestPB> InitSelect(
     const PgsqlReadOpPtr& read_op, const PgTableDesc& desc);
 
@@ -186,5 +183,3 @@ bool PrepareNextRequest(PgsqlReadOp* read_op);
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif  // YB_YQL_PGGATE_PG_OP_H

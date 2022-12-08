@@ -12,8 +12,7 @@
 // under the License.
 //
 //
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_RPC_H
-#define YB_YQL_CQL_CQLSERVER_CQL_RPC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -116,7 +115,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(rpc::ByteBlocks* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -179,5 +178,3 @@ using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;
 
 } // namespace cqlserver
 } // namespace yb
-
-#endif // YB_YQL_CQL_CQLSERVER_CQL_RPC_H

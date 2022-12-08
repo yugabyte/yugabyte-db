@@ -49,11 +49,11 @@ The YugabyteDB node-postgres smart driver has the following load balancing featu
 
 The YugabyteDB node-postgres smart driver can be configured with pooling as well.
 
-## Quick start
+## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/nodejs/ysql-pg/).
+Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
-## Download the driver dependency
+### Download the driver dependency
 
 Download and install the YugabyteDB node-postgres smart driver using the following command (you need to have Node.js installed on your system):
 
@@ -64,10 +64,6 @@ npm install @yugabytedb/pg
 The driver requires YugabyteDB version 2.7.2.0 or higher.
 
 You can start using the driver in your code.
-
-## Fundamentals
-
-Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
 ### Load balancing connection properties
 

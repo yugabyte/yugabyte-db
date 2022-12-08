@@ -14,6 +14,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+DECLARE_int32(heartbeat_interval_ms);
+
 using namespace std::literals;
 using std::string;
 
@@ -228,6 +230,10 @@ TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(NewConnectionTransparentRetry
   testTxnConcurrentWithDDL([this] {
     testConcurrentDDLFromDifferentNode("col2");
   });
+
+  // Wait for heartbeat to propagate across all the TServers and invalidate the table cache
+  // across all nodes.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
 
   // Test DML transaction interleaved with an operation that only causes schema version mismatch
   // through a connection to the same TServer. Here the alter operation causes table cache

@@ -27,6 +27,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
@@ -64,142 +65,9 @@ void AppendEncodedDocHt(const Slice& encoded_doc_ht, KeyBytes* key_bytes) {
   key_bytes->AppendRawBytes(encoded_doc_ht);
 }
 
-const char kStrongWriteTail[] = {
-    KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(IntentTypeSet({IntentType::kStrongWrite}).ToUIntPtr()) };
-
-const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
-
-char kEmptyKeyStrongWriteTail[] = {
-    KeyEntryTypeAsChar::kGroupEnd,
-    KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(IntentTypeSet({IntentType::kStrongWrite}).ToUIntPtr()) };
-
-const Slice kEmptyKeyStrongWriteTailSlice =
-    Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));
-
-Slice StrongWriteSuffix(const KeyBytes& key) {
-  return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
-}
-
-// We are not interested in weak and read intents here.
-// So could just skip them.
-void AppendStrongWrite(KeyBytes* out) {
-  out->AppendRawBytes(StrongWriteSuffix(*out));
-}
-
 } // namespace
 
 namespace {
-
-struct DecodeStrongWriteIntentResult {
-  Slice intent_prefix;
-  Slice intent_value;
-  DocHybridTime intent_time;
-  DocHybridTime value_time;
-  IntentTypeSet intent_types;
-
-  // Whether this intent from the same transaction as specified in context.
-  bool same_transaction = false;
-
-  std::string ToString() const {
-    return Format("{ intent_prefix: $0 intent_value: $1 intent_time: $2 value_time: $3 "
-                  "same_transaction: $4 intent_types: $5 }",
-                  intent_prefix.ToDebugHexString(), intent_value.ToDebugHexString(), intent_time,
-                  value_time, same_transaction, intent_types);
-  }
-
-  // Returns the upper limit for the "value time" of an intent in order for the intent to be visible
-  // in the read results. The "value time" is defined as follows:
-  //   - For uncommitted transactions, the "value time" is the time when the intent was written.
-  //     Note that same_transaction or in_txn_limit could only be set for uncommited transactions.
-  //   - For committed transactions, the "value time" is the commit time.
-  //
-  // The logic here is as follows:
-  //   - When a transaction is reading its own intents, the in_txn_limit allows a statement to
-  //     avoid seeing its own partial results. This is necessary for statements such as INSERT ...
-  //     SELECT to avoid reading rows that the same statement generated and going into an infinite
-  //     loop.
-  //   - If an intent's hybrid time is greater than the tablet's local limit, then this intent
-  //     cannot lead to a read restart and we only need to see it if its commit time is less than or
-  //     equal to read_time.
-  //   - If an intent's hybrid time is <= than the tablet's local limit, then we cannot claim that
-  //     the intent was written after the read transaction began based on the local limit, and we
-  //     must compare the intent's commit time with global_limit and potentially perform a read
-  //     restart, because the transaction that wrote the intent might have been committed before our
-  //     read transaction begin.
-  HybridTime MaxAllowedValueTime(const ReadHybridTime& read_time) const {
-    if (same_transaction) {
-      return read_time.in_txn_limit;
-    }
-    return intent_time.hybrid_time() > read_time.local_limit
-        ? read_time.read : read_time.global_limit;
-  }
-};
-
-std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult& result) {
-  return out << result.ToString();
-}
-
-// Decodes intent based on intent_iterator and its transaction commit time if intent is a strong
-// write intent, intent is not for row locking, and transaction is already committed at specified
-// time or is current transaction.
-// Returns HybridTime::kMin as value_time otherwise.
-// For current transaction returns intent record hybrid time as value_time.
-// Consumes intent from value_slice leaving only value itself.
-Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    const TransactionOperationContext& txn_op_context,
-    rocksdb::Iterator* intent_iter,
-    TransactionStatusCache* transaction_status_cache) {
-  DecodeStrongWriteIntentResult result;
-  auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(intent_iter->key()));
-  result.intent_prefix = decoded_intent_key.intent_prefix;
-  result.intent_types = decoded_intent_key.intent_types;
-  if (result.intent_types.Test(IntentType::kStrongWrite)) {
-    auto intent_value = intent_iter->value();
-    auto decoded_intent_value = VERIFY_RESULT(DecodeIntentValue(intent_value));
-
-    auto decoded_txn_id = decoded_intent_value.transaction_id;
-    auto decoded_subtxn_id = decoded_intent_value.subtransaction_id;
-
-    result.intent_value = decoded_intent_value.body;
-    result.intent_time = decoded_intent_key.doc_ht;
-    result.same_transaction = decoded_txn_id == txn_op_context.transaction_id;
-
-    // By setting the value time to kMin, we ensure the caller ignores this intent. This is true
-    // because the caller is skipping all intents written before or at the same time as
-    // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
-    // equal to DocHybridTime::kMin.
-    if (result.intent_value.starts_with(ValueEntryTypeAsChar::kRowLock)) {
-      result.value_time = DocHybridTime::kMin;
-    } else if (result.same_transaction) {
-      if (txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id)) {
-        // If this intent is from the same transaction, we can check the aborted set from this
-        // txn_op_context to see whether the intent is still live. If not, mask it from the caller.
-        result.value_time = DocHybridTime::kMin;
-      } else {
-        result.value_time = decoded_intent_key.doc_ht;
-      }
-    } else {
-      auto commit_data = VERIFY_RESULT(
-          transaction_status_cache->GetTransactionLocalState(decoded_txn_id));
-      auto commit_ht = commit_data.commit_ht;
-      auto aborted_subtxn_set = commit_data.aborted_subtxn_set;
-      auto is_aborted_subtxn = aborted_subtxn_set.Test(decoded_subtxn_id);
-      result.value_time = commit_ht == HybridTime::kMin || is_aborted_subtxn
-          ? DocHybridTime::kMin
-          : DocHybridTime(commit_ht, decoded_intent_value.write_id);
-      VLOG(4) << "Transaction id: " << decoded_txn_id
-              << ", subtransaction id: " << decoded_subtxn_id
-              << ", value time: " << result.value_time
-              << ", value: " << result.intent_value.ToDebugHexString()
-              << ", aborted subtxn set: " << aborted_subtxn_set.ToString();
-    }
-  } else {
-    result.value_time = DocHybridTime::kMin;
-  }
-  return result;
-}
 
 // Given that key is well-formed DocDB encoded key, checks if it is an intent key for the same key
 // as intent_prefix. If key is not well-formed DocDB encoded key, result could be true or false.

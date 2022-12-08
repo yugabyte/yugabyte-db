@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_EXEC_EXEC_FWD_H
-#define YB_YQL_CQL_QL_EXEC_EXEC_FWD_H
+#pragma once
 
 #include <vector>
 
@@ -33,5 +32,3 @@ using StatementBatch = std::vector<std::pair<std::reference_wrapper<const ParseT
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_EXEC_EXEC_FWD_H

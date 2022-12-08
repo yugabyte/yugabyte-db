@@ -33,7 +33,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
@@ -41,8 +40,10 @@
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
+#include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -50,10 +51,11 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(pg_client_session_expiration_ms, 60000,
+DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
               "Pg client session expiration time in milliseconds.");
 
 namespace yb {
@@ -164,19 +166,21 @@ class ApplyToValue {
 class PgClientServiceImpl::Impl {
  public:
   explicit Impl(
-      TabletServerIf *const tablet_server,
+      std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
-      const XClusterSafeTimeMap* xcluster_safe_time_map)
-      : tablet_server_(tablet_server),
+      const XClusterSafeTimeMap* xcluster_safe_time_map,
+      MetricEntity* metric_entity)
+      : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
         check_expired_sessions_(scheduler),
-        xcluster_safe_time_map_(xcluster_safe_time_map) {
+        xcluster_safe_time_map_(xcluster_safe_time_map),
+        response_cache_(metric_entity) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
 
@@ -193,7 +197,7 @@ class PgClientServiceImpl::Impl {
     auto session_id = ++session_serial_no_;
     auto session = std::make_shared<LockablePgClientSession>(
         session_id, &client(), clock_, transaction_pool_provider_, &table_cache_,
-        xcluster_safe_time_map_);
+        xcluster_safe_time_map_, &response_cache_);
     resp->set_session_id(session_id);
 
     std::lock_guard<rw_spinlock> lock(mutex_);
@@ -369,21 +373,26 @@ class PgClientServiceImpl::Impl {
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    DCHECK(tablet_server_);
     GetTserverCatalogVersionInfoResponsePB info;
-    RETURN_NOT_OK(tablet_server_->get_ysql_db_oid_to_cat_version_info_map(&info));
-    resp->mutable_db_oid()->Reserve(info.entries_size());
-    resp->mutable_shm_index()->Reserve(info.entries_size());
-    for (int i = 0; i < info.entries_size(); i++) {
-      resp->add_db_oid(info.entries(i).db_oid());
-      resp->add_shm_index(info.entries(i).shm_index());
-      resp->add_current_version(info.entries(i).current_version());
+    RETURN_NOT_OK(tablet_server_.get_ysql_db_oid_to_cat_version_info_map(req.size_only(), &info));
+    if (req.size_only()) {
+      // We only ask for the size of catalog version map in tserver and should not need to
+      // populate any entries.
+      DCHECK_EQ(info.entries_size(), 0);
+      resp->set_num_entries(info.num_entries());
+      return Status::OK();
+    }
+    resp->mutable_entries()->Reserve(info.entries_size());
+    for (const auto& src : info.entries()) {
+      auto* dst = resp->add_entries();
+      dst->set_db_oid(src.db_oid());
+      dst->set_shm_index(src.shm_index());
+      dst->set_current_version(src.current_version());
     }
     return Status::OK();
   }
 
-  void Perform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
       Respond(status, resp, context);
@@ -462,12 +471,11 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  Status DoPerform(
-      const PgPerformRequestPB& req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->Perform(req, resp, context);
+  Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+    return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
-  TabletServerIf *const tablet_server_ = nullptr;
+  const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
   TransactionPoolProvider transaction_pool_provider_;
@@ -505,10 +513,12 @@ class PgClientServiceImpl::Impl {
   rpc::ScheduledTaskTracker check_expired_sessions_;
 
   const XClusterSafeTimeMap* xcluster_safe_time_map_;
+
+  PgResponseCache response_cache_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
-    TabletServerIf *const tablet_server,
+    std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
     const scoped_refptr<ClockBase>& clock,
     TransactionPoolProvider transaction_pool_provider,
@@ -518,13 +528,13 @@ PgClientServiceImpl::PgClientServiceImpl(
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_safe_time_map)) {}
+          xcluster_safe_time_map, entity.get())) {}
 
-PgClientServiceImpl::~PgClientServiceImpl() {}
+PgClientServiceImpl::~PgClientServiceImpl() = default;
 
 void PgClientServiceImpl::Perform(
     const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
-  impl_->Perform(*req, resp, &context);
+  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, &context);
 }
 
 void PgClientServiceImpl::InvalidateTableCache() {

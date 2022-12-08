@@ -17,8 +17,7 @@
 //   - native_protocol_v4.spec
 //   - native_protocol_v5.spec
 
-#ifndef YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
-#define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -276,8 +275,8 @@ class CQLMessage {
 
    private:
     Status GetBindVariableValue(const std::string& name,
-                                        size_t pos,
-                                        const Value** value) const;
+                                size_t pos,
+                                const Value** value) const;
   };
 
   // Accessors for header fields
@@ -399,9 +398,9 @@ class AuthResponseRequest : public CQLRequest {
     AuthQueryParameters() : ql::StatementParameters() {}
 
     Status GetBindVariable(const std::string& name,
-                                   int64_t pos,
-                                   const std::shared_ptr<QLType>& type,
-                                   QLValue* value) const override;
+                           int64_t pos,
+                           const std::shared_ptr<QLType>& type,
+                           QLValue* value) const override;
     std::string username;
     std::string password;
   };
@@ -993,7 +992,7 @@ class AuthSuccessResponse : public CQLResponse {
 class CQLServerEvent : public rpc::ServerEvent {
  public:
   explicit CQLServerEvent(std::unique_ptr<EventResponse> event_response);
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(rpc::ByteBlocks* output) const override;
   std::string ToString() const override;
   size_t ObjectSize() const { return sizeof(*this); }
   size_t DynamicMemoryUsage() const {
@@ -1013,7 +1012,7 @@ class CQLServerEventList : public rpc::ServerEventList {
  public:
   CQLServerEventList();
   void AddEvent(std::unique_ptr<CQLServerEvent> event);
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void Serialize(rpc::ByteBlocks* output) override;
   std::string ToString() const override;
 
   size_t ObjectSize() const override { return sizeof(CQLServerEventList); }
@@ -1027,5 +1026,3 @@ class CQLServerEventList : public rpc::ServerEventList {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif // YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_

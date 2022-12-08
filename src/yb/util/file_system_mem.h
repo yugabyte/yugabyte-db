@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FILE_SYSTEM_MEM_H
-#define YB_UTIL_FILE_SYSTEM_MEM_H
+#pragma once
 
 #include <vector>
 
@@ -111,5 +110,3 @@ class InMemoryRandomAccessFile : public RandomAccessFile {
 };
 
 } // namespace yb
-
-#endif  // YB_UTIL_FILE_SYSTEM_MEM_H

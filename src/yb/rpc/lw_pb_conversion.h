@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_LW_PB_CONVERSION_H
-#define YB_RPC_LW_PB_CONVERSION_H
+#pragma once
 
 namespace yb {
 namespace rpc {
@@ -37,5 +36,3 @@ inline PBToLWMessage PBToLW(const google::protobuf::Message& source) {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_LW_PB_CONVERSION_H

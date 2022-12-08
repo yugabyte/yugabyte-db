@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_METRICS_H
-#define YB_TABLET_TABLET_METRICS_H
+#pragma once
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -85,4 +84,3 @@ class ScopedTabletMetricsTracker {
 
 } // namespace tablet
 } // namespace yb
-#endif /* YB_TABLET_TABLET_METRICS_H */

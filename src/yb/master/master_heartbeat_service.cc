@@ -20,9 +20,9 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/ts_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(tablet_report_limit, 1000,
+DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
@@ -52,6 +52,15 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     // be a leader (so we can't tell whether or not we can accept tablet reports).
     SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
 
+    if (req->common().ts_instance().permanent_uuid().empty()) {
+      // In FSManager, we have already added empty UUID protection so that TServer will
+      // crash before even sending heartbeat to Master. Here is only for the case that
+      // new updated Master might received empty UUID from old version of TServer that
+      // doesn't have the crash code in FSManager.
+      rpc.RespondFailure(STATUS(InvalidArgument, "Recevied Empty UUID from instance: ",
+                                req->common().ts_instance().ShortDebugString()));
+      return;
+    }
     consensus::ConsensusStatePB cpb;
     Status s = server_->catalog_manager_impl()->GetCurrentConfig(&cpb);
     if (!s.ok()) {

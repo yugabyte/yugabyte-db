@@ -74,10 +74,11 @@
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(rpc_read_buffer_size, 0,
+DEFINE_UNKNOWN_uint64(rpc_read_buffer_size, 0,
               "RPC connection read buffer size. 0 to auto detect.");
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);

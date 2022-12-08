@@ -13,8 +13,7 @@
 //
 // This file contains the QLValue class that represents QL values.
 
-#ifndef YB_COMMON_QL_VALUE_H
-#define YB_COMMON_QL_VALUE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -273,6 +272,9 @@ class QLValue {
   void set_jsonb_value(const std::string& val) {
     pb_.set_jsonb_value(val);
   }
+  void set_jsonb_value(const void* value, size_t size) {
+    pb_.set_jsonb_value(value, size);
+  }
   void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
@@ -501,8 +503,8 @@ class QLValue {
 
   //----------------------------- serializer / deserializer ---------------------------------
   Status Deserialize(const std::shared_ptr<QLType>& ql_type,
-                             const QLClient& client,
-                             Slice* data);
+                     const QLClient& client,
+                     Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -607,5 +609,3 @@ std::vector<QLValuePB> SortTuplesbyOrdering(
   } break;
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_VALUE_H

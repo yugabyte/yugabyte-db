@@ -29,7 +29,6 @@ type: indexpage
     <a class="section-link icon-offset" href="manual-deployment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="articles">5 articles</div>
         <div class="title">Manual deployment</div>
       </div>
       <div class="body">
@@ -42,7 +41,6 @@ type: indexpage
     <a class="section-link icon-offset" href="public-clouds/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
         <div class="title">Public clouds</div>
       </div>
       <div class="body">
@@ -55,7 +53,6 @@ type: indexpage
     <a class="section-link icon-offset" href="kubernetes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/kubernetes.png" aria-hidden="true" />
-        <div class="articles">5 chapters</div>
         <div class="title">Kubernetes</div>
       </div>
       <div class="body">
@@ -68,7 +65,7 @@ type: indexpage
     <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
         <div class="icon">
-          <i class="fab fa-docker"></i>
+          <i class="fa-brands fa-docker"></i>
         </div>
         <div class="articles">2 articles</div>
         <div class="title">Docker</div>
@@ -83,7 +80,6 @@ type: indexpage
     <a class="section-link icon-offset" href="multi-dc/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="articles">4 chapters</div>
         <div class="title">Multi-DC deployments</div>
       </div>
       <div class="body">
@@ -91,6 +87,5 @@ type: indexpage
       </div>
     </a>
   </div>
-
 
 </div>

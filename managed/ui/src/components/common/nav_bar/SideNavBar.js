@@ -81,7 +81,7 @@ export default class SideNavBar extends Component {
                       to="/metrics"
                       icon="fa fa-line-chart"
                       text="Metrics"
-                      display={getFeatureState(currentCustomer.data.features, 'menu.metrics')}
+                      display={getFeatureState(currentCustomer.data.features, 'menu.metrics', "hidden")}
                     />
                     <NavLink
                       to="/tasks"
@@ -100,7 +100,7 @@ export default class SideNavBar extends Component {
                       icon="fa fa-upload"
                       text="Backups"
                       display={this.props.enableBackupv2}
-                      />
+                    />
                     <NavLink
                       to="/config"
                       icon="fa fa-cloud-upload"

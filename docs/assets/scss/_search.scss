@@ -11,6 +11,14 @@
     top: -32px;
     height: 22px;
   }
+
+  @media (max-width: 600px) {
+    margin-bottom: 20px;
+
+    img {
+      position: static;
+    }
+  }
 }
 
 .algolia-docsearch-suggestion--highlight {
@@ -21,12 +29,6 @@
 
 body.td-searchpage h1 {
   text-align: left;
-}
-
-@media (min-width: 768px) {
-  .td-searchpage .td-main main {
-    padding-top: 11rem;
-  }
 }
 
 .search-results-container {

@@ -17,8 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef MERGE_OPERATORS_H
-#define MERGE_OPERATORS_H
+#pragma once
 
 #include <memory>
 #include <stdio.h>
@@ -55,5 +54,3 @@ class MergeOperators {
 };
 
 } // namespace rocksdb
-
-#endif

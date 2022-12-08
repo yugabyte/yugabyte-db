@@ -280,3 +280,25 @@ message TrivialResponsePB {
   optional TrivialErrorPB error = 1;
   optional int32 value = 2;
 }
+
+message TestStringOptionalPB {
+  optional string text = 1;
+}
+
+message TestObjectPB {
+  optional string string1 = 1;
+  optional TestStringOptionalPB record = 2;
+  optional string string2 = 3;
+  optional int32 int32 = 4;
+  optional int32 int32_2 = 5;
+  optional int32 int32_3 = 6;
+  optional TestStringOptionalPB record2 = 7;
+}
+
+message TestObjectPBv2 {
+  // Removed fields 2, 3, 4.
+  optional string string1 = 1;
+  optional int32 int32_2 = 5;
+  optional int32 int32_3 = 6;
+  optional TestStringOptionalPB record2 = 7;
+}

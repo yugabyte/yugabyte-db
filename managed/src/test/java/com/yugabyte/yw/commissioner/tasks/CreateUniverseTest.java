@@ -256,12 +256,10 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    Map<UniverseDefinitionTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
+    Map<UniverseTaskBase.ServerType, List<NodeDetails>> byDedicatedType =
         defaultUniverse.getNodes().stream().collect(Collectors.groupingBy(n -> n.dedicatedTo));
-    List<NodeDetails> masterNodes =
-        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.MASTER);
-    List<NodeDetails> tserverNodes =
-        byDedicatedType.get(UniverseDefinitionTaskBase.ServerType.TSERVER);
+    List<NodeDetails> masterNodes = byDedicatedType.get(UniverseTaskBase.ServerType.MASTER);
+    List<NodeDetails> tserverNodes = byDedicatedType.get(UniverseTaskBase.ServerType.TSERVER);
     assertEquals(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor,
         masterNodes.size());

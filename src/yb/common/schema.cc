@@ -46,7 +46,7 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/compare_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

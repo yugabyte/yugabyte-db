@@ -12,7 +12,7 @@ import {
 } from '../../common/badge/StatusBadge';
 import { adaptTableUUID } from '../ReplicationUtils';
 
-import { YBTable } from '../XClusterTypes';
+import { YBTable } from '../../../redesign/helpers/dtos';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
 
 import styles from './ConfigureBootstrapStep.module.scss';

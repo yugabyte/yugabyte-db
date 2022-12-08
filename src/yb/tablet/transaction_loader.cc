@@ -21,7 +21,7 @@
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/util/bitmap.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
