@@ -15,6 +15,7 @@ menu:
 type: indexpage
 showRightNav: true
 ---
+
 {{< tip title="Versioning" >}}
 As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and YugabyteDB Anywhere releases. For details, see [Release versioning](versioning/).
 {{< /tip >}}
@@ -45,7 +46,7 @@ For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.15](release-notes/v2.15/) ![PREVIEW](/images/releases/preview.png) | June 27, 2022 | n/a | n/a |
+| [v2.17](release-notes/v2.17/) ![PREVIEW](/images/releases/preview.png) | December 8, 2022 | n/a | n/a |
 | [v2.14](release-notes/v2.14/) ![CURRENT STABLE](/images/releases/current-stable.png) | July 14, 2022 | July 14, 2023 | January 14, 2024 |
 | [v2.12](release-notes/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | May 15, 2023 |
@@ -57,6 +58,7 @@ The following releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.15](release-notes/v2.15/) | June 27, 2022 | n/a | n/a |
 | [v2.13](release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
 | [v2.11](release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](release-notes/v2.9/) | August 31, 2021 | n/a | n/a |
@@ -82,7 +84,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 | Release series | Planned release |
 | :------------- | :-------------- |
 | v2.16 (stable) | Late 2022 |
-| v2.17 | Late 2022 |
+| v2.19 | Early 2023 |
 
 ## Recommended release series for projects
 
