@@ -16,7 +16,7 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
 
-![Peered VPCs](/images/yb-cloud/cloud-vpc-diagram.png)
+![Peered VPCs](/images/yb-cloud/managed-vpc-diagram.png)
 
 ## Advantages
 
@@ -93,21 +93,34 @@ You can use the private IP addresses in the following ranges (per [RFC 1918](htt
 - 172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
 - 192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
 
-Peered VPCs also use addresses in these ranges. Once peered, you also need to add the addresses of the peered VPCs to your cluster IP allow list. Private IP addresses added to the cluster allow list that are not part of a peered network are ignored, and can't be used to connect to the cluster.
-
-Addresses have the following restrictions:
-
-- Addresses can overlap with other VPCs, but not if they are peered to the same application VPC. YugabyteDB Managed warns you when you enter an overlapping range.
-- Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
-
-- YugabyteDB Managed reserves the following ranges for internal operations.
-
-  | Provider | Range |
-  | --- | --- |
-  | AWS | 10.3.0.0/16<br>10.4.0.0/16 |
-  | GCP | 10.21.0.0/16 |
+Peered application VPCs also use addresses in these ranges. Once peered, you also need to add the addresses of the peered VPCs to your cluster IP allow list. Private IP addresses added to the cluster allow list that are not part of a peered network are ignored, and can't be used to connect to the cluster.
 
 You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
+
+### Restrictions
+
+Addresses have the following additional restrictions:
+
+- VPC addresses can overlap with other VPCs, but not in the following circumstances:
+  - You want to peer the VPCs to the same application VPC. For example, if you have two different VPCs with overlapping addresses, you won't be able to peer them with the same application VPC.
+
+  ![VPCs with overlapping CIDRs](/images/yb-cloud/managed-vpc-overlap-cidr.png)
+
+  - You want to use the VPCs for the same cluster. For example, if you have two VPCs in diffferent regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.
+
+  ![VPCs with overlapping CIDRs in the same cluster](/images/yb-cloud/managed-vpc-overlap-cluster.png)
+
+  YugabyteDB Managed warns you when you enter an overlapping range.
+- Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
+
+  ![VPCs CIDR overlaps application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
+
+YugabyteDB Managed reserves the following ranges for internal operations.
+
+| Provider | Range |
+| --- | --- |
+| AWS | 10.3.0.0/16<br>10.4.0.0/16 |
+| GCP | 10.21.0.0/16 |
 
 <!--
 ## Create the VPC network
