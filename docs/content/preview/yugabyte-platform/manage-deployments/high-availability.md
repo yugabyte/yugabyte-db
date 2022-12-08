@@ -151,7 +151,7 @@ The following is the detailed upgrade procedure:
 
 12. Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
 
-13. Once the root cause of failure has been established, repeat the upgrade process starting from step
+13. Once the root cause of failure has been established, repeat the upgrade process starting from step 1.
 
     Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
 
