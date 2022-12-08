@@ -153,6 +153,10 @@
         flex-flow: column;
         transition: width 0.5s linear, opacity 0.2s 0.3s linear;
         min-width: 268px;
+
+        &.smoothscoll {
+          //scroll-behavior: smooth;
+        }
       }
 
       &.collapse {
@@ -621,10 +625,5 @@
         height: calc(100vh - 120px);
       }
     }
-  }
-
-  body:not(.td-home-) .td-main main {
-    padding-top: 30px;
-    margin-top: 8rem;
   }
 }

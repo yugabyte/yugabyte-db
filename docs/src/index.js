@@ -3,6 +3,43 @@ import Clipboard from 'clipboard';
 const $ = window.jQuery;
 
 /**
+ * Create Cookie.
+ */
+function setCookie(name, value, monthToLive) {
+  let cookie = name + '=' + encodeURIComponent(value);
+  if (typeof monthToLive !== 'number') {
+    monthToLive = 3;
+  }
+  cookie += '; max-age=' + (monthToLive * 30 * (24 * 60 * 60));
+  cookie += '; path=/';
+  if (location.hostname !== 'localhost' && location.hostname !== '192.168.10.7') {
+    cookie += '; secure=true';
+  }
+  document.cookie = cookie;
+}
+
+/**
+ * Get Cookie.
+ */
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+/**
+ * Show popup when the text limit exceed in Pills
+ */
+function popupOnPills() {
+  $('ul.nav.yb-pills li').each(function () {
+    if (($(this).find('a').width() + 25) >= $(this).width()) {
+      $(this).addClass('text-overlap');
+      $(this).append('<span class="tooltip">' + $(this).find('a').text().trim() + '</span>');
+    }
+  });
+}
+
+/**
  * Whether the element is in view port or not.
  *
  * @param {*} el Element that needs to check.
@@ -16,13 +53,11 @@ function yugabyteIsElementInViewport(el) {
   } else {
     return true;
   }
-
   const rect = el.getBoundingClientRect();
-
   return (
     rect.top >= 0 &&
     rect.left >= 0 &&
-    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) - 120 &&
     rect.right <= (window.innerWidth || document.documentElement.clientWidth)
   );
 }
@@ -80,6 +115,23 @@ function rightnavAppend() {
 }
 
 /**
+ * Scroll left navigation depending on the tabs.
+ */
+function yugabyteScrollLeftNav(scrollPath) {
+  const currentVarIn = scrollPath;
+  $('aside.td-sidebar nav:not(.fixed-nav)').css('overflow', 'hidden');
+  setTimeout(() => {
+    const sidebarInnerHeight = $('aside.td-sidebar nav:not(.fixed-nav)').height();
+    const currentTop = $(currentVarIn).offset().top;
+    console.log($(currentVarIn).offset().top);
+    $('aside.td-sidebar nav:not(.fixed-nav)').scrollTop(currentTop - sidebarInnerHeight);
+    setTimeout(() => {
+      $('aside.td-sidebar nav:not(.fixed-nav)').css('overflow', 'auto');
+    }, 600);
+  }, 300);
+}
+
+/**
  * Active left navigation depending on the tabs.
  */
 function yugabyteActiveLeftNav() {
@@ -121,6 +173,7 @@ function yugabyteActiveLeftNav() {
       if ($(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).length > 0) {
         $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).addClass('current');
         $(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`).parents('li.submenu').addClass('open');
+        yugabyteScrollLeftNav($(`aside.td-sidebar nav > ul a[href="${leftNavLink}"]`));
         return false;
       }
     }
@@ -131,7 +184,19 @@ function yugabyteActiveLeftNav() {
  * Left Nav expansion.
  */
 function yugabyteDraggabbleSideNav() {
-  const containerInnerWidth = $('.td-main main.content-area').width() * 0.75;
+  let containerInnerWidth = '';
+  if (getCookie('leftMenuWidth')) {
+    containerInnerWidth = 828 * 0.75;
+    if (containerInnerWidth >= $(window).width() - getCookie('leftMenuWidth') - 100) {
+      $('.td-main .td-sidebar-toc').removeClass('d-xl-block');
+      $('.td-main').addClass('hide-right-menu');
+    } else {
+      $('.td-main .td-sidebar-toc').addClass('d-xl-block');
+      $('.td-main').removeClass('hide-right-menu');
+    }
+  } else {
+    containerInnerWidth = $('.td-main main.content-area').width() * 0.75;
+  }
 
   let mouseMoveX = 0;
   $('#dragbar:not(.unmoveable)').mousedown(() => {
@@ -160,12 +225,22 @@ function yugabyteDraggabbleSideNav() {
 
   $(document).mouseup(() => {
     $(document).unbind('mousemove');
+    if ($('body').hasClass('dragging')) {
+      setCookie('leftMenuWidth', mouseMoveX, 3);
+    }
     $('body').removeClass('dragging');
+    popupOnPills();
     checkAnchorMultilines();
   });
 }
 
 $(document).ready(() => {
+  const cookieVal = getCookie('leftMenuWidth');
+  if (getCookie('leftMenuWidth')) {
+    $('.td-main').addClass('hide-right-menu');
+    $('.td-main .td-sidebar').attr('style', 'width:' + cookieVal + 'px ; max-width:' + cookieVal + 'px');
+  }
+  popupOnPills();
   checkAnchorMultilines();
 
   let searchValue = '';
@@ -240,20 +315,12 @@ $(document).ready(() => {
    */
   (() => {
     // Open current page menu in sidebar.
-    if ($(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).length > 0) {
-      $(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
+    if ($(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`).length > 0) {
+      $(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
+      yugabyteScrollLeftNav($(`.left-sidebar-wrap nav:not(.fixed-nav) > ul a[href="${window.location.pathname}"]`));
     } else {
       yugabyteActiveLeftNav();
     }
-
-    if (!yugabyteIsElementInViewport($('.left-sidebar-wrap nav > ul.list a.current'))) {
-      setTimeout(() => {
-        const sidebarInnerHeight = $('aside.td-sidebar nav:not(.fixed-nav)').height();
-        const currentTop = $('aside.td-sidebar a.current').offset().top;
-        $('aside.td-sidebar nav:not(.fixed-nav)').scrollTop(currentTop - sidebarInnerHeight);
-      }, 1000);
-    }
-
     // Left Nav draggabble.
     yugabyteDraggabbleSideNav();
 
@@ -419,15 +486,6 @@ $(document).ready(() => {
     }
   });
 
-  $('ul.nav.yb-pills li').each(function () {
-    const innertext = $(this).find('a').text().trim();
-    if (innertext.length >= 29 && ($(this).find('a').find('i').length > 0 || $(this).find('a').find('img').length > 0)) {
-      $(this).append(`<span class="tooltip">${innertext}</span>`);
-    } else if (innertext.length >= 35 && ($(this).find('a').find('i').length === 0 && $(this).find('a').find('img').length === 0)) {
-      $(this).append(`<span class="tooltip">${innertext}</span>`);
-    }
-  });
-
   if ($('.component-box').length > 0) {
     $('.component-box li p a').each(function () {
       $(this).parents('li').addClass('linked-box');
@@ -448,12 +506,12 @@ $(document).ready(() => {
 
 $(window).resize(() => {
   rightnavAppend();
-
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
   $('body').removeClass('left-menu-scrolling');
   setTimeout(() => {
     yugabyteDraggabbleSideNav();
+    setCookie('leftMenuWidth', 300, 3);
   }, 1000);
 });
