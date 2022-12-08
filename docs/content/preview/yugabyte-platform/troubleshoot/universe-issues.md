@@ -22,7 +22,23 @@ A universe's **Metrics** page displays graphs representing information on operat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
 
-![Metrics Page](/images/yp/metrics.png)<br>
+![Metrics Page](/images/yp/metrics_main.png)<br>
+
+You can chose to view metrics based on different criteria:
+
+- If your universe has more than one region, cluster, zone, or node, the **Metrics** page allows you to view metrics for a specific region, cluster, zone, or node.
+
+- You can view the overall node metrics which represent an aggregate across the selected nodes. Depending on the metric type, either an average across nodes or a sum of all node values is displayed.
+
+- You can view metrics for up to five top or bottom outlier nodes. For example, to display graphs for the top three nodes with the highest CPU usage, you would select **Outlier Nodes**, then **Top**, and then **3 nodes**. The graph also includes the average for all nodes.
+
+  Note that **Selected Node average** in the graph means the average of all the nodes that you have selected. For example, if you have filtered by region, then the selected node average would be average of all nodes in the selected region.
+
+- You can view metrics for up to seven top or bottom outlier tables, including both system and user tables. For example, to display graphs for two tables with the highest read latency, you would select **Outlier Tables**, then **Top**, and then **2 tables**. The graph also includes the average for all tables.
+
+  Note that the namespace name is appended with the table name and separated by a `.` (dot) operator.
+
+- You can further restrict the outlier nodes or tables graphs to only display metrics for specific operations, events, statuses, and so on. For example, you can find out how many YSQL `SELECT` statements per second have been executed by the top-performing three nodes in the past six hours by selecting **Last 6 hr > Outlier Nodes > Top > 3 nodes > YSQL Ops > Total YSQL Ops / Sec > Select**.
 
 You should do the following on a regular basis:
 
