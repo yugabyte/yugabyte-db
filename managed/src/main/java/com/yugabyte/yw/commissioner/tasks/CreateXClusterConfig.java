@@ -186,9 +186,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Assign the created backup UUID for the tables in the DB.
       xClusterConfig.setBackupForTables(tableIdsNeedBootstrap, backup);
 
-      // If the table type is YCQL, delete the tables from the target universe, because if the
-      // tables exist, the restore subtask will fail.
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
+        // If the table type is YCQL, delete the tables from the target universe, because if the
+        // tables exist, the restore subtask will fail.
         List<String> tableNamesNeedBootstrap =
             tablesInfoListNeedBootstrap
                 .stream()
@@ -211,6 +211,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 targetUniverse.universeUUID,
                 Collections.singletonMap(namespaceName, tableNamesToDeleteOnTargetUniverse))
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+      } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+        // If the table type is YSQL, delete the database from the target universe before restore.
+        createDeleteKeySpaceTask(namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE);
       }
 
       // Restore to the target universe.
