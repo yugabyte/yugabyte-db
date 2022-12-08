@@ -3,7 +3,7 @@ title: Distributed transactions
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
 description: Distributed transactions in YugabyteDB.
-headcontent: Explore distributed transactions in YugabyteDB.
+headcontent: Learn how a distributed transaction works in YugabyteDB
 menu:
   preview:
     name: Distributed transactions
