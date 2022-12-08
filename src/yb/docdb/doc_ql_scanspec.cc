@@ -182,7 +182,8 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
           DCHECK(rhs.value().has_list_value());
           const auto& value = rhs.value().list_value();
           DCHECK_EQ(num_cols, value.elems_size());
-          Option option(num_cols);
+          Option option;
+          option.reserve(num_cols);
           for (size_t i = 0; i < num_cols; i++) {
             SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
             auto pv =
@@ -197,22 +198,22 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
           // IN arguments should have been de-duplicated and ordered ascendingly by the
           // executor.
 
-          std::vector<bool> reverse;
-          for (size_t i = 0; i < num_cols; i++) {
-            SortingType sorting_type = schema_.column(col_idxs[i]).sorting_type();
-            bool is_reverse_order = is_forward_scan_ ^ (sorting_type == SortingType::kAscending);
-            reverse.push_back(is_reverse_order);
+          std::vector<const QLValuePB*> options_elems;
+          options_elems.reserve(options.elems_size());
+          for (const auto& value : options.elems()) {
+            options_elems.push_back(&value);
           }
 
-          vector<QLValuePB> sorted_options = SortTuplesbyOrdering(options, reverse);
+          SortTuplesbyOrdering(options_elems, schema_, is_forward_scan_, col_idxs);
 
           for (int i = 0; i < num_options; i++) {
-            const auto& elem = sorted_options[i];
-            DCHECK(elem.has_tuple_value());
-            const auto& value = elem.tuple_value();
+            const auto& elem = options_elems[i];
+            DCHECK(elem->has_tuple_value());
+            const auto& value = elem->tuple_value();
             DCHECK_EQ(num_cols, value.elems_size());
 
             Option option;
+            option.reserve(num_cols);
             for (size_t j = 0; j < num_cols; j++) {
               SortingType sorting_type = schema_.column(col_idxs[j]).sorting_type();
               auto pv = KeyEntryValue::FromQLValuePBForKey(
