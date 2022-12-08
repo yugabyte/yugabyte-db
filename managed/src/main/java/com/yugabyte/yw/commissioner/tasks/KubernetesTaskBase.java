@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -464,6 +465,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             azCode,
             config,
             isReadOnlyCluster);
+
+        // Copy the source root certificate to the pods.
+        createTransferXClusterCertsCopyTasks(
+            Collections.singleton(node), getUniverse(), SubTaskGroupType.ConfigureUniverse);
 
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
