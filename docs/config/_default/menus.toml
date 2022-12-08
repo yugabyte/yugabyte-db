@@ -137,7 +137,7 @@
 [[main]]
   name = "Integrations"
   weight = 4
-  url = "/integrations/"
+  url = "/preview/integrations/"
   [main.params]
     excludeVersion = true
 

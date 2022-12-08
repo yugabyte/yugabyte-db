@@ -1,9 +1,9 @@
 ---
-title: Build applications
-headerTitle: Build an application
-linkTitle: Build an application
-description: Build an application using your favorite programming language.
-headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
+title: Integrations
+headerTitle: Integrations
+linkTitle: Integrations
+description: Integrate popular third party tools with YugabyteDB, including Presto, Prisma, Sequelize, Spring, Flyway, Django, Hasura, Kafka.
+headcontent: Use YugabyteDB with popular third-party integrations.
 image: /images/section_icons/develop/api-icon.png
 aliases:
   - /develop/client-drivers/
@@ -13,11 +13,9 @@ aliases:
 type: indexpage
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.
+Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many third-party integrations out of the box.
 
-The tutorials in this section show how to connect applications to YugabyteDB using available [Drivers and ORMs](../../drivers-orms/).
-
-The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Managed or locally. Refer to [Quick start](../../quick-start-yugabytedb-managed/).<br><br>
+For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and ORMs](../../drivers-orms/).
 
 ### Choose your integration
 
