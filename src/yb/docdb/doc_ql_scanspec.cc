@@ -204,7 +204,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
             options_elems.push_back(&value);
           }
 
-          SortTuplesbyOrdering(options_elems, schema_, is_forward_scan_, col_idxs);
+          SortTuplesbyOrdering(&options_elems, schema_, is_forward_scan_, col_idxs);
 
           for (int i = 0; i < num_options; i++) {
             const auto& elem = options_elems[i];

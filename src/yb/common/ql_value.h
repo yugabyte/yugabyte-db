@@ -599,7 +599,7 @@ void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* resu
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
 void SortTuplesbyOrdering(
-    const std::vector<const QLValuePB*>& tuples, const Schema& schema, const bool is_forward_scan,
+    std::vector<const QLValuePB*>* tuples, const Schema& schema, const bool is_forward_scan,
     const std::vector<int>& col_idxs);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \

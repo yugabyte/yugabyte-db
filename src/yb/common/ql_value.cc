@@ -947,10 +947,10 @@ bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
 }
 
 void SortTuplesbyOrdering(
-    const std::vector<const QLValuePB*>& tuples, const Schema& schema, const bool is_forward_scan,
+    std::vector<const QLValuePB*>* tuples, const Schema& schema, const bool is_forward_scan,
     const std::vector<int>& col_idxs) {
   std::sort(
-      tuples.begin(), tuples.end(),
+      tuples->begin(), tuples->end(),
       [&schema, is_forward_scan, &col_idxs](const auto& t1, const auto& t2) {
         DCHECK(t1->has_tuple_value());
         DCHECK(t2->has_tuple_value());
