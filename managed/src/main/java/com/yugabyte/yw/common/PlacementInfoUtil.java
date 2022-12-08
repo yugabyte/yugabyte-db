@@ -2647,7 +2647,9 @@ public class PlacementInfoUtil {
     for (NodeDetails nd : nodeDetailsSet) {
       String kubeconfig = azToKubeconfig.get(nd.azUuid);
       if (kubeconfig == null) {
-        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + nd.azUuid);
+        // Ignore such a node because its corresponding AZ is removed from the PlacementInfo and the
+        // node will be removed too.
+        continue;
       }
       podToConfig.put(
           nd.cloudInfo.private_ip,

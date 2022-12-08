@@ -297,6 +297,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           true /* isShell */,
           false /* ignore node status check */,
           ignoreUseCustomImageConfig);
+
+      // Copy the source root certificate to the provisioned nodes.
+      createTransferXClusterCertsCopyTasks(
+          nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
