@@ -3,7 +3,7 @@ title: Integrations
 headerTitle: Integrations
 linkTitle: Integrations
 description: Integrate popular third party tools with YugabyteDB, including Presto, Prisma, Sequelize, Spring, Flyway, Django, Hasura, Kafka.
-headcontent: Use YugabyteDB with popular third-party integrations.
+headcontent: Use YugabyteDB with popular third-party integrations
 image: /images/section_icons/develop/api-icon.png
 aliases:
   - /develop/client-drivers/
@@ -23,7 +23,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="apache-kafka/">
-      <img src="/images/section_icons/develop/ecosystem/apache-kafka.png">
+      <img src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">
       Apache Kafka
     </a>
   </li>
@@ -37,13 +37,22 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="camunda/">
+      <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
     </a>
   </li>
 
   <li>
-    <a href="debezium/">
+    <a href="cdc/debezium/">
+      <img src="/images/section_icons/develop/ecosystem/debezium.png">
       Debezium
+    </a>
+  </li>
+
+  <li>
+    <a href="django-rest-framework/">
+      <img src="/images/section_icons/develop/ecosystem/django-icon.png">
+      Django
     </a>
   </li>
 
@@ -56,7 +65,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="gorm/">
-      <img src="/images/section_icons/develop/ecosystem/gorm.png">
+      <img src="/images/section_icons/develop/ecosystem/gorm-icon.png">
       GORM
     </a>
   </li>
@@ -98,7 +107,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="presto/">
-      <img src="/images/section_icons/develop/ecosystem/presto.png">
+      <img src="/images/section_icons/develop/ecosystem/presto-icon.png">
       Presto
     </a>
   </li>
@@ -140,12 +149,14 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="aiopg/">
+      <i class="fa-brands fa-python"></i>
       YSQL Aiopg
     </a>
   </li>
 
   <li>
     <a href="ysql-loader/">
+      <i class="icon-postgres"></i>
       YSQL Loader
     </a>
   </li>
