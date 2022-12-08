@@ -1642,10 +1642,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
       }
       char file_num_buf[kFormatFileNumberBufSize];
       sr->Dump(file_num_buf, sizeof(file_num_buf));
-      LOG_TO_BUFFER(log_buffer,
-                  "[%s] Universal: %s"
-                  "[%d] being compacted, skipping",
-                  cf_name.c_str(), file_num_buf, loop);
+      RDEBUG(ioptions_.info_log, "[%s] Universal: %s[%d] being compacted, skipping",
+              cf_name.c_str(), file_num_buf, loop);
 
       sr = nullptr;
     }
