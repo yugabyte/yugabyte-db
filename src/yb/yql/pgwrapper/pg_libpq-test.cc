@@ -1588,6 +1588,37 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
   }
 };
 
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CreateTablesToTablegroup),
+          PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "tg1";
+
+  // Let ts-1 be the leader of tablet.
+  ASSERT_OK(cluster_->SetFlagOnMasters("use_create_table_leader_hint", "false"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(2), "TEST_skip_election_when_fail_detected", "true"));
+
+  // Make one follower ignore applying change metadata operations.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "TEST_ignore_apply_change_metadata_on_followers", "true"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_tbl ("
+      "h INT PRIMARY KEY,"
+      "a INT,"
+      "b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+      ") WITH (colocation_id=123456) TABLEGROUP $0",
+      kTablegroupName));
+
+  cluster_->AssertNoCrashes();
+}
+
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());

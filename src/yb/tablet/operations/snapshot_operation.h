@@ -56,7 +56,7 @@ class SnapshotOperation :
 
   static Status RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.

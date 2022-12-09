@@ -73,6 +73,7 @@ YB_DEFINE_ENUM(
     ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
+YB_STRONGLY_TYPED_BOOL(IsLeaderSide);
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -97,7 +98,7 @@ class Operation {
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared
   // data structures (such as the RocksDB memtable) and without side-effects.
-  virtual Status Prepare() = 0;
+  virtual Status Prepare(IsLeaderSide is_leader_side) = 0;
 
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
