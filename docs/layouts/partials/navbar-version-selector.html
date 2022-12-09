@@ -6,8 +6,10 @@
     {{ $versionName := .version }}
     {{ if in .version "(Preview)" }}
       {{ $versionName = replace .version "(Preview)" "<span class='label-pv'>Preview</span>" }}
-    {{ else if in .version "(Stable)" }}
-      {{ $versionName = replace .version "(Stable)" "<span class='label-st'>Stable</span>" }}
+    {{ else if in .version "(STS)" }}
+      {{ $versionName = replace .version "(STS)" "<span class='label-st'>STS</span>" }}
+    {{ else if in .version "(LTS)" }}
+      {{ $versionName = replace .version "(LTS)" "<span class='label-st'>LTS</span>" }}
     {{ end }}
 	  <a class="dropdown-item" href="{{ .url }}">{{ $versionName | safeHTML }}</a>
 	{{ end }}
