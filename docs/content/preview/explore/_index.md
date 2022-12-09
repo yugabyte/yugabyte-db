@@ -230,20 +230,20 @@ ycqlsh>
   </div>
 </div>
 
-## Set up YB Simulation Base Demo
+## Set up YB Workload Simulator
 
-YB Simulation Base Demo is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
+YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
-For more information about the workload application, refer to [YB Simulation Base Demo](https://github.com/yugabyte/yb-simulation-base-demo-app/).
+For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
-YB Simulation Base Demo requires Java 11 or later installed on your computer. {{% jdk-setup %}}
+YB Workload Simulator requires Java 11 or later installed on your computer. {{% jdk-setup %}}
 
-Download the Simulation Base Demo JAR file (`yb-simu-base-app.jar`) using the following command:
+Download the YB Workload Simulator JAR file (`yb-simu-base-app.jar`) using the following command:
 
 ```sh
-wget https://github.com/yugabyte/yb-simulation-base-demo-app/releases/download/1.0/yb-simu-base-app.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/1.0/yb-simu-base-app.jar
 ```
 
 ### Use the application
