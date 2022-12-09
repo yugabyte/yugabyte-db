@@ -2218,7 +2218,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private Map<String, String> extractGFlags(List<String> command) {
     String gflagsJson = mapKeysToValues(command).get("--gflags");
     if (gflagsJson == null) {
-      throw new RuntimeException("QQ! " + command);
+      throw new IllegalStateException("Empty gflags for " + command);
     }
     return Json.fromJson(Json.parse(gflagsJson), Map.class);
   }

@@ -62,7 +62,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
@@ -1408,37 +1407,6 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   @Test
-  public void testOnPremConfigureCreateWithValidAZInstanceTypeComboNotEnoughNodes_fail() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    InstanceType i =
-        InstanceType.upsert(p.uuid, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
-    userIntent.providerType = Common.CloudType.onprem;
-    taskParams.upsertPrimaryCluster(userIntent, null);
-
-    taskParams.nodeDetailsSet = new HashSet<>();
-
-    for (int k = 0; k < 4; ++k) {
-      NodeInstanceFormData.NodeInstanceData details = new NodeInstanceFormData.NodeInstanceData();
-      details.ip = "10.255.67." + i;
-      details.region = r.code;
-      details.zone = az1.code;
-      details.instanceType = "test_instance_type";
-      details.nodeName = "test_name";
-      NodeInstance.create(az1.uuid, details);
-    }
-
-    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
-
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
   public void testOnPremConfigureCreateInvalidAZNodeComboNonEmptyNodeDetailsSet_fail() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
@@ -1462,19 +1430,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
 
-    // Set placement info with number of nodes valid but
-    for (int k = 0; k < 5; k++) {
-      NodeDetails nd = new NodeDetails();
-      nd.state = NodeDetails.NodeState.ToBeAdded;
-      nd.azUuid = az1.uuid;
-      nd.placementUuid = primaryCluster.uuid;
-      taskParams.nodeDetailsSet.add(nd);
-    }
-
+    taskParams.getPrimaryCluster().userIntent.numNodes += 5;
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-
     Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertBadRequest(result, "Couldn't find 4 nodes of type type.small");
     assertAuditEntry(0, customer.uuid);
   }
 

@@ -169,7 +169,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return result;
   }
 
-  protected void createOnpremInstance(AvailabilityZone zone) {
+  protected NodeInstance createOnpremInstance(AvailabilityZone zone) {
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
     nodeData.ip = "fake_ip_" + zone.region.code;
     nodeData.region = zone.region.code;
@@ -177,6 +177,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     nodeData.instanceType = ApiUtils.UTIL_INST_TYPE;
     NodeInstance node = NodeInstance.create(zone.uuid, nodeData);
     node.save();
+    return node;
   }
 
   protected Universe createUniverseForProviderWithReadReplica(

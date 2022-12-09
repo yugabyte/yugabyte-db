@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -142,7 +143,7 @@ public class MetaMasterController extends Controller {
       PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+      Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
@@ -151,7 +152,7 @@ public class MetaMasterController extends Controller {
         Map<String, String> config = entry.getValue();
 
         String namespace =
-            PlacementInfoUtil.getKubernetesNamespace(
+            KubernetesUtil.getKubernetesNamespace(
                 isMultiAz,
                 universeDetails.nodePrefix,
                 azName,
@@ -160,8 +161,7 @@ public class MetaMasterController extends Controller {
                 false);
 
         String helmReleaseName =
-            PlacementInfoUtil.getHelmReleaseName(
-                isMultiAz, universeDetails.nodePrefix, azName, false);
+            KubernetesUtil.getHelmReleaseName(isMultiAz, universeDetails.nodePrefix, azName, false);
 
         String ip =
             kubernetesManagerFactory

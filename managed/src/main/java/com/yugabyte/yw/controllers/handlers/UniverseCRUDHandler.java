@@ -227,34 +227,29 @@ public class UniverseCRUDHandler {
     if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
       primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
-    if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, cluster)) {
+    try {
+      Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
+      PlacementInfoUtil.updateUniverseDefinition(
+          taskParams, universe, customer.getCustomerId(), cluster.uuid);
       try {
-        Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
-        PlacementInfoUtil.updateUniverseDefinition(
-            taskParams, universe, customer.getCustomerId(), cluster.uuid);
-        try {
-          if (taskParams
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            taskParams.updateOptions =
-                Collections.singleton(
-                    UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
-          } else {
-            taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
-          }
-        } catch (Exception e) {
-          LOG.error("Failed to calculate update options", e);
+        if (taskParams
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)) {
+          taskParams.updateOptions =
+              Collections.singleton(
+                  UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+        } else {
+          taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
         }
-        UniverseResp.fillClusterRegions(taskParams.clusters);
-      } catch (IllegalStateException | UnsupportedOperationException e) {
-        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      } catch (Exception e) {
+        LOG.error("Failed to calculate update options", e);
       }
-    } else {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Invalid Node/AZ combination for given instance type " + cluster.userIntent.instanceType);
+      UniverseResp.fillClusterRegions(taskParams.clusters);
+    } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
+      LOG.error("Failed to update universe definition", e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 
