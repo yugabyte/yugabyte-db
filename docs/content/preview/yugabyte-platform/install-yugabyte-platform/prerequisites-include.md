@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 Choose the type of YugabyteDB Anywhere installation.
 
 {{< tabpane text=true >}}
@@ -12,9 +18,9 @@ Replicated installs a compatible Docker version if it is not pre-installed on th
 
   {{% tab header="Kubernetes-based" lang="kubernetes" %}}
 
-For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry. For details, see [Pull and push YugabyteDB Docker images to private container registry](#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
-In addition, you need to ensure that core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](#specify-ulimit-and-remember-the-location-of-core-dumps). 
+In addition, you need to ensure that core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 <!--
 
@@ -26,7 +32,7 @@ A Kubernetes-based installation of YugabyteDB Anywhere requires you to address c
 
 The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.
 
-You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps). 
+You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps).
 
 To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core(5)](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming%20of%20core%20dump%20files).
 
@@ -38,12 +44,12 @@ cat /proc/sys/kernel/core_pattern
 
 If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
 
-If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis. 
+If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis.
 
 Note the following:
 
-- ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod. 
-- New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node. 
+- ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod.
+- New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node.
 
 #### Pull and push YugabyteDB Docker images to private container registry
 
@@ -63,7 +69,7 @@ Before proceeding, ensure that you have the following:
 Generally, the process involves the following:
 
 - Fetching the correct version of the YugabyteDB Helm chart whose `values.yaml` file describes all the image locations.
-- Retagging images. 
+- Retagging images.
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
@@ -75,15 +81,15 @@ You need to perform the following steps:
 
    ```sh
    docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
-   
+
    docker search yugabytedb # You should see images
    ```
 
 1. Fetch the YugabyteDB Helm chart on your desktop (install Helm on your desktop). Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
 
    ```sh
-   helm repo add yugabytedb https://charts.yugabyte.com 
-   helm repo update 
+   helm repo add yugabytedb https://charts.yugabyte.com
+   helm repo update
    helm fetch yugabytedb/yugaware - - version= {{ version }}
    tar zxvf yugaware-{{ version }}.tgz
    cd yugaware
@@ -100,7 +106,7 @@ You need to perform the following steps:
    thirdparty-deps:
    	registry: quay.io
    	tag: **latest**
-   	name: **yugabyte/thirdparty-deps** 
+   	name: **yugabyte/thirdparty-deps**
    prometheus:
    	registry: ""
    	tag:  **{{ version.prometheus }}**
@@ -186,7 +192,7 @@ You need to perform the following steps:
    09ead80f0070: Pull complete
    Digest: sha256:b3770d9c4ef11eba1ff5893e28049e98e2b70083e519e0b2bce0a20e7aa832fe
    Status: Downloaded newer image for postgres:11.5
-   docker.io/library/postgres: 
+   docker.io/library/postgres:
    ```
 
    ```sh
@@ -247,7 +253,7 @@ You need to perform the following steps:
 1. Tag the local images to your target registry, as follows:
 
    ```sh
-   docker images 
+   docker images
    ```
 
    ```output
@@ -272,12 +278,12 @@ You need to perform the following steps:
 1. Push images to the private container registry, as follows:
 
    ```sh
-   docker push a04fef023c7c 
-   docker push 721453480a0f 
-   docker push 5a9061639d0a 
+   docker push a04fef023c7c
+   docker push 721453480a0f
+   docker push 5a9061639d0a
    docker push 5f1485c70c9a
-   docker push cc866859f8df 
-   docker push caef6233eac4 
+   docker push cc866859f8df
+   docker push caef6233eac4
    ```
 
    ![img](/images/yp/docker-image.png)

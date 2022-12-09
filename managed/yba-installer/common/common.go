@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
+	"github.com/spf13/viper"
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
@@ -187,28 +188,33 @@ func setJDKEnvironmentVariable() {
 }
 
 func createYugabyteUser() {
+	userName := viper.GetString("service_username")
+	if userName != "yugabyte" {
+		log.Debug("skipping creation of non-yugabyte user " + userName)
+		return
+	}
 
 	command1 := "bash"
-	arg1 := []string{"-c", "id -u yugabyte"}
+	arg1 := []string{"-c", "id -u " + userName}
 	_, err := ExecuteBashCommand(command1, arg1)
 
 	if err != nil {
 		if HasSudoAccess() {
 			command2 := "useradd"
-			arg2 := []string{"yugabyte"}
+			arg2 := []string{userName}
 			ExecuteBashCommand(command2, arg2)
 		}
 	} else {
-		log.Debug("User yugabyte already exists os install is non-root, skipping user creation.")
+		log.Debug("User " + userName + " already exists, skipping user creation.")
 	}
 
 }
 
 func extractPlatformSupportPackageAndYugabundle(vers string) {
-
+	userName := viper.GetString("service_username")
 	if HasSudoAccess() {
 		command0 := "su"
-		arg0 := []string{"yugabyte"}
+		arg0 := []string{userName}
 		ExecuteBashCommand(command0, arg0)
 	}
 
@@ -248,9 +254,7 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 		InstallVersionDir+"/packages/yugabyte-"+vers)
 
 	if HasSudoAccess() {
-		command3 := "chown"
-		arg3 := []string{"yugabyte:yugabyte", "-R", "/opt/yugabyte"}
-		ExecuteBashCommand(command3, arg3)
+		Chown("/opt/yugabyte", userName, userName, true)
 	}
 
 }
