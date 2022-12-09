@@ -3478,11 +3478,24 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 					/* deny if any of column attributes don't match */
 					if (strcmp(p_attname, c_attname) != 0 ||
 						p_info->indcollation[i] != info->indexcollations[i] ||
-						p_info->opclass[i] != info->opcintype[i]||
-						((p_info->indoption[i] & INDOPTION_DESC) != 0)
-						!= info->reverse_sort[i] ||
-						((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0)
-						!= info->nulls_first[i])
+						p_info->opclass[i] != info->opcintype[i])
+						break;
+					
+					/*
+					 * Compare index ordering if this index is ordered.
+					 *
+					 * We already confirmed that this and the parent indexes
+					 * share the same column set (actually only the length of
+					 * the column set is compard, though.) and index access
+					 * method. So if this index is unordered, the parent can be
+					 * assumed to be be unodered. Thus no need to bother
+					 * checking the parent's orderedness.
+					 */
+					if (info->sortopfamily != NULL &&
+						(((p_info->indoption[i] & INDOPTION_DESC) != 0)
+						 != info->reverse_sort[i] ||
+						 ((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0)
+						 != info->nulls_first[i]))
 						break;
 				}
 

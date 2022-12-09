@@ -4484,6 +4484,34 @@ error hint:
          Index Cond: (id < 10)
 (7 rows)
 
+-- IndexScan is safe for unordered indexes
+CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
+CREATE TABLE ischk_d1 PARTITION OF ischk FOR VALUES IN (0);
+CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
+CREATE INDEX ischk_idx ON ischk USING gin (b);
+/*+ IndexScan(ischk ischk_idx) */
+EXPLAIN SELECT * FROM ischk WHERE b = 'x';
+LOG:  available indexes for IndexScan(ischk_d1): ischk_d1_b_idx
+LOG:  available indexes for IndexScan(ischk_d2): ischk_d2_b_idx
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ischk ischk_idx)
+not used hint:
+duplication hint:
+error hint:
+
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Append  (cost=10000000000.00..20000000042.04 rows=8 width=64)
+   ->  Seq Scan on ischk_d1 ischk_1  (cost=10000000000.00..10000000021.00 rows=4 width=64)
+         Filter: (b = '''x'''::tsvector)
+   ->  Seq Scan on ischk_d2 ischk_2  (cost=10000000000.00..10000000021.00 rows=4 width=64)
+         Filter: (b = '''x'''::tsvector)
+ JIT:
+   Functions: 4
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+(8 rows)
+
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
 EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
