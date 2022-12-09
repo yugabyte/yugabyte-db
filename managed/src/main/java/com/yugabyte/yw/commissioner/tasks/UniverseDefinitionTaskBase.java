@@ -1176,7 +1176,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new IllegalStateException(errMsg);
         }
       }
-      PlacementInfoUtil.verifyNodesAndRF(
+      PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
       // Verify kubernetes overrides.

@@ -9,19 +9,16 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 */
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.UUID;
-
-import javax.inject.Inject;
-
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-
+import java.util.UUID;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -61,7 +58,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
         KubernetesPlacement placement =
             new KubernetesPlacement(cluster.placementInfo, isReadOnlyCluster);
         String masterAddresses =
-            PlacementInfoUtil.computeMasterAddresses(
+            KubernetesUtil.computeMasterAddresses(
                 cluster.placementInfo,
                 placement.masters,
                 taskParams().nodePrefix,

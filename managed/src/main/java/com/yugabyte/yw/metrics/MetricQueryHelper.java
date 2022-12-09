@@ -13,6 +13,7 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -498,7 +499,7 @@ public class MetricQueryHelper {
         for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
           namespaces.add(
-              PlacementInfoUtil.getKubernetesNamespace(
+              KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
                   az.code,

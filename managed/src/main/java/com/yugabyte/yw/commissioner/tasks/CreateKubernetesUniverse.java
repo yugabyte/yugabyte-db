@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -75,7 +76,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               pi,
               placement.masters,
               taskParams().nodePrefix,

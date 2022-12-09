@@ -267,9 +267,12 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.instanceType = "type.small";
+    userIntent.universeName = "megauniverse";
     taskParams.upsertPrimaryCluster(userIntent, null);
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
     updateUniverseDefinition(taskParams, customer.getCustomerId(), primaryCluster.uuid, CREATE);
+
+    Universe.create(taskParams, customer.getCustomerId());
 
     // Set the nodes state to inUse
     int k = 0;
@@ -288,18 +291,13 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       nd.state = NodeState.Live;
     }
 
-    // Set placement info with addition of nodes that is more than what has been configured
-    for (int m = 0; m < 7; m++) {
-      NodeDetails nd = new NodeDetails();
-      nd.state = NodeState.ToBeAdded;
-      nd.azUuid = az1.uuid;
-      nd.placementUuid = primaryCluster.uuid;
-      taskParams.nodeDetailsSet.add(nd);
-    }
+    PlacementInfo placementInfo = taskParams.getPrimaryCluster().placementInfo;
+    placementInfo.azStream().findFirst().get().numNodesInAZ += 7;
+    taskParams.userAZSelected = true;
     // HERE
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(topJson));
-    assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+    assertBadRequest(result, "Couldn't find 12 nodes of type type.small in PlacementAZ 1");
     assertAuditEntry(0, customer.uuid);
   }
 

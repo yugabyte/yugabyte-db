@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -103,7 +104,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
@@ -523,7 +524,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     params.config = config;
     if (config != null) {
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               azName,
               config,
@@ -532,7 +533,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     params.providerUUID = providerUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
     KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

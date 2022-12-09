@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -58,7 +59,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       masters = isReadOnlyCluster ? new HashMap<>() : PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
       // Mapping of the deployment zone and its corresponding Kubeconfig.
-      configs = PlacementInfoUtil.getConfigPerAZ(pi);
+      configs = KubernetesUtil.getConfigPerAZ(pi);
     }
   }
 
@@ -109,7 +110,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     Map<UUID, Map<String, String>> activeDeploymentConfigs =
-        PlacementInfoUtil.getConfigPerAZ(activeZones);
+        KubernetesUtil.getConfigPerAZ(activeZones);
     // Only used for new deployments, so maybe empty.
     SubTaskGroup createNamespaces =
         getTaskExecutor()
@@ -653,7 +654,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
     String helmFullName =
-        PlacementInfoUtil.getHelmFullNameWithSuffix(
+        KubernetesUtil.getHelmFullNameWithSuffix(
             isMultiAz, nodePrefix, azCode, newNamingStyle, isReadOnlyCluster);
     return String.format("%s%s-%d", helmFullName, sType, partition);
   }
@@ -774,7 +775,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = commandType;
     params.universeUUID = taskParams().universeUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
 
@@ -792,7 +793,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -905,7 +906,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = commandType;
     params.universeUUID = taskParams().universeUUID;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
 
@@ -923,7 +924,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -964,14 +965,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,
@@ -1004,14 +1005,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
     params.helmReleaseName =
-        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+        KubernetesUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
       // params.namespace remains null if config is not passed.
       params.namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               taskParams().nodePrefix,
               az,
               config,

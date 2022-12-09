@@ -373,7 +373,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList());
     universe =
         Universe.saveDetails(
             universe.universeUUID,
@@ -456,7 +460,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
-            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList());
     universe =
         Universe.saveDetails(
             universe.universeUUID,
