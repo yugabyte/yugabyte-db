@@ -126,6 +126,15 @@ class IteratorWrapper {
   void Seek(const Slice& k) { assert(iter_); iter_->Seek(k);       Update(); }
   void SeekToFirst()        { assert(iter_); iter_->SeekToFirst(); Update(); }
   void SeekToLast()         { assert(iter_); iter_->SeekToLast();  Update(); }
+  bool ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+    LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
+    auto result =
+        iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
+    Update();
+    return result;
+  }
 
  private:
   void Update() {

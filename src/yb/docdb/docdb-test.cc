@@ -1967,7 +1967,7 @@ SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> "v6"
   ASSERT_OK(SetPrimitive(
       DocKey(KeyEntryValues(key_string)).Encode(),
       TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(QLValue::Primitive("")),
-      t[11]));
+      t[12]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive( // k3
   DocKey(KeyEntryValues(key_string)).Encode(),
@@ -2008,7 +2008,8 @@ SubDocKey(DocKey([], ["k0"]), [HT{ physical: 3000 }]) -> ""; merge flags: 1; ttl
 SubDocKey(DocKey([], ["k0"]), [HT{ physical: 1000 }]) -> "v0"; ttl: 0.003s
 SubDocKey(DocKey([], ["k1"]), [HT{ physical: 6000 }]) -> ""; merge flags: 1; ttl: 0.003s
 SubDocKey(DocKey([], ["k1"]), [HT{ physical: 4000 }]) -> "v1"; ttl: 0.008s
-SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> ""; merge flags: 1
+SubDocKey(DocKey([], ["k2"]), [HT{ physical: 13000 }]) -> ""; merge flags: 1
+SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> "v6"
 SubDocKey(DocKey([], ["k2"]), [HT{ physical: 8000 }]) -> ""; merge flags: 1; ttl: 0.005s
 SubDocKey(DocKey([], ["k2"]), [HT{ physical: 6000 }]) -> "v2"; ttl: 0.003s
 SubDocKey(DocKey([], ["k3"]), [HT{ physical: 14000 }]) -> "v4"; ttl: 0.001s
@@ -2025,7 +2026,8 @@ SubDocKey(DocKey([], ["k6"]), [HT{ physical: 7000 }]) -> DEL
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
 SubDocKey(DocKey([], ["k0"]), [HT{ physical: 1000 }]) -> "v0"; ttl: 0.011s
-SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> ""; merge flags: 1
+SubDocKey(DocKey([], ["k2"]), [HT{ physical: 13000 }]) -> ""; merge flags: 1
+SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> "v6"
 SubDocKey(DocKey([], ["k2"]), [HT{ physical: 6000 }]) -> "v2"; ttl: 0.007s
 SubDocKey(DocKey([], ["k3"]), [HT{ physical: 14000 }]) -> "v4"; ttl: 0.001s
 SubDocKey(DocKey([], ["k3"]), [HT{ physical: 2000 }]) -> "v3"
@@ -3823,6 +3825,47 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
   )#");
 
+  // Validate the iterator API with callback.
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  for (int j = 0; j < 2; j++) {
+    unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+    iter->SeekToFirst();
+    int scanned_keys = 0;
+    rocksdb::ScanCallback scan_callback = [&scanned_keys](
+                                              const Slice& key, const Slice& value) -> bool {
+      scanned_keys++;
+      SubDocKey expected_subdoc_key(
+          DocKey(KeyEntryValues(Format("row$0", scanned_keys), 11111 * scanned_keys)),
+          KeyEntryValue::MakeColumnId(ColumnId(10)),
+          HybridTime::FromMicros(scanned_keys * 1000));
+
+      SubDocKey subdoc_key;
+      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, HybridTimeRequired::kTrue));
+      PrimitiveValue primitive_value(ValueEntryType::kInt32);
+      EXPECT_OK(primitive_value.DecodeFromValue(value));
+
+      EXPECT_EQ(expected_subdoc_key.ToString(), subdoc_key.ToString());
+      EXPECT_EQ(scanned_keys, primitive_value.GetInt32());
+
+      return true;
+    };
+    if (j == 0) {
+      ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+    } else {
+      int kf_calls = 0;
+      rocksdb::KeyFilterCallback kf_callback = [&kf_calls](
+                             const Slice& prefixed_key, size_t shared_bytes,
+                             const Slice& delta) -> rocksdb::KeyFilterCallbackResult {
+        kf_calls++;
+        return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
+      };
+      ASSERT_TRUE(iter->ScanForward(Slice(), &kf_callback, &scan_callback));
+      ASSERT_EQ(2, kf_calls);
+    }
+    ASSERT_EQ(2, scanned_keys);
+  }
+
   ASSERT_OK(WriteSimple(5));
 
   for (int j = 0; j < 3; ++j) {
@@ -3841,7 +3884,188 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
       ASSERT_OK(ForceRocksDBCompact(rocksdb(), options));
     }
   }
+}
 
+void ValidateScanForwardAndRegularIterator(DocDB doc_db) {
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  unique_ptr<rocksdb::Iterator> regular_iter(doc_db.regular->NewIterator(read_opts));
+  regular_iter->SeekToFirst();
+  unique_ptr<rocksdb::Iterator> iter(doc_db.regular->NewIterator(read_opts));
+  iter->SeekToFirst();
+
+  rocksdb::ScanCallback scan_callback = [&](const Slice& key, const Slice& value) -> bool {
+    EXPECT_EQ(regular_iter->key(), key) << "Regular: " << regular_iter->key().ToDebugHexString()
+                                        << ", ScanForward: " << key.ToDebugHexString();
+    EXPECT_EQ(regular_iter->value(), value);
+    regular_iter->Next();
+    return true;
+  };
+
+  ASSERT_TRUE(iter->ScanForward(Slice(), nullptr, &scan_callback));
+  ASSERT_FALSE(regular_iter->Valid());
+}
+
+TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
+  constexpr int kNumKeys = 9;
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+      SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+      SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+      SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+      SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+      SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+      SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+  )#");
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  {
+    int scanned_keys = 0;
+    rocksdb::ScanCallback scan_callback = [&scanned_keys](
+                                              const Slice& key, const Slice& value) -> bool {
+      auto expected_value = scanned_keys + 1;
+      SubDocKey expected_subdoc_key(
+          DocKey(KeyEntryValues(Format("row$0", expected_value), 11111 * expected_value)),
+          KeyEntryValue::MakeColumnId(ColumnId(10)),
+          HybridTime::FromMicros(expected_value * 1000));
+
+      SubDocKey subdoc_key;
+      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, HybridTimeRequired::kTrue));
+      PrimitiveValue primitive_value(ValueEntryType::kInt32);
+      EXPECT_OK(primitive_value.DecodeFromValue(value));
+
+      EXPECT_EQ(expected_subdoc_key.ToString(), subdoc_key.ToString());
+      EXPECT_EQ(expected_value, primitive_value.GetInt32());
+
+      scanned_keys++;
+      return true;
+    };
+
+    // Validate upperbound in memtable and flushed SST.
+    rocksdb::ReadOptions read_opts;
+    read_opts.query_id = rocksdb::kDefaultQueryId;
+    for (int k = 0; k < 2; k++) {
+      for (int i = 1; i <= kNumKeys; ++i) {
+        unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
+        iter->SeekToFirst();
+        scanned_keys = 0;
+
+        auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+        ASSERT_TRUE(
+            iter->ScanForward(encoded_doc_key, /*key_filter_callback=*/ nullptr, &scan_callback));
+        ASSERT_EQ(i - 1, scanned_keys);
+
+        ASSERT_TRUE(iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback));
+        ASSERT_EQ(kNumKeys, scanned_keys);
+      }
+
+      if (k == 0) {
+        ASSERT_OK(FlushRocksDbAndWait());
+      }
+    }
+  }
+
+  // Add more records which will go to memtable and overlap in the range.
+  for (int i = 1; i <= kNumKeys; i++) {
+    auto index = i + 10;
+    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    op_id_.term = index / 2;
+    op_id_.index = index;
+    auto& dwb = DefaultDocWriteBatch();
+    QLValuePB value;
+    value.set_int32_value(index);
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * 10 * i)));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+}
+
+TEST_P(DocDBTestWrapper, InterleavedRecordsScanForward) {
+  constexpr int kNumKeys = 9;
+  auto dwb = MakeDocWriteBatch();
+  for (int i = 1; i <= kNumKeys; ++i) {
+    ASSERT_OK(WriteSimple(i));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  // Move first kNumKeys records to SST file.
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  // Add records to memtable interleaved with first SST file.
+  for (int i = 1; i <= kNumKeys; i++) {
+    auto index = i + 10;
+    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    op_id_.term = index / 2;
+    op_id_.index = index;
+    auto& dwb = DefaultDocWriteBatch();
+    QLValuePB value;
+    value.set_int32_value(index);
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * 10 * i)));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  // Move second set of kNumKeys records to second SST file.
+  ASSERT_OK(FlushRocksDbAndWait());
+
+  // Add records to memtable interleaved with first SST file.
+  for (int i = 1; i <= kNumKeys; i++) {
+    auto index = i + 20;
+    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    op_id_.term = index / 2;
+    op_id_.index = index;
+    auto& dwb = DefaultDocWriteBatch();
+    QLValuePB value;
+    value.set_int32_value(index);
+    ASSERT_OK(dwb.SetPrimitive(
+        DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+    ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * 5 * i)));
+  }
+
+  ValidateScanForwardAndRegularIterator(doc_db());
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 10000 }]) -> 11
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 5000 }]) -> 21
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 20000 }]) -> 12
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 10000 }]) -> 22
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 }]) -> 2
+      SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 30000 }]) -> 13
+      SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 15000 }]) -> 23
+      SubDocKey(DocKey([], ["row3", 33333]), [ColumnId(10); HT{ physical: 3000 }]) -> 3
+      SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 40000 }]) -> 14
+      SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 20000 }]) -> 24
+      SubDocKey(DocKey([], ["row4", 44444]), [ColumnId(10); HT{ physical: 4000 }]) -> 4
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 50000 }]) -> 15
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 25000 }]) -> 25
+      SubDocKey(DocKey([], ["row5", 55555]), [ColumnId(10); HT{ physical: 5000 }]) -> 5
+      SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 60000 }]) -> 16
+      SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 30000 }]) -> 26
+      SubDocKey(DocKey([], ["row6", 66666]), [ColumnId(10); HT{ physical: 6000 }]) -> 6
+      SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 70000 }]) -> 17
+      SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 35000 }]) -> 27
+      SubDocKey(DocKey([], ["row7", 77777]), [ColumnId(10); HT{ physical: 7000 }]) -> 7
+      SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 80000 }]) -> 18
+      SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 40000 }]) -> 28
+      SubDocKey(DocKey([], ["row8", 88888]), [ColumnId(10); HT{ physical: 8000 }]) -> 8
+      SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 90000 }]) -> 19
+      SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 45000 }]) -> 29
+      SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
+  )#");
 }
 
 void Append(const char* a, const char* b, std::string* out) {
