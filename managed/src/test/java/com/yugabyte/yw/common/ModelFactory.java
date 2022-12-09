@@ -629,7 +629,9 @@ public class ModelFactory {
   // isn't found, it is created. The same is about availability zones.
   public static Universe createFromConfig(Provider provider, String univName, String config) {
     Customer customer = Customer.get(provider.customerUUID);
-    Universe universe = createUniverse(univName, customer.getCustomerId());
+    Universe universe =
+        createUniverse(
+            univName, UUID.randomUUID(), customer.getCustomerId(), provider.getCloudCode());
 
     UUID placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementCloud cloud = new PlacementCloud();
@@ -661,7 +663,6 @@ public class ModelFactory {
           !azOpt.isPresent()
               ? AvailabilityZone.createOrThrow(region, zone, zone, "subnet-" + zone)
               : azOpt.get();
-
       int count = Integer.parseInt(parts[2]);
       if (count == 0) {
         // No nodes in this zone yet.
@@ -680,7 +681,7 @@ public class ModelFactory {
                 NodeDetails.NodeState.Live,
                 mastersCount-- > 0,
                 true,
-                "aws",
+                provider.code,
                 regionCode,
                 az.code,
                 null);
@@ -698,12 +699,12 @@ public class ModelFactory {
     userIntent.universeName = univName;
     userIntent.replicationFactor = rf;
     userIntent.numNodes = numNodes;
-    userIntent.provider = provider.code;
+    userIntent.provider = provider.uuid.toString();
     userIntent.regionList = regionList;
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.ybSoftwareVersion = "0.0.1";
     userIntent.accessKeyCode = "akc";
-    userIntent.providerType = CloudType.aws;
+    userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
 
     UniverseUpdater updater =
