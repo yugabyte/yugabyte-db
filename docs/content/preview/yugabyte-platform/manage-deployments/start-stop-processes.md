@@ -23,6 +23,6 @@ If a node needs the intervention, you can click its associated **Actions > Stop 
 
 Once the YB-TServer and, possibly, YB-Master server are stopped, the node status is updated and the instance is ready for the planned system changes.
 
-When a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped.  This ensures that the number of YB-Master servers equals RF and YB-Master servers are never underreplicated.
+When a YB-Master is stopped on a node, YugabyteDB Anywhere automatically attempts to start a new YB-Master on another node in the same Availability Zone as the node on which YB-Master is stopped.  This ensures that the number of YB-Master servers equals the replication factor (RF) and YB-Master servers are never underreplicated.
 
-It is recommended not to stop more than (RF - 1)/2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
+It is recommended not to stop more than (RF - 1) / 2 processes at any given time. For example, on an RF=3 cluster with three nodes, there can only be one node with stopped processes to allow the majority of the nodes to perform Raft consensus operations.
