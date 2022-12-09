@@ -3479,17 +3479,10 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 					if (strcmp(p_attname, c_attname) != 0 ||
 						p_info->indcollation[i] != info->indexcollations[i] ||
 						p_info->opclass[i] != info->opcintype[i]||
-
-						/*
-						 *  Parent index is known to use the same index AM
-						 *  here. If the index doesn't support order by, we
-						 *  should omit these bits.
-						 */
-						(info->indcanorderbyop &&
-						 (((p_info->indoption[i] & INDOPTION_DESC) != 0)
-						  != info->reverse_sort[i] ||
-						  ((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0)
-						  != info->nulls_first[i])))
+						((p_info->indoption[i] & INDOPTION_DESC) != 0)
+						!= info->reverse_sort[i] ||
+						((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0)
+						!= info->nulls_first[i])
 						break;
 				}
 
