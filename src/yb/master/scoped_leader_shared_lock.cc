@@ -174,7 +174,7 @@ void ScopedLeaderSharedLock::Unlock() {
         need_stack_trace || (finish > start_ + 1ms * FLAGS_master_log_lock_warning_ms);
     if (need_warning) {
       LOG(WARNING)
-          << "Long lock of catalog manager (" << file_name_ << ":" << line_number_ << ", "
+          << "RPC took a long time (" << file_name_ << ":" << line_number_ << ", "
           << function_name_ << "): " << AsString(finish - start_)
           << (need_stack_trace ? "\n" + GetStackTrace() : "");
     }

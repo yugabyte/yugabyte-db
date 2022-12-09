@@ -515,7 +515,8 @@ class Version {
 
   size_t GetMemoryUsageByTableReaders();
 
-  // Returns approximate middle key of the largest SST file (see TableReader::GetMiddleKey).
+  // Returns weighted middle key of the approximate middle keys of the SST files
+  // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.
   Result<std::string> GetMiddleKey();
 
@@ -571,6 +572,7 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
+  Result<std::string> GetMiddleOfMiddleKeys();
 
   ColumnFamilyData* cfd_;  // ColumnFamilyData to which this Version belongs
   Logger* info_log_;

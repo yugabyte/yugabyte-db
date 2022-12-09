@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Provider;
@@ -31,7 +30,6 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,7 +39,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -435,65 +432,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.error("{} hit error : {}", getName(), e.getMessage());
       Throwables.propagate(e);
     }
-  }
-
-  /**
-   * It checks if it is necessary to copy the source universe root certificate to the target
-   * universe for the xCluster replication config to work. If it is necessary, an optional
-   * containing the path to the source root certificate on the Platform host will be returned.
-   * Otherwise, it will be empty.
-   *
-   * @param sourceUniverse The source Universe in the xCluster replication config
-   * @param targetUniverse The target Universe in the xCluster replication config
-   * @return An optional File that is present if transferring the source root certificate is
-   *     necessary
-   * @throws IllegalArgumentException If setting up a replication config between a universe with
-   *     node-to-node TLS and one without; It is not supported by coreDB
-   */
-  public static Optional<File> getSourceCertificateIfNecessary(
-      Universe sourceUniverse, Universe targetUniverse) {
-    String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
-    String targetCertificatePath = targetUniverse.getCertificateNodetoNode();
-
-    if (sourceCertificatePath == null && targetCertificatePath == null) {
-      return Optional.empty();
-    }
-    if (sourceCertificatePath != null && targetCertificatePath != null) {
-      UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
-      UniverseDefinitionTaskParams.UserIntent userIntent =
-          targetUniverseDetails.getPrimaryCluster().userIntent;
-      // If the "certs_for_cdc_dir" gflag is set, it must be set on masters and tservers with the
-      // same value.
-      String gflagValueOnMasters = userIntent.masterGFlags.get(SOURCE_ROOT_CERTS_DIR_GFLAG);
-      String gflagValueOnTServers = userIntent.tserverGFlags.get(SOURCE_ROOT_CERTS_DIR_GFLAG);
-      if ((gflagValueOnMasters != null || gflagValueOnTServers != null)
-          && !Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
-        throw new IllegalStateException(
-            String.format(
-                "The %s gflag must "
-                    + "be set on masters and tservers with the same value or not set at all: "
-                    + "gflagValueOnMasters: %s, gflagValueOnTServers: %s",
-                SOURCE_ROOT_CERTS_DIR_GFLAG, gflagValueOnMasters, gflagValueOnTServers));
-      }
-      // If the "certs_for_cdc_dir" gflag is set on the target universe, the certificate must
-      // be transferred even though the universes are using the same certs.
-      if (!sourceCertificatePath.equals(targetCertificatePath)
-          || gflagValueOnMasters != null
-          || targetUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
-        File sourceCertificate = new File(sourceCertificatePath);
-        if (!sourceCertificate.exists()) {
-          throw new IllegalStateException(
-              String.format("sourceCertificate file \"%s\" does not exist", sourceCertificate));
-        }
-        return Optional.of(sourceCertificate);
-      }
-      // The "certs_for_cdc_dir" gflag is not set and certs are equal, so the target universe does
-      // not need the source cert.
-      return Optional.empty();
-    }
-    throw new IllegalArgumentException(
-        "A replication config cannot be set between a universe with node-to-node encryption "
-            + "enabled and a universe with node-to-node encryption disabled.");
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks() {

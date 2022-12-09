@@ -11,17 +11,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -123,6 +123,10 @@
 # Build an app was in quick-start, now in develop
 
 [[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
+  force = true
+[[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
   to = "/preview/develop/build-apps/c/cloud-ysql-c/"
   force = true
@@ -163,6 +167,62 @@
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
 
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-hibernate/"
+  to = "/preview/drivers-orms/orms/ysql-hibernate/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-ebean/"
+  to = "/preview/drivers-orms/orms/ysql-ebean/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-spring-data/"
+  to = "/preview/drivers-orms/orms/ysql-spring-data/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-pg/"
+  to = "/preview/drivers-orms/orms/ysql-pg/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-gorm/"
+  to = "/preview/drivers-orms/orms/ysql-gorm/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
+  to = "/preview/drivers-orms/orms/ysql-sqlalchemy/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-django/"
+  to = "/preview/drivers-orms/orms/ysql-django/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
+  to = "/preview/drivers-orms/orms/ysql-sequelize/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
+  to = "/preview/drivers-orms/orms/ysql-prisma/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
+  to = "/preview/drivers-orms/orms/ysql-entity-framework/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/csharp/ysql-dapper/"
+  to = "/preview/drivers-orms/orms/ysql-dapper/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/rust/ysql-diesel/"
+  to = "/preview/drivers-orms/orms/ysql-diesel/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/java/ysql-sdyb/"
+  to = "/preview/integrations/spring-framework/sdyb/"
+  force = true
+[[redirects]]
+  from = "/preview/develop/build-apps/go/ysql-pg/"
+  to = "/preview/drivers-orms/go/pg/"
+  force = true
 # Build an app for aiopg, now in integrations
 
 [[redirects]]

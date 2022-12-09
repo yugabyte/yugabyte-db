@@ -34,7 +34,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/go/ysql-gorm) page.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Go ORM example application](../../orms/go/ysql-gorm/) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for Go application development using GORM.
 
@@ -112,6 +112,7 @@ for _, employee := range employees {
 }
 ```
 
-## Next steps
+## Learn more
 
-Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Build Go applications using [PG](../pg/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
