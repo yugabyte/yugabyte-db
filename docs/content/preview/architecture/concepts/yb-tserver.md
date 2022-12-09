@@ -51,7 +51,7 @@ YugabyteDB allows compactions to be externally triggered on a table using the [`
 
 ### Scheduled full compactions (beta)
 
-YugabyteDB allows you to schedule full compactions over all data in a tablet by using the [`scheduled_full_compaction_frequency_hours`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-frequency-hours) and [`scheduled_full_compaction_jitter_factor_percentage`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-jitter-factor-percentage) gflags. This can improve performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. Can be used with tables with TTL as well, but is not compatible with the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+YugabyteDB allows you to schedule full compactions over all data in a tablet by using the [`scheduled_full_compaction_frequency_hours`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-frequency-hours) and [`scheduled_full_compaction_jitter_factor_percentage`](../../../reference/configuration/yb-tserver/#scheduled-full-compaction-jitter-factor-percentage) gflags. This can improve performance and disk space reclamation for workloads with a large number of overwrites or deletes on a regular basis. This feature and its gflags can also be useful for tables with [TTL](../../../develop/learn/ttl-data-expiration-ycql), which regularly delete data. The feature is compatible with tables with TTL only if the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature is disabled.
 
 ### Server-global memstore limit
 
