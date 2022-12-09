@@ -365,6 +365,64 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsGroup: 10001
     ```
 
+  - Add `tolerations` in Master and Tserver pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core) to know more about tolerations.
+
+    ```yml
+    master:
+      tolerations: []
+
+    tserver:
+      tolerations: []
+    ```
+
+  - Add `affinity` in Master and Tserver pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core) to know more affinity.
+
+    ```yml
+    master:
+      affinity: {}
+
+    tserver:
+      affinity: {}
+    ```
+
+  - Add `annotations` to Master and Tserver pods.
+
+    ```yml
+    master:
+      podAnnotations: {}
+
+    tserver:
+      podAnnotations: {}
+    ```
+
+  - Add `labels` to Master and Tserver pods.
+
+    ```yml
+    master:
+      podLabels: {}
+
+    tserver:
+      podLabels: {}
+    ```
+
+  - Preflight checks used to verify the YugabyteDB prerequisites.
+    1. DNS address resolution
+    2. Disk IO
+    3. Port available for bind
+    4. Ulimit
+
+    ```yml
+    preflight:
+      ## Set to true to skip disk IO check, DNS address resolution, and port bind checks
+      skipAll: false
+
+      ## Set to true to skip port bind checks
+      skipBind: false
+
+      ## Set to true to skip ulimit verification
+      ## SkipAll has higher priority
+      skipUlimit: false
+    ```
     <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
