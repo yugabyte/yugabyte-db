@@ -154,6 +154,9 @@ message SysTablesEntryPB {
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 25 [ default = false ];
+  // If the table is colocated and is not the parent table of the colocated tablet,
+  // contains the table id of the parent table.
+  optional bytes parent_table_id = 40;
 
   // For materialized views:
   optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
@@ -264,6 +267,13 @@ message SysTabletsEntryPB {
   // If tablet was hidden instead of deleting, here we keep list of schedule ids that prevented
   // actual deletion.
   repeated bytes retained_by_snapshot_schedules = 17;
+
+  // Describes the persisted mapping scheme for colocated tablets. If set, the table_ids field of
+  // this tablet is empty and child tables on this tablet have their parent_table_id field
+  // filled. The table_id field of all tablets is filled with the parent table id. So the list of
+  // tables hosted on this tablet is computed at load time by finding all child tables of the
+  // parent table of this tablet.
+  optional bool hosted_tables_mapped_by_parent_id = 18;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.

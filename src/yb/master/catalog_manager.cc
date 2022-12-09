@@ -1288,9 +1288,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 }
 
 template <class Loader>
-Status CatalogManager::Load(const std::string& title, const int64_t term) {
+Status CatalogManager::Load(
+    const std::string& title, TemporaryLoadingState* state, const int64_t term) {
   LOG_WITH_PREFIX(INFO) << __func__ << ": Loading " << title << " into memory.";
-  std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, term);
+  std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, state, term);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(loader.get()),
       "Failed while visiting " + title + " in sys catalog");
@@ -1341,24 +1342,27 @@ Status CatalogManager::RunLoaders(int64_t term) {
     ts_desc->set_has_tablet_report(false);
   }
 
+  TemporaryLoadingState state {
+    .parent_to_child_tables = {},
+  };
   {
     LockGuard lock(permissions_manager()->mutex());
 
     // Clear the roles mapping.
     permissions_manager()->ClearRolesUnlocked();
-    RETURN_NOT_OK(Load<RoleLoader>("roles", term));
-    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
+    RETURN_NOT_OK(Load<RoleLoader>("roles", &state, term));
+    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", &state, term));
   }
   // Clear the hidden tablets vector.
   hidden_tablets_.clear();
 
-  RETURN_NOT_OK(Load<TableLoader>("tables", term));
-  RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
-  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
-  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", term));
-  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
-  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
-  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", term));
+  RETURN_NOT_OK(Load<TableLoader>("tables", &state, term));
+  RETURN_NOT_OK(Load<TabletLoader>("tablets", &state, term));
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", &state, term));
+  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", &state, term));
+  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", &state, term));
+  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", &state, term));
+  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", &state, term));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
@@ -1676,6 +1680,8 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
 
     RETURN_NOT_OK(sys_catalog_->Upsert(term, tablet));
     tablet->mutable_metadata()->CommitMutation();
+    // todo(zdrudi): to support the new schema for the sys tablet, add the kSysCatalogTableId to the
+    // tablet's in memory list of table ids.
   }
 
   system_tablets_[kSysCatalogTabletId] = sys_catalog_tablet;
@@ -1760,8 +1766,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
     RETURN_NOT_OK(CreateTableInMemory(
-        req, schema, partition_schema, namespace_id, namespace_name,
-        partitions, /* colocated */ false, nullptr, &tablets, nullptr, &table));
+        req, schema, partition_schema, namespace_id, namespace_name, partitions,
+        /* colocated */ false, IsSystemObject::kTrue, nullptr, &tablets, nullptr,
+        &table));
     // Mark the table as a system table.
     LOG_WITH_PREFIX(INFO) << "Inserted new " << namespace_name << "." << table_name
                           << " table info into CatalogManager maps";
@@ -1795,8 +1802,6 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
-  // Mark the table as a system table.
-  table->set_is_system();
 
   // Finally create the appropriate tablet object.
   auto tablet = tablets[0];
@@ -2580,6 +2585,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   return Status::OK();
 }
 
+// TODO(GH16123): clean up copartitioning code.
 Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
                                                 CreateTableResponsePB* resp,
                                                 rpc::RpcContext* rpc,
@@ -2626,7 +2632,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   // TODO: pass index_info for copartitioned index.
   RETURN_NOT_OK(CreateTableInMemory(
       req, schema, partition_schema, namespace_id, namespace_name, partitions,
-      /* colocated */ false, nullptr, nullptr, resp, &this_table_info));
+      /* colocated */ false, IsSystemObject::kFalse, nullptr, nullptr, resp, &this_table_info));
 
   TRACE("Inserted new table info into CatalogManager maps");
 
@@ -2636,20 +2642,28 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   // Sanity check: the table should be in "preparing" state.
   CHECK_EQ(SysTablesEntryPB::PREPARING, this_table_info->metadata().dirty().pb.state());
   TabletInfos tablets = parent_table_info->GetTablets();
+  bool write_tablets = false;
   for (auto tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
-    tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(this_table_info->id());
+    if (!tablet->mutable_metadata()->mutable_dirty()->pb.hosted_tables_mapped_by_parent_id()) {
+      tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(this_table_info->id());
+      write_tablets = true;
+    }
   }
 
-  // Update Tablets about new table id to sys-tablets.
-  s = sys_catalog_->Upsert(leader_ready_term(), tablets);
-  if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
-        Substitute("An error occurred while inserting to sys-tablets: $0", s.ToString())), resp);
+  if (write_tablets) {
+    // Update Tablets about new table id to sys-tablets.
+    s = sys_catalog_->Upsert(leader_ready_term(), tablets);
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
+          Substitute("An error occurred while inserting to sys-tablets: $0", s.ToString())), resp);
+    }
+    TRACE("Wrote tablets to system table");
   }
-  TRACE("Wrote tablets to system table");
 
   // Update the on-disk table state to "running".
+  this_table_info->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
+      parent_table_info->id());
   this_table_info->AddTablets(tablets);
   this_table_info->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   s = sys_catalog_->Upsert(leader_ready_term(), this_table_info);
@@ -3262,7 +3276,8 @@ Status CatalogManager::CreateYsqlSysTable(
 
     RETURN_NOT_OK(CreateTableInMemory(
         *req, schema, partition_schema, namespace_id, namespace_name, partitions,
-        /* colocated */ false, /* index_info */ nullptr, /* tablets */ nullptr, resp, &table));
+        /* colocated */ false, IsSystemObject::kTrue, /* index_info */ nullptr,
+        /* tablets */ nullptr, resp, &table));
 
     sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
   }
@@ -3292,8 +3307,9 @@ Status CatalogManager::CreateYsqlSysTable(
           table.get(), {}, s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
           resp);
     }
-    table->set_is_system();
     table->AddTablet(sys_catalog_tablet.get());
+    // TODO(zdrudi): to handle the new format for the sys tablet, set the child table's parent table
+    // id and add to the tablet's in-memory list of hosted table ids.
     tablet_lock.Commit();
   }
   TRACE("Inserted new table info into CatalogManager maps");
@@ -3876,6 +3892,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Such tables will reuse tablets of their respective colocation group.
   bool joining_colocation_group =
       colocated && !IsColocationParentTableId(req.table_id());
+  TabletInfoPtr colocated_tablet = nullptr;
 
   {
     LockGuard lock(mutex_);
@@ -3973,10 +3990,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
         auto tablet = colocated_db_tablets_map_[ns->id()];
         auto tablet_lock = tablet->LockForRead();
-
         std::unordered_set<ColocationId> colocation_ids;
-        colocation_ids.reserve(tablet_lock.data().pb.table_ids().size());
-        for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
+        std::vector<TableId> table_ids;
+        if (tablet_lock.data().pb.hosted_tables_mapped_by_parent_id()) {
+          table_ids = tablet->GetTableIds();
+        } else {
+          table_ids.insert(
+              table_ids.end(), tablet_lock.data().pb.table_ids().begin(),
+              tablet_lock.data().pb.table_ids().end());
+        }
+        colocation_ids.reserve(table_ids.size());
+        for (const TableId& table_id : table_ids) {
           DCHECK(!table_id.empty());
           const auto colocated_table_info = GetTableInfoUnlocked(table_id);
           if (!colocated_table_info) {
@@ -3995,7 +4019,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     RETURN_NOT_OK(CreateTableInMemory(
         req, schema, partition_schema, namespace_id, namespace_name, partitions, colocated,
-        &index_info, joining_colocation_group ? nullptr : &tablets, resp, &table));
+        IsSystemObject::kFalse, &index_info, joining_colocation_group ? nullptr : &tablets, resp,
+        &table));
 
     // Section is executed when a table is either the parent table or a user table in a colocation
     // group.
@@ -4005,7 +4030,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // It creates a dummy tablet for the colocation group along with updating the
         // catalog manager maps.
         tablets[0]->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
-
         if (is_colocated_via_database) {
           RSTATUS_DCHECK(
               table->IsColocatedDbParentTable(), InternalError,
@@ -4056,13 +4080,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
 
         tablet->mutable_metadata()->StartMutation();
-        tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
+        if (tablet->mutable_metadata()->mutable_dirty()->pb.hosted_tables_mapped_by_parent_id()) {
+          table->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
+              tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
+          colocated_tablet = tablet;
+        } else {
+          tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
+        }
 
         CHECK(colocation_id != kColocationIdNotSet);
         table->mutable_metadata()->mutable_dirty()->
             pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
 
+        // TODO(zdrudi): In principle if the hosted_tables_mapped_by_parent_id field is set we could
+        // avoid writing the tablets and even avoid any tablet mutations here at all. However
+        // table->AddTablet assumes the tablet has a write in progress and checkfails if it doesn't.
         table->AddTablet(tablet);
+        table->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
+            tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
 
         if (tablegroup) {
           RETURN_NOT_OK(tablegroup->AddChildTable(table->id(), colocation_id));
@@ -4165,6 +4200,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
+  }
+  // Add the table id to the in-memory vector of table ids on TabletInfo.
+  if (colocated_tablet) {
+    colocated_tablet->AddTableId(table->id());
   }
 
   if (joining_colocation_group) {
@@ -4449,6 +4488,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const NamespaceName& namespace_name,
                                            const std::vector<Partition>& partitions,
                                            bool colocated,
+                                           IsSystemObject system_table,
                                            IndexInfoPB* index_info,
                                            TabletInfos* tablets,
                                            CreateTableResponsePB* resp,
@@ -4470,6 +4510,10 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
 
   if (req.table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
     transaction_table_ids_set_.insert(table_id);
+  }
+
+  if (system_table) {
+    (*table)->set_is_system();
   }
 
   if (tablets) {
@@ -4579,7 +4623,8 @@ Status CatalogManager::AddTransactionStatusTablet(
     Partition old_partition;
     Partition::FromPB(old_tablet->LockForRead()->pb.partition(), &old_partition);
 
-    auto tablets = VERIFY_RESULT(CreateTabletsFromTable({ split.right }, table));
+    auto tablets =
+        VERIFY_RESULT(CreateTabletsFromTable({split.right}, table));
     SCHECK_EQ(1, tablets.size(), IllegalState, "Mismatch in number of tablets created");
 
     new_tablet = std::move(tablets[0]);
@@ -5173,28 +5218,33 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
   metadata->set_state(SysTabletsEntryPB::PREPARING);
   metadata->mutable_partition()->CopyFrom(partition);
   metadata->set_table_id(table->id());
-  // This is important: we are setting the first table id in the table_ids list
-  // to be the id of the original table that creates the tablet.
-  metadata->add_table_ids(table->id());
-
+  if (FLAGS_use_parent_table_id_field && !table->is_system()) {
+    tablet->SetTableIds({table->id()});
+    metadata->set_hosted_tables_mapped_by_parent_id(true);
+  } else {
+    // This is important: we are setting the first table id in the table_ids list
+    // to be the id of the original table that creates the tablet.
+    metadata->add_table_ids(table->id());
+  }
   return tablet;
 }
 
 Status CatalogManager::RemoveTableIdsFromTabletInfo(
-    TabletInfoPtr tablet_info,
-    std::unordered_set<TableId> tables_to_remove) {
+    TabletInfoPtr tablet_info, std::unordered_set<TableId> tables_to_remove) {
   auto tablet_lock = tablet_info->LockForWrite();
-
-  google::protobuf::RepeatedPtrField<std::string> new_table_ids;
-  for (const auto& table_id : tablet_lock->pb.table_ids()) {
-    if (tables_to_remove.find(table_id) == tables_to_remove.end()) {
-      *new_table_ids.Add() = std::move(table_id);
+  if (tablet_lock->pb.hosted_tables_mapped_by_parent_id()) {
+    tablet_info->RemoveTableIds(tables_to_remove);
+  } else {
+    google::protobuf::RepeatedPtrField<std::string> new_table_ids;
+    for (const auto& table_id : tablet_lock->pb.table_ids()) {
+      if (tables_to_remove.find(table_id) == tables_to_remove.end()) {
+        *new_table_ids.Add() = std::move(table_id);
+      }
     }
+    tablet_lock.mutable_data()->pb.mutable_table_ids()->Swap(&new_table_ids);
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_info));
+    tablet_lock.Commit();
   }
-  tablet_lock.mutable_data()->pb.mutable_table_ids()->Swap(&new_table_ids);
-
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_info));
-  tablet_lock.Commit();
   return Status::OK();
 }
 
@@ -10801,7 +10851,8 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
   TabletInfoPtr replacement;
   {
     LockGuard lock(mutex_);
-    replacement = CreateTabletInfo(tablet->table().get(), old_info.pb.partition());
+    replacement = CreateTabletInfo(
+        tablet->table().get(), old_info.pb.partition());
   }
   LOG(WARNING) << "Tablet " << tablet->ToString() << " was not created within "
                << "the allowed timeout. Replacing with a new tablet "
@@ -11448,6 +11499,7 @@ Status CatalogManager::BuildLocationsForSystemTablet(
   if (partitions_only) {
     return Status::OK();
   }
+  // TODO(zdrudi): support new table_ids schema for system tablets.
   *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
   // For system tables, the set of replicas is always the set of masters.
   consensus::ConsensusStatePB master_consensus;
@@ -11499,7 +11551,14 @@ Status CatalogManager::BuildLocationsForTablet(
       return Status::OK();
     }
     const auto& tablet_pb = l_tablet->pb;
-    *locs_pb->mutable_table_ids() = tablet_pb.table_ids();
+    locs_pb->set_table_id(l_tablet->pb.table_id());
+    if (l_tablet->pb.hosted_tables_mapped_by_parent_id()) {
+      for (auto& table_id : tablet->GetTableIds()) {
+        locs_pb->add_table_ids(std::move(table_id));
+      }
+    } else {
+      *locs_pb->mutable_table_ids() = l_tablet->pb.table_ids();
+    }
     if (locs->empty() && l_tablet->pb.has_committed_consensus_state()) {
       cstate = l_tablet->pb.committed_consensus_state();
     }
