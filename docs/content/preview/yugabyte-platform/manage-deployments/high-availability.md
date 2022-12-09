@@ -126,34 +126,18 @@ Even though you can perform an upgrade of all YugabyteDB Anywhere instances simu
 The following is the detailed upgrade procedure:
 
 1. Stop the high-availability synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
+2. Upgrade the active instance. Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
 
-2. Upgrade the active instance. 
+   - Decommission the faulty active instance in the active-standby pair.
+   - Promote the standby instance.
+   - Do not attempt to upgrade until the root cause of the upgrade failure is determined.
+   - Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
+   - Once the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
 
-   Expect a momentary lapse in availability for the duration of the upgrade.
-
-3. If the upgrade completes, proceed to step 4. Otherwise, proceed to step 9.
-
-4. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on. If validation is successful, proceed to step 5. Otherwise, proceed to step 9.
-
-5. Upgrade the standby instance.
-
-6. Enable high-availability synchronization.
-
-7. Optionally, promote the standby instance with the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
-
-8. Expect the process to be completed.
-
-9. Decommission the faulty active instance in the active-standby pair.
-
-10. Promote the standby instance.
-
-11. Do not attempt to upgrade until the root cause of the upgrade failure is determined.
-
-12. Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
-
-13. Once the root cause of failure has been established, repeat the upgrade process starting from step 1.
-
-    Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
+3. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on.
+4. Upgrade the standby instance.
+5. Enable high-availability synchronization.
+6. Optionally, promote the standby instance with the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
 
 The following diagram provides a graphical representation of the upgrade procedure:
 
