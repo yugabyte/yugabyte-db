@@ -131,7 +131,7 @@ Use the following steps to configure advanced audit logging in a YugabyteDB clus
 Start the YugabyteDB cluster with the following audit logging configuration:
 
 ```shell
---ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
+--ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '",pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
 ```
 
 ### Load the pgAudit extension
@@ -140,6 +140,7 @@ To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit
 
 ```sql
 yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
+yugabyte=# CREATE TABLE IF NOT EXISTS my_table ( h int, r int, v int, primary key(h,r));
 ```
 
 ### Generate a scenario with concurrent transactions
@@ -199,13 +200,29 @@ COMMIT;
 </tbody>
 </table>
 
-Your PostgreSQL log should include output similar to the following:
+Your PostgreSQL log should include interleaved output similar to the following:
 
 ```output
-NOTICE:  AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.employees,
-"create table employees ( empno int, ename text, address text, salary int,
-account_number text );",<not logged>
-CREATE TABLE
+2022-12-08 14:11:24.190 EST [93243 15 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+2022-12-08 14:11:34.309 EST [93243 16 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (5,2,2);",<none>
+2022-12-08 14:11:38.294 EST [92937 8 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+2022-12-08 14:11:42.976 EST [92937 9 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (6,2,2);",<none>
+2022-12-08 14:11:46.596 EST [92937 10 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,8,1,MISC,COMMIT,,,COMMIT;,<none>
+2022-12-08 14:11:52.317 EST [93243 17 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,8,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (7,2,2);",<none>
+2022-12-08 14:11:54.374 EST [93243 18 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,9,1,MISC,COMMIT,,,commit;,<none>
+```
+
+Sorting by session identifier and timestamp, and including the node information for uniqueness in the cluster, you can group the transactions:
+
+```
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:38.294 SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:42.976 SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (6,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:46.596 SESSION,8,1,MISC,COMMIT,,,COMMIT;,<none>
+
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:24.190 SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:34.309 SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (5,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:52.317 SESSION,8,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (7,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,1,MISC,COMMIT,,,commit;,<none>
 ```
 
 ## Read more
