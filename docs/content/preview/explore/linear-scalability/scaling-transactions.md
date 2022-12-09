@@ -15,8 +15,11 @@ type: docs
 
 With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
 
+<<<<<<< HEAD
 This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a three-node cluster with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
+=======
+>>>>>>> 77f0399675644ff4f53d7499de3df2ecfea93181
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../scaling-transactions-cloud/" class="nav-link">
@@ -31,6 +34,8 @@ Use a local cluster
     </a>
   </li>
 </ul>
+
+This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. The example uses the [YB Simulation Base Demo application](https://github.com/yugabyte/yb-simulation-base-demo-app) to run a read-write workload against a three-node cluster with a replication factor of 3. While the workload is running, you add and then remove a node from the cluster. Using the built-in metrics, you can observe how the cluster scales out and in by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 {{% explore-setup-multi %}}
 
@@ -58,7 +63,7 @@ $ ./bin/yugabyted start \
                 --join=127.0.0.1
 ```
 
-Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all the 4 nodes.
+Now you should have 4 nodes. Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all 4 nodes.
 
 The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
