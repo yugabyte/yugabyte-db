@@ -72,12 +72,12 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 | Provider | Regional VPC setup
 | :--- | :--- |
 | AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
-| GCP Automated region selection | Create a single global VPC and let GCP assign network blocks to each region; each region of the cluster is deployed in the same VPC.  GCP does not recommend auto mode VPC networks for production; refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations). |
 | GCP Custom region selection | When creating the VPC, you provide network blocks for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can not expand into new regions after the VPC is created_. |
+| GCP Automated region selection | Create a single global VPC and let GCP assign network blocks to every region; each region of the cluster is deployed in the same VPC.<br/>GCP does not recommend auto mode VPC networks for production; refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations). |
 
 ### Set the CIDR and size your VPC
 
-The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that the range doesn't overlap the range of addresses used by other resources in the network, namely the application VPC you will peer and other VPCs.
+The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, namely the application VPC you will peer and other VPCs.
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
@@ -85,11 +85,11 @@ When entering the range for your VPC in YugabyteDB Managed, the size of the netw
 
 | Provider | Network Size (prefix length) | Number of Usable IP Addresses | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
 | GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you can customize the regions for the VPC. |
+| GCP (auto)| /16<br>/17<br>/18 | 65536<br>32768<br>16384 | In a GCP auto network, the range is split across all supported regions.<br>For information on GCP custom and auto VPCs, refer to [Subnet creation mode](https://cloud.google.com/vpc/docs/vpc#subnet-ranges) in the GCP documentation. |
 | AWS | /26 | 64 | In AWS, you assign the range to a single region. If you need multiple regions, you must create a separate VPC for each. |
 
-### Private IP address ranges
+## Private IP address ranges
 
 You can use the private IP addresses in the following ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
 
@@ -101,7 +101,7 @@ Peered application VPCs also use addresses in these ranges. Once peered, you als
 
 You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
-### Restrictions
+## Restrictions
 
 Addresses have the following additional restrictions:
 
