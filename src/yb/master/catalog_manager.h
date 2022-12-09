@@ -130,6 +130,7 @@ namespace master {
 
 struct DeferredAssignmentActions;
 class XClusterSafeTimeService;
+struct TemporaryLoadingState;
 
 using PlacementId = std::string;
 
@@ -1170,6 +1171,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              const NamespaceName& namespace_name,
                              const std::vector<Partition>& partitions,
                              bool colocated,
+                             IsSystemObject system_table,
                              IndexInfoPB* index_info,
                              TabletInfos* tablets,
                              CreateTableResponsePB* resp,
@@ -1558,7 +1560,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, const int64_t term);
+  Status Load(const std::string& title, TemporaryLoadingState* state, const int64_t term);
 
   virtual void Started() {}
 

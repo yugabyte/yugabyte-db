@@ -46,6 +46,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -55,6 +56,11 @@ using std::string;
 using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+
+DEFINE_RUNTIME_AUTO_bool(
+    use_parent_table_id_field, kLocalPersisted, false, true,
+    "Whether to use the new schema for colocated tables based on the parent_table_id field.");
+TAG_FLAG(use_parent_table_id_field, advanced);
 
 namespace yb {
 namespace master {
@@ -151,6 +157,33 @@ Status TabletInfo::CheckRunning() const {
   }
 
   return Status::OK();
+}
+
+void TabletInfo::SetTableIds(std::vector<TableId>&& table_ids) {
+  std::lock_guard l(lock_);
+  table_ids_ = std::move(table_ids);
+}
+
+void TabletInfo::AddTableId(const TableId& table_id) {
+  std::lock_guard l(lock_);
+  table_ids_.push_back(table_id);
+}
+
+std::vector<TableId> TabletInfo::GetTableIds() const {
+  std::lock_guard l(lock_);
+  return table_ids_;
+}
+
+void TabletInfo::RemoveTableIds(const std::unordered_set<TableId>& tables_to_remove) {
+  std::lock_guard l(lock_);
+  std::vector<TableId> new_table_ids;
+  new_table_ids.reserve(table_ids_.size());
+  for (auto& table_id : table_ids_) {
+    if (!tables_to_remove.contains(table_id)) {
+      new_table_ids.push_back(std::move(table_id));
+    }
+  }
+  table_ids_ = std::move(new_table_ids);
 }
 
 Status TabletInfo::GetLeaderNotFoundStatus() const {
