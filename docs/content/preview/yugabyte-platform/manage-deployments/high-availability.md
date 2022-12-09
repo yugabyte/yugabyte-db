@@ -157,7 +157,7 @@ The following is the detailed upgrade procedure:
 
 The following diagram provides a graphical representation of the upgrade procedure:
 
-![img](/images/yp/ha-upgrade.png)
+![img](/images/yp/high-availability/ha-upgrade.png)
 
 The following table provides the terminology mapping between the upgrade diagram and the upgrade procedure description:
 
