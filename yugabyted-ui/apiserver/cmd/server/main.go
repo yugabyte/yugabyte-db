@@ -16,7 +16,7 @@ import (
 
         "html/template"
 
-        "github.com/jackc/pgx/v4"
+        "github.com/jackc/pgx/v4/pgxpool"
         "github.com/labstack/echo/v4"
         "github.com/labstack/echo/v4/middleware"
         "github.com/yugabyte/gocql"
@@ -102,7 +102,7 @@ func createGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
         return cluster
 }
 
-func createPgClient(log logger.Logger) *pgx.Conn {
+func createPgClient(log logger.Logger) *pgxpool.Pool {
 
         var url string
 
@@ -117,7 +117,7 @@ func createPgClient(log logger.Logger) *pgx.Conn {
         }
 
         log.Debugf("Initializing pgx client.")
-        conn, err := pgx.Connect(context.Background(), url)
+        conn, err := pgxpool.Connect(context.Background(), url)
 
         if err != nil {
                 log.Errorf("Error initializing the pgx client.")
@@ -131,7 +131,7 @@ func main() {
         // Initialize logger
         var log logger.Logger
         var cluster *gocql.ClusterConfig
-        var pgxConn *pgx.Conn
+        var pgxConn *pgxpool.Pool
 
         log, _ = logger.NewSugaredLogger()
         defer log.Cleanup()
@@ -154,7 +154,7 @@ func main() {
                 log.Errorf(err.Error())
         }
         defer gocqlSession.Close()
-        defer pgxConn.Close(context.Background())
+        defer pgxConn.Close()
 
         //todo: handle the error!
         c, _ := handlers.NewContainer(log, gocqlSession, pgxConn)

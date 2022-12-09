@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "lint": "eslint --ext .jsx,.js src/",
+    "lint": "eslint --ext .jsx,.js,.tsx src/",
     "prettier": "prettier --write src/redesign/**/*",
     "start": "EXTEND_ESLINT=true react-scripts start",
     "cleanup": "rimraf build && rimraf ../src/main/public",
@@ -19,7 +19,7 @@
   },
   "engines": {
     "node": ">=16.x.x",
-    "npm": ">=6.1x.x"
+    "npm": ">=7.1x.x"
   },
   "prettier": {
     "printWidth": 100,

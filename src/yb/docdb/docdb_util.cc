@@ -42,6 +42,12 @@ using std::vector;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+const std::string kEmptyLogPrefix;
+
+}
+
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
@@ -51,10 +57,10 @@ Status SetValueFromQLBinaryWrapper(
       ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
 }
 
-DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
+DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(kEmptyLogPrefix, Schema(), 1) {}
 
 DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
-    : doc_read_context_(Schema(), 1), init_marker_behavior_(init_marker_behavior) {
+    : doc_read_context_(kEmptyLogPrefix, Schema(), 1), init_marker_behavior_(init_marker_behavior) {
 }
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {

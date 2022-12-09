@@ -52,6 +52,18 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-pg-stat-get-queries/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">View terminated queries with yb_pg_stat_get_queries</div>
+      </div>
+      <div class="body">
+        Identify terminated queries with the get queries function.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pg-stat-progress-copy/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />

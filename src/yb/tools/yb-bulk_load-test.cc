@@ -381,10 +381,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Retrieve row.
     ASSERT_TRUE(controller.finished());
-    Slice rows_data = ASSERT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-    std::shared_ptr<std::vector<ColumnSchema>>
-      columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
-    yb::ql::RowsResult rowsResult(*table_name_, columns, rows_data.ToBuffer());
+    std::string rows_data;
+    ASSERT_OK(controller.AssignSidecarTo(ql_resp.rows_data_sidecar(), &rows_data));
+    auto columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
+    ql::RowsResult rowsResult(*table_name_, columns, rows_data);
     *rowblock = rowsResult.GetRowBlock();
   }
 

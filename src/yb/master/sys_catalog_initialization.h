@@ -19,6 +19,7 @@
 #include "yb/util/flags.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/table_index.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -62,7 +63,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags();
 // A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
 // is_transactional flags to true on YSQL system catalog tables.
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableInfoMap* table_ids_map,
+    TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term);

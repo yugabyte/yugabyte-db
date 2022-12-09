@@ -452,6 +452,46 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testDeleteGFlagsThroughNonRestartOption() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Universe universe = createUniverse(customer.getCustomerId());
+    Universe.UniverseUpdater updater =
+        universeObject -> {
+          UniverseDefinitionTaskParams universeDetails = universeObject.getUniverseDetails();
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.masterGFlags = ImmutableMap.of("master-flag", "123");
+          userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "456");
+          universeObject.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universe.universeUUID, updater);
+
+    String url =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/upgrade/gflags";
+    JsonNode masterGFlags = Json.parse("{ \"master-flag\": \"123\"}");
+    JsonNode tserverGFlags = Json.parse("{ \"tserver-flag2\": \"456\"}]");
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Non-Restart");
+    bodyJson.set("masterGFlags", masterGFlags);
+    bodyJson.set("tserverGFlags", tserverGFlags);
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot delete gFlags through non-restart upgrade option.");
+
+    ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(GFlagsUpgradeParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.GFlagsUpgrade), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
   public void testGFlagsUpgradeWithMalformedFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);

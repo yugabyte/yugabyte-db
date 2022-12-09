@@ -106,8 +106,11 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 				 errmsg("Tablegroup system catalog does not exist.")));
 	}
 
-	/* If not superuser check privileges */
-	if (!superuser())
+	/*
+	 * If not superuser check privileges.
+	 * Skip the check for implicitly created tablegroup in a colocated database.
+	 */
+	if (!stmt->implicit && !superuser())
 	{
 		AclResult aclresult;
 		// Check that user has create privs on the database to allow creation
@@ -118,7 +121,10 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 						   get_database_name(MyDatabaseId));
 	}
 
-	if (MyDatabaseColocated)
+	/*
+	 * Disallow users from creating tablegroups in a colocated database.
+	 */
+	if (MyDatabaseColocated && !stmt->implicit)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot use tablegroups in a colocated database")));
@@ -344,6 +350,14 @@ RemoveTablegroupById(Oid grp_oid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablegroup with oid %u does not exist",
 				 		grp_oid)));
+	}
+
+	if (MyDatabaseColocated)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot drop an implicit tablegroup "
+						"in a colocated database.")));
 	}
 
 	/* DROP hook for the tablegroup being removed */

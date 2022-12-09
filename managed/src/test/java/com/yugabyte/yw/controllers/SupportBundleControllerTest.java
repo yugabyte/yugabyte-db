@@ -273,52 +273,6 @@ public class SupportBundleControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateSupportBundleWithUniverseBackupInProgress() {
-    // Filling the JSON object to be passed in the request body
-    ObjectNode bodyJson = Json.newObject();
-    ObjectMapper mapper = new ObjectMapper();
-    List<String> components =
-        Arrays.asList(
-            "UniverseLogs",
-            "ApplicationLogs",
-            "OutputFiles",
-            "ErrorFiles",
-            "GFlags",
-            "Instance",
-            "ConsensusMeta",
-            "TabletMeta",
-            "YbcLogs");
-    ArrayNode componentsArray = mapper.valueToTree(components);
-
-    bodyJson.put("startDate", "2022-02-01");
-    bodyJson.put("endDate", "2022-03-03");
-    bodyJson.putArray("components").addAll(componentsArray);
-
-    // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
-    lenient()
-        .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
-        .thenReturn(fakeTaskUUID);
-
-    // Changing universe state backupInProgress = true
-    universe =
-        Universe.saveDetails(
-            universe.universeUUID,
-            (universe) -> {
-              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              universeDetails.backupInProgress = true;
-              universe.setUniverseDetails(universeDetails);
-            });
-
-    Result result =
-        assertPlatformException(
-            () -> createSupportBundle(customer.uuid, universe.universeUUID, bodyJson));
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
   public void testCreateSupportBundleWithUniverseUpdateInProgress() {
     // Filling the JSON object to be passed in the request body
     ObjectNode bodyJson = Json.newObject();

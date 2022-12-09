@@ -47,6 +47,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -93,6 +94,8 @@ public class CloudProviderHandler {
               + "{\"instanceTypeCode\": \"large\", \"numCores\": 16, \"memSizeGB\": 15},"
               + "{\"instanceTypeCode\": \"xlarge\", \"numCores\": 32, \"memSizeGB\": 30}]");
 
+  private static final String STORAGE_PATH = "yb.storage.path";
+
   @Inject private Commissioner commissioner;
   @Inject private ConfigHelper configHelper;
   @Inject private AccessManager accessManager;
@@ -113,6 +116,12 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete Provider with Universes");
     }
 
+    // Clear the key files in the DB.
+    String keyFileBasePath = accessManager.getOrCreateKeyFilePath(provider.uuid);
+    // We would delete only the files for k8s provider
+    // others are already taken care off during access key deletion.
+    FileData.deleteFiles(keyFileBasePath, provider.code.equals(CloudType.kubernetes.toString()));
+
     // TODO: move this to task framework
     for (AccessKey accessKey : AccessKey.getAll(provider.uuid)) {
       if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
@@ -122,6 +131,7 @@ public class CloudProviderHandler {
           provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
       accessKey.delete();
     }
+
     NodeInstance.deleteByProvider(provider.uuid);
     InstanceType.deleteInstanceTypesForProvider(provider, config, configHelper);
     provider.delete();
@@ -569,22 +579,6 @@ public class CloudProviderHandler {
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
     taskParams.providerUUID = provider.uuid;
-    if (taskParams.destVpcId != null && !taskParams.destVpcId.isEmpty()) {
-      if (provider.code.equals("gcp")) {
-        // We need to save the destVpcId into the provider config, because we'll need it during
-        // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need
-        // to
-        // store it somewhere and the config is the easiest place to put it. As such, since all the
-        // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getUnmaskedConfig();
-        config.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, taskParams.destVpcId);
-        provider.setConfig(config);
-        provider.save();
-      } else if (provider.code.equals("aws")) {
-        taskParams.destVpcId = null;
-      }
-    }
-
     // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.perRegionMetadata == null) {
       taskParams.perRegionMetadata = new HashMap<>();
@@ -667,6 +661,7 @@ public class CloudProviderHandler {
 
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, String anyProviderRegion) {
+    provider.setVersion(editProviderReq.getVersion());
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     boolean providerDataUpdated =
@@ -789,6 +784,13 @@ public class CloudProviderHandler {
           String network = currentHostInfo.get("network").asText();
           provider.hostVpcId = network;
           provider.destVpcId = network;
+          // We need to save the destVpcId into the provider config, because we'll need it during
+          // instance creation. Technically, we could make it a ybcloud parameter,
+          // but we'd still need to
+          // store it somewhere and the config is the easiest place to put it.
+          // As such, since all the
+          // config is loaded up as env vars anyway, might as well use in in devops like that...
+          providerConfig.put(GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY, network);
           providerConfig.put("GCE_HOST_PROJECT", currentHostInfo.get("host_project").asText());
           provider.save();
         }
@@ -798,6 +800,7 @@ public class CloudProviderHandler {
         if (hasHostInfo(currentHostInfo)) {
           provider.hostVpcRegion = currentHostInfo.get("region").asText();
           provider.hostVpcId = currentHostInfo.get("vpc-id").asText();
+          provider.destVpcId = null;
           provider.save();
         }
         break;

@@ -41,18 +41,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
 
-  private static final String[] TLD_OVERRIDE = {"local"};
-
   private final CloudClientsFactory factory;
-
-  static {
-    DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
-  }
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();

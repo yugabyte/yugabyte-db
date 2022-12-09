@@ -36,6 +36,7 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/xcluster/xcluster_consumer_metrics.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/util/threadpool.h"
 #include "yb/gutil/thread_annotations.h"
@@ -48,7 +49,8 @@ namespace master {
 // threads. Calling ScheduleTaskIfNeeded will put it back into an active mode.
 class XClusterSafeTimeService {
  public:
-  explicit XClusterSafeTimeService(Master* master, CatalogManager* catalog_manager);
+  explicit XClusterSafeTimeService(
+      Master* master, CatalogManager* catalog_manager, MetricRegistry* metric_registry);
   virtual ~XClusterSafeTimeService();
 
   Status Init();
@@ -62,6 +64,9 @@ class XClusterSafeTimeService {
   Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec();
 
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap();
+
+  xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
+      const NamespaceId& namespace_id);
 
  private:
   friend class XClusterSafeTimeServiceMocked;
@@ -85,14 +90,16 @@ class XClusterSafeTimeService {
 
   void ProcessTaskPeriodically() EXCLUDES(task_enqueue_lock_);
 
-  // Returns true if we need to run again
-  Result<bool> ComputeSafeTime(const int64_t leader_term) EXCLUDES(mutex_);
-
   typedef std::map<ProducerTabletInfo, HybridTime> ProducerTabletToSafeTimeMap;
+
+  // Returns true if we need to run again.
+  Result<bool> ComputeSafeTime(const int64_t leader_term, bool update_metrics = false)
+      EXCLUDES(mutex_);
 
   virtual Result<ProducerTabletToSafeTimeMap> GetSafeTimeFromTable() REQUIRES(mutex_);
 
-  Result<XClusterNamespaceToSafeTimeMap> GetMaxNamespaceSafeTimeFromTable() REQUIRES(mutex_);
+  XClusterNamespaceToSafeTimeMap GetMaxNamespaceSafeTimeFromMap(
+      const ProducerTabletToSafeTimeMap& tablet_to_safe_time_map) REQUIRES(mutex_);
 
   // Update our producer_tablet_namespace_map_ if it is stale.
   // Returns true if an update was made, else false.
@@ -103,12 +110,18 @@ class XClusterSafeTimeService {
   virtual Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
 
   virtual Status SetXClusterSafeTime(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map);
+      const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& new_safe_time_map);
 
   virtual Status CleanupEntriesFromTable(const std::vector<ProducerTabletInfo>& entries_to_delete)
       REQUIRES(mutex_);
 
   Result<int64_t> GetLeaderTermFromCatalogManager();
+
+  void UpdateMetrics(
+      const ProducerTabletToSafeTimeMap& tablet_to_safe_time_map,
+      const XClusterNamespaceToSafeTimeMap& current_safe_time_map) REQUIRES(mutex_);
+
+  void EnterIdleMode(const std::string& reason);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -129,6 +142,10 @@ class XClusterSafeTimeService {
 
   int32_t cluster_config_version_ GUARDED_BY(mutex_);
   std::map<ProducerTabletInfo, NamespaceId> producer_tablet_namespace_map_ GUARDED_BY(mutex_);
+
+  MetricRegistry* metric_registry_ GUARDED_BY(mutex_);
+  std::unordered_map<NamespaceId, std::unique_ptr<xcluster::XClusterConsumerClusterMetrics>>
+      cluster_metrics_per_namespace_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(XClusterSafeTimeService);
 };

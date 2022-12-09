@@ -377,8 +377,8 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
-  output->push_back(SerializeResponses(responses_));
+void RedisInboundCall::DoSerialize(rpc::ByteBlocks* output) {
+  output->emplace_back(SerializeResponses(responses_));
 }
 
 RedisConnectionContext& RedisInboundCall::connection_context() const {

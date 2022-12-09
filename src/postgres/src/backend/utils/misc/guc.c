@@ -213,7 +213,6 @@ static bool check_transaction_priority_upper_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
-static const char *show_transaction_priority(void);
 
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
@@ -3709,13 +3708,15 @@ static struct config_real ConfigureNamesReal[] =
 	},
 	{
 		{"yb_transaction_priority", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop("Gets the transaction priority used by the current active "
-						 "transaction in the session. If no transaction is active, return 0"),
+			gettext_noop(
+					"[DEPRECATED - instead use the yb_get_current_transaction_priority() function]. Gets the "
+					"transaction priority used by the current active distributed transaction in the session. "
+					"If no distributed transaction is active, return 0"),
 			NULL
 		},
 		&yb_transaction_priority,
 		0.0, 0.0, 1.0,
-		NULL, NULL, show_transaction_priority
+		NULL, NULL, yb_fetch_current_transaction_priority
 	},
 
 	{
@@ -4092,14 +4093,16 @@ static struct config_string ConfigureNamesString[] =
 	},
 	{
 		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
-			gettext_noop("Shows the effective YugabyteDB transaction isolation level used by the current "
-									 "active transaction in the session."),
+			gettext_noop(
+					"[DEPRECATED - instead use the yb_get_effective_transaction_isolation_level() function]. "
+					"Shows the effective YugabyteDB transaction isolation level used by the current active "
+					"transaction in the session."),
 			NULL,
 			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&yb_effective_transaction_isolation_level_string,
 		"default",
-		NULL, NULL, show_yb_effective_transaction_isolation_level
+		NULL, NULL, yb_fetch_effective_transaction_isolation_level
 	},
 
 	{
@@ -11889,28 +11892,6 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
-}
-
-static const char *
-show_transaction_priority(void)
-{
-	TxnPriorityRequirement txn_priority_type;
-	double				   txn_priority;
-	static char			   buf[50];
-
-	txn_priority_type = YBCGetTransactionPriorityType();
-	txn_priority	  = YBCGetTransactionPriority();
-
-	if (txn_priority_type == kHighestPriority)
-		snprintf(buf, sizeof(buf), "Highest priority transaction");
-	else if (txn_priority_type == kHigherPriorityRange)
-		snprintf(buf, sizeof(buf),
-				 "%.9lf (High priority transaction)", txn_priority);
-	else
-		snprintf(buf, sizeof(buf),
-				 "%.9lf (Normal priority transaction)", txn_priority);
-
-	return buf;
 }
 
 static void

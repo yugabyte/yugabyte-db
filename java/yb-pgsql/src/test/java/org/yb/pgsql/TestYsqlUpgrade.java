@@ -287,7 +287,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtA.execute(createIndexSql);
       LOG.info("Created unique index {}", newTi.indexes.get(0).getLeft());
 
-      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB, true /* checkViewDefinition */);
     }
   }
 
@@ -375,7 +375,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         LOG.info("Created index {}", newTi.indexes.get(2).getLeft());
       }
 
-      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB, true /* checkViewDefinition */);
     }
   }
 
@@ -619,7 +619,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       LOG.info("Executing '{}'", createViewSql);
       stmtA.execute(createViewSql);
 
-      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+      assertTablesAreSimilar(origTi, newTi, stmtA, stmtB, true /* checkViewDefinition */);
     }
   }
 
@@ -775,6 +775,123 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmt.execute("DELETE FROM pg_sequence");
       runInvalidQuery(stmt, getCachedIncrementSql, "cache lookup failed for sequence");
     }
+  }
+
+  /**
+   * YB has an inner cache of pinned dependent objects as a perf optimization. We make sure it's
+   * properly updated when we do a pg_depend insert.
+   * <p>
+   * In this case test, we're also verifying that a view referencing a newly-pinned function is the
+   * same as the view referencing an existing pinned function.
+   */
+  @Test
+  public void pinnedObjectsCacheIsUpdated() throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      long newProcOid = newSysOid();
+
+      // First, pinned object cache is lazy, so let's trigger its initialization (otherwise,
+      // cache would be initialized too late and everything would work even without a fix).
+      //
+      // To do so, we need to hit isObjectPinned check. One way to do so is to create a view
+      // depending on a function.
+      {
+        String sql = "CREATE VIEW view_to_trigger_pinned_cache_init AS"
+            + " SELECT * FROM yb_is_database_colocated()";
+        LOG.info("Executing '{}'", sql);
+        stmt.execute(sql);
+      }
+
+      setAllowNonDdlTxnsGuc(stmt, true);
+
+      // Create a function yb_is_local_table_2 backed up by yb_is_local_table.
+      // This is based on our definition of yb_is_local_table, as defined in related migrations.
+      {
+        String sql = "INSERT INTO pg_catalog.pg_proc ("
+            + "  oid, proname, pronamespace, proowner, prolang,"
+            + "  procost, prorows, provariadic, protransform,"
+            + "  prokind, prosecdef, proleakproof, proisstrict,"
+            + "  proretset, provolatile, proparallel, pronargs,"
+            + "  pronargdefaults, prorettype, proargtypes,"
+            + "  proallargtypes, proargmodes, proargnames,"
+            + "  proargdefaults, protrftypes, prosrc, probin, proconfig, proacl"
+            + ") VALUES"
+            + "  (" + newProcOid + ", 'yb_is_local_table_2', 11, 10, 12, 1, 0, 0, '-', 'f',"
+            + "   false, false, true, false, 's', 's', 1, 0, 16, '26', NULL, NULL, NULL,"
+            + "   NULL, NULL, 'yb_is_local_table', NULL, NULL, NULL)";
+        LOG.info("Executing '{}'", sql);
+        stmt.execute(sql);
+
+        sql = "INSERT INTO pg_catalog.pg_depend ("
+            + "  classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype"
+            + ") VALUES (0, 0, 0, 'pg_proc'::regclass, " + newProcOid + ", 0, 'p')";
+        LOG.info("Executing '{}'", sql);
+        stmt.execute(sql);
+      }
+
+      // Confirm that functions definition match.
+      {
+        String sqlPat = "SELECT * FROM pg_proc WHERE proname = '%s'";
+        Row expectedPgProcRow = getSingleRow(stmt, String.format(sqlPat, "yb_is_local_table"));
+        expectedPgProcRow.elems.set(expectedPgProcRow.columnNames.indexOf("proname"),
+            "yb_is_local_table_2");
+        Row actualPgProcRow = getSingleRow(stmt, String.format(sqlPat, "yb_is_local_table_2"));
+        assertRow(expectedPgProcRow, actualPgProcRow);
+      }
+
+      // Since we manually inserted pg_depend row for yb_is_local_table_2, no surprises here.
+      assertProcPinDependences(stmt, "yb_is_local_table", "yb_is_local_table_2");
+
+      // Now that we established all visible invariants hold, let's actually test
+      // YB pinned object cache.
+      //
+      // When creating a view based on a function, a dependency will be recorded unless that
+      // function is recorded as pinned. This check uses YB dependency cache - so let's test
+      // that no dependencies are recorded for view's rule.
+      {
+        String createViewSqlPat = "CREATE OR REPLACE VIEW pg_catalog.%s"
+            + " WITH (use_initdb_acl = true)"
+            + " AS SELECT %s('pg_class'::regclass) AS v";
+        String createViewOldSql = String.format(createViewSqlPat,
+            "yb_is_local_table_view", "yb_is_local_table");
+        String createViewNewSql = String.format(createViewSqlPat,
+            "yb_is_local_table_2_view", "yb_is_local_table_2");
+
+        LOG.info("Executing '{}'", createViewOldSql);
+        stmt.execute(createViewOldSql);
+        LOG.info("Executing '{}'", createViewNewSql);
+        stmt.execute(createViewNewSql);
+      }
+
+      {
+        ViewInfo oldView = new ViewInfo("yb_is_local_table_view");
+        ViewInfo newView = new ViewInfo("yb_is_local_table_2_view");
+        assertTablesAreSimilar(oldView, newView, stmt, stmt, false /* checkViewDefinition */);
+      }
+
+      // yb_is_local_table_2 should still have just one kind of dependency - pin dependency.
+      assertProcPinDependences(stmt, "yb_is_local_table", "yb_is_local_table_2");
+    }
+  }
+
+  /** Ensure that both functions have a singular dependency - a pin dependency of a same kind. */
+  private void assertProcPinDependences(
+      Statement stmt,
+      String expectedFunctionName,
+      String actualFunctionName) throws Exception {
+    String sqlPat = "SELECT * FROM pg_depend"
+        + " WHERE refclassid = 'pg_proc'::regclass"
+        + " AND refobjid = '%s'::regproc";
+    Row expectedPgProcRow = getSingleRow(stmt, String.format(sqlPat, expectedFunctionName));
+    Row actualPgProcRow = getSingleRow(stmt, String.format(sqlPat, actualFunctionName));
+    // We expect function OIDs to mismatch, so let's counter that.
+    expectedPgProcRow.elems.set(expectedPgProcRow.columnNames.indexOf("refobjid"), 0L);
+    actualPgProcRow.elems.set(actualPgProcRow.columnNames.indexOf("refobjid"), 0L);
+    assertRow(expectedPgProcRow, actualPgProcRow);
+    // Is this actually a pin dependency?
+    assertEquals("p", actualPgProcRow.getString(6));
   }
 
   /**
@@ -1055,13 +1172,19 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * <p>
    * If OIDs for {@link TableInfo} are zeros, they will be determined at runtime - and verified to
    * be in the system generated OIDs range.
+   *
+   * @param checkViewDefinition
+   *          whether {@code pg_get_viewdef} should be checked, should be true unless views were
+   *          deliberately created using different query.
    */
   private void assertTablesAreSimilar(
       TableInfo origTi,
       TableInfo newTi,
       Statement stmtForOrig,
-      Statement stmtForNew) throws Exception {
+      Statement stmtForNew,
+      boolean checkViewDefinition) throws Exception {
     assertEquals("Invalid table definition", origTi.indexes.size(), newTi.indexes.size());
+    assertEquals("TableInfos are of different class!", origTi.getClass(), newTi.getClass());
 
     // For exactly four non-shared tables (and their indexes), relfilenode is expected to be zero.
     // This is not typical and happens because:
@@ -1075,8 +1198,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     for (TableInfo ti : Arrays.asList(origTi, newTi)) {
       if (ti.getOid() == 0) {
         Row row = getSingleRow(stmtForNew, "SELECT oid, reltype FROM pg_class"
-            + " WHERE relname = '" + ti.name
-            + "' AND relnamespace = 'pg_catalog'::regnamespace");
+            + " WHERE relname = '" + ti.name + "'"
+            + " AND relnamespace = 'pg_catalog'::regnamespace");
         ti.setOid(row.getLong(0));
         ti.setTypeOid(row.getLong(1));
         assertSysGeneratedOid(ti.getOid());
@@ -1128,7 +1251,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     {
       // pg_class and pg_type (for rel and indexes), as well as pg_get_viewdef (view query)
-      String sql = "SELECT cl.oid, cl.*, tp.oid, tp.*, pg_get_viewdef(cl.oid) FROM pg_class cl"
+      String sql = "SELECT cl.oid, cl.*, tp.oid, tp.*"
+          + (checkViewDefinition ? ", pg_get_viewdef(cl.oid)" : "")
+          + " FROM pg_class cl"
           + " LEFT JOIN pg_type tp ON cl.oid = tp.typrelid"
           + " WHERE cl.oid = %d ORDER By cl.oid, tp.oid";
       {
@@ -1173,7 +1298,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
 
     {
-      // pg_depend (for rel, type and indexes)
+      // pg_depend (for rel, type, rule and indexes)
       String sql = "SELECT * FROM pg_depend"
           + " WHERE objid = %d OR refobjid = %d"
           + " ORDER BY classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype";
@@ -1184,7 +1309,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       }
       {
         TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getTypeOid(), ti.getTypeOid());
-        assertRows("pg_depend for type",
+        assertRows("pg_depend for type of " + newTi.name,
+            fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+      }
+      if (origTi instanceof ViewInfo) {
+        TableInfoSqlFormatter fmt = (ti) ->
+            String.format(sql, ((ViewInfo) ti).getRuleOid(), ((ViewInfo) ti).getRuleOid());
+        assertRows("pg_depend for view rewrite rule of " + newTi.name,
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
       for (int i = 0; i < origTi.indexes.size(); ++i) {

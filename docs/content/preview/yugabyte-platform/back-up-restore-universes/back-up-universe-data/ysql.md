@@ -38,11 +38,9 @@ type: docs
 
 To view, [restore](../../restore-universe-data/ysql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
-![Create Backup](/images/yp/create-backup-new-1.png)
+![Create Backup](/images/yp/create-backup-new-ysql.png)
 
 By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
-
-To view detailed information about an existing backup, click on it to open **Backup Details**.
 
 The **Backups** page allows you to create new backups that start immediately, as follows:
 
@@ -68,4 +66,12 @@ Versions of YugabyteDB Anywhere prior to 2.11.2.0 do not support backups of YSQL
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql/).
 
-To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
+To view detailed information about an existing backup, click on it to open **Backup Details**. In addition to actions such as deleting and restoring the backup, as well as restoring and copying the database location, you can use **Backup Details** to add an incremental backup for universes that had the YB Controller automatically installed during their creation. The same universes allow you to configure their throttle parameters by clicking **... > Configure Throttle Parameters**, as per the following illustration:
+
+![Throttle parameters](/images/yp/backup-throttle-config-button.png)<br>
+
+<br>You define throttle parameters to enhance your universe's backups and restore performance using the **Configure Throttle Parameters** dialog shown in the following illustration:<br><br>![Throttle](/images/yp/backup-restore-throttle.png)<br><br><br>To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
+
+![Backups](/images/yp/backups-list.png)<br>
+
+You can access the detailed information about a specific backup by clicking it to open the **Backup Details** dialog. 

@@ -47,6 +47,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/range.h"
@@ -179,7 +180,7 @@ class PrecastRequestSender {
  public:
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
     if (!collecting_mode_) {
       auto future = VERIFY_RESULT(session->RunAsync(
           ops, ops_count, table, &in_txn_limit, force_non_bufferable));
@@ -215,12 +216,13 @@ class PrecastRequestSender {
     auto i = ops_.begin();
     auto perform_future = VERIFY_RESULT(session->RunAsync(make_lw_function(
         [&i, end = ops_.end()] {
+          using TO = PgSession::TableOperation<PgsqlOpPtr>;
           if (i == end) {
-            return PgSession::TableOperation();
+            return TO();
           }
           auto& info = *i++;
-          return PgSession::TableOperation{.operation = &info.operation, .table = info.table};
-        }), &provider_state_->in_txn_limit, false /* force_non_bufferable */));
+          return TO{.operation = &info.operation, .table = info.table};
+        }), &provider_state_->in_txn_limit));
     provider_state_->response = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
@@ -245,7 +247,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable) {
+      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
     return precast_sender.Send(session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
@@ -524,22 +526,24 @@ Status PgApiImpl::CreateSequencesDataTable() {
 Status PgApiImpl::InsertSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
                                       uint64_t ysql_catalog_version,
+                                      bool is_db_catalog_version_mode,
                                       int64_t last_val,
                                       bool is_called) {
   return pg_session_->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
                                                    int64_t seq_oid,
                                                    uint64_t ysql_catalog_version,
+                                                   bool is_db_catalog_version_mode,
                                                    int64_t last_val,
                                                    bool is_called,
                                                    int64_t expected_last_val,
                                                    bool expected_is_called,
                                                    bool *skipped) {
   *skipped = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -547,11 +551,12 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
 Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
                                       uint64_t ysql_catalog_version,
+                                      bool is_db_catalog_version_mode,
                                       int64_t last_val,
                                       bool is_called,
                                       bool* skipped) {
   bool result = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val,
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -562,9 +567,11 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,
+                                    bool is_db_catalog_version_mode,
                                     int64_t *last_val,
                                     bool *is_called) {
-  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version));
+  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(
+    db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode));
   if (last_val) {
     *last_val = res.first;
   }
@@ -593,8 +600,9 @@ Status PgApiImpl::ConnectDatabase(const char *database_name) {
   return pg_session_->ConnectDatabase(database_name);
 }
 
-Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
-  return pg_session_->IsDatabaseColocated(database_oid, colocated);
+Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
+                                      bool *legacy_colocated_database) {
+  return pg_session_->IsDatabaseColocated(database_oid, colocated, legacy_colocated_database);
 }
 
 Status PgApiImpl::NewCreateDatabase(const char *database_name,
@@ -1251,7 +1259,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
     case StmtOp::STMT_TRUNCATE:
       {
         auto dml_write = down_cast<PgDmlWrite *>(handle);
-        RETURN_NOT_OK(dml_write->Exec(rows_affected_count != nullptr /* force_non_bufferable */));
+        RETURN_NOT_OK(dml_write->Exec(ForceNonBufferable(rows_affected_count != nullptr)));
         if (rows_affected_count) {
           *rows_affected_count = dml_write->GetRowsAffectedCount();
         }
@@ -1612,21 +1620,49 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     return tserver_shared_object_->ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
-    const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
-    for (const auto& entry : info.entries()) {
-      if (entry.db_oid() == *db_oid) {
-        catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
-        break;
-      }
-    }
-    SCHECK(catalog_version_db_index_,
-           IllegalState,
-           "Failed to find suitable shared memory index for db $0", *db_oid);
-  } else if (catalog_version_db_index_->first != *db_oid) {
-    return STATUS(IllegalState, "Forbidden db switch from $0 to $1 detected");
+    // If db_oid is for a newly created database, it may not yet have an entry allocated in
+    // shared memory yet. Let's wait with 500ms interval until the entry shows up or until
+    // a 10-second timeout.
+    auto status = LoggedWaitFor(
+        [this, db_oid]() -> Result<bool> {
+          auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
+              false /* size_only */));
+          for (const auto& entry : info.entries()) {
+            if (entry.db_oid() == *db_oid) {
+              catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
+              break;
+            }
+          }
+          return catalog_version_db_index_ ? true : false;
+        },
+        10s /* timeout */,
+        Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
+        500ms /* initial_delay */,
+        1.0 /* delay_multiplier */);
+
+    RETURN_NOT_OK_PREPEND(
+        status,
+        Format("Failed to find suitable shared memory index for db $0: $1$2",
+               *db_oid, status.ToString(),
+               status.IsTimedOut() ? ", there may be too many databases" : ""));
+
+    // For correctness return 0 because any loaded catalog cache prior to this call may
+    // be older than the current catalog version and needs to be refreshed.
+    CHECK(catalog_version_db_index_);
+    return 0;
+  }
+  if (catalog_version_db_index_->first != *db_oid) {
+    return STATUS_FORMAT(
+        IllegalState, "Forbidden db switch from $0 to $1 detected",
+        catalog_version_db_index_->first, *db_oid);
   }
   return tserver_shared_object_->ysql_db_catalog_version(
       static_cast<size_t>(catalog_version_db_index_->second));
+}
+
+Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
+  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(true /* size_only */));
+  return info.num_entries();
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
@@ -1782,12 +1818,13 @@ Status PgApiImpl::ValidatePlacement(const char *placement_info) {
   return pg_session_->ValidatePlacement(placement_info);
 }
 
-void PgApiImpl::StartSysTablePrefetching() {
+void PgApiImpl::StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
+
   CHECK(!pg_session_->HasCatalogReadPoint());
-  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
+  pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher(latest_known_ysql_catalog_version));
 }
 
 void PgApiImpl::StopSysTablePrefetching() {

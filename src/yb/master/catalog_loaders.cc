@@ -72,11 +72,11 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     return Status::OK();
   }
 
-  CHECK(!ContainsKey(*catalog_manager_->table_ids_map_, table_id))
-        << "Table already exists: " << table_id;
+  CHECK(catalog_manager_->tables_->FindTableOrNull(table_id) == nullptr)
+      << "Table already exists: " << table_id;
 
   // Setup the table info.
-  scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id);
+  scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id, metadata.colocated());
   auto l = table->LockForWrite();
   auto& pb = l.mutable_data()->pb;
   pb.CopyFrom(metadata);
@@ -98,8 +98,8 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
-  auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
-  (*table_ids_map_checkout)[table->id()] = table;
+  auto table_map_checkout = catalog_manager_->tables_.CheckOut();
+  table_map_checkout->AddTable(table);
   if (!l->started_deleting() && !l->started_hiding()) {
     if (l->table_type() != PGSQL_TABLE_TYPE) {
       catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
@@ -156,7 +156,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   }
 
   // Lookup the table.
-  TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
+  TableInfoPtr first_table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id());
 
   // TODO: We need to properly remove deleted tablets.  This can happen async of master loading.
   if (!first_table) {
@@ -212,7 +212,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     bool should_delete_tablet = !tablet_deleted;
 
     for (const auto& table_id : table_ids) {
-      TableInfoPtr table = FindPtrOrNull(*catalog_manager_->table_ids_map_, table_id);
+      TableInfoPtr table = catalog_manager_->tables_->FindTableOrNull(table_id);
 
       if (table == nullptr) {
         // If the table is missing and the tablet is in "preparing" state
@@ -226,9 +226,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         }
 
         // Otherwise, something is wrong...
-        LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
-                     << ", metadata: " << metadata.DebugString()
-                     << ", tables: " << yb::ToString(*catalog_manager_->table_ids_map_);
+        LOG(WARNING) << Format("Missing table $0 required by tablet $1, metadata: $2",
+                               table_id, tablet_id, metadata.DebugString());
         // If we ignore deleted tables, then a missing table can be expected and we continue.
         if (PREDICT_TRUE(FLAGS_master_ignore_deleted_on_load)) {
           continue;

@@ -129,26 +129,30 @@ const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletSer
   return RandomElement(servers);
 }
 
-HistogramMetricWatcher::HistogramMetricWatcher(
+MetricWatcher::MetricWatcher(
   const server::RpcServerBase& server, const MetricPrototype& metric)
     : server_(server), metric_(metric) {
 }
 
-Result<size_t> HistogramMetricWatcher::Delta(const DeltaFunctor& functor) const {
+Result<size_t> MetricWatcher::Delta(const DeltaFunctor& functor) const {
   auto initial_values = VERIFY_RESULT(GetMetricCount());
   RETURN_NOT_OK(functor());
   return VERIFY_RESULT(GetMetricCount()) - initial_values;
 }
 
-Result<size_t> HistogramMetricWatcher::GetMetricCount() const {
+Result<size_t> MetricWatcher::GetMetricCount() const {
   const auto& metric_map = server_.metric_entity()->UnsafeMetricsMapForTests();
   auto item = metric_map.find(&metric_);
   SCHECK(item != metric_map.end(), IllegalState, "Metric not found");
   const auto& metric = *item->second;
-  SCHECK_EQ(
-      MetricType::kHistogram, metric.prototype()->type(),
-      IllegalState, "Histogram metric is expected");
-  return down_cast<const Histogram&>(metric).TotalCount();
+  switch(metric.prototype()->type()) {
+    case MetricType::kHistogram: return down_cast<const Histogram&>(metric).TotalCount();
+    case MetricType::kCounter: return down_cast<const Counter&>(metric).value();
+
+    case MetricType::kGauge: break;
+    case MetricType::kLag: break;
+  }
+  return STATUS_FORMAT(IllegalState, "Unsupported metric type $0", metric.prototype()->type());
 }
 
 std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {

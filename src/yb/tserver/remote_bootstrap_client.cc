@@ -40,6 +40,7 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/fs/fs_manager.h"
@@ -347,6 +348,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &wal_root_dir);
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
+        consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
         tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
         table.table_type(), schema, IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,

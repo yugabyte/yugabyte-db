@@ -177,7 +177,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 							 Relation rel,
 							 int *rows_affected_count)
 {
-	YbSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version);
+	YbSetCatalogCacheVersion(ybc_stmt, YbGetCatalogCacheVersion());
 
 	bool is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 
@@ -197,7 +197,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 	if (is_syscatalog_version_inc)
 	{
 		// TODO(shane) also update the shared memory catalog version here.
-		yb_catalog_cache_version += 1;
+		YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 	}
 }
 

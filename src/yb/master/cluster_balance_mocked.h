@@ -22,7 +22,6 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     table_state->options_ = options;
     state_ = table_state.get();
     per_table_states_[""] = std::move(table_state);
-
     ResetOptions();
 
     InitTablespaceManager();
@@ -41,10 +40,12 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
 
-  const TableInfoMap& GetTableMap() const override { return table_map_; }
+  TableIndex::TablesRange GetTables() const override {
+    return tables_.GetPrimaryTables();
+  }
 
   const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const override {
-    return FindPtrOrNull(table_map_, table_uuid);
+    return tables_.FindTableOrNull(table_uuid);
   }
 
   Result<ReplicationInfoPB> GetTableReplicationInfo(
@@ -110,7 +111,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   TSDescriptorVector ts_descs_;
   std::vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
-  TableInfoMap table_map_;
+  TableIndex tables_;
   ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   BlacklistPB leader_blacklist_;

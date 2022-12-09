@@ -10,7 +10,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -130,9 +132,12 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(
-            Collections.singleton(currentNode),
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcTasks(Arrays.asList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for yb-controller to be responsive on each node.
+        createWaitForYbcServerTask(new HashSet<>(Arrays.asList(currentNode)))
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Update node state to running.

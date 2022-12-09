@@ -113,13 +113,21 @@ class GcpMetadata():
         try:
             url = "{}/{}".format(GcpMetadata.METADATA_URL_BASE, endpoint)
             req = requests.get(url, headers=GcpMetadata.CUSTOM_HEADERS, timeout=2)
-            return req.content.decode('utf-8') if req.status_code == requests.codes.ok else None
+
+            if req.status_code != requests.codes.ok:
+                logging.warning("Request {} returned http error code {}".format(
+                    url, req.status_code))
+                return None
+
+            return req.content.decode('utf-8')
+
         except requests.exceptions.ConnectionError as e:
+            logging.warning("Request {} had a connection error {}".format(url, str(e)))
             return None
 
     @staticmethod
     def project():
-        return GcpMetadata._query_endpoint("/project/project-id")
+        return GcpMetadata._query_endpoint("project/project-id")
 
     @staticmethod
     def host_project():
@@ -579,7 +587,7 @@ class GoogleCloudAdmin():
                                                 body=body).execute()
         return self.waiter.wait(operation, zone=zone)
 
-    def delete_disks(self, zone, tags):
+    def delete_disks(self, zone, tags, filter_disk_names=None):
         if not tags:
             raise YBOpsRuntimeError('Tags must be specified')
         universe_uuid = tags.get('universe-uuid')
@@ -610,7 +618,10 @@ class GoogleCloudAdmin():
                 users = disk.get('users', [])
                 # API returns READY for used disks as it is the creation state.
                 # Users refer to the users (instance).
+                logging.info('[app] Disk {} is in state {}'.format(disk_name, status))
                 if status.lower() != 'ready' or users:
+                    continue
+                if filter_disk_names and disk_name not in filter_disk_names:
                     continue
                 tag_match_count = 0
                 # Extra caution to make sure tags are present.
@@ -790,7 +801,7 @@ class GoogleCloudAdmin():
         for data in instances:
             metadata = data.get("metadata", {}).get("items", {})
             disks = data.get("disks", [])
-            root_vol = next(disk for disk in disks if disk.get("boot", False))
+            root_vol = next((disk for disk in disks if disk.get("boot", False)), None)
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
             universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
@@ -836,8 +847,8 @@ class GoogleCloudAdmin():
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
-                root_volume=root_vol["source"],
-                root_volume_device_name=root_vol["deviceName"],
+                root_volume=root_vol.get("source") if root_vol else None,
+                root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
                 is_running=True if instance_state == "RUNNING" else False
             )

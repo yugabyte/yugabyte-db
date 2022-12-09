@@ -38,14 +38,13 @@ const PanelBody = ({
   nodePrefixes,
   width,
   tableName,
-  featureFlags,
-  graph
+  graph,
+  isTopKMetricsEnabled
 }) => {
-  const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
   let result = null;
 
   if (isTopKMetricsEnabled) {
-    let invalidTabType = [];
+    const invalidTabType = [];
     // List of default tabs to display based on metrics origin
     let defaultTabToDisplay = MetricTypes.YSQL_OPS;
     if (origin === MetricOrigin.TABLE) {
@@ -206,9 +205,12 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin } = this.props;
+    const { origin, isTopKMetricsEnabled } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin}>
+      <GraphPanelHeaderContainer
+        origin={origin}
+        isTopKMetricsEnabled={!!isTopKMetricsEnabled}
+      >
         <PanelBody {...this.props} />
       </GraphPanelHeaderContainer>
     );

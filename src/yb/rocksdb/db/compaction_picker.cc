@@ -486,7 +486,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   // CompactionPickerFIFO has its own implementation of compact range
   assert(ioptions_.compaction_style != kCompactionStyleFIFO);
 
@@ -538,7 +539,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
         /* max_grandparent_overlap_bytes = */ LLONG_MAX, output_path_id,
         GetCompressionType(ioptions_, output_level, 1),
         /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
-        /* is_manual = */ true);
+        /* is_manual = */ true, /* score */ -1, /* deletion_compaction */ false,
+        compaction_reason);
     if (c && start_level == 0) {
       MarkL0FilesForDeletion(vstorage, &ioptions_);
       level0_compactions_in_progress_.insert(c.get());
@@ -639,7 +641,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
       mutable_cf_options.MaxFileSizeForLevel(output_level),
       mutable_cf_options.MaxGrandParentOverlapBytes(input_level), output_path_id,
       GetCompressionType(ioptions_, output_level, vstorage->base_level()), std::move(grandparents),
-      ioptions_.info_log, /* is manual compaction = */ true);
+      ioptions_.info_log, /* is manual compaction = */ true, /* score */ -1,
+      /* deletion_compaction */ false, compaction_reason);
   if (!compaction) {
     return nullptr;
   }
@@ -2043,7 +2046,8 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   assert(input_level == 0);
   assert(output_level == 0);
   *compaction_end = nullptr;

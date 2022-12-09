@@ -22,11 +22,12 @@ import { YBLoading } from '../../common/indicators';
 import { ThrottleParameters } from '../common/IBackup';
 import * as Yup from 'yup';
 
-import './BackupThrottleParameters.scss';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useSelector } from 'react-redux';
 import { YBConfirmModal } from '../../modals';
+import { YBTag, YBTag_Types } from '../../common/YBTag';
+import './BackupThrottleParameters.scss';
 
 interface BackupThrottleParametersProps {
   visible: boolean;
@@ -95,26 +96,28 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   const max_buffers_allowed =
     currentUniverseResources.numCores / currentUniverseResources.numNodes + 1;
 
+  const min_buffers_allowed = 1;
+
   const validationSchema = Yup.object().shape({
     max_concurrent_uploads: Yup.number()
       .required('Required')
       .typeError('Required')
-      .min(1, 'Min limit is 1')
+      .min(min_buffers_allowed, 'Min limit is 1')
       .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
     per_upload_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
-      .min(1, 'Min Limit is 1')
+      .min(min_buffers_allowed, 'Min Limit is 1')
       .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
     max_concurrent_downloads: Yup.number()
       .required('Required')
       .typeError('Required')
-      .min(1, 'Min limit is 1')
+      .min(min_buffers_allowed, 'Min limit is 1')
       .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`),
     per_download_num_objects: Yup.number()
       .required('Required')
       .typeError('Required')
-      .min(1, 'Min Limit is 1')
+      .min(min_buffers_allowed, 'Min Limit is 1')
       .max(max_buffers_allowed, `Max limit is ${max_buffers_allowed}`)
   });
 
@@ -125,7 +128,7 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         onHide={() => {
           onHide();
         }}
-        title="Configure Throttle Parameters"
+        title="Configure Resource Throttling"
         initialValues={initialValues}
         validationSchema={validationSchema}
         footerAccessory={
@@ -154,82 +157,104 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           return (
             <>
               <Row>
-                <Col lg={12} className="header no-padding">
-                  <h4>Backups</h4>
+                <Col lg={12} className="no-padding infos">
+                  <div>
+                    Manage the speed of Backup and Restore operations by configuring resource
+                    throttling.
+                  </div>
+                  <div>
+                    For <b>faster</b> backups and restores, enter higher values.
+                    <YBTag type={YBTag_Types.YB_GRAY}>Max {max_buffers_allowed}</YBTag>
+                  </div>
+                  <div>
+                    For <b>lower impact</b> on database performance, enter lower values.
+                    <YBTag type={YBTag_Types.YB_GRAY}>Min {min_buffers_allowed}</YBTag>
+                  </div>
                 </Col>
-                <Row>
-                  <Col lg={6} className="field-header no-padding">
-                    Number of parallel uploads (per node)
-                  </Col>
-                  <Col lg={6}>
-                    <Field
-                      name="max_concurrent_uploads"
-                      component={YBControlledNumericInput}
-                      val={values.max_concurrent_uploads}
-                      onInputChanged={(val: number) => setFieldValue('max_concurrent_uploads', val)}
-                    />
-                    {errors.max_concurrent_uploads && (
-                      <span className="err-msg">{errors.max_concurrent_uploads}</span>
-                    )}
-                  </Col>
-                </Row>
-                <Row>
-                  <Col lg={6} className="field-header no-padding">
-                    Number of buffers per upload (per node)
-                  </Col>
-                  <Col lg={6}>
-                    <Field
-                      name="per_upload_num_objects"
-                      component={YBControlledNumericInput}
-                      val={values.per_upload_num_objects}
-                      onInputChanged={(val: number) => setFieldValue('per_upload_num_objects', val)}
-                    />
-                    {errors.per_upload_num_objects && (
-                      <span className="err-msg">{errors.per_upload_num_objects}</span>
-                    )}
-                  </Col>
-                </Row>
+                <Col lg={12} className="fields">
+                  <div className="section">Backups</div>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Number of parallel uploads per node{' '}
+                      <span className="text-secondary">- Default 2</span>
+                    </Col>
+                    <Col lg={2} className="no-padding">
+                      <Field
+                        name="max_concurrent_uploads"
+                        component={YBControlledNumericInput}
+                        val={values.max_concurrent_uploads}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('max_concurrent_uploads', val)
+                        }
+                      />
+                      {errors.max_concurrent_uploads && (
+                        <span className="err-msg">{errors.max_concurrent_uploads}</span>
+                      )}
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Number of buffers per upload per node{' '}
+                      <span className="text-secondary">- Default {max_buffers_allowed}</span>
+                    </Col>
+                    <Col lg={2} className="no-padding">
+                      <Field
+                        name="per_upload_num_objects"
+                        component={YBControlledNumericInput}
+                        val={values.per_upload_num_objects}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('per_upload_num_objects', val)
+                        }
+                      />
+                      {errors.per_upload_num_objects && (
+                        <span className="err-msg">{errors.per_upload_num_objects}</span>
+                      )}
+                    </Col>
+                  </Row>
+                </Col>
               </Row>
               <Row>
-                <Col lg={12} className="header no-padding">
-                  <h4>Restore</h4>
+                <Col lg={12} className="fields">
+                  <div className="section">Restores</div>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Number of parallel downloads per node{' '}
+                      <span className="text-secondary">- Default 2</span>
+                    </Col>
+                    <Col lg={2} className="no-padding">
+                      <Field
+                        name="max_concurrent_downloads"
+                        component={YBControlledNumericInput}
+                        val={values.max_concurrent_downloads}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('max_concurrent_downloads', val)
+                        }
+                      />
+                      {errors.max_concurrent_downloads && (
+                        <span className="err-msg">{errors.max_concurrent_downloads}</span>
+                      )}
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Number of buffers per download per node{' '}
+                      <span className="text-secondary">- Default {max_buffers_allowed}</span>
+                    </Col>
+                    <Col lg={2} className="no-padding">
+                      <Field
+                        name="per_download_num_objects"
+                        component={YBControlledNumericInput}
+                        val={values.per_download_num_objects}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('per_download_num_objects', val)
+                        }
+                      />
+                      {errors.per_download_num_objects && (
+                        <span className="err-msg">{errors.per_download_num_objects}</span>
+                      )}
+                    </Col>
+                  </Row>
                 </Col>
-                <Row>
-                  <Col lg={6} className="field-header no-padding">
-                    Number of parallel downloads (per node)
-                  </Col>
-                  <Col lg={6}>
-                    <Field
-                      name="max_concurrent_downloads"
-                      component={YBControlledNumericInput}
-                      val={values.max_concurrent_downloads}
-                      onInputChanged={(val: number) =>
-                        setFieldValue('max_concurrent_downloads', val)
-                      }
-                    />
-                    {errors.max_concurrent_downloads && (
-                      <span className="err-msg">{errors.max_concurrent_downloads}</span>
-                    )}
-                  </Col>
-                </Row>
-                <Row>
-                  <Col lg={6} className="field-header no-padding">
-                    Number of buffers per download (per node)
-                  </Col>
-                  <Col lg={6}>
-                    <Field
-                      name="per_download_num_objects"
-                      component={YBControlledNumericInput}
-                      val={values.per_download_num_objects}
-                      onInputChanged={(val: number) =>
-                        setFieldValue('per_download_num_objects', val)
-                      }
-                    />
-                    {errors.per_download_num_objects && (
-                      <span className="err-msg">{errors.per_download_num_objects}</span>
-                    )}
-                  </Col>
-                </Row>
               </Row>
             </>
           );

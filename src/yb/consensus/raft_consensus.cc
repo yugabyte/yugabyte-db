@@ -2301,10 +2301,11 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // See also https://ramcloud.stanford.edu/~ongaro/thesis.pdf
   // section 4.2.3.
   MonoTime now = MonoTime::Now();
-  if (request->candidate_uuid() != state_->GetLeaderUuidUnlocked() &&
+  auto leader_uuid = state_->GetLeaderUuidUnlocked();
+  if (request->candidate_uuid() != leader_uuid &&
       !request->ignore_live_leader() &&
       now < withhold_votes_until_.load(std::memory_order_acquire)) {
-    return RequestVoteRespondLeaderIsAlive(request, response);
+    return RequestVoteRespondLeaderIsAlive(request, response, leader_uuid);
   }
 
   // Candidate is running behind.
@@ -2963,13 +2964,14 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpIdPB& local_last_
 }
 
 Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
-                                                      VoteResponsePB* response) {
+                                                      VoteResponsePB* response,
+                                                      const std::string& leader_uuid) {
   FillVoteResponseVoteDenied(ConsensusErrorPB::LEADER_IS_ALIVE, response);
   std::string msg = Format(
-      "$0: Denying vote to candidate $1 for term $2 because replica is either leader or believes a "
-      "valid leader to be alive. Time left: $3",
+      "$0: Denying vote to candidate $1 for term $2 because replica believes a valid leader to be "
+      "alive (leader uuid: $3). Time left: $4",
       GetRequestVoteLogPrefix(*request), request->candidate_uuid(), request->candidate_term(),
-      withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
+      leader_uuid, withhold_votes_until_.load(std::memory_order_acquire) - MonoTime::Now());
   LOG(INFO) << msg;
   StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();

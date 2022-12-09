@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
-import { ReplicationStatus } from './constants';
+import { XClusterConfigStatus } from './constants';
 import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigStatusLabel.module.scss';
@@ -44,20 +44,21 @@ const DELETION_FAILED_LABEL = (
 
 export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStatusProps) => {
   switch (xClusterConfig.status) {
-    case ReplicationStatus.INITIALIZED:
-    case ReplicationStatus.UPDATING:
+    case XClusterConfigStatus.INITIALIZED:
+    case XClusterConfigStatus.UPDATING:
       return IN_PROGRESS_LABEL;
-    case ReplicationStatus.RUNNING:
+    case XClusterConfigStatus.RUNNING:
       return xClusterConfig.paused ? PAUSED_LABEL : ENABLED_LABEL;
-    case ReplicationStatus.FAILED:
+    case XClusterConfigStatus.FAILED:
       return FAILED_LABEL;
-    case ReplicationStatus.DELETION_FAILED:
+    case XClusterConfigStatus.DELETION_FAILED:
       return DELETION_FAILED_LABEL;
-    case ReplicationStatus.DELETED_UNIVERSE: {
+    case XClusterConfigStatus.DELETED_UNIVERSE: {
       const labelText =
-        xClusterConfig.sourceUniverseUUID !== null && xClusterConfig.targetUniverseUUID !== null
+        xClusterConfig.sourceUniverseUUID !== undefined &&
+        xClusterConfig.targetUniverseUUID !== undefined
           ? 'Source/target universe deletion failed or in progress'
-          : xClusterConfig.sourceUniverseUUID === null
+          : xClusterConfig.sourceUniverseUUID === undefined
           ? 'Source universe is deleted'
           : 'Target universe is deleted';
       return (

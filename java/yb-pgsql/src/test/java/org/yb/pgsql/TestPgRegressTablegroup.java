@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -20,17 +21,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import com.google.common.collect.ImmutableMap;
+
 // Runs the pg_regress test suite on YB code.
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgRegressTablegroup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressTablegroup.class);
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("ysql_beta_feature_tablegroup", "true");
-    return flagMap;
-  }
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -47,5 +43,16 @@ public class TestPgRegressTablegroup extends BasePgSQLTest {
   @Test
   public void testPgRegressTablegroup() throws Exception {
     runPgRegressTest("yb_tablegroups_schedule");
+  }
+
+  @Test
+  public void testPgRegressTablegroupDeprecation() throws Exception {
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(Collections.emptyMap(),
+                            ImmutableMap.of(
+                                "ysql_beta_features", "false",
+                                "ysql_beta_feature_tablegroup", "false"));
+
+    runPgRegressTest("yb_tablegroup_deprecation_schedule");
   }
 }

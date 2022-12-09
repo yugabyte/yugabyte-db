@@ -59,7 +59,6 @@
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64_t yb_catalog_cache_version;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
@@ -74,7 +73,17 @@ extern uint64_t yb_catalog_cache_version;
  */
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
-extern void YBResetCatalogVersion();
+extern uint64_t YbGetCatalogCacheVersion();
+
+extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+
+extern void YbResetCatalogCacheVersion();
+
+extern uint64_t YbGetLastKnownCatalogCacheVersion();
+
+extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+
+extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
     ZONE_LOCAL,
@@ -184,7 +193,12 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YbIsDatabaseColocated(Oid dbid);
+/*
+ * Return whether a database with oid dbid is a colocated database.
+ * legacy_colocated_database is one output parameter. Its value indicates
+ * whether database with oid dbid is a legacy colocated database.
+ */
+extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -209,6 +223,12 @@ extern bool YBTransactionsEnabled();
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
  */
 extern bool IsYBReadCommitted();
+
+/*
+ * Whether wait-queues are enabled for the cluster or not (via the TServer gflag
+ * enable_wait_queues).
+ */
+extern bool YBIsWaitQueueEnabled();
 
 /*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
@@ -696,5 +716,28 @@ extern void YBCheckServerAccessIsAllowed();
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
+
+/*
+ * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
+ * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * common.proto.
+ *
+ * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
+ * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
+ * appropriate conflict-resolution steps for the different row-level lock policies.
+ *
+ * This function does the following:
+ * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
+ *		and NO WAIT are not supported yet.
+ * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
+ *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
+ *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ */
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
+
+const char* yb_fetch_current_transaction_priority(void);
 
 #endif /* PG_YB_UTILS_H */

@@ -738,6 +738,137 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
+### Use node agents
+
+To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that you can run on each node meeting the following requirements:
+
+- The node has already been set up with the `yugabyte` user group and home.
+- The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa). 
+
+#### Installation
+
+You can install a node agent as follows:
+
+1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
+
+   ```sh
+   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
+   ```
+
+3. Verify that the installer file contains the script.
+
+3. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
+
+   ```sh
+   ./installer.sh -t install -u https://<yugabytedb_anywhere_address> -at <api_token>
+   ```
+
+   For example, if you execute `./installer.sh  -t install -u http://100.98.0.42:9000 -at 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
+
+   ```output
+   * Starting YB Node Agent install
+   * Creating Node Agent Directory
+   * Changing directory to node agent
+   * Creating Sub Directories
+   * Downloading YB Node Agent build package
+   * Getting Linux/amd64 package
+   * Downloaded Version - 2.17.1.0-PRE_RELEASE
+   * Extracting the build package
+   * The current value of Node IP is not set; Enter new value or enter to skip: 10.9.198.2
+   * The current value of Node Name is not set; Enter new value or enter to skip: Test
+   * Select your Onprem Provider
+   1. Provider ID: 41ac964d-1db2-413e-a517-2a8d840ff5cd, Provider Name: onprem
+           Enter the option number: 1
+   * Select your Instance Type
+   1. Instance Code: c5.large
+           Enter the option number: 1
+   * Select your Region
+   1. Region ID: dc0298f6-21bf-4f90-b061-9c81ed30f79f, Region Code: us-west-2
+           Enter the option number: 1
+   * Select your Zone
+   1. Zone ID: 99c66b32-deb4-49be-85f9-c3ef3a6e04bc, Zone Name: us-west-2c
+           Enter the option number: 1
+           • Completed Node Agent Configuration
+           • Node Agent Registration Successful
+   You can install a systemd service on linux machines by running node-agent-installer.sh -t install-service (Requires sudo access).
+   ```
+
+4. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions: 
+
+   ```sh
+   sudo node-agent-installer.sh -t install-service  
+   ```
+
+When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
+
+#### Registration
+
+To enable secured communication, the node agent is automatically registered during its installation so the YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
+
+The following is the node agent registration command:
+
+```sh
+node-agent node register --api-token <api_token>
+```
+
+If you need to overwrite any previously configured values, you can use the following parameters within the registration command:
+
+- `--node_ip` represents the node IP address.
+- `--url` represents the YugabyteDB Anywhere address.
+
+For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
+
+<!--
+
+You can obtain a list of existing node agents using the following API: 
+
+```http
+GET /api/v1/customers/<customer_id>/node_agents
+```
+
+To unregister a node agent, use the following API: 
+
+```http
+DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
+```
+
+-->
+
+To unregister a node agent, use the following command: 
+
+```sh
+node-agent node unregister
+```
+
+#### Operations
+
+Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
+
+- `node-agent node unregister` is used for unregistersing the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
+- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
+- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
+- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).
+
+#### Preflight check
+
+Once the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
+
+```sh
+node-agent node preflight-check
+```
+
+The result of the check is forwarded to YugabyteDB Anywhere for validation. The validated information is posted in a tabular form on the terminal. If there is a failure against a required check, you can apply a fix and then rerun the preflight check.
+
+Expect an output similar to the following:
+
+![Result](/images/yp/node-agent-preflight-check.png)
+
+If the preflight check is successful, you would be able to add the node to the provider (if required) by executing the following:
+
+```sh
+node-agent node preflight-check --add_node
+```
+
 ## Remove YugabyteDB components from the server
 
 As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.

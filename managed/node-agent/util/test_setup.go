@@ -170,9 +170,13 @@ func GetTestRegisterResponse() model.RegisterResponseSuccess {
 }
 
 func GetTestProviderData() model.Provider {
+	config := make(map[string]string)
+	config["YB_HOME_DIR"] = "/home/yugabyte/custom"
+
 	dummyProvider := model.Provider{
 		BasicInfo: model.BasicInfo{Uuid: "12345"},
 		SshPort:   54422,
+		Config:    config,
 	}
 	return dummyProvider
 }
@@ -193,10 +197,16 @@ func GetTestInstanceTypeData() model.NodeInstanceType {
 	return result
 }
 
-func GetTestAccessKeyData() model.AccessKey {
+func GetTestAccessKeyData(
+	installNodeExporter bool,
+	skipProvisioning bool,
+	airGapInstall bool,
+) model.AccessKey {
 	result := model.AccessKey{
 		KeyInfo: model.AccessKeyInfo{
-			InstallNodeExporter: true,
+			InstallNodeExporter: installNodeExporter,
+			SkipProvisioning:    skipProvisioning,
+			AirGapInstall:       airGapInstall,
 		},
 	}
 	return result

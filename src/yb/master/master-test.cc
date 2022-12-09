@@ -146,6 +146,16 @@ TEST_F(MasterTest, TestGFlagsCallHome) {
   TestGFlagsCallHome<Master, MasterCallHome>(mini_master_->master());
 }
 
+TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->mutable_ts_instance()->set_permanent_uuid("");
+  req.mutable_common()->mutable_ts_instance()->set_instance_seqno(1);
+  auto status = proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController());
+  ASSERT_FALSE(status.ok());
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Recevied Empty UUID");
+}
+
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   const char *kTsUUID = "my-ts-uuid";
 

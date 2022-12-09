@@ -270,11 +270,6 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
-struct SeekStats {
-  int next = 0;
-  int seek = 0;
-};
-
 SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
   SeekStats result;
   for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
@@ -977,9 +972,8 @@ Status RocksDBPatcher::UpdateFileSizes() {
   return impl_->UpdateFileSizes();
 }
 
-Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush) {
-  rocksdb::CompactRangeOptions options;
-  options.skip_flush = skip_flush;
+Status ForceRocksDBCompact(rocksdb::DB* db,
+    const rocksdb::CompactRangeOptions& options) {
   RETURN_NOT_OK_PREPEND(
       db->CompactRange(options, /* begin = */ nullptr, /* end = */ nullptr),
       "Compact range failed");

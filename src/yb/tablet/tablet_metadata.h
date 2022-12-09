@@ -88,6 +88,7 @@ struct TableInfo {
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
 
+  std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::unique_ptr<docdb::DocReadContext> doc_read_context;
   std::unique_ptr<IndexMap> index_map;
@@ -107,7 +108,8 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   TableInfo();
-  TableInfo(Primary primary,
+  TableInfo(const std::string& tablet_log_prefix,
+            Primary primary,
             std::string table_id,
             std::string namespace_name,
             std::string table_name,
@@ -125,7 +127,8 @@ struct TableInfo {
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
-  Status LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb);
+  Status LoadFromPB(
+      const std::string& tablet_log_prefix, const TableId& primary_table_id, const TableInfoPB& pb);
   void ToPB(TableInfoPB* pb) const;
 
   std::string ToString() const {
@@ -141,6 +144,10 @@ struct TableInfo {
   const Schema& schema() const;
 
   Status MergeWithRestored(const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite);
+
+  const std::string& LogPrefix() const {
+    return log_prefix;
+  }
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -158,7 +165,8 @@ struct KvStoreInfo {
         rocksdb_dir(rocksdb_dir_),
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  Status LoadFromPB(const KvStoreInfoPB& pb,
+  Status LoadFromPB(const std::string& tablet_log_prefix,
+                    const KvStoreInfoPB& pb,
                     const TableId& primary_table_id,
                     bool local_superblock);
 
@@ -166,6 +174,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& pb, bool colocated, docdb::OverwriteSchemaPacking overwrite);
 
   Status LoadTablesFromPB(
+      const std::string& tablet_log_prefix,
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
 
   void ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const;
@@ -502,7 +511,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<std::string> TopSnapshotsDir() const;
 
   // Return standard "T xxx P yyy" log prefix.
-  std::string LogPrefix() const;
+  const std::string& LogPrefix() const;
 
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
 
@@ -643,6 +652,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };

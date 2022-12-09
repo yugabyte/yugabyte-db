@@ -84,6 +84,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -2257,8 +2258,9 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_TRUE(ql_resp.has_rows_data_sidecar());
 
       EXPECT_TRUE(controller.finished());
-      Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
+      std::string rows_data;
+      EXPECT_OK(controller.AssignSidecarTo(ql_resp.rows_data_sidecar(), &rows_data));
+      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data);
       row_block = rows_result.GetRowBlock();
       return implicit_cast<size_t>(FLAGS_test_scan_num_rows) == row_block->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
@@ -2331,7 +2333,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
-  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(client::YBPgsqlWriteOp::NewInsert(pgsq_table));
+  rpc::Sidecars sidecars;
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
   PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
 
   psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");

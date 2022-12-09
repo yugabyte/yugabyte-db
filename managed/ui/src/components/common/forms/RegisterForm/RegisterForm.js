@@ -33,7 +33,7 @@ class RegisterForm extends Component {
       type: 'PASSWORD_POLICY',
       name: 'password policy',
       data: this.props.passwordValidationInfo,
-    }
+    };
     const { registerCustomer, addCustomerConfig } = this.props;
     registerCustomer(formValues);
     addCustomerConfig(config);
