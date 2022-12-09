@@ -219,7 +219,7 @@ public class TableManagerTest extends FakeDBApplication {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       for (Cluster cluster : testUniverse.getUniverseDetails().clusters) {
         podAddrToConfig.putAll(
-            PlacementInfoUtil.getKubernetesConfigPerPod(
+            KubernetesUtil.getKubernetesConfigPerPod(
                 pi, testUniverse.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
     }

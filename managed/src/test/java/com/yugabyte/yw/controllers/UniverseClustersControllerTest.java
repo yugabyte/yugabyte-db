@@ -142,6 +142,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     ArrayNode clustersJsonArray = Json.newArray().add(Json.toJson(primaryCluster));
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.set("nodeDetailsSet", Json.toJson(universe.getUniverseDetails().nodeDetailsSet));
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(bodyJson));
     assertBadRequest(
         result,
