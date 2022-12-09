@@ -297,7 +297,9 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return vars(args)
+        result = vars(args).copy()
+        result['instance_type'] = host_info["instance_type"]
+        return result
 
 
 class GcpResumeInstancesMethod(AbstractInstancesMethod):
