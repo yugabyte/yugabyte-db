@@ -8,13 +8,13 @@
     container-name: sidebar;
   }
 
-  @container maincontainer (min-width: 768px) {
+  @container maincontainer (min-width: 991px) {
     .td-sidebar:not(.close-bar) {
-      flex: 1 1 80%;
+      flex: 1 1 75%;
     }
 
     .content-parent {
-      flex: 1 1 20%;
+      flex: 1 1 25%;
     }
 
     .content-parent {
@@ -27,6 +27,15 @@
       width: auto;
       flex: 0 0 100%;
       max-width: none;
+    }
+
+    .main-heading-with-version {
+      flex-flow: column;
+      align-items: flex-start;
+    }
+
+    .main-heading-with-version .heading-content {
+      width: 100%;
     }
 
     ul.nav.yb-pills li {

@@ -222,11 +222,21 @@ html {
     flex: 0 0 100%;
     max-width: 100%;
   }
+
+  .td-main {
+    main {
+      padding-top: 100px;
+    }
+  }
 }
 
 @media (max-width: 767px) {
   .td-main {
     flex-flow: column;
+
+    main {
+      padding-top: 170px;
+    }
 
     .td-sidebar:not(.close-bar) {
       width: 100%;
@@ -261,5 +271,5 @@ html {
 }
 
 body:not(.dragging) .td-main aside.td-sidebar:not(.toggled-sidebar) {
-  transition: max-width 2s ease-in-out !important;
+  transition: max-width 1.5s ease-in-out !important;
 }

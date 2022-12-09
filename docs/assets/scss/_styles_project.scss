@@ -15,6 +15,10 @@
 @import "./_yb_container.scss";
 @import "./_yb_responsive_container.scss";
 
+html {
+  padding: 0 !important;
+}
+
 * body {
   background: #fff;
   font-size: 15px;
@@ -92,22 +96,18 @@
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 992px) {
   .td-main main {
     padding-top: 9.5rem;
     padding-top: 129px;
     margin-top: 32px;
   }
+}
 
+@media (min-width: 768px) {
   .pl-md-5,
   .px-md-5 {
     padding-left: 1.5rem !important;
-  }
-}
-
-@media (max-width: 991px) {
-  .td-main main {
-    padding-top: 65px;
   }
 }
 

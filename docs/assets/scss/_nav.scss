@@ -147,6 +147,10 @@ body {
               align-items: center;
               margin-right: 16px;
 
+              &:last-child {
+                margin-right: 0;
+              }
+
               @media (max-width: 991px) {
                 margin-right: 0;
                 margin-bottom: 20px;
@@ -256,7 +260,7 @@ body {
         .ds-dropdown-menu {
           min-width: 100%;
 
-          div {
+          .ds-dataset-1 {
             max-height: 85vh;
             overflow: auto;
           }
