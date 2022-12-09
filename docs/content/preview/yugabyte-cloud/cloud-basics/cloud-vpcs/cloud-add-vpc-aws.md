@@ -74,8 +74,6 @@ To create a VPC, do the following:
 
 YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
-The VPC's network name and project ID are automatically assigned. You'll need these details when configuring the peering in GCP.
-
 ## Deploy a cluster in the VPC
 
 You can deploy your cluster in a VPC any time after the VPC is created. You must deploy the cluster in the VPC; the VPC can't be changed after cluster creation.

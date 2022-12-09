@@ -106,7 +106,7 @@ You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conve
 Addresses have the following additional restrictions:
 
 - VPC addresses can overlap with other VPCs, but not in the following circumstances:
-  - You want to use the VPCs for the same cluster. For example, if you have two VPCs in different regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.
+  - You want to use the VPCs for the same multi-region cluster in AWS. For example, if you have two VPCs in different regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.
 
   ![VPCs in the same cluster can't overlap](/images/yb-cloud/managed-vpc-overlap-cluster.png)
 
