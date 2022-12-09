@@ -34,7 +34,7 @@ Use a local cluster
 
 {{% explore-setup-multi-cloud %}}
 
-Follow the setup instructions to start a three-node cluster in YugabyteDB Managed, connect the YB Simulation Base Demo application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the setup instructions to start a three-node cluster in YugabyteDB Managed, connect the YB Workload Simulator application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
