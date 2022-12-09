@@ -236,9 +236,11 @@ typedef enum HintStatus
 #define hint_state_enabled(hint) ((hint)->base.state == HINT_STATE_NOTUSED || \
 								  (hint)->base.state == HINT_STATE_USED)
 
+/* These variables are used only when debug_level > 1*/
 static unsigned int qno = 0;
 static unsigned int msgqno = 0;
 static char qnostr[32];
+
 static const char *current_hint_str = NULL;
 
 /*
@@ -2577,7 +2579,7 @@ set_config_option_noerror(const char *name, const char *value,
 				 errmsg("%s", errdata->message),
 				 errdata->detail ? errdetail("%s", errdata->detail) : 0,
 				 errdata->hint ? errhint("%s", errdata->hint) : 0));
-		msgqno = qno;
+		msgqno = qno;  /* Don't bother checking debug_level > 1*/
 		FreeErrorData(errdata);
 	}
 	PG_END_TRY();
@@ -2847,7 +2849,6 @@ get_current_hint_string(Query *query, const char *query_str,
 	qnostr[0] = 0;
 	if (debug_level > 1)
 		snprintf(qnostr, sizeof(qnostr), "[qno=0x%x]", qno++);
-	qno++;
 
 	/* search the hint table for a hint if requested */
 	if (pg_hint_plan_enable_hint_table)
@@ -3009,13 +3010,15 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
+		{
 			ereport(pg_hint_plan_debug_message_level,
 					(errmsg ("pg_hint_plan%s: planner: enable_hint=%d,"
 							 " hint_inhibit_level=%d",
 							 qnostr, pg_hint_plan_enable_hint,
 							 hint_inhibit_level),
 					 errhidestmt(msgqno != qno)));
-		msgqno = qno;
+			msgqno = qno;
+		}
 
 		goto standard_planner_proc;
 	}
