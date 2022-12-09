@@ -792,29 +792,8 @@ class Schema {
     colocation_id_ = colocation_id;
   }
 
-  // Extract a given column from a row where the type is
-  // known at compile-time. The type is checked with a debug
-  // assertion -- but if the wrong type is used and these assertions
-  // are off, incorrect data may result.
-  //
-  // This is mostly useful for tests at this point.
-  // TODO: consider removing it.
-  template<DataType Type, class RowType>
-  const typename DataTypeTraits<Type>::cpp_type *
-  ExtractColumnFromRow(const RowType& row, size_t idx) const {
-    DCHECK_SCHEMA_EQ(*this, *row.schema());
-    const ColumnSchema& col_schema = cols_[idx];
-    DCHECK_LT(idx, cols_.size());
-    DCHECK_EQ(col_schema.type_info()->type, Type);
-
-    const void *val;
-    if (col_schema.is_nullable()) {
-      val = row.nullable_cell_ptr(idx);
-    } else {
-      val = row.cell_ptr(idx);
-    }
-
-    return reinterpret_cast<const typename DataTypeTraits<Type>::cpp_type *>(val);
+  bool is_colocated() const {
+    return has_colocation_id() || has_cotable_id();
   }
 
   // Stringify the given row, which conforms to this schema,

@@ -57,6 +57,9 @@ LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + '
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
 
+ACCESS_TOKEN_RE = re.compile(r'(.*?)--access_token=.*?( |\')')
+ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
+
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
@@ -595,6 +598,8 @@ class S3BackupStorage(AbstractBackupStorage):
                 % self.options.cloud_cfg_file_path]
         if self.options.args.disable_multipart:
             args.append('--disable-multipart')
+        if self.options.access_token:
+            args.append('--access_token=%s' % self.options.access_token)
         return args
 
     def upload_file_cmd(self, src, dest):
@@ -1340,10 +1345,12 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
+            access_token = None
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
                 with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
                     if metadata:
+                        access_token = metadata[2]
                         s3_cfg.write('[default]\n' +
                                      'access_key = ' + metadata[0] + '\n' +
                                      'secret_key = ' + metadata[1] + '\n' +
@@ -1380,6 +1387,11 @@ class YBBackup:
 
             os.chmod(self.cloud_cfg_file_path, 0o400)
             options.cloud_cfg_file_path = self.cloud_cfg_file_path
+            # access_token: Used when AWS credentials are used from IAM role. It
+            # is the identifier for temporary credentials, passed as command-line
+            # param with s3cmd, so that s3cmd does not try to refresh credentials
+            # on it's own.
+            options.access_token = access_token
         elif self.is_gcs():
             credentials = os.getenv('GCS_CREDENTIALS_JSON')
             if not credentials:
@@ -2686,6 +2698,22 @@ class YBBackup:
         del_cmd = self.storage.delete_obj_cmd(backup_path)
         if self.is_nfs():
             self.run_ssh_cmd(' '.join(del_cmd), self.get_leader_master_ip())
+
+            # Backup location of a keyspace is typically of the format
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-<keyspace>
+            # If there are 2 keyspaces keyspace1, keyspace2 in a universe, then the locations are
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace1 and
+            # univ-<univ_uuid>/backup-<backup_time>/multi-table-keyspace2.
+            # While deleting these backups we are deleting the directories multi-table-keyspace1
+            # and multi-table-keyspace2 but not deleting the empty directory backup-<backup_time>.
+            # The change here is to delete the backup-<backup_time> directory if empty.
+            del_dir_cmd = ["rm", "-df", pipes.quote(re.search('.*(?=/)', backup_path)[0])]
+            try:
+                self.run_ssh_cmd(' '.join(del_dir_cmd), self.get_leader_master_ip())
+            except Exception as ex:
+                if "Directory not empty" not in str(ex.output.decode('utf-8')):
+                    raise ex
+
         else:
             self.run_program(del_cmd)
 
@@ -3663,10 +3691,40 @@ class YBBackup:
             self.timer.print_summary()
 
 
+class RedactingFormatter(logging.Formatter):
+    """
+    Replaces portions of log with the desired replacements. The class
+    uses re.sub(pattern, replacement, orig_str) function to modify original log-lines.
+    The object of this class is added to the logging handler.
+    Constructor params:
+        - orig_formatter: The original formatter for the logging.
+        - sub_list: A list of format (matching-pattern, replacement). The format
+                    function iterates through this list and makes replacements.
+    """
+    def __init__(self, orig_formatter, sub_list):
+        self.orig_formatter = orig_formatter
+        self._sub_list = sub_list
+
+    def format(self, record):
+        log_line = self.orig_formatter.format(record)
+        for (pattern, sub) in self._sub_list:
+            log_line = re.sub(pattern, sub, log_line)
+        return log_line
+
+    def __getattr__(self, attr):
+        return getattr(self.orig_formatter, attr)
+
+
 if __name__ == "__main__":
     # Setup logging. By default in the config the output stream is: stream=sys.stderr.
     # Set custom output format and logging level=INFO (DEBUG messages will not be printed).
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    # Redact access_token param contents, appending to list can handle more redacts.
+    # The log-line after formatting: s3cmd ... --access_token=REDACTED ... .
+    for handler in logging.root.handlers:
+        handler.setFormatter(RedactingFormatter(handler.formatter,
+                             [(ACCESS_TOKEN_RE, ACCESS_TOKEN_REDACT_RE)]))
+
     # Registers the signal handlers.
     yb_backup = YBBackup()
     with terminating(ThreadPool(1)) as pool:

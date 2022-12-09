@@ -170,6 +170,31 @@ public class TransferXClusterCerts extends NodeTaskBase {
               node, targetUniverse, ImmutableList.of("mkdir", "-p", sourceCertificateDirPath))
           .processErrors("Making certificate parent directory failed");
 
+      // The permission for the certs used to be set to `400` which could be problematic in the case
+      // that we want to overwrite the certificate.
+      if (!targetUniverse
+          .getUniverseDetails()
+          .getPrimaryCluster()
+          .userIntent
+          .providerType
+          .equals(CloudType.kubernetes)) {
+        nodeUniverseManager
+            .runCommand(
+                node,
+                targetUniverse,
+                ImmutableList.of(
+                    "find",
+                    sourceCertificateDirPath,
+                    "-type",
+                    "f",
+                    "-exec",
+                    "chmod",
+                    "600",
+                    "'{}'",
+                    "\\;"))
+            .processErrors("Changing the certificates' permission failed");
+      }
+
       // Copy the certificate file to the node.
       nodeUniverseManager
           .uploadFileToNode(
@@ -177,7 +202,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
               targetUniverse,
               taskParams().rootCertPath.toString(),
               sourceCertificatePath,
-              "400")
+              "600")
           .processErrors("Copying the certificate file to the node failed");
 
       // `Kubectl cp` does not assign the owner properly. Also, the permission needs to `755` for

@@ -3193,6 +3193,12 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 	Relation	relation;
 	ListCell   *cell;
 
+	if (MyDatabaseColocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot set privileges of an implicit tablegroup "
+						"in a colocated database")));
+
 	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
 		istmt->privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 

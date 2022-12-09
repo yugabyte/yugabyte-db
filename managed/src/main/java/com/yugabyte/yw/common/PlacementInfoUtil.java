@@ -996,8 +996,10 @@ public class PlacementInfoUtil {
   // are the same.
   public static boolean isSamePlacement(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
     Map<UUID, AZInfo> oldAZMap = new HashMap<>();
-
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
@@ -2645,7 +2647,9 @@ public class PlacementInfoUtil {
     for (NodeDetails nd : nodeDetailsSet) {
       String kubeconfig = azToKubeconfig.get(nd.azUuid);
       if (kubeconfig == null) {
-        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + nd.azUuid);
+        // Ignore such a node because its corresponding AZ is removed from the PlacementInfo and the
+        // node will be removed too.
+        continue;
       }
       podToConfig.put(
           nd.cloudInfo.private_ip,
@@ -2668,7 +2672,7 @@ public class PlacementInfoUtil {
       Provider provider,
       int masterRpcPort,
       boolean newNamingStyle) {
-    List<String> masters = new ArrayList<String>();
+    List<String> masters = new ArrayList<>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {

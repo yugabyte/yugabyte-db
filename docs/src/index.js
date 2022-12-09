@@ -76,19 +76,14 @@ function activeLeftNav() {
   let element = '';
   let leftNavLink = '';
 
-  // Open left navigation w.r.t old tab
+  // Open left navigation w.r.t tabs.
   if ($('.td-content .nav-tabs-yb .active').length > 0 && $('.td-content .nav-tabs-yb .active').attr('href') !== '') {
     element = '.td-content .nav-tabs-yb li';
   }
 
-  // Open left navigation w.r.t new style2 tab
-  if ($('.td-content .tabs-style-2 .active').length > 0 && $('.td-content .tabs-style-2 .active').attr('href') !== '') {
-    element = '.td-content .tabs-style-2 li';
-  }
-
-  // Open left navigation w.r.t new style1 tab
-  if ($('.td-content .tabs-style-1 .active').length > 0 && $('.td-content .tabs-style-1 .active').attr('href') !== '') {
-    element = '.td-content .tabs-style-1 li';
+  // Open left navigation w.r.t pills.
+  if ($('.td-content .yb-pills .active').length > 0 && $('.td-content .yb-pills .active').attr('href') !== '') {
+    element = '.td-content .yb-pills li';
   }
 
   $(element).each(function () {
@@ -121,6 +116,9 @@ function activeLeftNav() {
 
 $(document).ready(() => {
   let searchValue = '';
+  $('ul.nav.yb-pills li').each(function () {
+    $(this).append(`<span class="tooltip">${$(this).find('a').text().trim()}</span>`);
+  });
 
   ((document) => {
     const $codes = document.querySelectorAll('pre');
@@ -129,6 +127,13 @@ $(document).ready(() => {
         container.parentElement.classList.add('can-be-copied');
         if (container.children && container.children.length > 0) {
           container.parentElement.setAttribute('data-code', container.children.length);
+        } else {
+          const codeLines = (container.innerText.match(/\r|\n/g) || '').length;
+          if (codeLines > 0) {
+            container.parentElement.setAttribute('data-code', codeLines);
+          } else {
+            container.parentElement.setAttribute('data-code', 1);
+          }
         }
       }
     };

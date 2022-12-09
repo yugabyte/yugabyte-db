@@ -5832,12 +5832,12 @@
     "id" : 22,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Reads",
+      "legendFormat" : "Read",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_reads_irate\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Writes",
+      "legendFormat" : "Write",
       "expr" : "avg(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"node_disk_writes_irate\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],

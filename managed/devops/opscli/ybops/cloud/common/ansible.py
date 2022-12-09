@@ -40,7 +40,8 @@ class AnsibleProcess(object):
         self.can_ssh = True
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
-        self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY"]
+        self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
+                                        "RPC_AUTH_TOKEN"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -105,6 +106,10 @@ class AnsibleProcess(object):
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
         ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        node_agent_ip = vars.pop("node_agent_ip", None)
+        node_agent_port = vars.pop("node_agent_port", None)
+        node_agent_cert_path = vars.pop("node_agent_cert_path", None)
+        node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         ssh_key_type = parse_private_key(ssh_key_file)
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
@@ -160,7 +165,16 @@ class AnsibleProcess(object):
             "--user", ssh_user
         ])
 
-        if ssh_port is None or ssh_host is None:
+        if node_agent_ip is not None and node_agent_port is not None:
+            connection_type = "node_agent_rpc"
+            playbook_args.update({
+                "rpc_ip": node_agent_ip,
+                "rpc_port": node_agent_port,
+                "rpc_cert_path": node_agent_cert_path,
+                "rpc_auth_token": node_agent_auth_token
+            })
+            inventory_target = self.build_connection_target(node_agent_ip)
+        elif ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
         elif self.can_ssh:

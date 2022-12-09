@@ -35,10 +35,10 @@ class PgDmlWrite : public PgDml {
   void PrepareColumns();
 
   // force_non_bufferable flag indicates this operation should not be buffered.
-  Status Exec(bool force_non_bufferable = false);
+  Status Exec(ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   void SetIsSystemCatalogChange() {
-    write_req_->set_is_ysql_catalog_change(true);
+    write_req_->set_is_ysql_catalog_change_using_protobuf(true);
   }
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid,

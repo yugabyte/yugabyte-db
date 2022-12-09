@@ -217,4 +217,6 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // The user that created the task
   public Users creatingUser;
+
+  public String platformUrl;
 }

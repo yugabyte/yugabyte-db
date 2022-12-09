@@ -844,7 +844,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "change_xcluster_role", "(STANDBY|ACTIVE)",
+      "change_xcluster_role", " <STANDBY|ACTIVE>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 1) {
           return ClusterAdminCli::kInvalidArguments;

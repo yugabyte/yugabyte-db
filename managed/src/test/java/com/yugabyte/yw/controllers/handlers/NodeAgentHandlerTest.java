@@ -110,6 +110,9 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.state = State.LIVE;
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
     verifyKeys(nodeAgentUuid);
+    nodeAgentHandler.unregister(nodeAgentUuid);
+    Path certPath = nodeAgentHandler.getNodeAgentBaseCertDirectory(nodeAgent);
+    assertTrue(!certPath.toFile().exists());
   }
 
   @Test

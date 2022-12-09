@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
@@ -45,9 +46,9 @@ class MiniClusterBase {
   Result<std::unique_ptr<client::YBClient>> CreateClient(
       client::YBClientBuilder* builder = nullptr);
 
-  // Created client gets messenger ownership and will shutdown messenger on client shutdown.
-  Result<std::unique_ptr<client::YBClient>> CreateClient(
-      std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<client::YBClient>> CreateSecureClient(
+      const std::string& name, const std::string& host,
+      std::unique_ptr<rpc::SecureContext>* secure_context);
 
   Result<HostPort> GetLeaderMasterBoundRpcAddr();
 
@@ -57,6 +58,7 @@ class MiniClusterBase {
   virtual ~MiniClusterBase() = default;
 
   std::atomic<bool> running_ { false };
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 
   template<class Options>
   int32_t NumTabletsPerTransactionTable(Options options) {

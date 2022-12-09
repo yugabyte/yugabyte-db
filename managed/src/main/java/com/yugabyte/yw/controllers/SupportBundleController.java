@@ -72,8 +72,7 @@ public class SupportBundleController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     // Do not create support bundle when either backup, update, or universe is paused
-    if (universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress
+    if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST,

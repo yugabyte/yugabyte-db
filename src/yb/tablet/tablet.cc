@@ -1249,7 +1249,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set, external_transaction);
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
@@ -1340,12 +1340,16 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     if (put_batch.enable_replicate_transaction_status_table()) {
+      if (!metadata_->is_under_twodc_replication()) {
+        RETURN_NOT_OK(metadata_->SetIsUnderTwodcReplicationAndFlush(true));
+      }
       Arena arena;
       auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch, &arena);
       for (const auto& write_batch : batches_by_transaction) {
         RETURN_NOT_OK(WriteTransactionalBatch(
             batch_idx, *write_batch, hybrid_time, frontiers, true /* external_transaction */));
       }
+      return Status::OK();
     }
     rocksdb::WriteBatch intents_write_batch;
     auto* intents_write_batch_ptr = !put_batch.enable_replicate_transaction_status_table() ?
@@ -1459,7 +1463,8 @@ Status Tablet::HandleQLReadRequest(
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata,
-    QLReadRequestResult* result) {
+    QLReadRequestResult* result,
+    WriteBuffer* rows_data) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
@@ -1474,7 +1479,7 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        deadline, read_time, ql_read_request, *txn_op_ctx, result);
+        deadline, read_time, ql_read_request, *txn_op_ctx, result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
         metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1550,8 +1555,7 @@ Status Tablet::HandlePgsqlReadRequest(
     const PgsqlReadRequestPB& pgsql_read_request,
     const TransactionMetadataPB& transaction_metadata,
     const SubTransactionMetadataPB& subtransaction_metadata,
-    PgsqlReadRequestResult* result,
-    size_t* num_rows_read) {
+    PgsqlReadRequestResult* result) {
   TRACE(LogPrefix());
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
@@ -1567,7 +1571,7 @@ Status Tablet::HandlePgsqlReadRequest(
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, result, num_rows_read);
+      pgsql_read_request, table_info, *txn_op_ctx, result);
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
@@ -2039,7 +2043,8 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
                       operation->schema_version(), current_table_info->table_id);
   if (operation->has_new_table_name()) {
     metadata_->SetTableName(
-        current_table_info->namespace_name, operation->new_table_name().ToBuffer());
+        current_table_info->namespace_name, operation->new_table_name().ToBuffer(),
+        current_table_info->table_id);
     if (table_metrics_entity_) {
       table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
       table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
@@ -3279,22 +3284,26 @@ bool Tablet::ShouldDisableLbMove() {
 }
 
 void Tablet::TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush) {
-  CHECK_OK(ForceFullRocksDBCompact(skip_flush));
+  CHECK_OK(ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction, skip_flush));
 }
 
-Status Tablet::ForceFullRocksDBCompact(docdb::SkipFlush skip_flush) {
+Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
+    docdb::SkipFlush skip_flush) {
   auto scoped_operation = CreateAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_operation);
+  rocksdb::CompactRangeOptions options;
+  options.skip_flush = skip_flush;
+  options.compaction_reason = compaction_reason;
 
   if (regular_db_) {
-    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), skip_flush));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), options));
   }
   if (intents_db_) {
     if (!skip_flush) {
       RETURN_NOT_OK_PREPEND(
           intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
     }
-    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), skip_flush));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), options));
   }
   return Status::OK();
 }
@@ -3729,7 +3738,7 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (!StillHasOrphanedPostSplitDataAbortable()) {
     return;
   }
-  auto status = TriggerFullCompactionIfNeeded(FullCompactionReason::PostSplit);
+  auto status = TriggerFullCompactionIfNeeded(rocksdb::CompactionReason::kPostSplitCompaction);
   if (status.ok()) {
     ts_post_split_compaction_added_->Increment();
   } else if (!status.IsServiceUnavailable()) {
@@ -3738,7 +3747,7 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
   }
 }
 
-Status Tablet::TriggerFullCompactionIfNeeded(FullCompactionReason compaction_reason) {
+Status Tablet::TriggerFullCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
   }
@@ -3758,13 +3767,11 @@ Status Tablet::TriggerFullCompactionIfNeeded(FullCompactionReason compaction_rea
       std::bind(&Tablet::TriggerFullCompactionSync, this, compaction_reason));
 }
 
-void Tablet::TriggerFullCompactionSync(FullCompactionReason reason) {
+void Tablet::TriggerFullCompactionSync(rocksdb::CompactionReason reason) {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
-  LOG_WITH_PREFIX(INFO) << "Beginning full compaction on this tablet. "
-      << "Reason: " << ToString(reason);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceFullRocksDBCompact(), LogPrefix() + "Failed tablet full compaction ("
-      + ToString(reason) + ")");
+      ForceFullRocksDBCompact(reason),
+      Format("$0: Failed tablet full compaction ($1)", log_prefix_suffix_, ToString(reason)));
 }
 
 bool Tablet::HasActiveTTLFileExpiration() {

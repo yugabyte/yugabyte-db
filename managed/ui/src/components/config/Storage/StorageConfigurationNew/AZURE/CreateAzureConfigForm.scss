@@ -40,14 +40,17 @@
   align-items: center;
 }
 
-.divider {
-  color: #67666c;
-  width: 2px;
-  height: 22px;
-  top: 30px;
-  position: relative;
+.multi-region-enabled,
+.multi-region-disabled-fields {
+  .divider {
+    color: #67666c;
+    width: 2px;
+    height: 22px;
+    top: 30px;
+    position: relative;
 
-  &.lean {
-    transform: rotate(15deg);
+    &.lean {
+      transform: rotate(15deg);
+    }
   }
 }

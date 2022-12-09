@@ -35,13 +35,15 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(ysql_packed_row_size_limit);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 namespace yb {
 namespace pgwrapper {
 
 class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
  protected:
-  void TestCompaction(const std::string& expr_suffix);
+  void TestCompaction(int num_keys, const std::string& expr_suffix);
+  void TestColocated(int num_keys, int num_expected_records);
 };
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -368,8 +370,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
   }
 }
 
-void PgPackedRowTest::TestCompaction(const std::string& expr_suffix) {
-  constexpr int kKeys = 10;
+void PgPackedRowTest::TestCompaction(int num_keys, const std::string& expr_suffix) {
   constexpr size_t kValueLen = 32;
 
   auto conn = ASSERT_RESULT(ConnectToDB("test"));
@@ -382,7 +383,7 @@ void PgPackedRowTest::TestCompaction(const std::string& expr_suffix) {
 
   std::string t1;
   std::string t2;
-  for (auto key : Range(kKeys)) {
+  for (auto key : Range(num_keys)) {
     if (key) {
       t1 += ";";
       t2 += ";";
@@ -414,19 +415,50 @@ void PgPackedRowTest::TestCompaction(const std::string& expr_suffix) {
   }
 }
 
+void PgPackedRowTest::TestColocated(int num_keys, int num_expected_records) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  TestCompaction(num_keys, "WITH (colocated = true)");
+  CheckNumRecords(cluster_.get(), num_expected_records);
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(TableGroup)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test"));
   conn = ASSERT_RESULT(ConnectToDB("test"));
   ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg"));
 
-  TestCompaction("TABLEGROUP tg");
+  TestCompaction(/* num_keys = */ 10, "TABLEGROUP tg");
 }
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
+  TestColocated(/* num_keys = */ 10, /* num_expected_records = */ 20);
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompactionPackRowDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
+  TestColocated(/* num_keys = */ 10, /* num_expected_records = */ 40);
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedPackRowDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
-  TestCompaction("WITH (colocated = true)");
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (key INT PRIMARY KEY, value TEXT, payload TEXT) WITH (colocated = true)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 (key, value, payload) VALUES (1, '', '')"));
+  // The only row should not be packed.
+  CheckNumRecords(cluster_.get(), 3);
+  // Trigger full row update.
+  ASSERT_OK(conn.Execute("UPDATE t1 SET value = '1', payload = '1' WHERE key = 1"));
+  // The updated row should not be packed.
+  CheckNumRecords(cluster_.get(), 5);
+
+  // Enable pack row for colocated table and trigger compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ASSERT_OK(cluster_->CompactTablets());
+  CheckNumRecords(cluster_.get(), 1);
 }
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {

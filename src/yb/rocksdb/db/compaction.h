@@ -292,7 +292,7 @@ class Compaction {
 
   Slice GetLargestUserKey() const { return largest_user_key_; }
 
-  CompactionReason compaction_reason() { return compaction_reason_; }
+  CompactionReason compaction_reason() const { return compaction_reason_; }
 
   yb::PriorityThreadPoolSuspender* suspender() { return suspender_; }
   void SetSuspender(yb::PriorityThreadPoolSuspender* value) { suspender_ = value; }

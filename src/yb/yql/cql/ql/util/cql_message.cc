@@ -1874,8 +1874,8 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
   serialized_response_ = RefCntBuffer(temp);
 }
 
-void CQLServerEvent::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
-  output->push_back(serialized_response_);
+void CQLServerEvent::Serialize(rpc::ByteBlocks* output) const {
+  output->emplace_back(serialized_response_);
 }
 
 std::string CQLServerEvent::ToString() const {
@@ -1891,8 +1891,7 @@ void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
   }
 }
 
-void CQLServerEventList::Serialize(
-    boost::container::small_vector_base<RefCntBuffer>* output) {
+void CQLServerEventList::Serialize(rpc::ByteBlocks* output) {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }

@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -20,7 +19,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
     super(baseTaskDependencies);
   }
 
-  @Inject private CustomerConfigService customerConfigService;
+  @Inject private BackupUtil backupUtil;
 
   public static class Params extends AbstractTaskParams {
     public UUID customerUUID;
@@ -40,11 +39,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
     }
     boolean updateState = true;
     try {
-      // TODO: Validate whether storage config has the permission to delete the backup
-      // Currently, if storage config does not have right permission then during backupGC
-      // backup will be moved to "FailedToDelete" state.
-      customerConfigService.getOrBadRequest(
-          params().customerUUID, backup.getBackupInfo().storageConfigUUID);
+      backupUtil.validateBackupStorageConfig(backup);
       Set<Backup> backupsToDelete = new HashSet<>();
       if (backup.isParentBackup()) {
         if (BackupUtil.checkInProgressIncrementalBackup(backup)) {

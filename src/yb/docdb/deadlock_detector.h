@@ -73,7 +73,7 @@ using DeadlockDetectorRpcCallback = std::function<void(const Status&)>;
 // determine how to resolve the deadlock. Currently, this deadlock is resolved by aborting the
 // transaction from which the probe originated.
 //
-// TODO(pessimistic): We can improve resolution of deadlocks by applying some consistent strategy,
+// TODO(wait-queues): We can improve resolution of deadlocks by applying some consistent strategy,
 // e.g. always abort just the lexicographically smallest txn id, to ensure that we don't
 // concurrently abort multiple transactions in a deadlock if the same deadlock is detected by
 // multiple coordinators concurrently.

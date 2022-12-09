@@ -123,17 +123,17 @@ DROP TABLE liketest1, liketest2, testtgroup1, testtgroup2, neg_tgroup CASCADE;
 DROP TABLEGROUP tgroup1 CASCADE;
 
 -- Colocation
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE colocate_source (k int, v1 text DEFAULT 'hello world', v2 int CHECK (v2 > 0), v3 float, PRIMARY KEY (k ASC));
-CREATE TABLE uncolocated_target_test (LIKE colocate_source INCLUDING ALL) with (colocated = false);
+CREATE TABLE uncolocated_target_test (LIKE colocate_source INCLUDING ALL) with (colocation = false);
 \d uncolocated_target_test
 CREATE TABLE colocated_target_test (LIKE colocate_source INCLUDING ALL);
 \d colocated_target_test
 -- cannot colocate hash-partitioned table.
-CREATE TABLE hash_k (i int primary key) with (colocated = false);
+CREATE TABLE hash_k (i int primary key) with (colocation = false);
 CREATE TABLE hash_k_fail_test (LIKE hash_k INCLUDING ALL);
-CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocated = false);
+CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocation = false);
 \d hash_k_test
 \c yugabyte
 DROP DATABASE colocation_test;

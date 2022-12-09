@@ -14,7 +14,7 @@ import (
         "strings"
         "time"
 
-        "github.com/jackc/pgx/v4"
+        "github.com/jackc/pgx/v4/pgxpool"
         "github.com/labstack/echo/v4"
         "github.com/yugabyte/gocql"
 )
@@ -76,7 +76,7 @@ func getNodes() ([]string, error) {
         return hostNames, nil
 }
 
-func getSlowQueriesFuture(nodeHost string, conn *pgx.Conn, future chan SlowQueriesFuture) {
+func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQueriesFuture) {
         slowQueries := SlowQueriesFuture{
                 Items: []*models.SlowQueryResponseYsqlQueryItem{},
                 Error: nil,

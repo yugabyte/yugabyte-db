@@ -38,10 +38,10 @@ To do this:
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-    - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
-    - **database** - the name of the database you are connecting to (the default database is named `yugabyte`).
-    - **user** and **password** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+    - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
+    - **database** - the name of the database you are connecting to (the default is `yugabyte`).
+    - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
     - **ssl** - YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed cluster CA certificate.
 
 3. Save the file.

@@ -337,7 +337,7 @@ struct TransactionMetadata {
   std::string ToString() const {
     return Format(
         "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
-        " locality: $5 old_status_tablet: $6}",
+        " locality: $5 old_status_tablet: $6 external_transaction: $7}",
         transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
         TransactionLocality_Name(locality), old_status_tablet);
   }

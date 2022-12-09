@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
@@ -217,8 +216,14 @@ public class BackupsController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     taskParams.customerUUID = customerUUID;
 
-    if (universe.getUniverseDetails().updateInProgress
-        || universe.getUniverseDetails().backupInProgress) {
+    if (universe
+        .getConfig()
+        .getOrDefault(Universe.TAKE_BACKUPS, "true")
+        .equalsIgnoreCase("false")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Taking backups on the universe is disabled");
+    }
+
+    if (universe.getUniverseDetails().updateInProgress) {
       throw new PlatformServiceException(
           CONFLICT,
           String.format(
@@ -877,7 +882,7 @@ public class BackupsController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (universe.universeIsLocked() || universe.getUniverseDetails().backupInProgress) {
+    if (universe.universeIsLocked()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot set throttle params, universe task in progress.");
     }
@@ -912,7 +917,7 @@ public class BackupsController extends AuthenticatedController {
 
   @ApiOperation(
       value = "Get throttle params from YB-Controller",
-      nickname = "getThrottleparams",
+      nickname = "getThrottleParams",
       response = Map.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID

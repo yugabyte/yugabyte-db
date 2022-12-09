@@ -1,7 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YbcManager;
@@ -33,16 +32,11 @@ public class RestoreBackup extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     try {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
-
-      if (universe.getUniverseDetails().backupInProgress) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      }
 
       if (universe.isYbcEnabled()
           && !universe
@@ -51,13 +45,6 @@ public class RestoreBackup extends UniverseTaskBase {
               .equals(ybcManager.getStableYbcVersion())) {
         createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
             .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-      }
-
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(taskParams().universeUUID, universe)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
       }
 
       createAllRestoreSubtasks(

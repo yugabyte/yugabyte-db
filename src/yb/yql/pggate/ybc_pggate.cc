@@ -71,6 +71,8 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
 DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
@@ -242,14 +244,21 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  if (pgapi) {
 #ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
+    *consumption = yb::MemTracker::GetTCMallocCurrentAllocatedBytes();
 #else
     *consumption = 0;
 #endif
-  }
   return YBCStatusOK();
+}
+
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = yb::MemTracker::GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+    return YBCStatusOK();
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -268,6 +277,19 @@ bool YBCTryMemRelease(int64_t bytes) {
   return false;
 }
 
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
+  memset(desc, 0x0, sizeof(YbTcmallocStats));
+#ifdef TCMALLOC_ENABLED
+  using mt = yb::MemTracker;
+  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
+  desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
+  desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
+  desc->pageheap_unmapped_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
+#endif
+  return YBCStatusOK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
@@ -277,8 +299,10 @@ YBCStatus YBCPgConnectDatabase(const char *database_name) {
   return ToYBCStatus(pgapi->ConnectDatabase(database_name));
 }
 
-YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated) {
-  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated));
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
+                                   bool *legacy_colocated_database) {
+  return ToYBCStatus(pgapi->IsDatabaseColocated(database_oid, colocated,
+                                                legacy_colocated_database));
 }
 
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
@@ -378,42 +402,48 @@ YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle) {
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called) {
   return ToYBCStatus(pgapi->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
 YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
+                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
                                               bool expected_is_called,
                                               bool *skipped) {
   return ToYBCStatus(
-      pgapi->UpdateSequenceTupleConditionally(db_oid, seq_oid, ysql_catalog_version,
+      pgapi->UpdateSequenceTupleConditionally(
+          db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
           last_val, is_called, expected_last_val, expected_is_called, skipped));
 }
 
 YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped) {
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, skipped));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
+      last_val, is_called, skipped));
 }
 
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
+                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called) {
   return ToYBCStatus(pgapi->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
 YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -734,6 +764,10 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
+}
+
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
 YBCStatus YBCPgBackfillIndex(
@@ -1263,6 +1297,10 @@ YBCStatus YBCGetSharedDBCatalogVersion(YBCPgOid db_oid, uint64_t* catalog_versio
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
 }
 
+YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
+  return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1275,11 +1313,15 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .ysql_num_databases_reserved_in_db_catalog_version_mode =
+          &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default
+      .ysql_colocate_database_by_default       = &FLAGS_ysql_colocate_database_by_default,
+      .ysql_ddl_rollback_enabled               = &FLAGS_ysql_ddl_rollback_enabled,
+      .ysql_enable_read_request_caching        = &FLAGS_ysql_enable_read_request_caching
   };
   return &accessor;
 }
@@ -1387,8 +1429,8 @@ const void* YBCPgGetThreadLocalErrMsg() {
   return PgGetThreadLocalErrMsg();
 }
 
-void YBCStartSysTablePrefetching() {
-  pgapi->StartSysTablePrefetching();
+void YBCStartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version) {
+  pgapi->StartSysTablePrefetching(latest_known_ysql_catalog_version);
 }
 
 void YBCStopSysTablePrefetching() {

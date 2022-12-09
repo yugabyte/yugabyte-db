@@ -605,13 +605,17 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 }
 
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
-    GetTserverCatalogVersionInfoResponsePB *resp) const {
+    bool size_only, GetTserverCatalogVersionInfoResponsePB *resp) const {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (const auto it : ysql_db_catalog_version_map_) {
-    auto* entry = resp->add_entries();
-    entry->set_db_oid(it.first);
-    entry->set_shm_index(it.second.shm_index);
-    entry->set_current_version(it.second.current_version);
+  if (size_only) {
+    resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
+  } else {
+    for (const auto it : ysql_db_catalog_version_map_) {
+      auto* entry = resp->add_entries();
+      entry->set_db_oid(it.first);
+      entry->set_shm_index(it.second.shm_index);
+      entry->set_current_version(it.second.current_version);
+    }
   }
   return Status::OK();
 }
@@ -811,6 +815,39 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
     return tablet_server_service->GetMetric(metric).handler_latency;
   }
   return nullptr;
+}
+
+Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
+                                       ListMasterServersResponsePB* resp) const {
+  auto master_addresses = options().GetMasterAddresses();
+  auto peer_status = resp->mutable_master_server_and_type();
+  std::vector<Endpoint> master_entries;
+  for (const auto& list : *master_addresses) {
+    for (const auto& master_addr : list) {
+      Status s = master_addr.ResolveAddresses(&master_entries);
+      if (!s.ok()) {
+        VLOG(1) << "Could not resolve: " << master_addr.ToString();
+      }
+    }
+  }
+
+  // de-duplicate master entries.
+  std::sort(master_entries.begin(), master_entries.end());
+  master_entries.erase(
+      std::unique(master_entries.begin(), master_entries.end()), master_entries.end());
+
+  std::string leader = heartbeater_->get_leader_master_hostport();
+  for (const auto& master_endpoint : master_entries) {
+    auto master_entry = peer_status->Add();
+    auto master = HostPort(master_endpoint).ToString();
+    master_entry->set_master_server(master);
+    if (leader.compare(master) == 0) {
+      master_entry->set_is_leader(true);
+    } else {
+      master_entry->set_is_leader(false);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace tserver

@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -1226,21 +1227,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       if (processType.equals(ServerType.MASTER)) {
         params.gflags = taskParams().masterGFlags;
         params.gflagsToRemove =
-            userIntent
-                .masterGFlags
-                .keySet()
-                .stream()
-                .filter(flag -> !taskParams().masterGFlags.containsKey(flag))
-                .collect(Collectors.toSet());
+            GFlagsUtil.getDeletedGFlags(userIntent.masterGFlags, taskParams().masterGFlags);
       } else {
         params.gflags = taskParams().tserverGFlags;
         params.gflagsToRemove =
-            userIntent
-                .tserverGFlags
-                .keySet()
-                .stream()
-                .filter(flag -> !taskParams().tserverGFlags.containsKey(flag))
-                .collect(Collectors.toSet());
+            GFlagsUtil.getDeletedGFlags(userIntent.tserverGFlags, taskParams().tserverGFlags);
       }
     } else if (type == UpgradeTaskType.Certs) {
       params.rootCA = taskParams().certUUID;

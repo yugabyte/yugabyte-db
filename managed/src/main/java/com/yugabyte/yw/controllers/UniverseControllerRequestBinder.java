@@ -57,6 +57,7 @@ public class UniverseControllerRequestBinder {
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.platformUrl = request.host();
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
@@ -85,7 +86,7 @@ public class UniverseControllerRequestBinder {
             instanceTagsNode = userIntent.remove("instanceTags");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
-          if (clustersJson.has("uuid")) {
+          if (clusterJson.has("uuid")) {
             UUID uuid = UUID.fromString(clusterJson.get("uuid").asText());
             currentCluster = universe.getCluster(uuid);
             if (currentCluster == null) {

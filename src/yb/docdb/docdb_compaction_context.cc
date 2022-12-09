@@ -22,6 +22,7 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/packed_row.h"
+#include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
@@ -42,7 +43,6 @@ using std::unordered_set;
 using rocksdb::VectorToString;
 
 DECLARE_bool(ycql_enable_packed_row);
-DECLARE_bool(ysql_enable_packed_row);
 
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -354,7 +354,7 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ = packing->enabled();
+    can_start_packing_ = packing->enabled;
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
@@ -1082,12 +1082,12 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 
 } // namespace
 
-bool CompactionSchemaInfo::enabled() const {
+bool PackedRowEnabled(TableType table_type, bool is_colocated) {
   switch (table_type) {
     case TableType::YQL_TABLE_TYPE:
       return FLAGS_ycql_enable_packed_row;
     case TableType::PGSQL_TABLE_TYPE:
-      return FLAGS_ysql_enable_packed_row;
+      return ShouldYsqlPackRow(is_colocated);
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
       return false;

@@ -39,6 +39,8 @@
 #include "yb/docdb/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
+#include "yb/rpc/sidecars.h"
+
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
@@ -91,6 +93,11 @@ DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
 
 namespace yb {
 namespace docdb {
+
+bool ShouldYsqlPackRow(bool is_colocated) {
+  return FLAGS_ysql_enable_packed_row &&
+         (!is_colocated || FLAGS_ysql_enable_packed_row_for_colocated_table);
+}
 
 namespace {
 
@@ -183,11 +190,6 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
-}
-
-bool DisablePackedRowIfColocatedTable(const Schema& schema) {
-  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
-         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -324,6 +326,12 @@ class ExpressionHelper {
   std::vector<QLExprResult> results_;
   size_t next_result_idx_ = 0;
 };
+
+void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
+  char encoded_rows[sizeof(uint64_t)];
+  NetworkByteOrder::Store64(encoded_rows, result_rows);
+  CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
+}
 
 } // namespace
 
@@ -496,8 +504,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time << ", txn: " << txn_op_context_;
 
   auto scope_exit = ScopeExit([this] {
-    if (!result_buffer_.empty()) {
-      NetworkByteOrder::Store64(result_buffer_.data(), result_rows_);
+    if (write_buffer_) {
+      WriteNumRows(result_rows_, row_num_pos_, write_buffer_);
+      response_->set_rows_data_sidecar(narrow_cast<int32_t>(sidecars_->Complete()));
     }
   });
 
@@ -578,8 +587,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row &&
-      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
+  if (ShouldYsqlPackRow(doc_read_context_->schema.is_colocated())) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -684,8 +692,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
-    if (FLAGS_ysql_enable_packed_row &&
-        !DisablePackedRowIfColocatedTable(schema) &&
+    if (ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
@@ -847,9 +854,11 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
 }
 
 Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
-  if (result_buffer_.empty()) {
+  if (write_buffer_ == nullptr && sidecars_) {
     // Reserve space for num rows.
-    pggate::PgWire::WriteInt64(0, &result_buffer_);
+    write_buffer_ = &sidecars_->Start();
+    row_num_pos_ = write_buffer_->Position();
+    pggate::PgWire::WriteInt64(0, write_buffer_);
   }
   ++result_rows_;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
@@ -868,7 +877,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       } else {
         RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer()));
       }
-      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
+      RETURN_NOT_OK(pggate::WriteColumn(value.Value(), write_buffer_));
     }
   }
   return Status::OK();
@@ -954,13 +963,14 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
                                            bool is_explicit_request_read_time,
                                            const DocReadContext& doc_read_context,
                                            const DocReadContext* index_doc_read_context,
-                                           faststring *result_buffer,
+                                           WriteBuffer *result_buffer,
                                            HybridTime *restart_read_ht) {
   size_t fetched_rows = 0;
+  auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.
   pggate::PgWire::WriteInt64(0, result_buffer);
-  auto se = ScopeExit([&fetched_rows, result_buffer] {
-    NetworkByteOrder::Store64(result_buffer->data(), fetched_rows);
+  auto se = ScopeExit([&fetched_rows, num_rows_pos, result_buffer] {
+    WriteNumRows(fetched_rows, num_rows_pos, result_buffer);
   });
   VLOG(4) << "Read, read time: " << read_time << ", txn: " << txn_op_context_;
 
@@ -991,7 +1001,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   *has_paging_state = false;
@@ -1110,7 +1120,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
                                                  const DocReadContext *index_doc_read_context,
-                                                 faststring *result_buffer,
+                                                 WriteBuffer *result_buffer,
                                                  HybridTime *restart_read_ht,
                                                  bool *has_paging_state) {
   // Retrieve target table schema from the context, as well as the pointer to optional index schema
@@ -1215,23 +1225,22 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Fetching data.
   int match_count = 0;
-  QLTableRow row;
-  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
-         !scan_time_exceeded) {
+  QLTableRow table_row;
+  YQLScanCallback callback = [&](const QLTableRow& row) -> Result<ContinueScan> {
     bool is_match = true;
-    row.Clear();
 
+    const QLTableRow* row_ptr = &row;
     if (request_.has_index_request()) {
-      // Index scan over colocated table case, get next index row
-      RETURN_NOT_OK(iter->NextRow(&row));
       // Check index conditions
       RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
+
       if (!is_match) {
-        // If no match continue with next tuple from the iterator
+        // If no match continue with next tuple from the iterator.
         VLOG(1) << "Row filtered out by colocated index condition";
-        continue;
+        return ContinueScan::kTrue;
       }
-      // Index matches the condition, get the ybctid of the target row
+
+      // Index matches the condition, get the ybctid of the target row.
       const auto& tuple_id = row.GetValue(ybbasectid_id);
       SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
       // Seek the target row using main table iterator
@@ -1249,32 +1258,38 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
               request_.index_request().table_id());
         }
       }
-      // Remove index row currently held by the variable
-      row.Clear();
+      // Remove table row currently held by the variable.
+      table_row.Clear();
       // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &row));
-    } else {
-      // Fetch main table row
-      RETURN_NOT_OK(iter->NextRow(doc_projection, &row));
+      RETURN_NOT_OK(table_iter_->NextRow(doc_projection, &table_row));
+
+      row_ptr = &table_row;
     }
 
     // Match the row with the where condition before adding to the row block.
-    RETURN_NOT_OK(doc_expr_exec.Exec(row, nullptr, &is_match));
-    if (is_match) {
-      match_count++;
-      if (request_.is_aggregate()) {
-        RETURN_NOT_OK(EvalAggregate(row));
-      } else {
-        RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-        ++fetched_rows;
-      }
-    } else {
+    RETURN_NOT_OK(doc_expr_exec.Exec(*row_ptr, nullptr, &is_match));
+
+    if (!is_match) {
       VLOG(1) << "Row filtered out by the condition";
+      return ContinueScan::kTrue;
+    }
+
+    match_count++;
+    if (request_.is_aggregate()) {
+      RETURN_NOT_OK(EvalAggregate(*row_ptr));
+    } else {
+      RETURN_NOT_OK(PopulateResultSet(*row_ptr, result_buffer));
+      ++fetched_rows;
     }
 
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
-  }
+
+    return (fetched_rows < row_count_limit && !scan_time_exceeded) ? ContinueScan::kTrue
+                                                                   : ContinueScan::kFalse;
+  };
+
+  RETURN_NOT_OK(iter->Iterate(std::move(callback)));
 
   VLOG(1) << "Stopped iterator after " << match_count << " matches, "
           << fetched_rows << " rows fetched";
@@ -1282,7 +1297,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Output aggregate values accumulated while looping over rows
   if (request_.is_aggregate() && match_count > 0) {
-    RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
+    RETURN_NOT_OK(PopulateAggregate(result_buffer));
     ++fetched_rows;
   }
 
@@ -1303,7 +1318,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const DocReadContext& doc_read_context,
-                                                      faststring *result_buffer,
+                                                      WriteBuffer *result_buffer,
                                                       HybridTime *restart_read_ht) {
   const auto& schema = doc_read_context.schema;
   Schema projection;
@@ -1399,7 +1414,7 @@ Status PgsqlReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
 }
 
 Status PgsqlReadOperation::PopulateResultSet(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+                                             WriteBuffer *result_buffer) {
   QLExprResult result;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
@@ -1431,8 +1446,7 @@ Status PgsqlReadOperation::EvalAggregate(const QLTableRow& table_row) {
   return Status::OK();
 }
 
-Status PgsqlReadOperation::PopulateAggregate(const QLTableRow& table_row,
-                                             faststring *result_buffer) {
+Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
   int column_count = request_.targets().size();
   for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
     RETURN_NOT_OK(pggate::WriteColumn(aggr_result_[rscol_index].Value(), result_buffer));

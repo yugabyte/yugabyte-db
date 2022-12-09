@@ -28,6 +28,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/client/client-test-util.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
@@ -35,6 +36,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
@@ -76,10 +78,23 @@ namespace pgwrapper {
 
 using master::GetColocatedDbParentTableId;
 using master::GetTablegroupParentTableId;
+using master::GetColocationParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Let colocated database related tests cover new Colocation GA implementation instead of legacy
+    // colocated database.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
+  }
+
  protected:
-  void TestMultiBankAccount(IsolationLevel isolation);
+  typedef std::function<Result<master::TabletLocationsPB>(client::YBClient* client,
+                                                          std::string database_name,
+                                                          PGConn* conn,
+                                                          MonoDelta timeout)>
+                                                          GetParentTableTabletLocation;
+
+  void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
 
@@ -111,6 +126,13 @@ class PgLibPqTest : public LibPqTestBase {
       const auto timeout, const std::unique_ptr<yb::client::YBClient>& client);
 
   void VerifyLoadBalance(const std::map<std::string, int>& ts_loads);
+
+  void TestTableColocation(GetParentTableTabletLocation getParentTableTabletLocation);
+
+  void TestLoadBalanceSingleColocatedDB(GetParentTableTabletLocation getParentTableTabletLocation);
+
+  void TestLoadBalanceMultipleColocatedDB(
+      GetParentTableTabletLocation getParentTableTabletLocation);
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -552,9 +574,10 @@ Result<int64_t> ReadSumBalance(
   return sum;
 }
 
-void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
+void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colocation) {
   constexpr int kAccounts = RegularBuildVsSanitizers(20, 10);
   constexpr int64_t kInitialBalance = 100;
+  const std::string db_name = "testdb";
 
 #ifndef NDEBUG
   const auto kTimeout = 180s;
@@ -565,14 +588,24 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
 #endif
 
   PGConn conn = ASSERT_RESULT(Connect());
+
+  if (colocation) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
+  } else {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
+  }
+
+  conn = ASSERT_RESULT(ConnectToDB(db_name));
+
   std::vector<PGConn> thread_connections;
   for (int i = 0; i < kThreads; ++i) {
-    thread_connections.push_back(ASSERT_RESULT(Connect()));
+    thread_connections.push_back(ASSERT_RESULT(ConnectToDB(db_name)));
   }
 
   for (int i = 1; i <= kAccounts; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-        "CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
+
     ASSERT_OK(conn.ExecuteFormat(
         "INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance));
   }
@@ -618,10 +651,10 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
     });
   }
 
-  thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
+  thread_holder.AddThreadFunctor([this, &counter, &reads, &writes, isolation,
+                                  &stop_flag = thread_holder.stop_flag(), &db_name]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
-    auto connection = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(ConnectToDB(db_name));
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
@@ -716,8 +749,18 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot),
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshotWithColocation),
+    PgLibPqSmallClockSkewTest) {
+  TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION, true /* colocation */);
+}
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializableWithColocation)) {
+  TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
 void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
@@ -886,32 +929,6 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
-namespace {
-
-Result<string> GetNamespaceIdByNamespaceName(
-    client::YBClient* client, const string& namespace_name) {
-  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
-  for (const auto& ns : namespaces) {
-    if (ns.name() == namespace_name) {
-      return ns.id();
-    }
-  }
-  return STATUS(NotFound, "The namespace does not exist");
-}
-
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
-}
-
-} // namespace
-
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
   const string namespace_name = "yugabyte";
   const string table_name = "test";
@@ -1036,9 +1053,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 
 namespace {
 
-Result<master::TabletLocationsPB> GetColocatedTabletLocations(
+Result<master::TabletLocationsPB> GetLegacyColocatedDBTabletLocations(
     client::YBClient* client,
     std::string database_name,
+    PGConn* dummy,
     MonoDelta timeout) {
   const string ns_id =
       VERIFY_RESULT(GetNamespaceIdByNamespaceName(client, database_name));
@@ -1066,6 +1084,32 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
   return tablets[0];
 }
 
+struct TableGroupInfo {
+  int oid;
+  std::string id;
+  TabletId tablet_id;
+  std::shared_ptr<client::YBTable> table;
+};
+
+Result<TableId> GetColocationOrTablegroupParentTableId(
+    client::YBClient* client,
+    const std::string& database_name,
+    const std::string& tablegroup_id) {
+  master::GetNamespaceInfoResponsePB resp;
+  Status s = client->GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp);
+  if (!s.ok()) {
+    return s;
+  }
+
+  TableId parent_table_id;
+  if (resp.colocated())
+    parent_table_id = GetColocationParentTableId(tablegroup_id);
+  else
+    parent_table_id = GetTablegroupParentTableId(tablegroup_id);
+
+  return parent_table_id;
+}
+
 Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
     client::YBClient* client,
     std::string database_name,
@@ -1078,11 +1122,14 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
     return STATUS(NotFound, "tablegroup does not exist");
   }
 
+  TableId parent_table_id = VERIFY_RESULT(GetColocationOrTablegroupParentTableId(client,
+                                                                                 database_name,
+                                                                                 tablegroup_id));
   // Get TabletLocations for the tablegroup tablet.
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            GetTablegroupParentTableId(tablegroup_id),
+            parent_table_id,
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1095,8 +1142,54 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
       },
       timeout,
       "wait for tablegroup parent tablet"));
-
+  LOG(INFO) << "yifan yifan";
   return tablets[0];
+}
+
+Result<TableGroupInfo> SelectTablegroup(
+    client::YBClient* client, PGConn* conn, const std::string& database_name,
+    const std::string& group_name) {
+  TableGroupInfo group_info;
+  auto res = VERIFY_RESULT(
+      conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
+  const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+  LOG(INFO) << "yifan";
+  res = VERIFY_RESULT(
+      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
+  group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+  LOG(INFO) << "yifan yifan";
+
+  group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
+  group_info.tablet_id = VERIFY_RESULT(GetTablegroupTabletLocations(
+      client,
+      database_name,
+      group_info.id,
+      30s))
+    .tablet_id();
+  TableId parent_table_id = VERIFY_RESULT(GetColocationOrTablegroupParentTableId(client,
+                                                                                 database_name,
+                                                                                 group_info.id));
+  group_info.table = VERIFY_RESULT(client->OpenTable(parent_table_id));
+  SCHECK(VERIFY_RESULT(client->TablegroupExists(database_name, group_info.id)),
+         InternalError,
+         "YBClient::TablegroupExists couldn't find a tablegroup!");
+  return group_info;
+}
+
+Result<master::TabletLocationsPB>
+    GetColocatedDbDefaultTablegroupTabletLocations(
+    client::YBClient* client,
+    std::string database_name,
+    PGConn* conn,
+    MonoDelta timeout) {
+  // For a colocated database, its default underlying tablegroup is
+  // called "default".
+  const auto tablegroup =
+      VERIFY_RESULT(SelectTablegroup(client, conn, database_name, "default"));
+
+  // Get TabletLocations for the default tablegroup tablet.
+  return GetTablegroupTabletLocations(client, database_name, tablegroup.id,
+                                      timeout);
 }
 
 } // namespace
@@ -1108,29 +1201,28 @@ void PgLibPqTest::CreateDatabaseWithTablegroup(
   ASSERT_OK(conn->ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
+void PgLibPqTest::TestTableColocation(GetParentTableTabletLocation getParentTableTabletLocation) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
 
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kDatabaseName));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-
-  // A parent table with one tablet should be created when the database is created.
-  const auto colocated_tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
-      client.get(),
-      kDatabaseName,
-      30s));
-  const auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
-  const auto colocated_table = ASSERT_RESULT(client->OpenTable(
-      colocated_tablet_locations.table_id()));
 
   // Create a range partition table, the table should share the tablet with the parent table.
   ASSERT_OK(conn.Execute("CREATE TABLE foo (a INT, PRIMARY KEY (a ASC))"));
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  // A parent table of default tablegroup with one tablet should be created when the first
+  // colocated table is created in a colocated database.
+  const auto colocated_tablet_locations =
+      ASSERT_RESULT(getParentTableTabletLocation(client.get(), kDatabaseName,
+                                                                   &conn, 30s));
+  const auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
+  const auto colocated_table = ASSERT_RESULT(client->OpenTable(
+      colocated_tablet_locations.table_id()));
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
@@ -1142,7 +1234,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create a hash partition table and opt out of using the parent tablet.
-  ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocated = false)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE bar (a INT) WITH (colocation = false)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "bar"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
   for (auto& tablet : tablets) {
@@ -1168,7 +1260,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   ASSERT_EQ(tablets[0].tablet_id(), colocated_tablet_id);
 
   // Create another table and index.
-  ASSERT_OK(conn.Execute("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) WITH (colocated = true)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE qux (a INT, PRIMARY KEY (a ASC)) WITH (colocation = true)"));
   ASSERT_OK(conn.Execute("CREATE INDEX qux_index ON qux (a)"));
   table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "qux_index"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
@@ -1251,6 +1343,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
       30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
+  TestTableColocation(GetColocatedDbDefaultTablegroupTabletLocations);
+}
+
 class PgLibPqTableColocationEnabledByDefaultTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Enable colocation by default on the cluster.
@@ -1277,7 +1373,8 @@ TEST_F_EX(
 
   // A parent table with one tablet should be created when the database is created.
   auto colocated_tablet_locations = ASSERT_RESULT(
-      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedByDefault, 30s));
+      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedByDefault, nullptr,
+                                          30s));
   auto colocated_tablet_id = colocated_tablet_locations.tablet_id();
   auto colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
 
@@ -1299,7 +1396,7 @@ TEST_F_EX(
 
   // A table should be able to opt out of colocation.
   ASSERT_OK(conn.Execute(
-      "CREATE TABLE foo_non_colocated (a INT, PRIMARY KEY (a ASC)) WITH (colocated = false)"));
+      "CREATE TABLE foo_non_colocated (a INT, PRIMARY KEY (a ASC)) WITH (colocation = false)"));
   table_id = ASSERT_RESULT(
       GetTableIdByTableName(client.get(), kDatabaseNameColocatedByDefault, "foo_non_colocated"));
   ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
@@ -1307,14 +1404,15 @@ TEST_F_EX(
     ASSERT_NE(tablet.tablet_id(), colocated_tablet_id);
   }
 
-  // Database which explicitly specifies colocated = true should work as expected.
+  // Database which explicitly specifies colocation = true should work as expected.
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE DATABASE $0 WITH colocated = true", kDatabaseNameColocatedExplicitly));
+      "CREATE DATABASE $0 WITH colocation = true", kDatabaseNameColocatedExplicitly));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameColocatedExplicitly));
 
   // A parent table with one tablet should be created when the database is created.
   colocated_tablet_locations = ASSERT_RESULT(
-      GetColocatedTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, 30s));
+      GetLegacyColocatedDBTabletLocations(client.get(), kDatabaseNameColocatedExplicitly, nullptr,
+                                          30s));
   colocated_tablet_id = colocated_tablet_locations.tablet_id();
   colocated_table = ASSERT_RESULT(client->OpenTable(colocated_tablet_locations.table_id()));
 
@@ -1329,7 +1427,7 @@ TEST_F_EX(
 
   // Database which explicitly opts out of colocation must work as expected.
   ASSERT_OK(
-      conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = false",
+      conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = false",
       kDatabaseNameNotColocated));
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseNameNotColocated));
 
@@ -1402,7 +1500,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
   auto conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
   PerformSimultaneousTxnsAndVerifyConflicts("test_db" /* database_name */, true /* colocated */);
 }
 
@@ -1464,7 +1562,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
   PGConn conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
   FlushTablesAndPerformBootstrap(
       "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */);
 }
@@ -1489,42 +1587,6 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
     options->extra_master_flags.push_back("--ysql_beta_feature_tablegroup=true");
   }
 };
-
-namespace {
-
-struct TableGroupInfo {
-  int oid;
-  std::string id;
-  TabletId tablet_id;
-  std::shared_ptr<client::YBTable> table;
-};
-
-Result<TableGroupInfo> SelectTablegroup(
-    client::YBClient* client, PGConn* conn, const std::string& database_name,
-    const std::string& group_name) {
-  TableGroupInfo group_info;
-  auto res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
-  const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
-  res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
-  group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
-
-  group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
-  group_info.tablet_id = VERIFY_RESULT(GetTablegroupTabletLocations(
-      client,
-      database_name,
-      group_info.id,
-      30s))
-    .tablet_id();
-  group_info.table = VERIFY_RESULT(client->OpenTable(GetTablegroupParentTableId(group_info.id)));
-  SCHECK(VERIFY_RESULT(client->TablegroupExists(database_name, group_info.id)),
-         InternalError,
-         "YBClient::TablegroupExists couldn't find a tablegroup!");
-  return group_info;
-}
-
-} // namespace
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {
@@ -2055,6 +2117,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
 class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
     options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
     options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
     options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
@@ -2097,22 +2160,19 @@ void PgLibPqTest::AddTSToLoadBalanceSingleInstance(
       "wait for load balancer to be idle"));
 
   // Remove a tablet server.
-  cluster_->tablet_server(0)->Shutdown();
+  cluster_->tablet_server(1)->Shutdown();
 
   // Wait for the master leader to mark it dead.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return cluster_->is_ts_stale(0);
+    return cluster_->is_ts_stale(1);
   },
   MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
   "Is TS dead",
   MonoDelta::FromSeconds(1)));
 }
 
-// Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
-// configuration off the old tserver and onto the new tserver.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
-          PgLibPqTestSmallTSTimeout) {
+void PgLibPqTest::TestLoadBalanceSingleColocatedDB(
+    GetParentTableTabletLocation getParentTableTabletLocation) {
   const std::string database_name = "test_db";
   const auto timeout = 60s;
   const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
@@ -2120,14 +2180,15 @@ TEST_F_EX(PgLibPqTest,
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
+  conn = ASSERT_RESULT(ConnectToDB(database_name));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE tbl (k INT, v INT)"));
 
   // Collect colocation tablet replica locations.
   {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
-      client.get(),
-      database_name,
-      timeout));
+    master::TabletLocationsPB tablet_locations =
+        ASSERT_RESULT(getParentTableTabletLocation(client.get(), database_name,
+                                                   &conn, timeout));
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
@@ -2138,10 +2199,9 @@ TEST_F_EX(PgLibPqTest,
   // Collect colocation tablet replica locations and verify that load has been moved off
   // from the dead TS.
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
-        client.get(),
-        database_name,
-        timeout));
+    master::TabletLocationsPB tablet_locations =
+      VERIFY_RESULT(getParentTableTabletLocation(client.get(), database_name,
+                                                 &conn, timeout));
     ts_loads.clear();
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
@@ -2153,14 +2213,22 @@ TEST_F_EX(PgLibPqTest,
     }
     for (const auto& entry : ts_loads) {
       ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-      if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+      if (ts == nullptr || ts == cluster_->tablet_server(1) || entry.second != 1) {
         return false;
       }
     }
     return true;
   },
   timeout,
-  "Wait for load to be moved off from tserver 0"));
+  "Wait for load to be moved off from tserver 1"));
+}
+
+// Test that adding a tserver and removing a tserver causes the colocation tablet of a colocation
+// database to adjust raft configuration off the old tserver and onto the new tserver.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
+          PgLibPqTestSmallTSTimeout) {
+  TestLoadBalanceSingleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
 // Test that adding a tserver and removing a tserver causes the tablegroup tablet to adjust raft
@@ -2211,14 +2279,14 @@ TEST_F_EX(
         }
         for (const auto& entry : ts_loads) {
           ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-          if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+          if (ts == nullptr || ts == cluster_->tablet_server(1) || entry.second != 1) {
             return false;
           }
         }
         return true;
       },
       timeout,
-      "Wait for load to be moved off from tserver 0"));
+      "Wait for load to be moved off from tserver 1"));
 }
 
 void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
@@ -2263,8 +2331,8 @@ void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) 
   ASSERT_EQ(ts_loads.size(), kNumDatabases + 1);
 }
 
-// Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
+void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
+    GetParentTableTabletLocation getParentTableTabletLocation) {
   constexpr int num_databases = 3;
   const auto timeout = 60s;
   const std::string database_prefix = "co";
@@ -2274,23 +2342,33 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   auto conn = ASSERT_RESULT(Connect());
 
   for (int i = 0; i < num_databases; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1 WITH colocated = true", database_prefix, i));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1 WITH colocation = true",
+                                 database_prefix, i));
+    conn = ASSERT_RESULT(ConnectToDB(Format("$0$1", database_prefix, i)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE tbl (k INT, v INT)"));
   }
 
   AddTSToLoadBalanceMultipleInstances(timeout, client);
 
   // Collect colocation tablets' replica locations.
   for (int i = 0; i < num_databases; ++i) {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
-        client.get(),
-        Format("$0$1", database_prefix, i),
-        timeout));
+    const std::string database_name = Format("$0$1", database_prefix, i);
+    conn = ASSERT_RESULT(ConnectToDB(database_name));
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(
+        getParentTableTabletLocation(client.get(), database_name,
+                                     &conn, timeout));
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
   }
 
   VerifyLoadBalance(ts_loads);
+}
+
+// Test that adding a tserver causes colocation tablets of colocation databases to offload
+// tablet-peers to the new tserver.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
+  TestLoadBalanceMultipleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleTablegroups)) {
@@ -2409,215 +2487,6 @@ TEST_F_EX(PgLibPqTest,
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRetryEnabled)) {
   TestCacheRefreshRetry(false /* is_retry_disabled */);
-}
-
-class PgLibPqDatabaseTimeoutTest : public PgLibPqTest {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
-    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
-  }
-};
-
-TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutGC)) {
-  NamespaceName test_name = "test_pgsql";
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
-  }
-
-  // Verify DocDB Database creation, even though it failed in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
-    WARN_NOT_OK(ResultToStatus(ret), "" /* prefix */);
-    return ret.ok() && ret.get();
-  }, MonoDelta::FromSeconds(60),
-     "Verify Namespace was created in DocDB"));
-
-  // After bg_task_wait, DocDB will notice the PG layer failure because the transaction aborts.
-  // Confirm that DocDB async deletes the namespace.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
-    WARN_NOT_OK(ResultToStatus(ret), "ret");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
-}
-
-TEST_F(PgLibPqDatabaseTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestDatabaseTimeoutAndRestartGC)) {
-  NamespaceName test_name = "test_pgsql";
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.Execute("CREATE DATABASE " + test_name));
-  }
-
-  // Verify DocDB Database creation, even though it fails in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(60),
-      "Verify Namespace was created in DocDB"));
-
-  LOG(INFO) << "Restarting Master.";
-
-  // Restart the master before the BG task can kick in and GC the failed transaction.
-  auto master = cluster_->GetLeaderMaster();
-  master->Shutdown();
-  ASSERT_OK(master->Restart());
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
-    return s.ok();
-  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
-
-  // Confirm that Catalog Loader deletes the namespace on master restart.
-  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    Result<bool> ret = client->NamespaceExists(test_name, YQLDatabase::YQL_DATABASE_PGSQL);
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(20), "Verify Namespace was removed by Transaction GC"));
-}
-
-class PgLibPqTableTimeoutTest : public PgLibPqTest {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Use small clock skew, to decrease number of read restarts.
-    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=1");
-    options->extra_master_flags.push_back("--TEST_simulate_slow_table_create_secs=2");
-    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
-  }
-};
-
-TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
-  const string kDatabaseName ="yugabyte";
-  NamespaceName test_name = "test_pgsql_table";
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Create Table: will timeout because the admin setting is lower than the DB create latency.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
-  }
-
-  // Wait for DocDB Table creation, even though it will fail in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    LOG(INFO) << "Requesting TableExists";
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
-
-  // DocDB will notice the PG layer failure because the transaction aborts.
-  // Confirm that DocDB async deletes the namespace.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
-}
-
-TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndRestartGC)) {
-  const string kDatabaseName ="yugabyte";
-  NamespaceName test_name = "test_pgsql_table";
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Create Table: will timeout because the admin setting is lower than the DB create latency.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
-  }
-
-  // Wait for DocDB Table creation, even though it will fail in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    LOG(INFO) << "Requesting TableExists";
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
-
-  LOG(INFO) << "Restarting Master.";
-
-  // Restart the master before the BG task can kick in and GC the failed transaction.
-  auto master = cluster_->GetLeaderMaster();
-  master->Shutdown();
-  ASSERT_OK(master->Restart());
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto s = cluster_->GetIsMasterLeaderServiceReady(master);
-    return s.ok();
-  }, MonoDelta::FromSeconds(20), "Wait for Master to be ready."));
-
-  // Confirm that Catalog Loader deletes the namespace on master restart.
-  client = ASSERT_RESULT(cluster_->CreateClient()); // Reinit the YBClient after restart.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
-}
-
-class PgLibPqIndexTableTimeoutTest : public PgLibPqTest {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=10");
-  }
-};
-
-TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeoutGC)) {
-  const string kDatabaseName ="yugabyte";
-  NamespaceName test_name = "test_pgsql_table";
-  NamespaceName test_name_idx = test_name + "_idx";
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Lower the delays so we successfully create this first table.
-  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "0"));
-
-  // Create Table that Index will be set on.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
-  }
-
-  // After successfully creating the first table, set to flags similar to: PgLibPqTableTimeoutTest.
-  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "12"));
-
-  // Create Index: will timeout because the admin setting is lower than the DB create latency.
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_NOK(conn.Execute("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
-  }
-
-  // Wait for DocDB Table creation, even though it will fail in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    LOG(INFO) << "Requesting TableExists";
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(40), "Verify Index Table was created in DocDB"));
-
-  // DocDB will notice the PG layer failure because the transaction aborts.
-  // Confirm that DocDB async deletes the namespace.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
 }
 
 class PgLibPqTestEnumType: public PgLibPqTest {
@@ -3227,8 +3096,14 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
   ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
+  // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
   ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
-                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
+                                  "ON CONFLICT DO NOTHING"));
+
+  // Remember the number of pre-existing databases.
+  size_t num_initial_databases = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte)).size();
 
   LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
   cluster_->Shutdown();
@@ -3238,6 +3113,11 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->tablet_server(i)->mutable_flags()->push_back(
         "--TEST_enable_db_catalog_version_mode=true");
+    // Set --ysql_num_databases_reserved_in_db_catalog_version_mode to a large number
+    // that allows room for only one more database to be created.
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        Format("--ysql_num_databases_reserved_in_db_catalog_version_mode=$0",
+               tserver::TServerSharedData::kMaxNumDbCatalogVersions - num_initial_databases - 1));
   }
   ASSERT_OK(cluster_->Restart());
 
@@ -3339,7 +3219,8 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_STR_CONTAINS(status.ToString(), "Could not reconnect to database");
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", new_db_oid));
   ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 
   // Recreate the same database and table.
@@ -3367,12 +3248,19 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion), PgLibPqCatalog
   status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
   LOG(INFO) << "status: " << status;
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_STR_CONTAINS(status.ToString(), "pgsql error XX000");
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("catalog version for database $0 was not found", new_db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
   conn_test = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kTestDatabase)));
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
+
+  // This create database will hit the limit.
+  status = conn_yugabyte.ExecuteFormat("CREATE DATABASE $0_2", kTestDatabase);
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "too many databases");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
@@ -3475,6 +3363,67 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {
   // Test SUM(oid) results in error.
   result = conn.Fetch("SELECT SUM(oid) FROM pg_type");
   ASSERT_NOK(result);
+}
+
+class PgLibPqLegecyColocatedDBTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Override the flag value set in parent class PgLibPqTest to enable to create legacy colocated
+    // databases.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LegacyColocatedDBTableColocation),
+          PgLibPqLegecyColocatedDBTest) {
+  TestTableColocation(GetLegacyColocatedDBTabletLocations);
+}
+
+// Test for ensuring that transaction conflicts work as expected for colocated tables in a legacy
+// colocated database.
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTablesInLegacyColocatedDB),
+    PgLibPqLegecyColocatedDBTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  const string database_name = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
+  PerformSimultaneousTxnsAndVerifyConflicts("test_db" /* database_name */, true /* colocated */);
+}
+
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted colocated table in a legacy colocated database.
+TEST_F_EX(PgLibPqTest,
+    YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInLegacyColocatedDB), PgLibPqLegecyColocatedDBTest) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  const string database_name = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
+  FlushTablesAndPerformBootstrap(
+      "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */);
+}
+
+class PgLibPqLegacyColocatedDBTestSmallTSTimeout : public PgLibPqTestSmallTSTimeout {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Override the flag value set in parent class to enable to create legacy colocated
+    // databases.
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+    options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
+    options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
+  }
+};
+
+// Test that adding a tserver and removing a tserver causes the colocation tablet of a legacy
+// database to adjust raft configuration off the old tserver and onto the new tserver.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleLegacyColocatedDB),
+    PgLibPqLegacyColocatedDBTestSmallTSTimeout) {
+  TestLoadBalanceSingleColocatedDB(GetLegacyColocatedDBTabletLocations);
+}
+
+// Test that adding a tserver causes colocation tablets of legacy colocated databases to offload
+// tablet-peers to the new tserver.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleLegacyColocatedDB),
+    PgLibPqLegecyColocatedDBTest) {
+  TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
 
 } // namespace pgwrapper

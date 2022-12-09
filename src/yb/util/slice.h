@@ -60,6 +60,8 @@ class Slice {
   // Create a slice that refers to d[0,n-1].
   Slice(const char* d, size_t n) : Slice(to_uchar_ptr(d), n) {}
 
+  Slice(const std::byte* d, size_t n) : Slice(pointer_cast<const uint8_t*>(d), n) {}
+
   // Create a slice that refers to [begin, end).
   Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {}
 
@@ -148,6 +150,9 @@ class Slice {
   void CopyTo(void* buffer) const {
     memcpy(buffer, begin_, size());
   }
+
+  void AppendTo(std::string* out) const;
+  void AssignTo(std::string* out) const;
 
   // Truncate the slice to "n" bytes
   void truncate(size_t n);

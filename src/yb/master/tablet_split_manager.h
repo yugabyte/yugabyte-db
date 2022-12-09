@@ -48,7 +48,8 @@ class TabletSplitManager {
   bool IsTabletSplittingComplete(const TableInfo& table, bool wait_for_parent_deletion);
 
   // Perform one round of tablet splitting. This method is not thread-safe.
-  void MaybeDoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
+  void MaybeDoSplitting(
+      const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
 
   Status ProcessSplitTabletResult(
       const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
@@ -83,7 +84,7 @@ class TabletSplitManager {
  private:
   void ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule);
 
-  void DoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
+  void DoSplitting(const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
 
   Status ValidateTableAgainstDisabledLists(const TableId& table_id);
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);

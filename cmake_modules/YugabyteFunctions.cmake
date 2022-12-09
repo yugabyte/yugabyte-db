@@ -31,12 +31,31 @@ macro(set_in_global_scope var_name var_value)
   endif()
 endmacro()
 
-macro(assert_vars_defined var_names)
-  foreach(var_name IN LISTS var_names)
-    if(NOT DEFINED ${var_name})
-      message(FATAL_ERROR "Variable ${var_name} is not defined")
+# See this on how to iterate macro arguments:
+# https://stackoverflow.com/questions/42682912/cmake-macro-how-to-iterate-over-arguments
+macro(assert_vars_defined)
+  foreach(_var_name_tmp IN ITEMS ${ARGN})
+    if(NOT DEFINED ${_var_name_tmp})
+      message(FATAL_ERROR "Variable ${_var_name_tmp} is not defined")
     endif()
   endforeach()
+  unset(_var_name_tmp)
+endmacro()
+
+# Puts the given list of variables as INTERNAL CACHE variables.
+# See for more details:
+# - https://cmake.org/cmake/help/book/mastering-cmake/chapter/CMake%20Cache.html
+# - https://cmake.org/cmake/help/latest/command/set.html
+macro(yb_put_vars_into_cache)
+  foreach(_var_name_tmp IN ITEMS ${ARGN})
+    if(NOT DEFINED ${_var_name_tmp})
+      message(FATAL_ERROR
+              "Variable ${_var_name_tmp} is not defined, cannot put it into CMake cache.")
+    endif()
+    set("${_var_name_tmp}" "${${_var_name_tmp}}" CACHE INTERNAL
+        "Internal variable ${_var_name_tmp} (from yb_put_vars_into_cache)")
+  endforeach()
+  unset(_var_name_tmp)
 endmacro()
 
 # -------------------------------------------------------------------------------------------------
@@ -408,22 +427,26 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
-  if(NOT EXISTS "${LIBCXX_DIR}")
-    message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
-  endif()
-  set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
-  if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
-    message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
-  endif()
-  ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
-
-  # This needs to appear before adding third-party dependencies that have their headers in the
-  # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
-  # the Linuxbrew include directory too.
-  include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
-
   if(NOT APPLE)
+    set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
+    if(NOT EXISTS "${LIBCXX_DIR}")
+      message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
+    endif()
+    set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+    if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
+      message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
+    endif()
+    if(NOT EXISTS "${LIBCXX_DIR}/lib")
+      message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+    endif()
+    ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
+    ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
+
+    # This needs to appear before adding third-party dependencies that have their headers in the
+    # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
+    # the Linuxbrew include directory too.
+    include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
+
     execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
                     OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
 
@@ -458,39 +481,21 @@ macro(YB_SETUP_CLANG)
       ADD_LINKER_FLAGS("-fuse-ld=lld")
       ADD_LINKER_FLAGS("-lunwind")
     endif()
-  endif()
 
-  ADD_CXX_FLAGS("-nostdinc++")
-  if(USING_LINUXBREW)
-    ADD_CXX_FLAGS("-nostdinc")
-  endif()
-  ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
-  if(NOT EXISTS "${LIBCXX_DIR}/lib")
-    message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+    ADD_CXX_FLAGS("-nostdinc++")
+    if(USING_LINUXBREW)
+      ADD_CXX_FLAGS("-nostdinc")
+    endif()
   endif()
 endmacro()
 
 # This is a macro because we need to call functions that set flags on the parent scope.
 macro(YB_SETUP_SANITIZER)
-  if(NOT "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-    message(
-      FATAL_ERROR
-      "YB_SETUP_SANITIZER can only be invoked for asan/tsan build types. "
-      "Build type: ${YB_BUILD_TYPE}.")
+  if(APPLE)
+    message(FATAL_ERROR "Sanitizers not supported on macOS")
   endif()
-
-  if(IS_CLANG)
-    message("Using instrumented libc++ (build type: ${YB_BUILD_TYPE})")
-    YB_SETUP_CLANG("${YB_BUILD_TYPE}")
-  else()
-    message("Not using ${SANITIZER}-instrumented standard C++ library for compiler family "
-            "${COMPILER_FAMILY} yet.")
-  endif()
-
   if("${YB_BUILD_TYPE}" STREQUAL "asan")
-    if(IS_CLANG AND
-       "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0" AND
-       NOT APPLE)
+    if(IS_CLANG)
       ADD_CXX_FLAGS("-mllvm -asan-use-private-alias=1")
       ADD_LINKER_FLAGS("-lunwind")
 
@@ -800,40 +805,10 @@ function(parse_build_root_basename)
 endfunction()
 
 macro(configure_macos_sdk)
-  if(APPLE AND "${YB_COMPILER_TYPE}" MATCHES "^clang[0-9]+$")
-    if(NOT "${MACOS_SDK_DIR}" STREQUAL "" AND
-       NOT "${MACOS_SDK_VERSION}" STREQUAL "")
-      message("Using cached macOS SDK directory ${MACOS_SDK_DIR}, version ${MACOS_SDK_VERSION}")
-    else()
-      set(MACOS_SDK_BASE_DIR "/Library/Developer/CommandLineTools/SDKs")
-
-      file(GLOB MACOS_SDK_DIRS "${MACOS_SDK_BASE_DIR}/*")
-      set(MACOS_SDK_DIR "")
-      set(MACOS_SDK_VERSION "")
-      foreach(MACOS_SDK_CANDIDATE_DIR ${MACOS_SDK_DIRS})
-        get_filename_component(
-          MACOS_SDK_CANDIDATE_DIR_NAME "${MACOS_SDK_CANDIDATE_DIR}" NAME)
-        if("${MACOS_SDK_CANDIDATE_DIR_NAME}" MATCHES "^MacOSX([0-9.]+)[.]sdk$")
-          set(MACOS_SDK_CANDIDATE_VERSION "${CMAKE_MATCH_1}")
-          if ("${MACOS_SDK_VERSION}" STREQUAL "" OR
-              "${MACOS_SDK_CANDIDATE_VERSION}" VERSION_GREATER "${MACOS_SDK_VERSION}")
-            set(MACOS_SDK_DIR "${MACOS_SDK_CANDIDATE_DIR}")
-            set(MACOS_SDK_VERSION "${MACOS_SDK_CANDIDATE_VERSION}")
-          endif()
-        endif()
-      endforeach()
-      if("${MACOS_SDK_VERSION}" STREQUAL "")
-        message(FATAL_ERROR "Did not find a macOS SDK at ${MACOS_SDK_BASE_DIR}")
-      endif()
-      message("Using macOS SDK version ${MACOS_SDK_VERSION} at ${MACOS_SDK_DIR}")
-      # CMake's INTERNAL type of cache variables implies FORCE, overwriting existing entries.
-      # https://cmake.org/cmake/help/latest/command/set.html
-      set(MACOS_SDK_DIR "${MACOS_SDK_DIR}" CACHE INTERNAL "macOS SDK directory")
-      set(MACOS_SDK_VERSION "${MACOS_SDK_VERSION}" CACHE INTERNAL "macOS SDK version")
-    endif()
-    set(MACOS_SDK_INCLUDE_DIR "${MACOS_SDK_DIR}/usr/include")
-    INCLUDE_DIRECTORIES(SYSTEM "${MACOS_SDK_INCLUDE_DIR}")
-    ADD_LINKER_FLAGS("-L${MACOS_SDK_DIR}/usr/lib")
+  # If the build type is e.g. "clang15", we consider this not to be Apple Clang but custom-built
+  # LLVM on macOS.
+  if(APPLE AND NOT IS_APPLE_CLANG)
+    ADD_LINKER_FLAGS("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   endif()
 endmacro()
 

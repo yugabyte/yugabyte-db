@@ -30,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
-@ApiModel(description = "")
+@ApiModel(description = "PITR config created on the universe")
 @Entity
 @Slf4j
 @Data

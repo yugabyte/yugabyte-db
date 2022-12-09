@@ -9,8 +9,7 @@ const mapStateToProps = (state) => {
     customer: state.customer,
     universe: state.universe,
     visibleModal: state.modal.visibleModal,
-    featureFlags: state.featureFlags,
-    graph: state.graph
+    graph: state.graph,
   };
 };
 

@@ -32,6 +32,7 @@ from yb import command_util
 from yb.common_util import get_build_type_from_build_root, \
                            get_compiler_type_from_build_root, \
                            is_macos  # nopep8
+from yb.postgres_build_util import POSTGRES_BUILD_SUBDIR
 from typing import Optional, List, Set, Dict, cast
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -320,10 +321,12 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
-    'postgres_build/contrib',
-    'postgres_build/src/test/regress',
-    'postgres_build/src/test/isolation',
-    'postgres_build/src/include/catalog/pg_yb_migration.dat',  # used by TestYsqlUpgrade
+    f'{POSTGRES_BUILD_SUBDIR}/contrib',
+    f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',
+    f'{POSTGRES_BUILD_SUBDIR}/src/test/isolation',
+
+    # Used by TestYsqlUpgrade.
+    f'{POSTGRES_BUILD_SUBDIR}/src/include/catalog/pg_yb_migration.dat',
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [

@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import java.util.Collection;
 import java.util.UUID;
+import org.apache.commons.lang.StringUtils;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -25,7 +26,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-
+import java.util.Collection;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -63,7 +65,10 @@ public class RotateAccessKey extends UniverseTaskBase {
             AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sudoSSHUser = clusterAccessKey.getKeyInfo().sshUser;
         if (sudoSSHUser == null) {
-          sudoSSHUser = provider.sshUser != null ? provider.sshUser : Util.DEFAULT_SUDO_SSH_USER;
+          sudoSSHUser =
+              provider.details.sshUser != null
+                  ? provider.details.sshUser
+                  : Util.DEFAULT_SUDO_SSH_USER;
         }
         Collection<NodeDetails> clusterNodes = universe.getNodesInCluster(cluster.uuid);
         // verify connection to yugabyte user
@@ -169,12 +174,12 @@ public class RotateAccessKey extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       params.taskAccessKey = taskAccessKey;
       NodeTaskBase task;
-      if (command == "AddAuthorizedKey") {
-        task = (AddAuthorizedKey) createTask(AddAuthorizedKey.class);
-      } else if (command == "RemoveAuthorizedKey") {
-        task = (RemoveAuthorizedKey) createTask(RemoveAuthorizedKey.class);
+      if (command.equals("AddAuthorizedKey")) {
+        task = createTask(AddAuthorizedKey.class);
+      } else if (command.equals("RemoveAuthorizedKey")) {
+        task = createTask(RemoveAuthorizedKey.class);
       } else {
-        task = (VerifyNodeSSHAccess) createTask(VerifyNodeSSHAccess.class);
+        task = createTask(VerifyNodeSSHAccess.class);
       }
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);

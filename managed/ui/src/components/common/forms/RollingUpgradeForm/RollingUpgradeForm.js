@@ -69,6 +69,7 @@ export default class RollingUpgradeForm extends Component {
       resetLocation,
       featureFlags
     } = this.props;
+    let systemdBoolean = false;
 
     const payload = {};
     switch (visibleModal) {
@@ -94,7 +95,7 @@ export default class RollingUpgradeForm extends Component {
       case 'systemdUpgrade': {
         payload.taskType = 'Systemd';
         payload.upgradeOption = 'Rolling';
-        var systemdBoolean = true;
+        systemdBoolean = true;
         break;
       }
       case 'gFlagsModal': {
@@ -337,7 +338,7 @@ export default class RollingUpgradeForm extends Component {
         );
       }
       case 'helmOverridesModal':
-        let editValues = {};
+        const editValues = {};
         const { universeDetails } = this.props.universe.currentUniverse.data;
         const primaryCluster = getPrimaryCluster(universeDetails.clusters);
         const { universeOverrides, azOverrides } = primaryCluster.userIntent;
@@ -470,17 +471,18 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
-                <YBCheckBox
-                  label="Confirm TLS Changes"
-                  input={{
-                    checked: this.state.formConfirmed,
-                    onChange: this.toggleConfirmValidation
-                  }}
-                />
-              ) : (
-                <span>Select new CA signed cert from the list</span>
-              )
+              universe.currentUniverse?.data?.universeDetails?.rootCA ?
+                (
+                  <YBCheckBox
+                    label="Confirm TLS Changes"
+                    input={{
+                      checked: this.state.formConfirmed,
+                      onChange: this.toggleConfirmValidation
+                    }}
+                  />
+                ) : (
+                  <span>Select new CA signed cert from the list</span>
+                )
             }
             asyncValidating={
               !this.state.formConfirmed ||

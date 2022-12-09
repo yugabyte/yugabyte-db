@@ -26,6 +26,7 @@ export const selectionOptions = [
 ];
 
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
+const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo'};
 
 const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
@@ -61,7 +62,7 @@ export const updateOptions = (
   };
 };
 
-export const SecondStep = ({ onOptionsChange }) => {
+export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0].value);
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
@@ -77,6 +78,20 @@ export const SecondStep = ({ onOptionsChange }) => {
   ) {
     selectionOptions.push(YbcLogsOption);
     //check option by default
+    selectionOptionsValue.push(true);
+    const changedOptions = updateOptions(
+      selectedFilterType,
+      selectionOptionsValue,
+      setIsDateTypeCustom
+    );
+    onOptionsChange(changedOptions);
+  }
+
+  if(
+    isK8sUniverse && 
+    !find(selectionOptions, K8sLogsOption)
+  ) {
+    selectionOptions.push(K8sLogsOption);
     selectionOptionsValue.push(true);
     const changedOptions = updateOptions(
       selectedFilterType,

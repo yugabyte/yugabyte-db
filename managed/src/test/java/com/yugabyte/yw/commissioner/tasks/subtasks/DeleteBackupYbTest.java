@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -78,6 +80,9 @@ public class DeleteBackupYbTest extends FakeDBApplication {
     params.customerUUID = defaultCustomer.uuid;
     DeleteBackupYb deleteBackupTask = AbstractTaskBase.createTask(DeleteBackupYb.class);
     deleteBackupTask.initialize(params);
+    doThrow(new RuntimeException("Invalid StorageConfig UUID: " + invalidStorageConfigUUID))
+        .when(mockBackupUtil)
+        .validateBackupStorageConfig(any());
     RuntimeException re = assertThrows(RuntimeException.class, () -> deleteBackupTask.run());
     assertEquals("Invalid StorageConfig UUID: " + invalidStorageConfigUUID, re.getMessage());
     backup.refresh();

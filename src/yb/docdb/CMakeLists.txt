@@ -79,6 +79,7 @@ set(DOCDB_SRCS
         doc_pg_expr.cc
         doc_pgsql_scanspec.cc
         doc_ql_scanspec.cc
+        doc_read_context.cc
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
@@ -86,6 +87,7 @@ set(DOCDB_SRCS
         expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
+        intent_iterator.cc
         lock_batch.cc
         packed_row.cc
         pgsql_operation.cc
@@ -154,6 +156,7 @@ ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)

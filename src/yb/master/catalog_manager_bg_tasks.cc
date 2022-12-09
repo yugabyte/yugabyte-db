@@ -216,14 +216,15 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
-      TableInfoMap table_info_map;
+      std::vector<scoped_refptr<TableInfo>> tables;
       TabletInfoMap tablet_info_map;
       {
         CatalogManager::SharedLock lock(catalog_manager_->mutex_);
-        table_info_map = *catalog_manager_->table_ids_map_;
+        auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
+        tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map, tablet_info_map);
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(tables, tablet_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();

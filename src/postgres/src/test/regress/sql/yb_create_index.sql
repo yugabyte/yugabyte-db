@@ -283,7 +283,7 @@ DROP INDEX test_method_h1_idx3;
 CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
 CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
 
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
   PRIMARY KEY (r1, r2));

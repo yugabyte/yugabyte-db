@@ -5,7 +5,6 @@ import com.google.common.base.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
@@ -17,10 +16,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import java.io.BufferedInputStream;
+import com.yugabyte.yw.common.Util;
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,14 +27,11 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.io.FileUtils;
 
 @Slf4j
@@ -153,7 +148,8 @@ public class CreateSupportBundle extends AbstractTaskBase {
         TarArchiveOutputStream tarOS = new TarArchiveOutputStream(gos)) {
 
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
-      addFilesToTarGZ(bundlePath.toString(), "", tarOS);
+      tarOS.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
+      Util.addFilesToTarGZ(bundlePath.toString(), "", tarOS);
       FileUtils.deleteDirectory(new File(bundlePath.toAbsolutePath().toString()));
     }
     log.debug(
@@ -167,25 +163,5 @@ public class CreateSupportBundle extends AbstractTaskBase {
     String bundleName = "yb-support-bundle-" + universe.name + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
     return bundlePath;
-  }
-
-  private static void addFilesToTarGZ(
-      String filePath, String parent, TarArchiveOutputStream tarArchive) throws IOException {
-    File file = new File(filePath);
-    String entryName = parent + file.getName();
-    tarArchive.putArchiveEntry(new TarArchiveEntry(file, entryName));
-    if (file.isFile()) {
-      try (FileInputStream fis = new FileInputStream(file);
-          BufferedInputStream bis = new BufferedInputStream(fis)) {
-        IOUtils.copy(bis, tarArchive);
-        tarArchive.closeArchiveEntry();
-      }
-    } else if (file.isDirectory()) {
-      // no content to copy so close archive entry
-      tarArchive.closeArchiveEntry();
-      for (File f : file.listFiles()) {
-        addFilesToTarGZ(f.getAbsolutePath(), entryName + File.separator, tarArchive);
-      }
-    }
   }
 }

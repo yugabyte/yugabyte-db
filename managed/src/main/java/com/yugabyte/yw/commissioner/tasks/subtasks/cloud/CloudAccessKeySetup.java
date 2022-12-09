@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
 import play.api.Play;
