@@ -125,7 +125,7 @@ This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It 
 Next, you use Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 
 {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher.
+The driver requires YugabyteDB version 2.7.2.0 or later.
 {{< /note>}}
 
 ### Create a local cluster
@@ -133,7 +133,7 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
 ```sh
-$ cd <path-to-yugabytedb-installation>
+cd <path-to-yugabytedb-installation>
 ```
 
 ```sh

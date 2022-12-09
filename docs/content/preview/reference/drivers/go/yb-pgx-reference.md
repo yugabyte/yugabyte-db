@@ -150,7 +150,7 @@ Query results are returned in `pgx.Rows`, which can be iterated using the `pgx.R
 
 Then read the data using `pgx.rows.Scan()`.
 
-The SELECT DML statement:
+The `SELECT` DML statement:
 
 ```sql
 SELECT * from employee;
