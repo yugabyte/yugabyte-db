@@ -137,7 +137,7 @@
 [[main]]
   name = "Integrations"
   weight = 4
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   [main.params]
     excludeVersion = true
 
@@ -302,6 +302,7 @@
   name = "Integrations"
   weight = 11
   identifier = "integrations"
+  url = "/preview/integrations/"
   [preview.params]
     showSection = true
 
@@ -537,7 +538,7 @@
 [[stable]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   [stable.params]
     showSection = true
 
@@ -701,7 +702,7 @@
 [["v2.12"]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.12".params]
     showSection = true
 
@@ -867,7 +868,7 @@
 [["v2.8"]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.8".params]
     showSection = true
 
@@ -1023,7 +1024,7 @@
   name = "Integrations"
   weight = 11
   identifier = "integrations"
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.6".params]
     showSection = true
 
