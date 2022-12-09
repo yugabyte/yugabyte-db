@@ -169,7 +169,7 @@ These pills automatically re-flow based on page width; just keep adding list ite
 The following is a basic markdown table.
 
 | Table | A column |
-| :--- | :--- |
+| :---- | :------- |
 | A row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
 | Another row | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
 | Another row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
