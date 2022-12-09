@@ -100,7 +100,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
           createStopServerTasks(currentNodeDetails, "tserver", true /* isForceDelete */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           if (universe.isYbcEnabled()) {
-            createStopYbControllerTasks(new HashSet<>(currentNodeDetails))
+            createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
         }
