@@ -108,7 +108,7 @@ Status SplitOperation::CheckOperationAllowed(
       request()->new_tablet2_id().ToBuffer());
 }
 
-Status SplitOperation::Prepare() {
+Status SplitOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }

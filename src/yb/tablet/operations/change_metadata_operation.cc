@@ -52,6 +52,10 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
+                 "Used in tests to ignore applying change metadata operation"
+                 " on followers.");
+
 using std::string;
 
 namespace yb {
@@ -92,7 +96,7 @@ string ChangeMetadataOperation::ToString() const {
                 hybrid_time_even_if_unset(), schema_, request());
 }
 
-Status ChangeMetadataOperation::Prepare() {
+Status ChangeMetadataOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE("PREPARE CHANGE-METADATA: Starting");
 
   // Decode schema
@@ -107,7 +111,8 @@ Status ChangeMetadataOperation::Prepare() {
   }
 
   TabletPtr tablet = VERIFY_RESULT(tablet_safe());
-  RETURN_NOT_OK(tablet->CreatePreparedChangeMetadata(this, schema_holder_.get()));
+  RETURN_NOT_OK(tablet->CreatePreparedChangeMetadata(
+      this, schema_holder_.get(), is_leader_side));
 
   SetIndexes(ToRepeatedPtrField(request()->indexes()));
 
@@ -116,6 +121,11 @@ Status ChangeMetadataOperation::Prepare() {
 }
 
 Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  if (PREDICT_FALSE(FLAGS_TEST_ignore_apply_change_metadata_on_followers)) {
+    LOG_WITH_PREFIX(INFO) << "Ignoring apply of change metadata ops on followers";
+    return Status::OK();
+  }
+
   TRACE("APPLY CHANGE-METADATA: Starting");
 
   TabletPtr tablet = VERIFY_RESULT(tablet_safe());
