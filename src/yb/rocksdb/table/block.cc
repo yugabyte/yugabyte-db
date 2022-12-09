@@ -233,6 +233,36 @@ void BlockIter::SeekToRestart(uint32_t index) {
   ParseNextKey();
 }
 
+bool BlockIter::ScanForward(
+    const Comparator* user_key_comparator, const Slice& upperbound,
+    KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+  LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+  do {
+    const auto user_key = ExtractUserKey(key_.GetKey());
+    if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
+      break;
+    }
+
+    bool skip_key = false;
+    if (key_filter_callback) {
+      auto kf_result =
+          (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
+      skip_key = kf_result.skip_key;
+    }
+
+    if (!skip_key) {
+      if (!(*scan_callback)(user_key, value_)) {
+        return false;
+      }
+    }
+
+    Next();
+  } while (Valid());
+
+  return true;
+}
+
 namespace {
 
 Status BadBlockContentsError() {

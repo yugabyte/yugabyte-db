@@ -107,6 +107,23 @@ class BinaryHeap {
     return data_.size();
   }
 
+  const T& second_top() const {
+    LOG_IF(DFATAL, empty()) << "Heap is empty.";
+    const size_t size = data_.size();
+    LOG_IF(DFATAL, size < 2) << "Heap contains less than 2 elements - " << size;
+
+    constexpr size_t left_child = 1;
+    constexpr size_t right_child = 2;
+    DCHECK_EQ(left_child, get_left(get_root()));
+    DCHECK_EQ(right_child, get_right(get_root()));
+
+    if (size > 2 && cmp_(data_.data()[1], data_.data()[2])) {
+      return data_.data()[2];
+    }
+
+    return data_.data()[1];
+  }
+
  private:
   static inline size_t get_root() { return 0; }
   static inline size_t get_left(size_t index) { return 2 * index + 1; }
