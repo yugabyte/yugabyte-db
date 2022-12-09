@@ -35,7 +35,8 @@
 namespace yb {
 namespace docdb {
 
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
+Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type,
+                                       HybridTimeRequired ht_required) {
   auto key_type = GetKeyType(key_slice, db_type);
   SubDocKey subdoc_key;
   switch (key_type) {
@@ -66,7 +67,7 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type) {
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
       RETURN_NOT_OK_PREPEND(
-          subdoc_key.FullyDecodeFrom(key_slice),
+          subdoc_key.FullyDecodeFrom(key_slice, ht_required),
           "Error: failed decoding SubDocKey " +
           FormatSliceAsStr(key_slice));
       return subdoc_key.ToString(AutoDecodeKeys::kTrue);
@@ -141,6 +142,14 @@ Result<std::string> DocDBValueToDebugStrInternal(
 }
 
 }  // namespace
+
+Result<std::string> DocDBValueToDebugStr(
+    Slice key, StorageDbType db_type, Slice value,
+    const SchemaPackingStorage& schema_packing_storage) {
+
+  auto key_type = GetKeyType(key, db_type);
+  return DocDBValueToDebugStr(key_type, key, value, schema_packing_storage);
+}
 
 Result<std::string> DocDBValueToDebugStr(
     KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage) {
