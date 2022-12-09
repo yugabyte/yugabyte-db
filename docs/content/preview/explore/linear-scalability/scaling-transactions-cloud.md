@@ -15,7 +15,7 @@ type: docs
 
 With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
 
-This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Simulation Base Demo application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a single region three-node cluster on YugabyteDB Managed with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+This tutorial shows how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/yugabyte/yb-simulation-base-demo-app) against a single region three-node cluster on YugabyteDB Managed with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
