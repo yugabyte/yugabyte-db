@@ -413,7 +413,7 @@ export default class ListBackups extends Component {
           >
             <TableAction
               currentRow={row}
-              disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
+              disabled={get(currentUniverse, 'universeDetails.updateInProgress')}
               actionType="restore-backup"
               onSubmit={(data) => this.handleModalSubmit('Restore', data)}
               onError={() => this.handleModalSubmit('Restore')}
@@ -481,8 +481,8 @@ export default class ListBackups extends Component {
     };
     return (
       <div id="list-backups-content">
-        {get(currentUniverse, 'universeDetails.backupInProgress') && (
-          <Alert bsStyle="info">Backup is in progress at the moment</Alert>
+        {get(currentUniverse, 'universeDetails.updateInProgress') && (
+          <Alert bsStyle="info">Update is in progress at the moment</Alert>
         )}
         {showAlert && (
           <Alert bsStyle={taskUUID ? 'success' : 'danger'} onDismiss={this.handleDismissAlert}>
@@ -512,7 +512,7 @@ export default class ListBackups extends Component {
                       <>
                         <TableAction
                           disabled={
-                            get(currentUniverse, 'universeDetails.backupInProgress') ||
+                            get(currentUniverse, 'universeDetails.updateInProgress') ||
                             get(currentUniverse, 'universeConfig.takeBackups') === 'false'
                           }
                           className="table-action"
@@ -523,7 +523,7 @@ export default class ListBackups extends Component {
                           onError={() => this.handleModalSubmit('Backup')}
                         />
                         <TableAction
-                          disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
+                          disabled={get(currentUniverse, 'universeDetails.updateInProgress')}
                           className="table-action"
                           btnClass="btn-default"
                           actionType="restore-backup"
@@ -533,7 +533,7 @@ export default class ListBackups extends Component {
                         />
                         <TableAction
                           disabled={
-                            get(currentUniverse, 'universeDetails.backupInProgress') ||
+                            get(currentUniverse, 'universeDetails.updateInProgress') ||
                             this.state.selected.length < 1
                           }
                           currentRow={{

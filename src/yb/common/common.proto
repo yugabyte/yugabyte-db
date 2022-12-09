@@ -326,21 +326,39 @@ message PartitionPB {
   optional bytes partition_key_end = 3;
 }
 
-// This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h.
-// The "Lock" prefix is removed to keep this generic for any intent in conflict_resolution.cc (not
-// just those written for Pg's explicit row locks).
+// This enum matches enum LockWaitPolicy defined in src/include/nodes/lockoptions.h and applies only
+// to explicit row-level locking policies.
+//
+// NOTE: WAIT_ERROR implies no-wait semantics in Postgres i.e., if a conflicting lock is held,
+// fail self's transaction. However, in YSQL, the WAIT_ERROR enum maps to the Fail-on-Conflict
+// conflict management policy (where we may fail other transactions depending on priority, as
+// described in conflict_resolution.h). It doesn't map to no-wait semantics because they aren't yet
+// supported by docdb.
+//
+// But, note that NOWAIT clause is supported for READ COMMITTED isolation level when no other
+// isolation's transactions are active. YSQL acheives that without relying on no-wait semantics from
+// the tserver. This is done by leveraging the fact that the Fail-on-Conflict policy for read
+// committed transactions are effectively no-wait semantics because all read committed transactions
+// have the same kHighest priority.
+//
+// TODO(concurrency-control):
+//   When NOWAIT support is to be extended for REPEATABLE READ and SERIALIZABLE isolation level, we
+//   would require using WAIT_ERROR to rightly mean the no-wait policy and another enum to represent
+//   the Fail-on-Conflict policy.
+//
+// YSQL specifies WaitPolicy explicitly only for reads via PgsqlReadRequestPB that take explicit
+// row-level locks.
 enum WaitPolicy
 {
-  // Wait for the intent to become available (default behavior)
+  // Maps to Wait-on-Conflict conflict management policy as defined in conflict_resolution.h
   WAIT_BLOCK = 0;
 
-  // Skip operation if intents can't be locked (SKIP LOCKED)
+  // Maps to Skip-on-Conflict conflict management policy as defined in conflict_resolution.h
+  // This is needed for the SKIP LOCKED clause
   WAIT_SKIP = 1;
 
-  // Raise an error if a intent cannot be locked (NOWAIT)
-  // Abort self if conflicting with a higher priority txn. Else abort the other txn. This is
-  // default behaviour as of date.
-  WAIT_ERROR = 2;
+  // Maps to Fail-on-Conflict conflict management policy as defined in conflict_resolution.h
+  WAIT_ERROR= 2;
 }
 
 message TransactionMetadataPB {

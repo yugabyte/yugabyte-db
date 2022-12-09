@@ -600,6 +600,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createSoftwareInstallTasks(
         nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
 
+    // Copy the source root certificate to the node.
+    createTransferXClusterCertsCopyTasks(nodeAsList, universe, SubTaskGroupType.InstallingSoftware);
+
     // Update master configuration on the node.
     createConfigureServerTasks(
             nodeAsList,
@@ -2102,9 +2105,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String ybcSoftwareVersion) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
-    if (taskSubType == UpgradeTaskSubType.PackageReInstall) {
-      params.updatePackages = true;
-    } else if (softwareVersion == null) {
+    if (softwareVersion == null) {
       UserIntent userIntent =
           getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

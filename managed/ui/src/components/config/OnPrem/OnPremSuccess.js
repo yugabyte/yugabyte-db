@@ -1,5 +1,5 @@
 import { cloneDeep, isEqual, map, sortBy } from 'lodash';
-import React, { Component } from 'react'
+import React, { Component } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link, withRouter } from 'react-router';
 import { Field, reduxForm } from 'redux-form';
@@ -21,7 +21,7 @@ class NewOnPremSuccess extends Component {
     this.state = {
       currentProvider: undefined,
       isLoading: true
-    }
+    };
   }
 
   showProviderView = () => {
@@ -29,7 +29,7 @@ class NewOnPremSuccess extends Component {
   };
   deleteProvider = async () => {
     const { currentProvider } = this.state;
-    await this.props.deleteProviderConfig(currentProvider.uuid)
+    await this.props.deleteProviderConfig(currentProvider.uuid);
     window.location.reload();
   }
   handleManageNodesClick = () => {
@@ -132,7 +132,7 @@ class NewOnPremSuccess extends Component {
       this.fetchInstanceAndNodeList();
     });
     if(!this.getReadyState(universeList)){
-      this.props.fetchUniverseList()
+      this.props.fetchUniverseList();
     }
   }
 
@@ -142,8 +142,8 @@ class NewOnPremSuccess extends Component {
     },
     cloud: { nodeInstanceList, instanceTypes }
 
-     } = this.props;
-     const {isLoading} = this.state;
+    } = this.props;
+    const {isLoading} = this.state;
 
     if (
       (this.props.selectedProviderUUID !== prevProps.selectedProviderUUID && this.props.selectedProviderUUID !== undefined)
@@ -167,8 +167,8 @@ class NewOnPremSuccess extends Component {
     if(isLoading){
       if(this.getReadyState(instanceTypes) && this.getReadyState(nodeInstanceList)){
         this.setState({isLoading: false}, ()=> {
-          this.updateJSONStore()
-        })
+          this.updateJSONStore();
+        });
       }
     }
 
@@ -177,7 +177,7 @@ class NewOnPremSuccess extends Component {
     return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
   };
   setSelectedProvider = (e) => {
-    this.props.setSelectedProvider(e.target.value)
+    this.props.setSelectedProvider(e.target.value);
   }
   render() {
     const {
@@ -192,7 +192,7 @@ class NewOnPremSuccess extends Component {
     const {isLoading} = this.state;
     
     if(isLoading){
-      return <YBLoading />
+      return <YBLoading />;
     }
 
     if (this.state.manageInstances) {

@@ -1515,7 +1515,7 @@ heap_create_with_catalog(const char *relname,
 
 		if (IsYsqlUpgrade && is_system && relkind != RELKIND_VIEW)
 		{
-			YBRecordPinDependency(&myself, shared_relation);
+			YbRecordPinDependency(&myself, shared_relation);
 		}
 		else
 		{

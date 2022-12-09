@@ -107,14 +107,14 @@ export const AddTableModal = ({
       const bootstrapParams =
         bootstrapRequiredTableUUIDs.length > 0
           ? {
-              tables: bootstrapRequiredTableUUIDs,
-              backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig.value,
-                parallelism: formValues.parallelThreads,
-                sse: formValues.storageConfig.name === 'S3',
-                universeUUID: null
-              }
+            tables: bootstrapRequiredTableUUIDs,
+            backupRequestParams: {
+              storageConfigUUID: formValues.storageConfig.value,
+              parallelism: formValues.parallelThreads,
+              sse: formValues.storageConfig.name === 'S3',
+              universeUUID: null
             }
+          }
           : undefined;
       const tableUUIDs = Array.from(new Set(formValues.tableUUIDs.concat(xClusterConfig.tables)));
       return editXClusterConfigTables(xClusterConfig.uuid, tableUUIDs, bootstrapParams);

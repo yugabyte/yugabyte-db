@@ -23,6 +23,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 var (
@@ -86,10 +88,10 @@ func generateCertGolang() {
 	case "P521":
 		priv, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	default:
-		LogError(fmt.Sprintf("Unrecognized elliptic curve: %q.", *ecdsaCurve))
+		log.Fatal(fmt.Sprintf("Unrecognized elliptic curve: %q.", *ecdsaCurve))
 	}
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to generate private key: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to generate private key: %v.", err))
 	}
 
 	// ECDSA, ED25519 and RSA subject keys should have the DigitalSignature
@@ -108,7 +110,7 @@ func generateCertGolang() {
 	} else {
 		notBefore, err = time.Parse("Jan 2 15:04:05 2006", *validFrom)
 		if err != nil {
-			LogError(fmt.Sprintf("Failed to parse creation date: %v.", err))
+			log.Fatal(fmt.Sprintf("Failed to parse creation date: %v.", err))
 		}
 	}
 
@@ -117,7 +119,7 @@ func generateCertGolang() {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to generate serial number: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to generate serial number: %v.", err))
 	}
 
 	template := x509.Certificate{
@@ -149,35 +151,35 @@ func generateCertGolang() {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to create certificate: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to create certificate: %v.", err))
 	}
 
 	certOut, err := os.Create("cert.pem")
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to open cert.pem for writing: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to open cert.pem for writing: %v.", err))
 	}
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		LogError(fmt.Sprintf("Failed to write data to cert.pem: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to write data to cert.pem: %v.", err))
 	}
 	if err := certOut.Close(); err != nil {
-		LogError(fmt.Sprintf("Error closing cert.pem: %v.", err))
+		log.Fatal(fmt.Sprintf("Error closing cert.pem: %v.", err))
 	}
-	LogDebug("Wrote cert.pem.\n")
+	log.Debug("Wrote cert.pem.\n")
 
 	keyOut, err := os.OpenFile("key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to open key.pem for writing: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to open key.pem for writing: %v.", err))
 	}
 	privBytes, err := x509.MarshalECPrivateKey(priv.(*ecdsa.PrivateKey))
 	if err != nil {
-		LogError(fmt.Sprintf("Unable to marshal private key: %v.", err))
+		log.Fatal(fmt.Sprintf("Unable to marshal private key: %v.", err))
 	}
 	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes}); err != nil {
-		LogError(fmt.Sprintf("Failed to write data to key.pem: %v.", err))
+		log.Fatal(fmt.Sprintf("Failed to write data to key.pem: %v.", err))
 	}
 	if err := keyOut.Close(); err != nil {
-		LogError(fmt.Sprintf("Error closing key.pem: %v.", err))
+		log.Fatal(fmt.Sprintf("Error closing key.pem: %v.", err))
 	}
-	LogDebug("Wrote key.pem.\n")
+	log.Debug("Wrote key.pem.\n")
 
 }

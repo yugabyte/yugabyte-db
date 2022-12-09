@@ -99,7 +99,7 @@ class GraphPanelHeader extends Component {
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
     let currentUniversePrefix = MetricConsts.ALL;
-    let currentRegion = MetricConsts.ALL;
+    const currentRegion = MetricConsts.ALL;
 
     if (this.props.origin === MetricOrigin.UNIVERSE) {
       currentUniverse = this.props.universe.currentUniverse.data;
@@ -442,7 +442,7 @@ class GraphPanelHeader extends Component {
     const newParams = _.cloneDeep(this.state);
     const maxOutlierValue = this.state.metricMeasure === MetricMeasure.OUTLIER
       ? MAX_OUTLIER_NUM_NODES
-      : MAX_OUTLIER_NUM_TABLES
+      : MAX_OUTLIER_NUM_TABLES;
     if (typeof outlierNumNodes === 'number'
       && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= maxOutlierValue
     ) {
@@ -485,7 +485,7 @@ class GraphPanelHeader extends Component {
   updateUrlQueryParams = (filterParams) => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const queryParams = location.query;
-    const isEnabledTopKMetrics = this.props.enableTopKMetrics;
+    const isEnabledTopKMetrics = this.props.isTopKMetricsEnabled;
 
     // TODO: Needs to be removed once Top K metrics is tested and integrated fully
     if (isEnabledTopKMetrics) {
@@ -520,7 +520,7 @@ class GraphPanelHeader extends Component {
       closeModal,
       visibleModal,
       enableNodeComparisonModal,
-      enableTopKMetrics
+      isTopKMetricsEnabled
     } = this.props;
     const {
       filterType,
@@ -581,7 +581,7 @@ class GraphPanelHeader extends Component {
 
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
-      if (enableTopKMetrics) {
+      if (isTopKMetricsEnabled) {
         universePicker = <UniversePicker
           {...this.props}
           universeItemChanged={this.universeItemChanged}
@@ -621,7 +621,7 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   <div className="filter-container">
                     {universePicker}
-                    {enableTopKMetrics && this.props.origin !== MetricOrigin.TABLE &&
+                    {isTopKMetricsEnabled && this.props.origin !== MetricOrigin.TABLE &&
                       <RegionSelector
                         selectedUniverse={this.state.currentSelectedUniverse}
                         onRegionChanged={this.onRegionChanged}
@@ -637,15 +637,15 @@ class GraphPanelHeader extends Component {
                         selectedNode={this.state.nodeName}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
-                        enableTopKMetrics={enableTopKMetrics}
+                        isTopKMetricsEnabled={isTopKMetricsEnabled}
                         selectedRegionCode={this.state.selectedRegionCode}
                       />}
-                    {liveQueriesLink && !universePaused && !enableTopKMetrics && (
+                    {liveQueriesLink && !universePaused && !isTopKMetricsEnabled && (
                       <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
                         <i className="fa fa-search" /> See Queries
                       </Link>
                     )}
-                    {liveQueriesLink && !universePaused && enableTopKMetrics && (
+                    {liveQueriesLink && !universePaused && isTopKMetricsEnabled && (
                       <span className="live-queries">
                         <Link to={liveQueriesLink}>
                           <span className="live-queries-label">See Queries</span>
@@ -734,7 +734,7 @@ class GraphPanelHeader extends Component {
                                   window.URL.revokeObjectURL(url);
                                   a.remove();
                                 }
-                              })
+                              });
                           }}>
                             {'Download Grafana JSON'}
                           </MenuItem>
@@ -746,7 +746,7 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {enableTopKMetrics && this.state.currentSelectedUniverse !== MetricConsts.ALL &&
+                  {isTopKMetricsEnabled && this.state.currentSelectedUniverse !== MetricConsts.ALL &&
                     this.props.origin !== MetricOrigin.TABLE &&
                     <MetricsMeasureSelector
                       metricMeasureTypes={metricMeasureTypes}
@@ -773,21 +773,22 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
-                  {enableTopKMetrics && currentSelectedUniverse !== MetricConsts.ALL &&
+                  {isTopKMetricsEnabled && currentSelectedUniverse !== MetricConsts.ALL &&
                     ((this.state.metricMeasure === MetricMeasure.OUTLIER) ||
                       this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
-                    <OutlierSelector
-                      outlierTypes={outlierTypes}
-                      selectedOutlierType={this.state.outlierType}
-                      onOutlierTypeChanged={this.onOutlierTypeChanged}
-                      setNumNodeValue={this.setNumNodeValue}
-                      defaultOutlierNumNodes={this.state.outlierNumNodes}
-                      splitType={splitType}
-                    />}
+                      <OutlierSelector
+                        outlierTypes={outlierTypes}
+                        selectedOutlierType={this.state.outlierType}
+                        onOutlierTypeChanged={this.onOutlierTypeChanged}
+                        setNumNodeValue={this.setNumNodeValue}
+                        defaultOutlierNumNodes={this.state.outlierNumNodes}
+                        splitType={splitType}
+                      />}
                 </FlexGrow>
               </FlexContainer>
               {enableNodeComparisonModal ? (
                 <MetricsComparisonModal
+                  isTopKMetricsEnabled={isTopKMetricsEnabled}
                   visible={showModal && visibleModal === 'metricsComparisonModal'}
                   onHide={closeModal}
                   selectedUniverse={this.state.currentSelectedUniverse}
@@ -829,7 +830,7 @@ class UniversePicker extends Component {
             key={idx}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click() }}
+            onClick={() => { document.body.click(); }}
             eventKey={item.universeUUID}
             active={item.universeUUID === selectedUniverse.universeUUID}
           >
@@ -846,7 +847,7 @@ class UniversePicker extends Component {
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedUniverse === MetricConsts.ALL}
-          onClick={() => { document.body.click() }}
+          onClick={() => { document.body.click(); }}
           eventKey={MetricConsts.ALL}
         >
           {"All universes"}

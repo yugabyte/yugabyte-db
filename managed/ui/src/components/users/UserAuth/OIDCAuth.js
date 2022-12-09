@@ -82,12 +82,12 @@ export const OIDCAuth = (props) => {
         promiseArr.push(
           formValues[key] !== ''
             ? setRunTimeConfig({
-                key: `${OIDC_PATH}.${key}`,
-                value: formValues[key]
-              })
+              key: `${OIDC_PATH}.${key}`,
+              value: formValues[key]
+            })
             : deleteRunTimeConfig({
-                key: `${OIDC_PATH}.${key}`
-              })
+              key: `${OIDC_PATH}.${key}`
+            })
         );
       }
 

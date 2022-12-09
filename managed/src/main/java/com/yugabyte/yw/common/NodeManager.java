@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
@@ -306,13 +307,6 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Wait_For_SSH)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
-      subCommand.add(keyInfo.sshUser);
-    }
-
-    if ((type == NodeCommandType.Configure) && keyInfo.sshUser != null) {
-      // Pass the sudo user on different key, so as to
-      // force reinstall the packages as part of configure.
-      subCommand.add("--ssh_user_update_packages");
       subCommand.add(keyInfo.sshUser);
     }
 
@@ -1606,8 +1600,6 @@ public class NodeManager extends DevopsBase {
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
-          } else if (taskParam.updatePackages) {
-            commandArgs.add("--update_packages");
           }
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
@@ -1854,6 +1846,16 @@ public class NodeManager extends DevopsBase {
         }
       case Delete_Root_Volumes:
         {
+          if (nodeTaskParam instanceof DeleteRootVolumes.Params) {
+            DeleteRootVolumes.Params params = (DeleteRootVolumes.Params) nodeTaskParam;
+            if (params.volumeIds != null) {
+              params.volumeIds.forEach(
+                  id -> {
+                    commandArgs.add("--volume_id");
+                    commandArgs.add(id);
+                  });
+            }
+          }
           addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
           break;
         }
@@ -2158,7 +2160,7 @@ public class NodeManager extends DevopsBase {
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
-    Integer sshPort = keyInfo.sshPort == null ? provider.sshPort : keyInfo.sshPort;
+    Integer sshPort = keyInfo.sshPort == null ? provider.details.sshPort : keyInfo.sshPort;
     String sshUser = params.sshUser;
     String vaultPasswordFile = keyInfo.vaultPasswordFile;
     String vaultFile = keyInfo.vaultFile;

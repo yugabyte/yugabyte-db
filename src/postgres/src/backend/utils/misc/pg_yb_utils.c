@@ -67,6 +67,7 @@
 #include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/variable.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "optimizer/cost.h"
@@ -418,6 +419,17 @@ IsYBReadCommitted()
 	}
 	return IsYugaByteEnabled() && cached_value &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
+}
+
+bool
+YBIsWaitQueueEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+	}
+	return IsYugaByteEnabled() && cached_value;
 }
 
 bool
@@ -2379,6 +2391,40 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(range_split_clause);
 }
 
+const char*
+yb_fetch_current_transaction_priority(void)
+{
+	TxnPriorityRequirement txn_priority_type;
+	double				   txn_priority;
+	static char			   buf[50];
+
+	txn_priority_type = YBCGetTransactionPriorityType();
+	txn_priority	  = YBCGetTransactionPriority();
+
+	if (txn_priority_type == kHighestPriority)
+		snprintf(buf, sizeof(buf), "Highest priority transaction");
+	else if (txn_priority_type == kHigherPriorityRange)
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (High priority transaction)", txn_priority);
+	else
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (Normal priority transaction)", txn_priority);
+
+	return buf;
+}
+
+Datum
+yb_get_current_transaction_priority(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(yb_fetch_current_transaction_priority());
+}
+
+Datum
+yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
 Datum
 yb_is_database_colocated(PG_FUNCTION_ARGS)
 {
@@ -3004,4 +3050,37 @@ uint64_t YbGetSharedCatalogVersion()
 		? YBCGetSharedDBCatalogVersion(MyDatabaseId, &version)
 		: YBCGetSharedCatalogVersion(&version));
 	return version;
+}
+
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy)
+{
+	/*
+	 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable isolation
+	 * level.
+	 */
+	if (userLockWaitPolicy == LockWaitSkip || userLockWaitPolicy == LockWaitError)
+		elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)",
+			userLockWaitPolicy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+
+	*effectiveWaitPolicy = LockWaitBlock;
+	if (!YBIsWaitQueueEnabled())
+	{
+		/*
+		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
+		 * mapped to LockWaitError right now (see WaitPolicy proto for meaning of
+		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
+		 * semantics but to Fail-on-Conflict semantics).
+		 */
+		*effectiveWaitPolicy = LockWaitError;
+	}
+}
+
+uint32_t YbGetNumberOfDatabases()
+{
+	Assert(YBIsDBCatalogVersionMode());
+	uint32_t num_databases = 0;
+	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
+	Assert(num_databases > 0);
+	return num_databases;
 }

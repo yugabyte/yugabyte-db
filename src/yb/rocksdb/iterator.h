@@ -33,6 +33,8 @@
 #pragma once
 
 #include <string>
+#include <boost/function.hpp>
+
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status.h"
 
@@ -59,6 +61,25 @@ class Cleanable {
   };
   Cleanup cleanup_;
 };
+
+struct KeyFilterCallbackResult {
+  // Set to true when the key is skipped.
+  bool skip_key;
+  // Caller uses cache_key to maintain the multi-key caching. When set
+  // the current key is added to multi-key cache, otherwise multi-key cache
+  // is cleared.
+  bool cache_key;
+};
+
+// KeyFilterCallback accepts the encoded keys as input, and returns a pair
+// of bool values as output. First bool parameter determines when to skip
+// the key, and second parameter controls the multi-key caching at Iterator
+// layer.
+using KeyFilterCallback = boost::function<KeyFilterCallbackResult(
+    const Slice& /*prefixed key*/, size_t /*shared_bytes*/, const Slice& /*delta*/)>;
+// ScanCallback is called for keys which are not skipped.
+using ScanCallback =
+    boost::function<bool(const Slice& /*key_bytes*/, const Slice& /*value_bytes*/)>;
 
 class Iterator : public Cleanable {
  public:
@@ -133,6 +154,33 @@ class Iterator : public Cleanable {
   // This only affects forward iteration. A previously invalid forward iterator can become valid
   // if the upper bound has increased.
   virtual void RevalidateAfterUpperBoundChange() {}
+
+  // Iterate over the key-values and call the callback functions, until:
+  // 1. Provided upper bound is reached (optional)
+  // 2. Iterator upper bound is reached (if present)
+  // 3. Reaches end of iteration.
+  // Note: this API only works in cases where there are only unique key insertions in the RocksDB.
+  // Because this call skips the merge step for keys encountered during scan.
+  // REQUIRED: Valid()
+  //
+  // Input:
+  //  Upperbound - Current call upperbound, if empty, then iterator upperbound is used.
+  //  KeyFilterCallback - optional callback to filter out keys before they are cached, and a
+  //  mechanism
+  //    to control the multiple key-values at lower layer.
+  //  ScanCallback - callback function to call when visiting a key-value pair.
+  // Output: Returns bool when the upperbound is reached, otherwise returns false when either
+  //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
+  //  status() call should be used to figure out the callback failure vs lower layer failure.
+  //
+  // ScanBackward() is not supported using callback, because every previous callback
+  // requires to go back to start of restart_point and find the key before current key.
+  virtual bool ScanForward(
+      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) {
+    assert(false);
+    return false;
+  }
 };
 
 // Return an empty iterator (yields nothing).

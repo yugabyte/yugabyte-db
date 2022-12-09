@@ -219,17 +219,17 @@ public class Commissioner {
       // Task is abortable only when it is running.
       responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
     }
+
     // Set retryable if eligible.
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
-        && task.getTarget().isUniverseTarget()
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      // Retryable depends on the updating task UUID in the Universe.
+      // Retryable depends on the updating Task UUID in the Universe.
       Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
           .ifPresent(
-              updatingTaskUUID -> {
+              updatingTask -> {
                 responseJson.put(
-                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
+                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTask)));
               });
     }
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {

@@ -604,7 +604,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (!FLAGS_auto_promote_nonlocal_transactions_to_global || FLAGS_enable_wait_queues) {
       if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
         YB_LOG_EVERY_N_SECS(WARNING, 100)
-            << "Cross-region transactions are disabled in clusters with pessimistic locking "
+            << "Cross-region transactions are disabled in clusters with wait queues "
             << "enabled. This will be supported in a future release. "
             << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
       }

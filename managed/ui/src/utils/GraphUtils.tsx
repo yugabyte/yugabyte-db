@@ -51,7 +51,7 @@ export const getTabContent = (
               uniqueOperations.add(metricItem.name);
             });
           }
-          uniqueOperations = Array.from(uniqueOperations)?.sort();
+          uniqueOperations = Array.from(uniqueOperations);
 
           return isNonEmptyObject(metric) && !metric?.error ? (
             <MetricsPanel
@@ -85,7 +85,7 @@ export const getTabContent = (
           'YCQL Ops',
           'YEDIS Ops',
           'YEDIS Advanced',
-          'Resource']
+          'Resource'];
         if (skipList.includes(title)) {
           return null;
         }
@@ -93,4 +93,4 @@ export const getTabContent = (
     }
   }
   return tabData;
-}
+};

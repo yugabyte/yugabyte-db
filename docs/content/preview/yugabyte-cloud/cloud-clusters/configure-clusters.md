@@ -24,7 +24,7 @@ Cluster edit operations are performed using the **Edit Infrastructure** option o
 
 {{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
-For clusters with Node level and Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+For multi-region clusters, or single region clusters with Node or Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
 The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
@@ -50,6 +50,8 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 You can scale multi-node single-region clusters horizontally and vertically, as well as increase the disk size.
 
+To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
+
 To scale a single-region cluster:
 
 1. On the **Clusters** page, select your cluster.
@@ -70,6 +72,8 @@ Depending on the number of nodes, the scaling operation can take several minutes
 You can scale multi-region replicated clusters horizontally and vertically, as well as increase the disk size.
 
 <!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
+
+To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
 
 To scale nodes in a replicate-across-regions cluster:
 

@@ -269,29 +269,7 @@ class RpcContext {
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::Message& app_error_pb);
 
-  // Start new sidecar, returning WriteBuffer to fill sidecar to.
-  WriteBuffer& StartRpcSidecar();
-
-  // Complete started sidecar, returning sidecar index.
-  size_t CompleteRpcSidecar();
-
-  // Take sidecars from specified buffer, with specified offsets in this buffer.
-  // Returns index of the first taken sidecar.
-  size_t TakeSidecars(
-      WriteBuffer* sidecar_buffer, google::protobuf::RepeatedField<uint32_t>* offsets);
-
-  // Take sidecars from specified buffer, with specified bounds in this buffer.
-  // Returns index of the first taken sidecar.
-  size_t TakeSidecars(
-      const RefCntBuffer& buffer,
-      const boost::container::small_vector_base<const uint8_t*>& sidecar_bounds);
-
-  Slice GetFirstSidecar() const;
-
-  RefCntSlice ExtractSidecar(size_t index) const;
-
-  // Removes all RpcSidecars.
-  void ResetRpcSidecars();
+  Sidecars& sidecars();
 
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;

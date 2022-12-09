@@ -57,15 +57,7 @@ The **Create Cluster** wizard has the following pages:
 1. [Cluster Setup](#cluster-setup)
 1. [DB Credentials](#database-credentials)
 
-### General Settings
-
-![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)
-
-Set the following options:
-
-- **Cluster Name**: Enter a name for the cluster.
-- **Provider**: Choose a cloud provider - AWS or GCP.
-- **[Database Version](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+{{% includeMarkdown "include-general-settings.md" %}}
 
 ### Cluster Setup
 
@@ -75,9 +67,9 @@ Select **Multi-Region Deployment** and set the following options.
 
 ![Add Cluster Wizard - Partition by region data distribution](/images/yb-cloud/cloud-addcluster-partition-data.png)
 
-Set **Data distribution** to **Partition by region**.
+Set **Data Distribution** to **Partition by region**.
 
-Select a fault tolerance for the regions. Fault tolerance determines how resilient each region is to node and cloud zone failures. Choose one of the following:
+Select a **Fault Tolerance** for the regions. Fault tolerance determines how resilient each region is to node and cloud zone failures. Choose one of the following:
 
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
@@ -99,9 +91,9 @@ To add additional regions to the cluster, click **Add Region**.
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
-Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
-Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
 ### Database Credentials
 

@@ -149,7 +149,7 @@ public class CustomerTaskManager {
         } else if (CustomerTask.TaskType.Delete.equals(type)) {
           // NOOP because Delete does not lock Universe.
         } else if (CustomerTask.TaskType.Restore.equals(type)) {
-          // Restore only locks the Universe but does not set backupInProgress flag.
+          // Restore locks the Universe.
           unlockUniverse = true;
         }
       } else if (CustomerTask.TaskType.Restore.equals(type)) {
@@ -167,13 +167,12 @@ public class CustomerTaskManager {
             .ifPresent(
                 u -> {
                   UniverseDefinitionTaskParams details = u.getUniverseDetails();
-                  if (details.backupInProgress || details.updateInProgress) {
+                  if (details.updateInProgress) {
                     // Create the update lambda.
                     Universe.UniverseUpdater updater =
                         universe -> {
                           UniverseDefinitionTaskParams universeDetails =
                               universe.getUniverseDetails();
-                          universeDetails.backupInProgress = false;
                           universeDetails.updateInProgress = false;
                           universe.setUniverseDetails(universeDetails);
                         };

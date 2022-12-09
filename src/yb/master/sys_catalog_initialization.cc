@@ -207,7 +207,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(
-    TableInfoMap* table_ids_map,
+    TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
     int64_t term) {
@@ -221,9 +221,9 @@ Status MakeYsqlSysCatalogTablesTransactional(
   }
 
   int num_updated_tables = 0;
-  for (const auto& iter : *table_ids_map) {
-    const auto& table_id = iter.first;
-    auto& table_info = *iter.second;
+  for (const auto& table : tables) {
+    const auto& table_id = table->id();
+    auto& table_info = *table;
 
     if (!IsPgsqlId(table_id)) {
       continue;

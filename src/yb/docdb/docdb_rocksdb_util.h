@@ -108,8 +108,11 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr);
 
+std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
+    scoped_refptr<yb::MetricEntity> entity);
+
 // Request RocksDB compaction and wait until it completes.
-Status ForceRocksDBCompact(rocksdb::DB* db, SkipFlush skip_flush = SkipFlush::kFalse);
+Status ForceRocksDBCompact(rocksdb::DB* db, const rocksdb::CompactRangeOptions& options);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 

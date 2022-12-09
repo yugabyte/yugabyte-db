@@ -32,7 +32,7 @@
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/pgsql_ybctid.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
@@ -47,6 +47,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/range.h"
@@ -525,22 +526,24 @@ Status PgApiImpl::CreateSequencesDataTable() {
 Status PgApiImpl::InsertSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
                                       uint64_t ysql_catalog_version,
+                                      bool is_db_catalog_version_mode,
                                       int64_t last_val,
                                       bool is_called) {
   return pg_session_->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
                                                    int64_t seq_oid,
                                                    uint64_t ysql_catalog_version,
+                                                   bool is_db_catalog_version_mode,
                                                    int64_t last_val,
                                                    bool is_called,
                                                    int64_t expected_last_val,
                                                    bool expected_is_called,
                                                    bool *skipped) {
   *skipped = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -548,11 +551,12 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(int64_t db_oid,
 Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
                                       uint64_t ysql_catalog_version,
+                                      bool is_db_catalog_version_mode,
                                       int64_t last_val,
                                       bool is_called,
                                       bool* skipped) {
   bool result = VERIFY_RESULT(pg_session_->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val,
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -563,9 +567,11 @@ Status PgApiImpl::UpdateSequenceTuple(int64_t db_oid,
 Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
                                     uint64_t ysql_catalog_version,
+                                    bool is_db_catalog_version_mode,
                                     int64_t *last_val,
                                     bool *is_called) {
-  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version));
+  auto res = VERIFY_RESULT(pg_session_->ReadSequenceTuple(
+    db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode));
   if (last_val) {
     *last_val = res.first;
   }
@@ -1210,7 +1216,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
                     target_desc->num_key_columns() - target_desc->num_hash_key_columns(),
                     Corruption, "Number of range components does not match column description");
           if (hashed_values.empty()) {
-            return processor(docdb::PgsqlYbctid(std::move(range_components)).Encode());
+            return processor(docdb::DocKey(std::move(range_components)).Encode());
           }
           string partition_key;
           const PartitionSchema& partition_schema = target_desc->partition_schema();
@@ -1218,7 +1224,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
           const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
 
           return processor(
-              docdb::PgsqlYbctid(hash, std::move(hashed_components),
+              docdb::DocKey(hash, std::move(hashed_components),
                 std::move(range_components)).Encode());
         }
         break;
@@ -1614,23 +1620,49 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     return tserver_shared_object_->ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
-    const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
-    for (const auto& entry : info.entries()) {
-      if (entry.db_oid() == *db_oid) {
-        catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
-        break;
-      }
-    }
-    SCHECK(catalog_version_db_index_,
-           IllegalState,
-           "Failed to find suitable shared memory index for db $0", *db_oid);
-  } else if (catalog_version_db_index_->first != *db_oid) {
+    // If db_oid is for a newly created database, it may not yet have an entry allocated in
+    // shared memory yet. Let's wait with 500ms interval until the entry shows up or until
+    // a 10-second timeout.
+    auto status = LoggedWaitFor(
+        [this, db_oid]() -> Result<bool> {
+          auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
+              false /* size_only */));
+          for (const auto& entry : info.entries()) {
+            if (entry.db_oid() == *db_oid) {
+              catalog_version_db_index_.emplace(*db_oid, entry.shm_index());
+              break;
+            }
+          }
+          return catalog_version_db_index_ ? true : false;
+        },
+        10s /* timeout */,
+        Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
+        500ms /* initial_delay */,
+        1.0 /* delay_multiplier */);
+
+    RETURN_NOT_OK_PREPEND(
+        status,
+        Format("Failed to find suitable shared memory index for db $0: $1$2",
+               *db_oid, status.ToString(),
+               status.IsTimedOut() ? ", there may be too many databases" : ""));
+
+    // For correctness return 0 because any loaded catalog cache prior to this call may
+    // be older than the current catalog version and needs to be refreshed.
+    CHECK(catalog_version_db_index_);
+    return 0;
+  }
+  if (catalog_version_db_index_->first != *db_oid) {
     return STATUS_FORMAT(
         IllegalState, "Forbidden db switch from $0 to $1 detected",
         catalog_version_db_index_->first, *db_oid);
   }
   return tserver_shared_object_->ysql_db_catalog_version(
       static_cast<size_t>(catalog_version_db_index_->second));
+}
+
+Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
+  const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(true /* size_only */));
+  return info.num_entries();
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {

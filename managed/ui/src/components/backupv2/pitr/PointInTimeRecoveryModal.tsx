@@ -225,21 +225,22 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           <div className="break" />
                           {values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE &&
                           errors.recovery_time_mode ? (
-                            <div className="pitr-error-text">
-                              <CautionIcon />
-                              &nbsp;{errors.recovery_time_mode}
-                            </div>
-                          ) : (
-                            <div className="pitr-info-text">
+                              // eslint-disable-next-line react/jsx-indent
+                              <div className="pitr-error-text">
+                                <CautionIcon />
+                                &nbsp;{errors.recovery_time_mode}
+                              </div>
+                            ) : (
+                              <div className="pitr-info-text">
                               Will recover to:{' '}
-                              <FormatUnixTimeStampTimeToTimezone
-                                timestamp={getFinalTimeStamp({
-                                  ...values,
-                                  recovery_time_mode: RECOVERY_MODE.RELATIVE
-                                })}
-                              />
-                            </div>
-                          )}
+                                <FormatUnixTimeStampTimeToTimezone
+                                  timestamp={getFinalTimeStamp({
+                                    ...values,
+                                    recovery_time_mode: RECOVERY_MODE.RELATIVE
+                                  })}
+                                />
+                              </div>
+                            )}
                         </div>
                       </div>
                     );
@@ -300,11 +301,11 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                             <div className="break" />
                             {values['recovery_time_mode'] === RECOVERY_MODE.EXACT &&
                               errors.recovery_time_mode && (
-                                <div className="pitr-error-text">
-                                  <CautionIcon />
+                              <div className="pitr-error-text">
+                                <CautionIcon />
                                   &nbsp;{errors.recovery_time_mode}
-                                </div>
-                              )}
+                              </div>
+                            )}
                           </Row>
                         </div>
                       </div>

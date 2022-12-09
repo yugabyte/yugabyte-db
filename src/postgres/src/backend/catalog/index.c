@@ -1128,7 +1128,7 @@ index_create(Relation heapRelation,
 
 		if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
 		{
-			YBRecordPinDependency(&myself, shared_relation);
+			YbRecordPinDependency(&myself, shared_relation);
 		}
 		else
 		{

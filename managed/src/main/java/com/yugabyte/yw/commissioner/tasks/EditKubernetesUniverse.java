@@ -127,7 +127,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().getPrimaryCluster(),
               universeDetails.getPrimaryCluster(),
               masterAddresses,
-              /*restartAllPods*/ false);
+              false /* restartAllPods */);
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -361,6 +361,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Update the universe to the new state.
     createSingleKubernetesExecutorTask(
         KubernetesCommandExecutor.CommandType.POD_INFO, newPI, isReadOnlyCluster);
+
+    if (!mastersToAdd.isEmpty()) {
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+    }
+
     return !mastersToAdd.isEmpty();
   }
 
@@ -429,6 +436,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     createSingleKubernetesExecutorTask(
         KubernetesCommandExecutor.CommandType.POD_INFO, activeZones, isReadOnlyCluster);
+
+    // Copy the source root certificate to the new pods.
+    createTransferXClusterCertsCopyTasks(
+        podsToAdd, getUniverse(), SubTaskGroupType.ConfigureUniverse);
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
