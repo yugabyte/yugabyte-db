@@ -4490,7 +4490,7 @@ CREATE TABLE ischk_d1 PARTITION OF ischk FOR VALUES IN (0);
 CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
 CREATE INDEX ischk_idx ON ischk USING gin (b);
 /*+ IndexScan(ischk ischk_idx) */
-EXPLAIN SELECT * FROM ischk WHERE b = 'x';
+EXPLAIN (COSTS false) SELECT * FROM ischk WHERE b = 'x';
 LOG:  available indexes for IndexScan(ischk_d1): ischk_d1_b_idx
 LOG:  available indexes for IndexScan(ischk_d2): ischk_d2_b_idx
 LOG:  pg_hint_plan:
@@ -4500,17 +4500,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- Append  (cost=10000000000.00..20000000042.04 rows=8 width=64)
-   ->  Seq Scan on ischk_d1 ischk_1  (cost=10000000000.00..10000000021.00 rows=4 width=64)
+               QUERY PLAN                
+-----------------------------------------
+ Append
+   ->  Seq Scan on ischk_d1 ischk_1
          Filter: (b = '''x'''::tsvector)
-   ->  Seq Scan on ischk_d2 ischk_2  (cost=10000000000.00..10000000021.00 rows=4 width=64)
+   ->  Seq Scan on ischk_d2 ischk_2
          Filter: (b = '''x'''::tsvector)
- JIT:
-   Functions: 4
-   Options: Inlining true, Optimization true, Expressions true, Deforming true
-(8 rows)
+(5 rows)
 
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
