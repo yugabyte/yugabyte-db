@@ -41,6 +41,8 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`
 
+    Use double quotes to enclose any settings having commas within.
+
     These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
 
 - Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
@@ -57,6 +59,8 @@ After configuring the YB-TServer and starting the cluster, create the `pgAudit` 
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
+You only need to run this statement on a single node, and it will apply across your cluster.
+
 ## Customize audit logging
 
 You can customize YSQL audit logging using the `pgAudit` flags, as per the following table.
@@ -72,7 +76,7 @@ You can customize YSQL audit logging using the `pgAudit` flags, as per the follo
 | pgaudit.log_statement_once | ON - Specifies whether logging will include the statement text and parameters with the first log entry for a statement or sub-statement combination or with every entry. Disabling this setting results in less verbose logging but may make it more difficult to determine the statement that generated a log entry. | OFF |
 | pgaudit.role | Specifies the master role to use for object audit logging. Multiple audit roles can be defined by granting them to the master role. This allows multiple groups to be in charge of different aspects of audit logging. | None |
 
-## Example
+## Example 1
 
 Use the following steps to configure audit logging in a YugabyteDB cluster with bare minimum configurations.
 
@@ -94,7 +98,7 @@ SET pgaudit.log_level=notice;
 
 ### Load the pgAudit extension
 
-To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension as follows:
+To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension on any node as follows:
 
 ```sql
 yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -117,6 +121,92 @@ CREATE TABLE
 ```
 
 Notice that audit logs are generated for DDL statements.
+
+## Example 2
+
+Use the following steps to configure advanced audit logging in a YugabyteDB cluster.
+
+### Enable audit logging
+
+Start the YugabyteDB cluster with the following audit logging configuration:
+
+```shell
+--ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
+```
+
+### Load the pgAudit extension
+
+To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension on any node as follows:
+
+```sql
+yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
+```
+
+### Generate a scenario with concurrent transactions
+
+Start two sessions and execute transactions concurrently as follows:
+
+<table class="no-alter-colors">
+  <thead>
+    <tr>
+    <th>
+    Client 1
+    </th>
+    <th>
+    Client 2
+    </th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr>
+   <td>
+
+```sql
+yugabyte=# BEGIN;
+yugabyte=# INSERT INTO my_table VALUES (5,2,2);
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+yugabyte=# BEGIN;
+yugabyte=# INSERT INTO my_table VALUES (6,2,2);
+yugabyte=# COMMIT;
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```sql
+yugabyte=# INSERT INTO my_table VALUES (7,2,2);
+COMMIT;
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+
+</tbody>
+</table>
+
+Your PostgreSQL log should include output similar to the following:
+
+```output
+NOTICE:  AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.employees,
+"create table employees ( empno int, ename text, address text, salary int,
+account_number text );",<not logged>
+CREATE TABLE
+```
 
 ## Read more
 
