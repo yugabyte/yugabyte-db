@@ -20,9 +20,9 @@ type: docs
   </li>
 </ul>
 
-LDAP Authentication is similar to password authentication, except that it uses the LDAP protocol to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database and have appropriate permissions.
+LDAP Authentication in YugabyteDB is similar to password authentication, except that it uses the LDAP protocol to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database and have appropriate permissions.
 
-You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
+You enable LDAP authentication in the YugabyteDB cluster by setting the LDAP configuration with the <code>[ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
 
 This section describes how to configure YugabyteDB Anywhere to use an LDAP server such as Active Directory with TLS.
 
@@ -38,13 +38,13 @@ host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=l
 
 For more information, see [Edit configuration flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/).
 
-When entering the flag value in YugabyteDB Anywhere, do not enclose it in single quotes, as you would in a Linux shell.
+When entering the flag value in YugabyteDB Anywhere, **do not** enclose it in single quotes, as you would in a Linux shell.
 
 The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to login as `yugabyte` to set up the roles and permissions for LDAP users.
 
 The second HBA rule configures LDAP authentication for all other user-host pairs using a [search+bind](../../../secure/authentication/ldap-authentication/#search-bind-mode) configuration. The YB-TServer binds to the LDAP directory using a fixed user name and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
 
-Once the user is found, to verify that the login is correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
+Once the user is found, the server disconnects and rebinds to the directory as this user using the password specified by the client to verify that the login is correct.
 
 For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
@@ -54,7 +54,7 @@ Consider the following example:
 
 1. Configure YugabyteDB Anywhere with the `ysql_hba_conf_csv` flag, as outlined in [Bind to the LDAP server using TLS](#bind-to-the-ldap-server-using-tls).
 
-1. Create a user in the Active Directory and validate a successful search for that user, as follows:
+1. Create a user in Active Directory and validate a successful search for that user, as follows:
 
     ```sh
     ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
@@ -97,7 +97,7 @@ Consider the following example:
     # numEntries: 1
     ```
 
-    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.
+    If instead you see a message similar to `ldap_sasl_bind(SIMPLE): Can't contact LDAP server (-1)`, then you have a network, certificate, or binding (authentication) problem.  See [Troubleshooting](#troubleshooting) below.
 
 1. Create the user in YugabyteDB, as follows:
 
@@ -136,3 +136,24 @@ Consider the following example:
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
+
+## Troubleshooting
+
+Laboratory machines sometimes lack an appropriate intermediate certificate in order to trust the LDAP server certificate.  You can prepend the environment variable `LDAPTLS_REQCERT=never` to test connectivity with ldapsearch:
+
+```sh
+LDAPTLS_REQCERT=never ldapsearch -x -H ldaps://ldapserver.example.org -b dc=example,dc=org 'uid=adam' -D "cn=admin,dc=example,dc=org" -w adminpassword
+```
+
+There are two cases where explicit intermediate CA configuration is needed:
+
+* ldapsearch works correctly with `LDAPTLS_REQCERT=never` but fails otherwise
+* ldapsearch works correctly, but database authentication still fails with a Postgres error message like `LDAP diagnostics: error:1416F086:SSL routines:tls_process_server_certificate:certificate verify failed`
+
+In either case, you will need to define the intermediate CA in $HOME/ldaprc (or $HOME/.ldaprc if you prefer) for the yugabyte user.  The following example file /home/yugabyte/ldaprc shows the `TLS_CACERT` option pointing to the CA certificate used by the LDAP server.  This CA file will need to be obtained and placed locally on the client machine.
+
+```output
+TLS_CACERT /etc/ssl/certs/ca-bundle.trust.crt
+```
+
+Note the `TLS_CACERT` option *must* be in $HOME/ldaprc -- it will not work in the system-wide openldap configuration file (/etc/openldap/ldap.conf).
