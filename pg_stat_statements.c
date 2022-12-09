@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pg_stat_statements.c
- * 
+ *
  * Part of pg_stat_statements.c in PostgreSQL 10.
  *
  * Copyright (c) 2008-2020, PostgreSQL Global Development Group

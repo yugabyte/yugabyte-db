@@ -196,10 +196,10 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 				 */
 				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
 										   restrictlist);
-				
+
 				joinrel->rows = adjust_rows(joinrel->rows, domultiply);
 			}
-			
+
 		}
 	}
 	/* !!! END: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
