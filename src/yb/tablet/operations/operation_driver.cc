@@ -206,7 +206,7 @@ void OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_
 
 void OperationDriver::PrepareAndStartTask() {
   TRACE_EVENT_FLOW_END0("operation", "PrepareAndStartTask", this);
-  Status prepare_status = PrepareAndStart();
+  Status prepare_status = PrepareAndStart(IsLeaderSide::kFalse);
   if (PREDICT_FALSE(!prepare_status.ok())) {
     HandleFailure(prepare_status);
   }
@@ -223,14 +223,14 @@ bool OperationDriver::StartOperation() {
   return true;
 }
 
-Status OperationDriver::PrepareAndStart() {
+Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   ADOPT_TRACE(trace());
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
   if (operation_) {
-    RETURN_NOT_OK(operation_->Prepare());
+    RETURN_NOT_OK(operation_->Prepare(is_leader_side));
   }
 
   // Only take the lock long enough to take a local copy of the
