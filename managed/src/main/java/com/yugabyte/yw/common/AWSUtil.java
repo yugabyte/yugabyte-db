@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.common.Util;
+import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
@@ -47,6 +48,7 @@ public class AWSUtil {
     }
     for (String location : locations) {
       try {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
         AmazonS3 s3Client = createS3Client(configData);
         String[] bucketSplit = getSplitLocationValue(location);
         String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
@@ -68,6 +70,8 @@ public class AWSUtil {
                 "Credential cannot list objects in the specified backup location %s", location),
             e);
         return false;
+      } finally {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }
     return true;
@@ -81,6 +85,7 @@ public class AWSUtil {
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
       AmazonS3 s3Client = createS3Client(configData);
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
@@ -94,6 +99,8 @@ public class AWSUtil {
     } catch (Exception e) {
       log.error("Error while deleting key object from bucket " + bucketName, e);
       throw e;
+    } finally {
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
   }
 
@@ -138,6 +145,7 @@ public class AWSUtil {
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
         AmazonS3 s3Client = createS3Client(configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
@@ -159,6 +167,8 @@ public class AWSUtil {
       } catch (Exception e) {
         log.error(" Error in deleting objects at location " + backupLocation, e);
         throw e;
+      } finally {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
       }
     }
   }
