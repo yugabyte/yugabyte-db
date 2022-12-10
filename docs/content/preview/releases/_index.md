@@ -49,7 +49,7 @@ The information in this section is a summary for convenience only. For complete 
 | :------------- | :------- | :------------------------- | :---------------- |
 | [v2.17](release-notes/v2.17/) <span class='metadata-tag-green'>Latest</span> | December 8, 2022 | n/a | n/a |
 | [v2.16]() | not yet released | (8 months post-release) | (14 months post-release) |
-| [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>Current Stable</span> | July 14, 2022 | July 14, 2023 | January 14, 2024 |
+| [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>Current Stable</span> | July 14, 2022 | January 14, 2024 | July 14, 2024 |
 | [v2.12](release-notes/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | May 15, 2023 |
 | [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
