@@ -1901,17 +1901,18 @@ YBIsDBConnectionValid()
 	 *   the MyDatabaseId DB is dropped these read operations will fail due to "Not found" error.
 	 */
 
+	bool result = false;
 	PG_TRY();
 	{
 		const char *dbname = get_database_name(MyDatabaseId);
-		return (dbname != NULL && get_database_oid(dbname, true) == MyDatabaseId);
+		result = (dbname != NULL && get_database_oid(dbname, true) == MyDatabaseId);
 	}
 	PG_CATCH();
 	{
 		FlushErrorState();
 	}
 	PG_END_TRY();
-	return false;
+	return result;
 }
 
 void
