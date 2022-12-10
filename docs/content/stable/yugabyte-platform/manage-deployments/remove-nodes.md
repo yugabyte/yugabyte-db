@@ -18,8 +18,9 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 When this happens, new Master leaders are elected for the underlying data shards, but since the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
-- Step 2: [Release instance](#release-instance)
-- Step 3: [Delete node](#delete-node)
+- Step 2: [Start a new master](#start-a-new-master) if necessary
+- Step 3: [Release instance](#release-instance)
+- Step 4: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
 
