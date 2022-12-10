@@ -4624,9 +4624,9 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 		foreach (lc, initial_rels)
 		{
 			ListCell *lcp;
-			RelOptInfo *rel = (RelOptInfo *) lfirst(lc);
+			RelOptInfo *initrel = (RelOptInfo *) lfirst(lc);
 
-			foreach (lcp, rel->partial_pathlist)
+			foreach (lcp, initrel->partial_pathlist)
 			{
 				Path *path = (Path *) lfirst(lcp);
 
@@ -4732,11 +4732,11 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 
 		if (inhibit_nonparallel)
 		{
-			ListCell *lc;
+			ListCell *lcr;
 
-			foreach(lc, rel->pathlist)
+			foreach(lcr, rel->pathlist)
 			{
-				Path *path = (Path *) lfirst(lc);
+				Path *path = (Path *) lfirst(lcr);
 
 				if (path->startup_cost < disable_cost)
 				{
