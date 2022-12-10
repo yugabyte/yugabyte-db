@@ -21,7 +21,7 @@ When this happens, new Master leaders are elected for the underlying data shards
 
 - Step 1: [Remove node](#remove-node)
 - Step 2: [Start a new master](#start-a-new-master) if necessary
-- Step 3: [Release instance](#release-instance)
+- Step 3: [Release node instance](#release-node-instance)
 - Step 4: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
@@ -46,7 +46,7 @@ The action to remove a node is available from the following internal states of t
 
 Taking this action transfers the node to a Removing and then Removed internal state, as follows:
 
-1. If the node is running a Master process, the Master is removed from the master quorum. The master process is stopped if the node is still reachable. YBA waits for a new master leader to be elected. Note that, at this point, there are less than RF (replication factor) number of masters running, so the resilience of the master quorum is impacted.
+1. If the node is running a YB-Master process, the YB-Master is removed from the master quorum. The YB-Master process is stopped if the node is still reachable. YugabyteDB Anywhere waits for a new master leader to be elected. Note that, at this point, there are less than replication factor (RF) number of masters running, so the resilience of the master quorum is impacted.
 2. The TServer is marked as blacklisted on the Master leader.
 3. There is a wait for tablet quorums to remove the blacklisted TServer.
 4. Data migration is performed and the TServer process stops only if it is reachable.
@@ -65,9 +65,14 @@ To start a new master,
 
 Taking this action performs the following steps:
 1. Sets up the master configuration on this node.
+
 2. Starts a new master process on this node (in shell mode).
+
 3. Adds this new master to the existing master quorum.
+
 4. Updates the master addresses gflag on all other nodes to inform them of this new master.
+
+   ![Start master](/images/yp/start-master.png)
 
 ## Release node instance
 
