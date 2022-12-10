@@ -7,7 +7,7 @@ AGType parser and driver support for [Apache AGE](https://age.apache.org/), grap
 * Cypher query support for 3rd. Party sql driver (enables to use cypher queries directly)
 
 ### Prerequisites
-* over Go 1.16
+* over Go 1.18 / 1.19
 * This module runs on golang standard api [database/sql](https://golang.org/pkg/database/sql/) and [antlr4-python3](https://github.com/antlr/antlr4/tree/master/runtime/Go/antlr)
 
 
