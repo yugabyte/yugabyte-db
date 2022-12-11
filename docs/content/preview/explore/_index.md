@@ -232,9 +232,9 @@ ycqlsh>
 
 ## Set up YB Workload Simulator
 
-YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
+YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB. 
 
-For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features cluster- and topology-aware connection load balancing. For more information about the workload application, refer to [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
@@ -277,6 +277,7 @@ java -Dnode=<host name> \
     -Ddbname=<dbname> \
     -Ddbuser=<dbuser> \
     -Ddbpassword=<dbpassword> \
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone>
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
@@ -288,6 +289,12 @@ Replace the following:
 - `<host name>` - the host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - the name of the database you are connecting to (the default is yugabyte).
 - `<dbuser>` and `<dbpassword>` - the username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
+- `<cloud.region.zone>` - the zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
+
+    ```sh
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a
+    ```
+
 - `<path-to-cluster-certificate>` with the path to the [cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/) on your computer.
 
   </div>
@@ -296,16 +303,15 @@ Replace the following:
 To start the application against a running local cluster, use the following command:
 
 ```sh
-java -jar ./yb-simu-base-app.jar
+java -jar \
+    -Dnode=127.0.0.1 \
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east.us-east-1a,aws.us-east.us-east-2a,aws.us-east.us-east-3a \
+    ./yb-simu-base-app.jar
 ```
 
-By default, the application connects to a local YugabyteDB cluster at 127.0.0.1.
+The `-Dnode` flag specifies the IP address of the node to connect to.
 
-To connect to a different address or node, use the `-Dnode` flag to specify an IP address. For example:
-
-```sh
-java -Dnode=127.0.0.2 -jar ./yb-simu-base-app.jar
-```
+The `-Dspring.datasource` flag enables [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) for the application connections. If you created a cluster using different zones, replace the zones with the corresponding zones in your cluster, comma-separated, in the format `cloud.region.zone`.
 
   </div>
 </div>
