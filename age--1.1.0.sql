@@ -47,7 +47,8 @@ CREATE TABLE ag_label (
   graph oid NOT NULL,
   id label_id,
   kind label_kind,
-  relation regclass NOT NULL
+  relation regclass NOT NULL,
+  seq_name name NOT NULL
 ) WITH (OIDS);
 
 CREATE UNIQUE INDEX ag_label_oid_index ON ag_label USING btree (oid);
@@ -62,6 +63,9 @@ USING btree (graph, id);
 
 CREATE UNIQUE INDEX ag_label_relation_index ON ag_label USING btree (relation);
 
+CREATE UNIQUE INDEX ag_label_seq_name_graph_index
+ON ag_label
+USING btree (seq_name, graph);
 --
 -- catalog lookup functions
 --
@@ -4154,6 +4158,13 @@ CREATE FUNCTION ag_catalog.age_delete_global_graphs(agtype)
 RETURNS boolean
 LANGUAGE c
 STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.create_complete_graph(graph_name name, nodes int, edge_label name, node_label name = NULL)
+RETURNS void
+LANGUAGE c
+CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 

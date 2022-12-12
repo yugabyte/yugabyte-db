@@ -57,6 +57,8 @@
 #ifndef AGE_ENTITY_CREATOR_H
 #define AGE_ENTITY_CREATOR_H
 
+agtype* create_empty_agtype(void);
+
 agtype* create_agtype_from_list(char **header, char **fields,
                                 size_t fields_len, int64 vertex_id);
 agtype* create_agtype_from_list_i(char **header, char **fields,

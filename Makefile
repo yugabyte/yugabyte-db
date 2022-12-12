@@ -63,6 +63,7 @@ OBJS = src/backend/age.o \
        src/backend/utils/adt/ag_float8_supp.o \
        src/backend/utils/adt/graphid.o \
        src/backend/utils/ag_func.o \
+       src/backend/utils/graph_generation.o \
        src/backend/utils/cache/ag_cache.o \
        src/backend/utils/load/ag_load_labels.o \
        src/backend/utils/load/ag_load_edges.o \
@@ -95,7 +96,9 @@ REGRESS = scan \
           age_load \
           index \
           analyze \
+          graph_generation \
           drop
+          
 
 srcdir=`pwd`
 

@@ -308,7 +308,7 @@ Oid create_label(char *graph_name, char *label_name, char label_type,
     label_id = get_new_label_id(graph_oid, nsp_id);
 
     label_oid = insert_label(label_name, graph_oid, label_id, label_type,
-                             relation_id);
+                             relation_id,seq_name);
 
     CommandCounterIncrement();
 

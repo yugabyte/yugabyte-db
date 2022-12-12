@@ -4526,7 +4526,7 @@ static char *get_label_name(const char *graph_name, int64 graphid)
     tupdesc = RelationGetDescr(ag_label);
 
     /* bail if the number of columns differs */
-    if (tupdesc->natts != 5)
+    if (tupdesc->natts != 6)
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_TABLE),
                  errmsg("Invalid number of attributes for ag_catalog.ag_label")));

@@ -44,11 +44,12 @@
 #include "utils/graphid.h"
 
 // INSERT INTO ag_catalog.ag_label
-// VALUES (label_name, label_graph, label_id, label_kind, label_relation)
+// VALUES (label_name, label_graph, label_id, label_kind, label_relation, seq_name)
 Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
-                 char label_kind, Oid label_relation)
+                 char label_kind, Oid label_relation, const char *seq_name)
 {
     NameData label_name_data;
+    NameData seq_name_data;
     Datum values[Natts_ag_label];
     bool nulls[Natts_ag_label];
     Relation ag_label;
@@ -65,6 +66,7 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
     AssertArg(label_kind == LABEL_KIND_VERTEX ||
               label_kind == LABEL_KIND_EDGE);
     AssertArg(OidIsValid(label_relation));
+    AssertArg(seq_name);
 
     namestrcpy(&label_name_data, label_name);
     values[Anum_ag_label_name - 1] = NameGetDatum(&label_name_data);
@@ -81,6 +83,10 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
 
     values[Anum_ag_label_relation - 1] = ObjectIdGetDatum(label_relation);
     nulls[Anum_ag_label_relation - 1] = false;
+
+    namestrcpy(&seq_name_data, seq_name);
+    values[Anum_ag_label_seq_name - 1] = NameGetDatum(&seq_name_data);
+    nulls[Anum_ag_label_seq_name - 1] = false;
 
     ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
 

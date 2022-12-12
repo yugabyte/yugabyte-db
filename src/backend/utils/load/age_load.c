@@ -58,7 +58,7 @@
 #include "utils/load/ag_load_labels.h"
 #include "utils/load/ag_load_edges.h"
 
-static agtype* create_empty_agtype(void)
+agtype* create_empty_agtype(void)
 {
     agtype_in_state result;
 

@@ -49,8 +49,10 @@
 #define Anum_ag_label_id 3
 #define Anum_ag_label_kind 4
 #define Anum_ag_label_relation 5
+#define Anum_ag_label_seq_name 6
 
-#define Natts_ag_label 5
+
+#define Natts_ag_label 6
 
 #define ag_label_relation_id() ag_relation_id("ag_label", "table")
 #define ag_label_oid_index_id() ag_relation_id("ag_label_oid_index", "index")
@@ -60,6 +62,8 @@
     ag_relation_id("ag_label_graph_id_index", "index")
 #define ag_label_relation_index_id() \
     ag_relation_id("ag_label_relation_index", "index")
+#define ag_label_seq_name_graph_index_id() \
+    ag_relation_id("ag_label_seq_name_graph_index", "index")
 
 #define LABEL_ID_SEQ_NAME "_label_id_seq"
 
@@ -67,7 +71,7 @@
 #define LABEL_KIND_EDGE 'e'
 
 Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
-                 char label_kind, Oid label_relation);
+                 char label_kind, Oid label_relation, const char *seq_name);
 void delete_label(Oid relation);
 
 Oid get_label_oid(const char *label_name, Oid label_graph);

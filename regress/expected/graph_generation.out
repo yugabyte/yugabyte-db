@@ -1,0 +1,111 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path = ag_catalog;
+SELECT * FROM create_complete_graph('gp1',5,'edges','vertices');
+NOTICE:  graph "gp1" has been created
+NOTICE:  VLabel "vertices" has been created
+NOTICE:  ELabel "edges" has been created
+ create_complete_graph 
+-----------------------
+ 
+(1 row)
+
+SELECT COUNT(*) FROM gp1."edges";
+ count 
+-------
+    10
+(1 row)
+
+SELECT COUNT(*) FROM gp1."vertices";
+ count 
+-------
+     5
+(1 row)
+
+SELECT * FROM cypher('gp1', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
+                                                             n                                                              
+----------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "edges", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842629, "label": "edges", "end_id": 844424930131971, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842626, "label": "edges", "end_id": 844424930131971, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842630, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842627, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131969, "properties": {}}::edge
+ {"id": 1125899906842632, "label": "edges", "end_id": 844424930131972, "start_id": 844424930131971, "properties": {}}::edge
+ {"id": 1125899906842631, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131970, "properties": {}}::edge
+ {"id": 1125899906842634, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131972, "properties": {}}::edge
+ {"id": 1125899906842633, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131971, "properties": {}}::edge
+ {"id": 1125899906842628, "label": "edges", "end_id": 844424930131973, "start_id": 844424930131969, "properties": {}}::edge
+(10 rows)
+
+SELECT * FROM create_complete_graph('gp1',5,'edges','vertices');
+ create_complete_graph 
+-----------------------
+ 
+(1 row)
+
+SELECT COUNT(*) FROM gp1."edges";
+ count 
+-------
+    20
+(1 row)
+
+SELECT COUNT(*) FROM gp1."vertices";
+ count 
+-------
+    10
+(1 row)
+
+SELECT * FROM create_complete_graph('gp2',5,'edges');
+NOTICE:  graph "gp2" has been created
+NOTICE:  ELabel "edges" has been created
+ create_complete_graph 
+-----------------------
+ 
+(1 row)
+
+SELECT * FROM create_complete_graph('gp3',5, NULL);
+ERROR:  edge label can not be NULL
+SELECT * FROM create_complete_graph('gp4',NULL,NULL);
+ERROR:  number of nodes can not be NULL
+SELECT * FROM create_complete_graph(NULL,NULL,NULL);
+ERROR:  graph name can not be NULL
+SELECT drop_graph('gp1', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table gp1._ag_label_vertex
+drop cascades to table gp1._ag_label_edge
+drop cascades to table gp1.vertices
+drop cascades to table gp1.edges
+NOTICE:  graph "gp1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('gp2', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table gp2._ag_label_vertex
+drop cascades to table gp2._ag_label_edge
+drop cascades to table gp2.edges
+NOTICE:  graph "gp2" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
