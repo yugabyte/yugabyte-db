@@ -3,8 +3,6 @@ ALTER SYSTEM SET session_preload_libraries TO 'pg_hint_plan';
 SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
-CREATE TABLE s1.tl (a int);
-INSERT INTO s1.tl (SELECT a FROM generate_series(0, 100000) a);
 -- Queries on ordinary tables with default setting
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
    QUERY PLAN   
