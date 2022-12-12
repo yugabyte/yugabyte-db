@@ -5,11 +5,12 @@
 package config
 
 import (
-	"encoding/base64"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
+
 	// "path/filepath"
 	"crypto/rand"
 	"strings"
@@ -19,8 +20,8 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 // PlatformAppSecret is special cased because it is not configurable by the user.
@@ -121,9 +122,9 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 
 		// The name "yamlPath" is what the function will be called
 		// in the template text.
-		"yamlPath":          		GetYamlPathData,
-		"installRoot":       		common.GetInstallRoot,
-		"installVersionDir": 		common.GetInstallVersionDir,
+		"yamlPath":          GetYamlPathData,
+		"installRoot":       common.GetInstallRoot,
+		"installVersionDir": common.GetInstallVersionDir,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
