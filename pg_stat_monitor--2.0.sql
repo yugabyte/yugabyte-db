@@ -231,9 +231,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	(string_to_array(resp_calls, ',')) resp_calls,
 	cpu_user_time,
 	cpu_sys_time,
-    wal_records,
-    wal_fpi,
-    wal_bytes,
 	bucket_done
 FROM pg_stat_monitor_internal(TRUE) p, pg_database d  WHERE dbid = oid
 ORDER BY bucket_start_time;
