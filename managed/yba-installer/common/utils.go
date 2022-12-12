@@ -26,9 +26,6 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-// SystemdDir service file directory.
-const SystemdDir string = "/etc/systemd/system"
-
 // InputFile where installer config settings are specified.
 var InputFile = "/opt/yba-ctl/yba-ctl.yml"
 
@@ -39,12 +36,6 @@ var InstalledFile = "/opt/yba-ctl/.installed"
 
 // BundledPostgresName is postgres package we ship with yba_installer_full.
 var BundledPostgresName = "postgresql-9.6.24-1-linux-x64-binaries.tar.gz"
-
-// ConfigDir is directory where service config file templates are stored (relative to yba-ctl)
-var ConfigDir = "templates"
-
-// CronDir is directory where non-root cron scripts are stored (relative to yba-ctl)
-var CronDir = "cron"
 
 var skipConfirmation = false
 
@@ -59,19 +50,6 @@ var versionMetadataJSON = "version_metadata.json"
 var javaBinaryName = "OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz"
 
 var pemToKeystoreConverter = "pemtokeystore-linux-amd64"
-
-// Variables that need to be set before use.
-
-// Version of yba-ctl
-var Version string
-// InstallRoot where YBA is installed.
-var InstallRoot string
-// InstallVersionDir where the yba_installer directory is.
-var InstallVersionDir string
-
-var currentUser string
-
-var yugabundleBinary string
 
 // DetectOS detects the operating system yba-installer is running on.
 func DetectOS() string {
@@ -197,19 +175,6 @@ func HasSudoAccess() bool {
 		return true
 	}
 	return false
-}
-
-// GetInstallRoot returns the InstallRoot where YBA is installed.
-func GetInstallRoot() string {
-
-	return viper.GetString("installRoot")
-
-}
-
-// GetInstallVersionDir returns the yba_installer directory inside InstallRoot
-func GetInstallVersionDir() string {
-
-	return GetInstallRoot() + "/yba_installer-" + Version
 }
 
 // GetCurrentUser returns the user yba-ctl was run as.
@@ -372,9 +337,12 @@ func GetReferenceYaml() string {
 func init() {
 	InitViper()
 	// Init globals that rely on viper
-	Version = GetVersion()
-	InstallRoot = GetInstallRoot()
-	InstallVersionDir  = GetInstallVersionDir()
-	yugabundleBinary  = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
-	currentUser  = GetCurrentUser()
+
+	/*
+		Version = GetVersion()
+		InstallRoot = GetInstallRoot()
+		InstallVersionDir = GetInstallVersionDir()
+		yugabundleBinary = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
+		currentUser = GetCurrentUser()
+	*/
 }
