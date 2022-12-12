@@ -365,9 +365,21 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsGroup: 10001
     ```
 
-  - Add `tolerations` in Master and Tserver pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core) to know more about tolerations.
+  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with Taints. We apply `Taints` on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure pods must not schedule onto inappropriate nodes. We can use it to prevent the scheduling of YugabyteDB pods on low resources nodes or schedule on dedicated nodes to YugabyteDB. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core) to know more about tolerations.
 
     ```yml
+    ## Example
+    ##
+    ## Consider node has following taint.
+    ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
+    ##
+    ## Following toleration can be used on pod.
+    ## tolerations:
+    ## - key: dedicated
+    ##   operator: Equal
+    ##   value: experimental
+    ##   effect: NoSchedule
+
     master:
       tolerations: []
 
@@ -375,9 +387,21 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       tolerations: []
     ```
 
-  - Add `affinity` in Master and Tserver pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core) to know more affinity.
+  - Add `affinity` in Master and Tserver pods. The `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. A user needs to use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core) to know more about `affinity`.
 
     ```yml
+    ## Following example can be used to prevent scheduling of multiple master pods on single k8s node.
+    ## affinity:
+    ##   podAntiAffinity:
+    ##     requiredDuringSchedulingIgnoredDuringExecution:
+    ##     - labelSelector:
+    ##         matchExpressions:
+    ##         - key: app
+    ##           operator: In
+    ##           values:
+    ##           - "yb-master"
+    ##       topologyKey: kubernetes.io/hostname
+
     master:
       affinity: {}
 
@@ -385,9 +409,13 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       affinity: {}
     ```
 
-  - Add `annotations` to Master and Tserver pods.
+  - Add `annotations` to Master and Tserver pods. The Kubernetes `annotations` can attach arbitrary metadata to objects. Follow the [link](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) to know more about it.
 
     ```yml
+    ## Example
+    ## podAnnotations:
+    ##   application: "yugabytedb"
+
     master:
       podAnnotations: {}
 
@@ -395,9 +423,14 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       podAnnotations: {}
     ```
 
-  - Add `labels` to Master and Tserver pods.
+  - Add `labels` to Master and Tserver pods. The Kubernetes `labels` are key/value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to users. Follow the [link](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/) to know more about it.
 
     ```yml
+    ## Example
+    ## podLabels:
+    ##   environment: production
+    ##   app: yugabytedb
+
     master:
       podLabels: {}
 
@@ -410,6 +443,8 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
     2. Disk IO
     3. Port available for bind
     4. Ulimit
+
+    Follow the [link](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites) to know more YugabyteDB prerequisites.
 
     ```yml
     preflight:
