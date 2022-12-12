@@ -705,7 +705,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    (*output) << Substitute(
+    (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
         // State, Hidden, num SST files, on-disk size, consensus configuration, last status
