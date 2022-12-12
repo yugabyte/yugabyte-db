@@ -14,23 +14,28 @@ type: docs
 
 Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
-{{< warning title="IP allow list" >}}
-
-Before you can connect using a shell or other client, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
-
-{{< /warning >}}
-
-{{< note title="Multi-region clusters" >}}
-
-Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you cannot connect to multi-region clusters from a desktop shell. Use the [Cloud shell](../connect-cloud-shell/) instead.
-
-{{< /note >}}
-
-{{< note title="Note" >}}
-
 When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
-{{< /note >}}
+## Prerequisites
+
+Before you can connect a desktop client to a YugabyteDB Managed cluster, you need to do the following:
+
+- Configure network access
+- Download the cluster certificate
+
+### Network access
+
+Before you can connect using a shell or other client, you need to add your computer to the cluster IP allow list.
+
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings** tab. Alternatively, use the [Cloud shell](../connect-cloud-shell/) instead.
+
+For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
+
+### Cluster certificate
+
+YugabyteDB Managed clusters have TLS/SSL (encryption in-transit) enabled. You need to download the cluster certificate to your computer.
+
+For information on SSL in YugabyteDB Managed, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
 
 ## Connect using a client shell
 

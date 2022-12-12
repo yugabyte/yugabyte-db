@@ -173,8 +173,8 @@
       After=network-online.target
 
       [Service]
-      User=yugabyte
-      Group=yugabyte
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
       Type=simple
       ExecStart=/usr/local/bin/prometheus \
       --config.file {{ .ConfFileLocation }} \

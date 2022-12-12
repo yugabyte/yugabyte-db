@@ -15,7 +15,7 @@ import { withRouter } from 'react-router';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
 import { useSelector } from 'react-redux';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
-import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { isYbcInstalledInUniverse } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import './UniverseLevelBackup.scss';
@@ -30,9 +30,9 @@ interface UniverseBackupProps {
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
-  const YBCEnabled =
+  const YBCInstalled =
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
-    isYbcEnabledUniverse(currentUniverse.data.universeDetails);
+    isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
 
   const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
   const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
@@ -48,7 +48,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
           visible={showAdvancedRestore}
           currentUniverseUUID={uuid}
         />
-        {YBCEnabled && (
+        {YBCInstalled && (
           <BackupThrottleParameters
             visible={showThrottleParametersModal}
             onHide={() => setShowThrottleParametersModal(false)}
@@ -87,7 +87,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
             >
               Advanced Restore
             </MenuItem>
-            {YBCEnabled && (
+            {YBCInstalled && (
               <MenuItem
                 onClick={(e) => {
                   e.stopPropagation();

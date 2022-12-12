@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 ### General Settings
 
 ![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)

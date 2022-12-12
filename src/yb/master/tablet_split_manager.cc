@@ -414,7 +414,7 @@ class TabletReplicaMapCache {
     } else {
       const std::shared_ptr<const TabletReplicaMap> replicas = tablet.GetReplicaLocations();
       if (replicas->empty()) {
-        LOG(WARNING) << "No replicas found for tablet. Id: " << tablet.id();
+        VLOG(4) << "No replicas found for tablet. Id: " << tablet.id();
       }
       return replica_cache_[tablet.id()] = replicas;
     }

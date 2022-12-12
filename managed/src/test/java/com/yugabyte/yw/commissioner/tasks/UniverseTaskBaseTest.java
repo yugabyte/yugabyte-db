@@ -2,6 +2,68 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.converters.Nullable;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.api.Play;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.aMapWithSize;
+import static org.hamcrest.Matchers.anEmptyMap;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.hasProperty;
+import static org.hamcrest.Matchers.hasValue;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -10,42 +72,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.TaskExecutor;
-import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.converters.Nullable;
-import org.mockito.Mockito;
-import play.api.Play;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTaskBaseTest extends FakeDBApplication {
 
@@ -93,6 +120,72 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       nodes.add(node);
     }
     return nodes;
+  }
+
+  // Set up cluster with nodes in provided universe
+  private void setupCluster(Universe universe, List<NodeDetails> nodes, UUID clusterUUID) {
+    for (NodeDetails node : nodes) {
+      node.placementUuid = clusterUUID;
+    }
+    universe.getNodes().addAll(nodes);
+  }
+
+  // Set up universe with primary cluster and enableLB
+  private Universe setupUniverse(
+      Common.CloudType cloudType, Customer customer, PlacementInfo placementInfo) {
+    // Create Universe
+    Universe universe =
+        ModelFactory.createUniverse(
+            "name", UUID.randomUUID(), customer.getCustomerId(), cloudType, placementInfo);
+    // Update UserIntent
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    universeDetails.getPrimaryCluster().userIntent.enableLB = true;
+    Universe.UniverseUpdater updater =
+        u -> {
+          u.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universe.universeUUID, updater);
+
+    return universe;
+  }
+
+  private PlacementInfo setupPlacementInfo(
+      UUID providerUUID, Region region, List<NodeDetails> nodes, List<String> lbNames) {
+    // AZ and PlacementAZ
+    List<PlacementInfo.PlacementAZ> azList = new ArrayList<>();
+    for (int i = 0; i < nodes.size(); i++) {
+      UUID uuid = nodes.get(i).getAzUuid();
+      // Create AZ if doesn't exist
+      if (AvailabilityZone.get(uuid) == null) {
+        AvailabilityZone newAz = new AvailabilityZone();
+        newAz.region = region;
+        newAz.uuid = nodes.get(i).getAzUuid();
+        newAz.code = "code" + i;
+        newAz.name = "name" + i;
+        newAz.subnet = "subnet";
+        newAz.secondarySubnet = "secondarySubnet";
+        newAz.save();
+      }
+      // Create PlacementAZ
+      PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
+      placementAZ.uuid = uuid;
+      placementAZ.lbName = lbNames.get(i);
+      azList.add(placementAZ);
+    }
+    // PlacementRegion
+    PlacementInfo.PlacementRegion placementRegion = new PlacementInfo.PlacementRegion();
+    placementRegion.azList = azList;
+    List<PlacementInfo.PlacementRegion> regionList = ImmutableList.of(placementRegion);
+    // PlacementCloud
+    PlacementInfo.PlacementCloud placementCloud = new PlacementInfo.PlacementCloud();
+    placementCloud.uuid = providerUUID;
+    placementCloud.regionList = regionList;
+    List<PlacementInfo.PlacementCloud> cloudList = ImmutableList.of(placementCloud);
+    // PlacementInfo
+    PlacementInfo placementInfo = new PlacementInfo();
+    placementInfo.cloudList = cloudList;
+
+    return placementInfo;
   }
 
   @Test
@@ -213,6 +306,164 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
                 "node_uuid",
                 taskParams.nodeUuid.toString()));
     assertEquals(false, optional.isPresent());
+  }
+
+  @Test
+  @Parameters({
+    "aws", // aws
+  })
+  public void testCreateLoadBalancerMap(CloudType cloudType) {
+    // Setup node clusters with matching AZ UUIDs
+    List<NodeDetails> nodes1 = setupNodeDetails(cloudType, null);
+    List<NodeDetails> nodes2 = setupNodeDetails(cloudType, null);
+    List<NodeDetails> allNodes = new ArrayList<>();
+    for (int i = 0; i < nodes1.size(); i++) {
+      nodes2.get(i).azUuid = nodes1.get(i).getAzUuid();
+      allNodes.add(nodes1.get(i));
+      allNodes.add(nodes2.get(i));
+    }
+    // Setup load balancer list
+    List<String> lbNames1 = ImmutableList.of("lb1", "lb1", "lb1");
+    List<String> lbNames2 = ImmutableList.of("lb1", "lb2", "lb2");
+    // Setup Provider and Region
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "code", "name", "image");
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames1);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames2);
+    // Setup Universe and clusters
+    Universe universe = setupUniverse(cloudType, customer, placementInfo1);
+    UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    setupCluster(universe, nodes1, cluster1);
+    UUID cluster2 = UUID.randomUUID();
+    universe
+        .getUniverseDetails()
+        .upsertCluster(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+    setupCluster(universe, nodes2, cluster2);
+
+    // Test retrieve all nodes from lb1
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
+        universeTaskBase.createLoadBalancerMap(
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster1)), null);
+    // Check only lb1 exists
+    assertThat(lbMap, aMapWithSize(1));
+    assertThat(lbMap.keySet(), everyItem(hasProperty("lbName", equalTo("lb1"))));
+    // Check all lb1 nodes exist
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      Set<NodeDetails> expectedNodes = new HashSet<>(nodes1);
+      expectedNodes.add(nodes2.get(0));
+      assertThat(lbConfig.getAllNodes(), containsInAnyOrder(expectedNodes.toArray()));
+    }
+    // Test retrieve all nodes
+    lbMap =
+        universeTaskBase.createLoadBalancerMap(
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster2)), null);
+    assertEquals(2, lbMap.size());
+    Set<NodeDetails> nodes = new HashSet<>();
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      nodes.addAll(lbConfig.getAllNodes());
+    }
+    assertThat(nodes, containsInAnyOrder(allNodes.toArray()));
+    // Test null cluster (default to all clusters)
+    Map<LoadBalancerPlacement, LoadBalancerConfig> lbMapDefault =
+        universeTaskBase.createLoadBalancerMap(taskParams, null, null);
+    nodes = new HashSet<>();
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      nodes.addAll(lbConfig.getAllNodes());
+    }
+    assertThat(lbMapDefault, equalTo(lbMap));
+  }
+
+  @Test
+  @Parameters({
+    "aws, 1, false", // aws with 1 LB and all nodes
+    "aws, 1, true", // aws with 1 LB and ignore nodes
+    "aws, 2, false", // aws with 2 LB and all nodes
+    "aws, 2, true" // aws with 2 LB and ignore nodes
+  })
+  public void testGenerateLoadBalancerMap(CloudType cloudType, int numLBs, boolean ignoreNodes) {
+    // Setup node clusters with matching AZ UUIDs
+    List<NodeDetails> nodes1 = setupNodeDetails(cloudType, null);
+    List<NodeDetails> nodes2 = setupNodeDetails(cloudType, null);
+    for (int i = 0; i < nodes1.size(); i++) {
+      nodes2.get(i).azUuid = nodes1.get(i).getAzUuid();
+    }
+    // Setup load balancer list
+    List<String> lbNames = ImmutableList.of("lb1", "lb1", "lb1");
+    if (numLBs > 1) {
+      lbNames = ImmutableList.of("lb1", "lb1", "lb2");
+    }
+    // Setup nodes to ignore
+    Set<NodeDetails> nodesToIgnore = null;
+    if (ignoreNodes) {
+      nodesToIgnore = ImmutableSet.of(nodes1.get(0), nodes2.get(0));
+    }
+    // Setup Provider, Region, PlacementInfo
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "code", "name", "image");
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames);
+    // Setup Universe and clusters
+    Universe universe = setupUniverse(cloudType, customer, placementInfo1);
+    UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    setupCluster(universe, nodes1, cluster1);
+    UUID cluster2 = UUID.randomUUID();
+    universe
+        .getUniverseDetails()
+        .upsertCluster(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+    setupCluster(universe, nodes2, cluster2);
+
+    // Test
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
+        universeTaskBase.generateLoadBalancerMap(taskParams, taskParams.clusters, nodesToIgnore);
+    // Check number of LBs
+    assertThat(lbMap, aMapWithSize(numLBs));
+    // Check AZs/nodes
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      Map<AvailabilityZone, Set<NodeDetails>> azNodes = lbConfig.getAzNodes();
+      if (ignoreNodes) {
+        // Check correct AZs/nodes have been ignored
+        for (NodeDetails node : nodesToIgnore) {
+          assertThat(azNodes, not(hasKey(node.azUuid)));
+          assertThat(azNodes, not(hasValue(contains(node))));
+        }
+      }
+    }
+  }
+
+  @Test
+  @Parameters({
+    "aws", // aws
+  })
+  public void testGenerateLoadBalancerMapEdgeCases(CloudType cloudType) {
+    // Setup node cluster
+    List<NodeDetails> nodes = setupNodeDetails(cloudType, null);
+    // Setup load balancer list
+    List<String> lbNames = ImmutableList.of("lb1", "lb1", "lb1");
+    // Setup Provider, Region, PlacementInfo
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "code", "name", "image");
+    PlacementInfo placementInfo = setupPlacementInfo(provider.uuid, region, nodes, lbNames);
+    // Setup Universe and clusters
+    Universe universe = setupUniverse(cloudType, customer, placementInfo);
+    UUID cluster = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    setupCluster(universe, nodes, cluster);
+
+    // Test ignore all nodes
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
+        universeTaskBase.generateLoadBalancerMap(
+            taskParams, taskParams.clusters, new HashSet<>(nodes));
+    assertThat(lbMap, anEmptyMap());
+    // Test no clusters
+    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null);
+    assertThat(lbMap, anEmptyMap());
   }
 
   private class TestUniverseTaskBase extends UniverseTaskBase {

@@ -86,7 +86,7 @@ public class UniverseControllerRequestBinder {
             instanceTagsNode = userIntent.remove("instanceTags");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
-          if (clustersJson.has("uuid")) {
+          if (clusterJson.has("uuid")) {
             UUID uuid = UUID.fromString(clusterJson.get("uuid").asText());
             currentCluster = universe.getCluster(uuid);
             if (currentCluster == null) {

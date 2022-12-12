@@ -4331,6 +4331,8 @@ yb_restart_portal(const char* portal_name)
 	if (portal->holdContext)
 		MemoryContextDelete(portal->holdContext);
 
+	/* the portal run context might not have been reset, so do it now */
+	MemoryContextReset(portal->ybRunContext);
 
 	/* -------------------------------------------------------------------------
 	 * YB NOTE:

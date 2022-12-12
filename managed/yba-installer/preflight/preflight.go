@@ -2,96 +2,85 @@
  * Copyright (c) YugaByte, Inc.
  */
 
- package preflight
+package preflight
 
- import (
-    "strconv"
-    "github.com/spf13/viper"
-    "fmt"
+import (
+	"fmt"
+	"os"
+	"text/tabwriter"
 
-    log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-    "github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
- )
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight/checks"
+)
 
- var defaultMinCPUs int = 4
- var defaultMinMemoryLimit float64 = 15
- var defaultMinSSDStorage float64 = 50
+// Check Interface created for Check check
+// objects.
+type Check interface {
+	Name() string
+	SkipAllowed() bool
+	Execute() checks.Result
+}
 
- // TODO: This needs to be pulled from config.
- var ports = []string{"5432", "9000", "9090"}
+// Run conducts all preflight checks except for those specified to be skipped.
+//
+// We will run all specified preflight checks and return errors for those that failed.
+// If an empty array is returned, there were no failures found.
+//
+func Run(checkList []Check, skipChecks ...string) []checks.Result {
+	// Preallocate underlying arrary
+	var results []checks.Result = make([]checks.Result, 0, len(checkList))
 
- // Preflight Interface created for Preflight check
- // objects.
- type Preflight interface {
-    Name() string
-    GetWarningLevel() string
-	Execute()
- }
+	for _, check := range checkList {
+		// Skip the check if needed
+		if common.Contains(skipChecks, check.Name()) {
+			if !check.SkipAllowed() {
+				log.Fatal("The preflight check '" + check.Name() + "' is at a critical level " +
+					"and cannot be skipped.")
+			}
+			log.Debug("skipping preflight check '" + check.Name() + "'")
+			continue
+		}
 
-var preflightCheckObjects = []Preflight{python, port, cpu, memory, ssd, root}
+		log.Info("Running preflight check '" + check.Name() + "'")
+		result := check.Execute()
+		if result.Error != nil {
+			// If the user wants to allow warnings, log warning and continue
+			if result.Status == checks.StatusWarning {
+				log.Warn(check.Name() + " raised a warning: " + result.Error.Error())
+			} else {
+				log.Info("preflight " + check.Name() + " failed: " + result.Error.Error())
+				results = append(results, result)
+			}
+		}
+	}
+	return results
+}
 
- // PreflightList lists all preflight checks currently conducted.
- func PreflightList() {
-    log.Info("Preflight Check List:")
-    for _, check := range(preflightCheckObjects) {
-        log.Info(check.Name() + ": " + check.GetWarningLevel())
-    }
- }
+// PrintPreflightResults will print all preflight errors to stdout, for the
+// user to see
+func PrintPreflightResults(results []checks.Result) {
+	preflightWriter := tabwriter.NewWriter(os.Stdout, 3, 0, 1, ' ', 0)
+	fmt.Println("Preflight errors:")
+	fmt.Fprintln(preflightWriter, "#\tPreflight Check\tStatus\tError")
+	for ii, result := range results {
+		fmt.Fprintf(preflightWriter, "%d\t%s\t%s\t%s\n",
+			ii+1,
+			result.Check,
+			result.Status.String(),
+			result.Error)
+	}
+	preflightWriter.Flush()
+}
 
- // PreflightChecks conducts all preflight checks except for those specified to be skipped.
- func PreflightChecks(filename string, skipChecks ... string) {
-
-    preflightChecksList := []string{}
-
-    for _, check := range(preflightCheckObjects) {
-
-        preflightChecksList = append(preflightChecksList, check.Name())
-
-    }
-
-    viper.SetConfigName(filename)
-    viper.SetConfigType("yml")
-    viper.AddConfigPath(".")
-    err := viper.ReadInConfig()
-
-    if err != nil {
-        log.Fatal("Error: " + err.Error() + ".")
-    }
-
-    preflight := viper.Get("preflight").(map[string]interface{})
-
-    overrideWarning, _ := strconv.ParseBool(fmt.Sprint(preflight["overridewarning"]))
-
-    for _, check := range(skipChecks) {
-
-        if !common.Contains(preflightChecksList, check) {
-
-            log.Fatal(check + " is not a valid Preflight check! Please use the " +
-            "Preflight list command to get all available Preflight checks.")
-        }
-    }
-
-    // If the config entry has been set to a non true/false value, then we assume that the
-    // user does not wish to override warning level preflight checks.
-
-    // Otherwise, warning level checks can be overriden through a user config entry
-    // if desired (overrideWarning = True)
-
-    for _, check := range(preflightCheckObjects) {
-
-        if common.Contains(skipChecks, check.Name()) {
-            if check.GetWarningLevel() == "critical" {
-
-                log.Fatal("The " + check.Name() + " preflight check is at a critical level " +
-                "and cannot be skipped.")
-            }
-        }
-
-        if !common.Contains(skipChecks, check.Name()) {
-            if !(overrideWarning && check.GetWarningLevel() == "warning") {
-                check.Execute()
-            }
-        }
-    }
-
- }
+// ShouldFail checks the list of results for critical failures. If any are found,
+// return true (we should fail).
+// Warning status should not cause a fail.
+func ShouldFail(results []checks.Result) bool {
+	for _, result := range results {
+		if result.Status == checks.StatusCritical {
+			return true
+		}
+	}
+	return false
+}

@@ -2653,7 +2653,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
 
   auto duration = CoarseMonoClock::Now() - start;
   if (duration > (kMaxDurationForTabletLookup * 1ms)) {
-    LOG(WARNING) << "LookupTabletByKey took long time: " << duration << " ms";
+    LOG(WARNING) << "LookupTabletByKey took long time: " << duration;
   }
 
   auto remote_tablet = VERIFY_RESULT(future.get());

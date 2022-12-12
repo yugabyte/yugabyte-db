@@ -270,3 +270,8 @@ serviceManagementMode: "systemd"
 # FatalLevel
 # PanicLevel
 logLevel: "InfoLevel"
+
+# Uncomment to customize the linux user which will run all services that make up
+# Yugabyte Anywhere.
+# If this is not specified, the user "yugabyte" will be created by install.
+#service_username: "yugauser"

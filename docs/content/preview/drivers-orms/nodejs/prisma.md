@@ -43,7 +43,7 @@ Prisma has a main file called `schema.prisma` in which the configurations and da
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/nodejs/ysql-prisma/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Node.js ORM example application](../../orms/nodejs/ysql-prisma/) page.
 
 The following steps break down the example to demonstrate how to perform common tasks required for Node.js application development using Prisma.
 
@@ -262,6 +262,7 @@ npx prisma studio
 
 Open [http://localhost:5555](http://localhost:5555) in your browser to see the table and data created.
 
-## Next steps
+## Learn more
 
-Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
