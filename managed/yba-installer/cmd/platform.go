@@ -40,7 +40,7 @@ func NewPlatform(installRoot, version string) Platform {
 		"yba-installer-platform.yml",
 		version,
 		installRoot + "/data/yb-platform",
-		fmt.Sprintf("%s/%s/managePlatform.sh", common.InstallVersionDir, common.CronDir)}
+		fmt.Sprintf("%s/%s/managePlatform.sh", common.GetInstallVersionDir(), common.CronDir)}
 }
 
 func (plat Platform) devopsDir() string {
@@ -57,7 +57,7 @@ func (plat Platform) packageFolder() string {
 }
 
 func (plat Platform) yugabyteDir() string {
-	return common.InstallVersionDir + "/packages/" + plat.packageFolder()
+	return common.GetInstallVersionDir() + "/packages/" + plat.packageFolder()
 }
 
 func (plat Platform) backupScript() string {
@@ -87,15 +87,15 @@ func (plat Platform) Install() {
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
-	common.Create(common.InstallRoot + "/yb-platform/yugaware/bin/platform.log")
+	common.Create(common.GetInstallRoot() + "/yb-platform/yugaware/bin/platform.log")
 
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (InstallRoot to be safe)
+		// Allow yugabyte user to fully manage this installation (GetInstallRoot() to be safe)
 		userName := viper.GetString("service_username")
-		common.Chown(common.InstallRoot, userName, userName, true)
+		common.Chown(common.GetInstallRoot(), userName, userName, true)
 	}
 
 	plat.Start()
@@ -104,10 +104,10 @@ func (plat Platform) Install() {
 
 func (plat Platform) createNecessaryDirectories() {
 
-	os.MkdirAll(common.InstallRoot+"/yb-platform", os.ModePerm)
-	os.MkdirAll(common.InstallRoot+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
-	os.MkdirAll(common.InstallRoot+"/data/yb-platform/ybc/release", os.ModePerm)
-	os.MkdirAll(common.InstallRoot+"/data/yb-platform/ybc/releases", os.ModePerm)
+	os.MkdirAll(common.GetInstallRoot()+"/yb-platform", os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
+	os.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
 
 }
 
@@ -176,14 +176,14 @@ func (plat Platform) copyYugabyteReleaseFile() {
 			yugabyteTgzName := f.Name()
 			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
 			common.CopyFileGolang(yugabyteTgzPath,
-				common.InstallRoot+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
+				common.GetInstallRoot()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
 
 		}
 	}
 }
 
 func (plat Platform) copyYbcPackages() {
-	packageFolderPath := common.InstallVersionDir + "/packages/yugabyte-" + plat.version
+	packageFolderPath := common.GetInstallVersionDir() + "/packages/yugabyte-" + plat.version
 	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
 
 	matches, err := filepath.Glob(ybcPattern)
@@ -196,15 +196,15 @@ func (plat Platform) copyYbcPackages() {
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
-		common.CopyFileGolang(f, common.InstallRoot+"/data/yb-platform/ybc/release/"+fileName)
+		common.CopyFileGolang(f, common.GetInstallRoot()+"/data/yb-platform/ybc/release/"+fileName)
 	}
 
 }
 
 func (plat Platform) renameAndCreateSymlinks() {
 
-	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot+"/yb-platform", "yugaware")
-	common.CreateSymlink(plat.yugabyteDir(), common.InstallRoot+"/yb-platform", "devops")
+	common.CreateSymlink(plat.yugabyteDir(), common.GetInstallRoot()+"/yb-platform", "yugaware")
+	common.CreateSymlink(plat.yugabyteDir(), common.GetInstallRoot()+"/yb-platform", "devops")
 
 }
 
@@ -228,7 +228,7 @@ func (plat Platform) Start() {
 		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 
 		command1 := "bash"
-		arg1 := []string{"-c", plat.cronScript + " " + common.InstallVersionDir + " " +
+		arg1 := []string{"-c", plat.cronScript + " " + common.GetInstallVersionDir() + " " +
 			containerExposedPort + " " + restartSeconds + " > /dev/null 2>&1 &"}
 
 		common.ExecuteBashCommand(command1, arg1)
@@ -248,7 +248,7 @@ func (plat Platform) Stop() {
 	} else {
 
 		// Delete the file used by the crontab bash script for monitoring.
-		os.RemoveAll(common.InstallRoot + "/yb-platform/testfile")
+		os.RemoveAll(common.GetInstallRoot() + "/yb-platform/testfile")
 
 		commandCheck0 := "bash"
 		argCheck0 := []string{"-c", "pgrep -fl yb-platform"}
@@ -362,24 +362,27 @@ func configureConfHTTPS() {
 	os.Chmod("key.pem", os.ModePerm)
 	os.Chmod("cert.pem", os.ModePerm)
 
-	os.MkdirAll(common.InstallRoot+"/yb-platform/certs", os.ModePerm)
-	log.Debug(common.InstallRoot + "/yb-platform/certs directory successfully created.")
+	os.MkdirAll(common.GetInstallRoot()+"/yb-platform/certs", os.ModePerm)
+	log.Debug(common.GetInstallRoot() + "/yb-platform/certs directory successfully created.")
 
 	// Do not use viper because we might have to return the default.
 	keyStorePassword := config.GetYamlPathData("platform.keyStorePassword")
 
-	common.ExecuteBashCommand("bash",
+	_, err := common.ExecuteBashCommand("bash",
 		[]string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
 			"-keystore-password " + keyStorePassword +
 			" -cert-file myserver=cert.pem " +
 			"-key-file myserver=key.pem"})
+	if err != nil {
+		log.Fatal("failed to create keystore file: " + err.Error())
+	}
 
 	common.ExecuteBashCommand("bash",
-		[]string{"-c", "cp " + "server.ks" + " " + common.InstallRoot + "/yb-platform/certs"})
+		[]string{"-c", "cp " + "server.ks" + " " + common.GetInstallRoot() + "/yb-platform/certs"})
 
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
-		common.Chown(common.InstallRoot+"/yb-platform/certs", userName, userName, true)
+		common.Chown(common.GetInstallRoot()+"/yb-platform/certs", userName, userName, true)
 
 	}
 }
@@ -389,8 +392,9 @@ func (plat Platform) CreateCronJob() {
 	containerExposedPort := config.GetYamlPathData("platform.port")
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 	common.ExecuteBashCommand("bash", []string{"-c",
-		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " + common.InstallVersionDir +
-			" " + containerExposedPort + " " + restartSeconds + "\") | sort - | uniq - | crontab - "})
+		"(crontab -l 2>/dev/null; echo \"@reboot " + plat.cronScript + " " +
+			common.GetInstallVersionDir() + " " + containerExposedPort + " " + restartSeconds +
+			"\") | sort - | uniq - | crontab - "})
 }
 
 // GenerateCORSOrigin determines the IP address of the host to populate CORS origin field in conf.

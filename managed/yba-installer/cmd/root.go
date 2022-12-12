@@ -143,7 +143,7 @@ var versionCmd = &cobra.Command{
     The version will be the same as the version of Yugabyte Anywhere that you will be
 	installing when you invove the yba-ctl binary using the install command line option.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(common.Version)
+		fmt.Println(common.GetVersion())
 	},
 }
 
@@ -248,9 +248,9 @@ var upgradeCmd = &cobra.Command{
 func init() {
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
-	services["postgres"] = NewPostgres(common.InstallRoot, "9.6")
-	services["prometheus"] = NewPrometheus(common.InstallRoot, "2.39.0", false)
-	services["yb-platform"] = NewPlatform(common.InstallRoot, common.Version)
+	services["postgres"] = NewPostgres(common.GetInstallRoot(), "9.6")
+	services["prometheus"] = NewPrometheus(common.GetInstallRoot(), "2.39.0", false)
+	services["yb-platform"] = NewPlatform(common.GetInstallRoot(), common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	serviceOrder = []string{"postgres", "prometheus", "yb-platform"}
 	// populate names of services for valid args
