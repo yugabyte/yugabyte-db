@@ -14,7 +14,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#connect-an-application) to your application code. How you update the application depends on the driver you are using.
+To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using.
 
 For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../develop/build-apps/).
 
@@ -29,15 +29,23 @@ Before you can connect an application to a YugabyteDB Managed cluster, you need 
 
 ### Network access
 
-To enable inbound network access from your application environment to a cluster, you need to add the IP addresses to the cluster [IP allow list](../../cloud-secure-clusters/add-connections).
+#### IP allow list
 
-For best performance and security, use a [VPC network](../../cloud-basics/cloud-vpcs/) and deploy your application in a VPC that is peered with your cluster's VPC.
+To enable inbound network access from your application environment to a cluster, you need to add the IP addresses to the cluster IP allow list.
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+If your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
-In addition, multi-region clusters, which must be deployed in a VPC, do not expose any publicly-accessible IP addresses. As a result, you can _only_ connect to multi-region clusters from applications that reside on a peered network, and the [peering connection](../../cloud-basics/cloud-vpcs/cloud-add-peering/) must be Active.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings** tab.
 
-In addition, if your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
+For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
+
+#### VPC network
+
+If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) with your cluster's VPC, and add the application VPC to the cluster IP allow list.
+
+#### Using smart drivers
+
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 
@@ -45,7 +53,7 @@ YugabyteDB Managed clusters have TLS/SSL (encryption in-transit) enabled. Your d
 
 For information on SSL in YugabyteDB Managed, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
 
-## Connect an application
+## Get the cluster connection parameters
 
 To connect an application to your cluster, add the cluster connection parameters to your application.
 
