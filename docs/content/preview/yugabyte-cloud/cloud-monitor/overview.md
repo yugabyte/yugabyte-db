@@ -164,10 +164,10 @@ DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-
 | YB-Master Consensus Latency (ms)    | Latency of consensus update operations and multiple Raft group consensus update operations.  | |
 | YB-Master Heartbeats/sec            | The count of heartbeats received by the master server leader from the tablet servers. This establishes liveness and reports back any status changes.  | This measure can be used to determine which master is the leader, as only the leader gets active heartbeats. |
 | YB-Master Latency (ms)              | The average latency of YSQL reads and writes of the PostgreSQL system tables (during DDL). | |
-<!--| YB-Master Operations/sec            | YSQL reads and writes of the PostgreSQL system tables (during DDL). | |-->
 | YB-Master Consensus RPCs/sec        | The number of consensus update operations and multiple Raft group consensus update operations. | |
 | YB-Master RPC Connections           | The number of created RPC inbound calls to the master servers. | The limit is 1000 TPS on the master, but under normal circumstances this number should be much lower than the limit. |
 | YB-Master CPU Usage                 | The master server CPU use. | The master server should not use a full CPU. |
+<!--| YB-Master Operations/sec            | YSQL reads and writes of the PostgreSQL system tables (during DDL). | |-->
 <!--
 | Average Latency                     | The average latency of various RPC services, provided by Master server | |
 | RPC Queue Size                      | The number of RPCs in a service queue for master servers.    | The queue size is an indicator of the incoming traffic. |
