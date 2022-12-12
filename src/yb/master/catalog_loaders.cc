@@ -99,7 +99,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // Add the table to the IDs map and to the name map (if the table is not deleted). Do not
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_map_checkout = catalog_manager_->tables_.CheckOut();
-  table_map_checkout->AddTable(table);
+  table_map_checkout->AddOrReplace(table);
   if (!l->started_deleting() && !l->started_hiding()) {
     if (l->table_type() != PGSQL_TABLE_TYPE) {
       catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
