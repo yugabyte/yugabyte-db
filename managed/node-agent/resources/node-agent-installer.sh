@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 # Copyright 2020 YugaByte, Inc. and Contributors
-ROOT_DIR="/home/yugabyte"
-NODE_AGENT_DIR="$ROOT_DIR/node-agent"
-NODE_AGENT_PKG_DIR="$NODE_AGENT_DIR/pkg"
-NODE_AGENT_RELEASE_DIR="$NODE_AGENT_DIR/release"
-NODE_AGENT_RUNNER_FILE="yb-node-agent.sh"
-YUGABYTE_USER="yugabyte"
-YUGABYTE_GROUP=$YUGABYTE_USER
+
+set -euo pipefail
+
+#Installation information.
+INSTALL_USER=""
+INSTALL_USER_HOME=""
+NODE_AGENT_HOME=""
+NODE_AGENT_PKG_DIR=""
+NODE_AGENT_RELEASE_DIR=""
+
+#Skip the interactive installation or not.
+SKIP_CONFIGURE="false"
+#Unregister (if any) and register again.
+FORCE_INSTALL="false"
+CUSTOMER_ID=""
+NODE_IP=""
+NODE_PORT="9070"
 API_TOKEN=""
 PLATFORM_URL=""
 TYPE=""
 VERSION=""
 JWT=""
+NODE_AGENT_BASE_URL=""
+NODE_AGENT_DOWNLOAD_URL=""
 API_TOKEN_HEADER="X-AUTH-YW-API-TOKEN"
 JWT_HEADER="X-AUTH-YW-API-JWT"
 INSTALLER_NAME="node-agent-installer.sh"
@@ -19,97 +31,106 @@ SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_NAME="yb-node-agent.service"
 SERVICE_RESTART_INTERVAL_SEC=2
 
-set -e
+ARCH=$(uname -m)
+OS=$(uname -s)
 
 pushd () {
-    command pushd "$@" > /dev/null
+  command pushd "$@" > /dev/null
 }
 
 popd () {
-    command popd "$@" > /dev/null
+  command popd > /dev/null
 }
 
-
-node_agent_dir_setup(){
-    echo "* Creating Node Agent Directory"
-    #create node-agent directory
-    mkdir -p $NODE_AGENT_DIR
-
-    #Copy installer script to the node-agent directory
-    cp "$0" "$NODE_AGENT_DIR/$INSTALLER_NAME"
-
-    #change permissions
-    chmod 754 $NODE_AGENT_DIR
-
-
-    echo "* Changing directory to node agent"
-    #Change directory
-    pushd $NODE_AGENT_DIR
-
-    echo "* Creating Sub Directories"
-    mkdir -p cert
-    mkdir -p config
-    mkdir -p logs
-    mkdir -p release
-
-    chmod -R 754 .
-
-    echo "PATH=$PATH:$NODE_AGENT_PKG_DIR/bin" >> "$ROOT_DIR"/.bashrc
-    export PATH="$NODE_AGENT_PKG_DIR/bin":$PATH
-
-    popd
+add_path() {
+  if [[ ":$PATH:" != *":$1:"* ]]; then
+    PATH="$1${PATH:+":$PATH"}"
+    echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    export PATH
+  fi
 }
 
-run_yb_node_agent_installer(){
-    CURRENT_USER=$(whoami)
+node_agent_dir_setup() {
+  echo "* Creating Node Agent Directory."
+  #Create node-agent directory.
+  mkdir -p "$NODE_AGENT_HOME"
+  #Copy installer script to the node-agent directory.
+  cp "$0" "$NODE_AGENT_HOME/$INSTALLER_NAME"
+  #Change permissions.
+  chmod 754 "$NODE_AGENT_HOME"
+  echo "* Changing directory to node agent."
+  #Change directory.
+  pushd "$NODE_AGENT_HOME"
+  echo "* Creating Sub Directories."
+  mkdir -p cert config logs release
+  chmod -R 754 .
+  popd
+  add_path "$NODE_AGENT_PKG_DIR/bin"
+}
 
-    if [ $CURRENT_USER != "$YUGABYTE_USER" ]; then
-      echo "x You should be logged in as $YUGABYTE_USER user"
+unregister_node_agent() {
+  local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
+  local STATUS_CODE=""
+  STATUS_CODE=$(curl -s -w "%{http_code}" -L --request GET \
+    "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
+    --output "$RESPONSE_FILE"
+    )
+  if [ "$STATUS_CODE" != "200" ]; then
+    echo "Fail to check existing node agent. Status code $STATUS_CODE"
+    exit 1
+  fi
+  # Command jq is not available.
+  # Continue after pipefail.
+  set +e
+  local NODE_AGENT_UUID=""
+  NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
+  local RUNNING=""
+  RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+  if [ -n "$RUNNING" ]; then
+    sudo systemctl stop yb-node-agent
+    sudo systemctl disable yb-node-agent
+  fi
+  set -e
+  if [ -n "$NODE_AGENT_UUID" ]; then
+    local STATUS_CODE=""
+    STATUS_CODE=$(curl -s -w "%{http_code}" -L --request DELETE \
+    "$NODE_AGENT_BASE_URL/$NODE_AGENT_UUID" --header "$HEADER: $HEADER_VAL" --output /dev/null
+    )
+    if [ "$STATUS_CODE" != "200" ]; then
+      echo "Failed to unregister node agent $NODE_AGENT_UUID. Status code $STATUS_CODE"
       exit 1
     fi
+  fi
+}
 
-    USER_GROUP=$(id -gn $CURRENT_USER)
-    if [ $USER_GROUP != "$YUGABYTE_GROUP" ]; then
-      echo "x Yugabyte User must belong to Yugabyte Group."
-      exit 1
-    fi
-
-    #Change to home directory
-    cd $ROOT_DIR
-
-    echo "* Starting YB Node Agent $TYPE"
+download_extract_package() {
+    #Change to home directory.
+    pushd "$INSTALL_USER_HOME"
+    echo "* Starting YB Node Agent $TYPE."
     if [ "$TYPE" = "install" ]; then
       node_agent_dir_setup
     fi
-    pushd $NODE_AGENT_RELEASE_DIR
-    echo "* Downloading YB Node Agent build package"
-    #Get OS version and Hardware info
-    ARCH=$(uname -m)
+    pushd "$NODE_AGENT_RELEASE_DIR"
+    echo "* Downloading YB Node Agent build package."
+    #Get OS version and Hardware info.
 
-    #Change x86_64 to amd64
-    if [ "$ARCH" = "x86_64" ]; then
-      ARCH="amd64"
-    elif [ "$ARCH" = "aarch64" ]; then
-      ARCH="arm64"
+    #Change x86_64 to amd64.
+    local GO_ARCH_TYPE=$ARCH
+    if [ "$GO_ARCH_TYPE" = "x86_64" ]; then
+      GO_ARCH_TYPE="amd64"
+    elif [ "$GO_ARCH_TYPE" = "aarch64" ]; then
+      GO_ARCH_TYPE="arm64"
     fi
-    OS=$(uname -s)
+    echo "* Getting $OS/$GO_ARCH_TYPE package"
+    local BUILD_TAR="node-agent.tgz"
 
-    echo "* Getting $OS/$ARCH package"
-
-    BUILD_TAR="node-agent.tgz"
-    if [ $TYPE = "install" ]; then
-      HEADER=$API_TOKEN_HEADER
-      HEADER_VAL=$API_TOKEN
-    else
-      HEADER=$JWT_HEADER
-      HEADER_VAL=$JWT
-    fi
-
-    RESPONSE_CODE=$(curl -s -w "%{http_code}" --location --request GET "$PLATFORM_URL/api/node_agents/download?downloadType=package&os=$OS&arch=$ARCH" \
+    local RESPONSE_CODE=""
+    RESPONSE_CODE=$(curl -s -w "%{http_code}" --location --request GET \
+    "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
     --header "$HEADER: $HEADER_VAL" --output $BUILD_TAR
     )
 
-    if [ $RESPONSE_CODE -ne 200 ]; then
+    if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
       exit 1
     fi
@@ -124,25 +145,72 @@ run_yb_node_agent_installer(){
     VERSION=$(tar -tzf $BUILD_TAR | head -2 | tail -1 | cut -f2 -d"/")
 
     echo "* Downloaded Version - $VERSION"
-    #Untar the package
+    #Untar the package.
     echo "* Extracting the build package"
-    #This will extract the build files to a directory named $VERSION
-    #Packaging should take care of this
-    tar -zxf $BUILD_TAR
-    #Delete the installer gzip
+    #This will extract the build files to a directory named $VERSION.
+    #Packaging should take care of this.
+    tar --no-same-owner -zxf $BUILD_TAR
+    #Delete the installer tar file.
     rm -rf $BUILD_TAR
 }
 
-install_systemd_service(){
+setup_symlink() {
+  #Remove the previous symlinks if they exist.
+  if [ -L "$NODE_AGENT_PKG_DIR" ]; then
+    unlink "$NODE_AGENT_PKG_DIR"
+  fi
+  #Create a new symlink between node-agent/pkg -> node-agent/release/<version>.
+  ln -s -f "$NODE_AGENT_RELEASE_DIR/$VERSION" "$NODE_AGENT_PKG_DIR"
+}
+
+check_sudo_access() {
+  SUDO_ACCESS="false"
+  set +e
+  sudo -n pwd >/dev/null 2>&1
+  if sudo -n pwd >/dev/null 2>&1; then
+    SUDO_ACCESS="true"
+  fi
+  if [ "$OS" = "Linux" ]; then
+    SE_LINUX_STATUS=$(getenforce 2>/dev/null)
+  fi
+  set -e
+}
+
+modify_selinux() {
+  set +e
+  if ! command -v semanage >/dev/null 2>&1; then
+    if command -v yum >/dev/null 2>&1; then
+      sudo yum install -y policycoreutils-python-utils
+    elif command -v apt-get >/dev/null 2>&1; then
+      sudo apt-get update -y
+      sudo apt-get install -y semanage-utils
+    fi
+  fi
+  sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
+  if [ "$?" -ne 0 ]; then
+    sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+  fi
+  sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+  if [ "$?" -ne 0 ]; then
+    sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+  fi
+  set -e
+  sudo restorecon -ir "$NODE_AGENT_HOME"
+}
+
+install_systemd_service() {
+  if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
+    modify_selinux
+  fi
   echo "* Installing Node Agent Systemd Service"
-  sudo cat > $SYSTEMD_DIR/$SERVICE_NAME  <<-EOF
+  sudo tee "$SYSTEMD_DIR/$SERVICE_NAME"  <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
 
   [Service]
-  User=$YUGABYTE_USER
-  WorkingDirectory=$ROOT_DIR
+  User=$INSTALL_USER
+  WorkingDirectory=$NODE_AGENT_HOME
   LimitCORE=infinity
   LimitNOFILE=1048576
   LimitNPROC=12000
@@ -155,7 +223,7 @@ install_systemd_service(){
 EOF
   echo "* Starting the systemd service"
   sudo systemctl daemon-reload
-  #To enable the node-agent service on reboot
+  #To enable the node-agent service on reboot.
   sudo systemctl enable yb-node-agent
   sudo systemctl start yb-node-agent
   echo "* Started the systemd service"
@@ -165,27 +233,95 @@ EOF
  the yb-node-agent service"
 }
 
+#The usage shows only the ones available to end users.
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
 
 Options:
   -t, --type (REQUIRED)
-    Type of install to perform. Must be in ['install', 'upgrade',\
-  'install-service' (Requires sudo access)].
+    Type of install to perform. Must be in ['install', 'install_service' (Requires sudo access)].
   -u, --url (REQUIRED)
-    Platform URL
+    Yugabyte Anywhere URL.
   -at, --api_token (REQUIRED with install type)
-    Api token to download the build files
-  --jwt (REQUIRED with upgrade type)
-    Jwt required for upgrading the node agent
+    Api token to download the build files.
+  --user (REQUIRED only for install_service type)
+    Username of the installation. A sudo user can install service for a non-sudo user.
   -h, --help
     Show usage.
 EOT
 }
 
 err_msg() {
-  echo $@ >&2
+  echo "$@" >&2
+}
+
+#Main entry function.
+main() {
+  if [ "$TYPE" = "install_service" ]; then
+    if [ "$SUDO_ACCESS" = "false" ]; then
+      echo "SUDO access is required."
+      exit 1
+    fi
+    install_systemd_service
+  elif [ "$TYPE" = "download_package" ]; then
+    if [ -z "$JWT" ]; then
+      echo "JWT is required."
+      show_usage >&2
+      exit 1
+    fi
+    download_extract_package >/dev/null
+    echo "$VERSION"
+  elif [ "$TYPE" = "upgrade" ]; then
+    if [ -z "$VERSION" ]; then
+      echo "Version is required."
+      exit 1
+    fi
+    setup_symlink
+  elif [ "$TYPE" = "install" ]; then
+    if [ -z "$PLATFORM_URL" ]; then
+      echo "Platform URL is required."
+      show_usage >&2
+      exit 1
+    fi
+    if [ -z "$API_TOKEN" ]; then
+      echo "API token is required."
+      show_usage >&2
+      exit 1
+    fi
+    if [ "$FORCE_INSTALL" = "true" ]; then
+      if [ -z "$CUSTOMER_ID" ]; then
+        echo "Customer ID is required."
+        exit 1
+      fi
+      if [ -z "$NODE_IP" ]; then
+        echo "Node IP is required."
+        exit 1
+      fi
+      unregister_node_agent
+    fi
+    download_extract_package
+    setup_symlink
+    if [ "$SKIP_CONFIGURE" = "true" ]; then
+      if [ -z "$NODE_IP" ]; then
+        echo "Node IP is required."
+        show_usage >&2
+        exit 1
+      fi
+      node-agent node register --api_token "$API_TOKEN" --url "$PLATFORM_URL" --node_ip "$NODE_IP" \
+      --node_port "$NODE_PORT"
+    else
+      node-agent node configure --api_token "$API_TOKEN" --url "$PLATFORM_URL"
+    fi
+    if [ $? -ne 0 ]; then
+      echo "Node agent setup failed."
+      exit 1
+    fi
+  else
+    err_msg "Invalid option: $TYPE. Must be one of ['install [--force]', 'install_service'].\n"
+    show_usage >&2
+    exit 1
+  fi
 }
 
 if [[ ! $# -gt 0 ]]; then
@@ -196,19 +332,39 @@ fi
 while [[ $# -gt 0 ]]; do
   case $1 in
     -t|--type)
-      options="install upgrade install-service"
-      if [[ ! $options =~ (^|[[:space:]])"$2"($|[[:space:]]) ]]; then
-        err_msg "Invalid option: $2. Must be one of ['install', 'upgrade', 'install-service'].\n"
-        show_usage >&2
-        exit 1
-      fi
       TYPE="$2"
+      shift
+    ;;
+    --user)
+      INSTALL_USER="$2"
+      shift
+    ;;
+    --skip_configure)
+      SKIP_CONFIGURE="true"
+    ;;
+    --force)
+      FORCE_INSTALL="true"
+    ;;
+    -v|--version)
+      VERSION=$2
+      shift
+    ;;
+    -c|--customer_id)
+      CUSTOMER_ID=$2
       shift
     ;;
     -u|--url)
       PLATFORM_URL="$2"
       shift
     ;;
+    -ip|--node_ip)
+      NODE_IP=$2
+      shift
+    ;;
+    -p|--node_port)
+      NODE_PORT=$2
+      shift
+      ;;
     -at|--api_token)
       API_TOKEN="$2"
       shift
@@ -218,7 +374,7 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --cleanup)
-      trap "rm -- $0" EXIT
+      trap 'rm -- $0' EXIT
     ;;
     -h|--help)
       show_usage >&2
@@ -237,41 +393,49 @@ if [ -z "$TYPE" ]; then
   exit 1
 fi
 
-if [ "$TYPE" = "install-service" ]; then
-  install_systemd_service
-  exit $?
-fi
+CURRENT_USER=$(id -u -n)
 
-
-#Trim leading and trailing whitespaces.
-PLATFORM_URL=$(echo $PLATFORM_URL | xargs)
-API_TOKEN=$(echo $API_TOKEN | xargs)
-JWT=$(echo $JWT | xargs)
-
-#Return error if type is not passed.
-if [ -z "$PLATFORM_URL" ]; then
-  show_usage >&2
+if [ -z "$INSTALL_USER" ]; then
+  if [ "$TYPE" = "install_service" ]; then
+    echo "Install user is required."
+    show_usage >&2
+    exit 1
+  fi
+  INSTALL_USER="$CURRENT_USER"
+elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$TYPE" != "install_service" ]; then
+  echo "Different user can be passed only for installing service."
   exit 1
 fi
 
-if [ -z "$API_TOKEN" ] && [ "$TYPE" = "install" ]; then
-    echo "Pass API Token"
-    show_usage >&2
-    exit 1
-elif [ "$TYPE" = "upgrade" ] && [ -z "$JWT" ]; then
-    echo "Pass JWT"
-    show_usage >&2
-    exit 1
+INSTALL_USER_HOME=$(eval cd ~"$INSTALL_USER" && pwd)
+NODE_AGENT_HOME="$INSTALL_USER_HOME/node-agent"
+NODE_AGENT_PKG_DIR="$NODE_AGENT_HOME/pkg"
+NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
+
+if [ "$TYPE" = "install" ]; then
+  HEADER="$API_TOKEN_HEADER"
+  HEADER_VAL="$API_TOKEN"
+else
+  HEADER="$JWT_HEADER"
+  HEADER_VAL="$JWT"
 fi
 
-if [ "$TYPE" = "upgrade" ]; then
-  run_yb_node_agent_installer >/dev/null
-  echo "$VERSION"
-else
-  run_yb_node_agent_installer
-  #Call the yb_node_agent.sh script to complete the registration/upgrade flow.
-  source $NODE_AGENT_RELEASE_DIR/$VERSION/bin/$NODE_AGENT_RUNNER_FILE $TYPE $VERSION $PLATFORM_URL $API_TOKEN
-  echo "You can install a systemd service on linux machines\
- by running node-agent-installer.sh -t install-service\
- (Requires sudo access)."
+#Trim leading and trailing whitespaces.
+PLATFORM_URL=$(echo "$PLATFORM_URL" | xargs)
+API_TOKEN=$(echo "$API_TOKEN" | xargs)
+JWT=$(echo "$JWT" | xargs)
+
+NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
+NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/node_agents/download"
+
+check_sudo_access
+main
+
+if [ "$?" -eq 0 ] && [ "$TYPE" = "install" ]; then
+  if [ "$SUDO_ACCESS" = "false" ]; then
+    echo "You can install a systemd service on linux machines\
+ by running $INSTALLER_NAME -t install_service (Requires sudo access)."
+  else
+     install_systemd_service
+  fi
 fi

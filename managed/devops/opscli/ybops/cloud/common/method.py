@@ -83,6 +83,7 @@ class AbstractMethod(object):
         self.parser.add_argument("--ask_sudo_pass", action='store_true', default=False)
         self.parser.add_argument("--vars_file", default=None)
         self.parser.add_argument("--ssh2_enabled", action='store_true', default=False)
+        self.parser.add_argument("--ansible_connection_type", default=None, required=False)
 
     def preprocess_args(self, args):
         """Hook for pre-processing args before actually executing the callback. Useful for shared
@@ -238,6 +239,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             updated_args["ssh_user"] = self.SSH_USER
 
+        if args.ansible_connection_type:
+            updated_args["ansible_connection_type"] = args.ansible_connection_type
         if args.node_agent_ip:
             updated_args["node_agent_ip"] = args.node_agent_ip
         if args.node_agent_port:

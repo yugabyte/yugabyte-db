@@ -328,6 +328,7 @@ public class NodeDetails {
         || state == NodeState.Removing
         || state == NodeState.Removed
         || state == NodeState.Starting
+        || state == NodeState.Stopping
         || state == NodeState.Stopped
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned

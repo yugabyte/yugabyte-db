@@ -2,7 +2,7 @@
 title: Enable high availability
 headerTitle: Enable high availability
 linkTitle: Enable high availability
-description: Enable YugabyteDB Anywhere's high availabilit
+description: Enable high availability
 menu:
   preview_yugabyte-platform:
     identifier: platform-high-availability
@@ -13,7 +13,7 @@ type: docs
 
 Yugabyte’s distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.
 
-YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with xCluster replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere's high availability is an active-standby model for multiple instances in a cluster with [xCluster replication](../../create-deployments/async-replication-platform/). Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 Each high-availability cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
 
@@ -21,13 +21,13 @@ Each high-availability cluster includes a single active YugabyteDB Anywhere inst
 
 * A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
 
-Backups from the active instance are periodically taken and pushed to followers at a user-configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain ten most recent backups on disk.
+Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain ten most recent backups on disk.
 
-When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and automatically demotes the previous active instance to standby mode.
+When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and then automatically demotes the previous active instance to standby mode.
 
 ## Prerequisites
 
-Before configuring the high-availability cluster, ensure that you have the following:
+Before configuring a high-availability cluster, ensure that you have the following:
 
 * YugabyteDB Anywhere versioin 2.5.3.1 or later.
 * [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the high-availability cluster.
@@ -57,8 +57,6 @@ You can configure the active instance as follows:
 1. Switch to **Instance Configuration**.
 
     The address for this instance should be the only information under **Instances**.
-
-
 
 Your active instance is now configured.
 
@@ -119,11 +117,42 @@ During a high-availability backup, the entire YugabyteDB Anywhere state is copie
 
 All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
-Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these guidelines: 
+Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines: 
 
 - Start an upgrade with an active instance.
 - After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
 - Proceed with upgrading standby instances. 
+
+The following is the detailed upgrade procedure:
+
+1. Stop the high-availability synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
+2. Upgrade the active instance. Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
+
+   - Decommission the faulty active instance in the active-standby pair.
+   - Promote the standby instance.
+   - Do not attempt to upgrade until the root cause of the upgrade failure is determined.
+   - Delete the high-availability configuration and bring up another standby instance at the original YugabyteDB Anywhere version and reconfigure high availability.
+   - Once the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
+
+3. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on.
+4. Upgrade the standby instance.
+5. Enable high-availability synchronization.
+6. Optionally, promote the standby instance with the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
+
+The following diagram provides a graphical representation of the upgrade procedure:
+
+![img](/images/yp/high-availability/ha-upgrade.png)
+
+The following table provides the terminology mapping between the upgrade diagram and the upgrade procedure description:
+
+| Diagram        | Procedure description                                        |
+| -------------- | ------------------------------------------------------------ |
+| HA             | High availability                                            |
+| Sync           | Synchronization                                              |
+| Primary system | Active instance                                              |
+| Failover       | Standby instance                                             |
+| Version A      | Original YugabyteDB Anywhere version that is subject to upgrade |
+| Version B      | Newer YugabyteDB Anywhere version to which to upgrade        |
 
 ## Remove a standby instance
 

@@ -149,7 +149,8 @@ public class SwamperHelper {
   public enum LabelType {
     NODE_PREFIX,
     EXPORT_TYPE,
-    EXPORTED_INSTANCE
+    EXPORTED_INSTANCE,
+    UNIVERSE_UUID
   }
 
   private ObjectNode getIndividualConfig(Universe universe, TargetType t, NodeDetails nodeDetails) {
@@ -161,6 +162,8 @@ public class SwamperHelper {
     }
 
     ObjectNode labels = Json.newObject();
+    labels.put(
+        LabelType.UNIVERSE_UUID.toString().toLowerCase(), universe.getUniverseUUID().toString());
     labels.put(
         LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
     labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());

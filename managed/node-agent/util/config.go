@@ -154,7 +154,7 @@ func (config *Config) CompareAndUpdate(key, expected, val string) (bool, error) 
 func (config *Config) Remove(key string) error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	config.viperInstance.Set(key, nil)
+	config.viperInstance.Set(key, "")
 	return config.viperInstance.WriteConfig()
 }
 

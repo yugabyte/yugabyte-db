@@ -18,8 +18,9 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 When this happens, new Master leaders are elected for the underlying data shards, but since the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
-- Step 2: [Release instance](#release-instance)
-- Step 3: [Delete node](#delete-node)
+- Step 2: [Start a new master](#start-a-new-master) if necessary
+- Step 3: [Release instance](#release-instance)
+- Step 4: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
 
@@ -43,7 +44,7 @@ The action to remove a node is available from the following internal states of t
 
 Taking this action transfers the node to a Removing and then Removed internal state, as follows:
 
-1. If the node is a Master leader, it is removed (the Master process is stopped and there is a wait for the new Master leader).
+1. If the node is running a Master process, the Master is removed from the master quorum. The master process is stopped if the node is still reachable. YBA waits for a new master leader to be elected. Note that, at this point, there are less than RF (replication factor) number of masters running, so the resilience of the master quorum is impacted.
 2. The TServer is marked as blacklisted on the Master leader.
 3. There is a wait for tablet quorums to remove the blacklisted TServer.
 4. Data migration is performed and the TServer process stops only if it is reachable.
@@ -51,6 +52,20 @@ Taking this action transfers the node to a Removing and then Removed internal st
 6. DNS entries are updated.
 
 The node removal action results in the instance still being allocated but not involved in any schemas.
+
+## Start a new master
+
+At the end of the Remove Node action above, the master quorum is reduced to (RF - 1) masters, where RF stands for the replication factor of the universe. RF is typically 3 or 5. To restore the resilience of the master quorum, a new master process should be brought up.
+
+To start a new master, 
+1. Select a node in the same Availability Zone as the removed node in the earlier step.
+2. Click its corresponding **Actions > Start Master**. The action to start a master is only available if there are additional nodes in the same availability zone that do not already have a master running.
+
+Taking this action performs the following steps:
+1. Sets up the master configuration on this node.
+2. Starts a new master process on this node (in shell mode).
+3. Adds this new master to the existing master quorum.
+4. Updates the master addresses gflag on all other nodes to inform them of this new master.
 
 ## Release node instance
 

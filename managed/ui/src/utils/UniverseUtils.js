@@ -147,6 +147,10 @@ export const isYbcEnabledUniverse = (universeDetails) => {
   return universeDetails?.enableYbc;
 };
 
+export const isYbcInstalledInUniverse = (universeDetails) => {
+  return universeDetails?.ybcInstalled
+}
+
 /**
  * Returns an array of unique regions in the universe
  */
