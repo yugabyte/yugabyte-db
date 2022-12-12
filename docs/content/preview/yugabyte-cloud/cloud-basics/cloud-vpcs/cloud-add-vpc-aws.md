@@ -170,23 +170,13 @@ For more information on creating clusters, refer to [Create a cluster](../../cre
 
 ## Add the application VPC to the cluster IP allow list
 
-To enable the peered application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
-
-{{< tip title="What you need" >}}
-The CIDR address for the AWS application VPC you are peering with.
-
-**Where to find it**<br>Navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
-{{< /tip >}}
+To enable the peered application VPC to connect to the cluster, you need to add the peered VPC to the cluster IP allow list.
 
 To add the application VPC to the cluster IP allow list:
 
-1. On the **Clusters** page, select the cluster you are peering, and click **Add IP Allow List** to display the **Add IP Allow List** sheet.
+1. On the **Clusters** page, select the cluster you are peering, click **Actions**, and choose **Edit IP Allow List** to display the **Add IP Allow List** sheet.
 
-1. Click **Create New List and Add to Cluster**.
-
-1. Enter a name and description for the list. For example, the name and details of your application VPC.
-
-1. Add at least one of the CIDR blocks associated with the peered application VPC.
+1. Click **Add Peered VPC Networks**.
 
 1. Click **Save** when done.
 
