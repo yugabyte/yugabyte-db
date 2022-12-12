@@ -60,12 +60,12 @@ transform_entity *find_transform_entity(cypher_parsestate *cpstate,
                                         char *name,
                                         enum transform_entity_type type)
 {
-    if( name == NULL )
+    ListCell *lc;
+
+    if (name == NULL)
     {
         return NULL;
     }
-    
-    ListCell *lc;
 
     foreach(lc, cpstate->entities)
     {
