@@ -1446,7 +1446,12 @@ static VLE_path_container *build_VLE_zero_container(VLE_local_context *vlelctx)
     graphid vid = 0;
 
     /* we should have an empty stack */
-    Assert(get_stack_size(stack) == 0);
+    if (get_stack_size(stack) != 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("build_VLE_zero_container: stack is not empty")));
+    }
 
     /*
      * Create the container. Note that the path size will always be 1 as this is
