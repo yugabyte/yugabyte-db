@@ -37,7 +37,7 @@ CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
 CREATE INDEX p2_val_idx_1 ON p2 USING hash (val);
 CREATE INDEX p2_val_id_idx ON p2 (val, id);
-CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
+CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "C");
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);
 CREATE INDEX p2_val_idx4 ON p2 (val DESC NULLS LAST);
 CREATE INDEX p2_val_idx5 ON p2 (val NULLS FIRST);
