@@ -515,7 +515,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 ----
 ---- Don't test postgresql itself.
 -- No. A-8-1-1
--- SET ROLE super_user;
+-- SET ROLE regress_super_user;
 -- SET pg_hint_plan.debug_print TO off;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
@@ -534,7 +534,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- SHOW pg_hint_plan.parse_messages;
 -- 
 -- -- No. A-8-1-2
--- SET ROLE normal_user;
+-- SET ROLE regress_normal_user;
 -- SHOW pg_hint_plan.enable_hint;
 -- SHOW pg_hint_plan.debug_print;
 -- SHOW pg_hint_plan.parse_messages;

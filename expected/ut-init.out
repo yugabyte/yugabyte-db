@@ -2,7 +2,7 @@ SET search_path TO public;
 CREATE EXTENSION pg_stat_statements;
 CREATE EXTENSION btree_gist;
 CREATE EXTENSION btree_gin;
-CREATE ROLE super_user
+CREATE ROLE regress_super_user
   SUPERUSER
   NOCREATEDB
   NOCREATEROLE
@@ -10,7 +10,7 @@ CREATE ROLE super_user
   NOLOGIN
   NOREPLICATION
   CONNECTION LIMIT 1;
-CREATE ROLE normal_user
+CREATE ROLE regress_normal_user
   NOSUPERUSER
   NOCREATEDB
   NOCREATEROLE
