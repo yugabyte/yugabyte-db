@@ -19,33 +19,41 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
-// Component 2: Prometheus
-type Prometheus struct {
-	name                string
+type prometheusDirectories struct {
 	SystemdFileLocation string
-	ConfFileLocation    string
+	ConfFileLocation    string // This is used during config generation
 	templateFileName    string
-	version             string
-	isUpgrade           bool
 	DataDir             string
 	PromDir             string
 	cronScript          string
 }
 
+func newPrometheusDirectories() prometheusDirectories {
+	return prometheusDirectories{
+		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
+		ConfFileLocation:    common.GetInstallRoot() + "/prometheus/conf/prometheus.yml",
+		templateFileName:    "yba-installer-prometheus.yml",
+		DataDir:             common.GetBaseInstall() + "/data/prometheus",
+		PromDir:             common.GetInstallRoot() + "/prometheus",
+		cronScript: filepath.Join(
+			common.GetInstallVersionDir(), common.CronDir, "managePrometheus.sh"),
+	}
+}
+
+// Component 2: Prometheus
+type Prometheus struct {
+	name    string
+	version string
+	prometheusDirectories
+}
+
 // NewPrometheus creates a new prometheus service struct.
-func NewPrometheus(installRoot, version string, isUpgrade bool) Prometheus {
+func NewPrometheus(version string) Prometheus {
 	return Prometheus{
-		"prometheus",
-		common.SystemdDir + "/prometheus.service",
-		common.GetInstallRoot() + "/prometheus/conf/prometheus.yml",
-		"yba-installer-prometheus.yml",
-		version,
-		isUpgrade,
-		// data directory
-		common.GetInstallRoot() + "/data/prometheus",
-		// prometheus code/conf directory
-		common.GetInstallRoot() + "/prometheus",
-		fmt.Sprintf("%s/%s/managePrometheus.sh", common.GetInstallVersionDir(), common.CronDir)}
+		name:                  "prometheus",
+		version:               version,
+		prometheusDirectories: newPrometheusDirectories(),
+	}
 }
 
 func (prom Prometheus) getSystemdFile() string {
@@ -68,13 +76,14 @@ func (prom Prometheus) Name() string {
 
 // Install the prometheus service.
 func (prom Prometheus) Install() {
+	log.Info("Starting Prometheus install")
 	config.GenerateTemplate(prom)
 	prom.moveAndExtractPrometheusPackage()
 	prom.createDataDirs()
 	prom.createPrometheusSymlinks()
 
 	//chown is not needed when we are operating under non-root, the user will already
-	//have the necesary access.
+	//have the necessary access.
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetInstallRoot()+"/prometheus", userName, userName, true)
@@ -87,6 +96,7 @@ func (prom Prometheus) Install() {
 	}
 
 	prom.Start()
+	log.Info("Finishing Prometheus install")
 }
 
 // Start the prometheus service.
@@ -164,6 +174,30 @@ func (prom Prometheus) Restart() {
 // Uninstall uninstalls prometheus and optionally removes all data.
 func (prom Prometheus) Uninstall(removeData bool) {
 	prom.Stop()
+}
+
+// Upgrade will upgrade prometheus and install it into the alt install directory.
+// Upgrade will NOT restart the service, the old version is expected to still be runnins
+func (prom Prometheus) Upgrade() {
+	log.Info("Starting Prometheus upgrade")
+	prom.prometheusDirectories = newPrometheusDirectories()
+	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
+	prom.moveAndExtractPrometheusPackage()
+	prom.createPrometheusSymlinks()
+
+	//chown is not needed when we are operating under non-root, the user will already
+	//have the necessary access.
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		common.Chown(common.GetInstallRoot()+"/prometheus", userName, userName, true)
+	}
+
+	//Crontab based monitoring for non-root installs.
+	if !common.HasSudoAccess() {
+		prom.CreateCronJob()
+	}
+	prom.Start()
+	log.Info("Finishing Prometheus upgrade")
 }
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
