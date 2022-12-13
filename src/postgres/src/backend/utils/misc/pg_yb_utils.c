@@ -2983,7 +2983,7 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		{
 			ereport(FATAL,
 			        (errcode(ERRCODE_INTERNAL_ERROR),
-			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
+			         errmsg("Sys table '%d' is not yet intended for preloading", sys_table_id)));
 
 		}
 	}
