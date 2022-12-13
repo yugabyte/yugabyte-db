@@ -16,7 +16,7 @@ type: docs
 
 YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed database. In PostgreSQL, tablespaces allow administrators to specify where on a disk specific tables and indexes should reside based on how users want to store and access the data. Control over data placement enables fine-grained performance tuning, for example, by placing heavily accessed smaller tables and indexes in SSD.
 
-YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of cloud/region/zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
+YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of clouds, regions, and zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
 
 The ability to control the placement of tables in a fine-grained manner provides the following advantages:
 
@@ -31,17 +31,17 @@ In a distributed cloud-native database such as YugabyteDB, the location of table
 
 ![Cluster Ping Latencies](/images/explore/tablespaces/cluster_ping_latencies.png)
 
-Given the impact of distance on node-to-node communication, it's beneficial to be able to specify at a table level, how its data should be spread across the cluster. This way, you can move tables closer to their clients and decide which tables actually need to be geo-distributed. You do this using YSQL tablespaces. Using tablespaces you can specify the number of replicas for a set of tables or indexes, and how each of these replicas should be distributed across a set of cloud, regions, and zones.
+Given the impact of distance on node-to-node communication, it's beneficial to be able to specify at a table level, how its data should be spread across the cluster. This way, you can move tables closer to their clients and decide which tables actually need to be geo-distributed. Using tablespaces you can specify the number of replicas for a set of tables or indexes, and how each of these replicas should be distributed across a set of cloud, regions, and zones.
 
 ## Cluster setup
 
-The following example describes how to create the following:
+The example describes how to create the following:
 
 - A cluster that is spread across multiple regions across the world.
 - Tablespaces that specify single-zone, multi-zone, and multi-region placement policies.
 - Tables associated with the created tablespaces.
 
-In addition, the example demonstrates the effect of geo-distribution on basic YSQL commands by measuring the effect of various geo-distribution policies on the latencies observed while running INSERTs and SELECTs. The results can be seen in the following table:
+In addition, the example demonstrates the effect of geo-distribution on basic YSQL commands by measuring the effect of various geo-distribution policies on the latencies observed while running `INSERT` and `SELECT` statements. The results can be seen in the following table:
 
 | Geo-Distribution | INSERT Latency (ms) | SELECT Latency (ms) |
 | :--------------- | :------------------ | :------------------ |
@@ -88,12 +88,6 @@ The topology is shown in the following illustration:
   {{% includeMarkdown "./tablespaces-platform.md" %}}
   </div>
 </div>
-
-### Review the cluster
-
-After cluster creation, verify that the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI.
-
-![YB Master UI - Tablet Servers Page](/images/explore/tablespaces/Geo_distributed_cluster_nodes_Master_UI.png)
 
 ## Create a single-zone table
 
@@ -339,6 +333,6 @@ EXPLAIN output for querying the table from `eu-west-2`:
 The following features will be supported in upcoming releases:
 
 - Using `ALTER TABLE` to change the `TABLESPACE` specified for a table.
-- Support `ALTER TABLESPACE`.
+- Support for `ALTER TABLESPACE`.
 - Setting read replica placements using tablespaces.
 - Setting tablespaces for colocated tables and databases.

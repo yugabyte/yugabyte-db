@@ -57,3 +57,7 @@ To create a cluster with the preceding configuration, use the following yugabyte
   --join=<IP1>                                 \
   --tserver_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a"
 ```
+
+After cluster creation, verify that the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI.
+
+![YB Master UI - Tablet Servers Page](/images/explore/tablespaces/Geo_distributed_cluster_nodes_Master_UI.png)
