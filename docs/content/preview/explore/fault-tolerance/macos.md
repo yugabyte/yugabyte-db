@@ -19,7 +19,7 @@ type: docs
 
 YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). The recovery point objective (RPO) for the tablets in a YugabyteDB cluster is 0, meaning no data is lost in the failover to another zone. The recovery time objective (RTO) is 3 seconds, which is the time window for completing the failover and becoming operational out of the remaining zones.
 
-This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster remains available for both reads and writes even if a node or an entire zone or region fails. However, if another node were to fail (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
+This tutorial demonstrates how YugabyteDB can continue to do reads and writes even in case of node failures. You create YSQL tables with a replication factor (RF) of 3, which allows a [fault tolerance](../../../architecture/docdb-replication/replication/#fault-tolerance) of 1. This means the cluster remains available for both reads and writes even if a node or an entire zone or region fails. However, if another node were to fail (bringing the number of failures to two), writes become unavailable on the cluster to preserve data consistency.
 
 The tutorial uses the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a cluster, and re-balances connections when a zone fails.
 
@@ -55,11 +55,13 @@ The `Time since heartbeat` value for that node starts to increase. When that num
 
 ![Read and write IOPS with one node stopped](/images/ce/fault-tolerance-dead-node.png)
 
+With the loss of the node, which also represents the loss of an entire failre domain (in this case, the zone), the cluster is now in an under-replicated state.
+
 Navigate to the [simulation application UI](http://127.0.0.1:8000/) to see the node removed from the network diagram when it is stopped. Note that it may take about 60s (1 minute) to display the updated network diagram. You can also notice a spike and drop in the latency and throughput, both of which resume immediately.
 
 ![Latency and throughput graph after dropping a node](/images/ce/fault-tolerance-latency-stoppednode.png)
 
-Loss of the node has no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
+Despite the loss of an entire failure domain, the loss of the node has no impact on the application because no data is lost; previously replicated data on the remaining nodes is used to serve application requests.
 
 ## Clean up
 
