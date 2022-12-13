@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -128,7 +129,7 @@ func (config *Config) Int(key string) int {
 }
 
 // Creates or updates a value for a key in the config.
-func (config *Config) Update(key, val string) error {
+func (config *Config) Update(key string, val any) error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
 	config.viperInstance.Set(key, val)
@@ -136,11 +137,11 @@ func (config *Config) Update(key, val string) error {
 }
 
 // Creates or updates a value for a key in the config.
-func (config *Config) CompareAndUpdate(key, expected, val string) (bool, error) {
+func (config *Config) CompareAndUpdate(key string, expected, val any) (bool, error) {
 	var err error
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	if config.viperInstance.GetString(key) == expected {
+	if reflect.DeepEqual(config.viperInstance.Get(key), expected) {
 		config.viperInstance.Set(key, val)
 		err = config.viperInstance.WriteConfig()
 		if err == nil {
@@ -158,6 +159,26 @@ func (config *Config) Remove(key string) error {
 	return config.viperInstance.WriteConfig()
 }
 
+func (config *Config) StoreCommandFlagBool(
+	cmd *cobra.Command,
+	flagName, configKey string) (bool, error) {
+	isPassed := cmd.Flags().Changed(flagName)
+	if isPassed {
+		value, err := cmd.Flags().GetBool(flagName)
+		if err != nil {
+			FileLogger().Errorf("Unable to get %s - %s", flagName, err.Error())
+			return value, err
+		}
+		err = config.Update(configKey, value)
+		if err != nil {
+			FileLogger().Errorf("Unable to save %s - %s", configKey, err.Error())
+			return value, err
+		}
+		return value, nil
+	}
+	return config.Bool(configKey), nil
+}
+
 func (config *Config) StoreCommandFlagString(
 	cmd *cobra.Command,
 	flagName, configKey string,
@@ -171,7 +192,7 @@ func (config *Config) StoreCommandFlagString(
 	}
 	if value != "" {
 		if validator != nil {
-			value, err := validator(value)
+			value, err = validator(value)
 			if err != nil {
 				FileLogger().Errorf("Error in validating value for %s - %s", flagName, err.Error())
 				return value, err
