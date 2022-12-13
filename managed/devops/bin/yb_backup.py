@@ -55,6 +55,8 @@ COLOCATION_NAME_SUFFIX = '.colocation.parent.tablename'
 COLOCATION_UUID_RE_STR = UUID_RE_STR + COLOCATION_UUID_SUFFIX
 COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
     COLOCATION_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
+COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE = re.compile(
+    COLOCATED_UUID_RE_STR + '[ ]*\t' + COLOCATION_UUID_RE_STR)
 LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 
 LIST_TABLET_SERVERS_RE = re.compile('.*list_tablet_servers.*(' + UUID_RE_STR + ').*')
@@ -3335,7 +3337,8 @@ class YBBackup:
                                  .format(old_id, new_id))
             elif (COLOCATED_DB_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
                   TABLEGROUP_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
-                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
+                  COLOCATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line) or
+                  COLOCATION_MIGRATION_PARENT_TABLE_NEW_OLD_UUID_RE.search(line)):
                 # Parent colocated/tablegroup table
                 (entity, old_id, new_id) = split_by_tab(line)
                 assert entity == 'ParentColocatedTable'
