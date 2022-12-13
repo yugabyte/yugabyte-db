@@ -21,4 +21,5 @@ var InstallChecksWithPostgres = append(InstallChecks, checks.Postgres)
 // UpgradeChecks is the base list of checks for upgrade
 var UpgradeChecks = []Check{
 	checks.InstallExists,
+	checks.InputFile,
 }

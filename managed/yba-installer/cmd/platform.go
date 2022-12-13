@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -20,27 +21,39 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
 )
 
-// Component 3: Platform
-type Platform struct {
-	name                string
+type platformDirectories struct {
 	SystemdFileLocation string
 	ConfFileLocation    string
 	templateFileName    string
-	version             string
 	DataDir             string
 	cronScript          string
 }
 
+func newPlatDirectories() platformDirectories {
+	return platformDirectories{
+		SystemdFileLocation: common.SystemdDir + "/yb-platform.service",
+		ConfFileLocation:    common.GetInstallRoot() + "/yb-platform/conf/yb-platform.conf",
+		templateFileName:    "yba-installer-platform.yml",
+		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
+		cronScript: filepath.Join(
+			common.GetInstallVersionDir(), common.CronDir, "managePlatform.sh"),
+	}
+}
+
+// Component 3: Platform
+type Platform struct {
+	name    string
+	version string
+	platformDirectories
+}
+
 // NewPlatform creates a new YBA service struct.
-func NewPlatform(installRoot, version string) Platform {
+func NewPlatform(version string) Platform {
 	return Platform{
-		"yb-platform",
-		common.SystemdDir + "/yb-platform.service",
-		installRoot + "/yb-platform/conf/yb-platform.conf",
-		"yba-installer-platform.yml",
-		version,
-		installRoot + "/data/yb-platform",
-		fmt.Sprintf("%s/%s/managePlatform.sh", common.GetInstallVersionDir(), common.CronDir)}
+		name:                "yb-platform",
+		version:             version,
+		platformDirectories: newPlatDirectories(),
+	}
 }
 
 func (plat Platform) devopsDir() string {
@@ -76,6 +89,7 @@ func (plat Platform) Name() string {
 
 // Install YBA service.
 func (plat Platform) Install() {
+	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
 	plat.createNecessaryDirectories()
 	plat.createDevopsAndYugawareDirectories()
@@ -99,7 +113,7 @@ func (plat Platform) Install() {
 	}
 
 	plat.Start()
-
+	log.Info("Finishing Platform install")
 }
 
 func (plat Platform) createNecessaryDirectories() {
@@ -176,7 +190,7 @@ func (plat Platform) copyYugabyteReleaseFile() {
 			yugabyteTgzName := f.Name()
 			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
 			common.CopyFileGolang(yugabyteTgzPath,
-				common.GetInstallRoot()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
+				common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
 
 		}
 	}
@@ -196,7 +210,7 @@ func (plat Platform) copyYbcPackages() {
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
 		// TODO: Check if file does not already exist?
-		common.CopyFileGolang(f, common.GetInstallRoot()+"/data/yb-platform/ybc/release/"+fileName)
+		common.CopyFileGolang(f, common.GetBaseInstall()+"/data/yb-platform/ybc/release/"+fileName)
 	}
 
 }
@@ -355,18 +369,48 @@ func (plat Platform) Status() common.Status {
 	return status
 }
 
+// Upgrade will upgrade the platform and install it into the alt install directory.
+// Upgrade will NOT restart the service, the old version is expected to still be running
+func (plat Platform) Upgrade() {
+	log.Info("Starting Platform upgrade")
+	plat.platformDirectories = newPlatDirectories()
+	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
+	plat.createNecessaryDirectories()
+	plat.createDevopsAndYugawareDirectories()
+	plat.untarDevopsAndYugawarePackages()
+	plat.copyYugabyteReleaseFile()
+	plat.copyYbcPackages()
+	plat.renameAndCreateSymlinks()
+	configureConfHTTPS()
+
+	//Create the platform.log file so that we can start platform as
+	//a background process for non-root.
+	common.Create(common.GetInstallRoot() + "/yb-platform/yugaware/bin/platform.log")
+
+	//Crontab based monitoring for non-root installs.
+	if !common.HasSudoAccess() {
+		plat.CreateCronJob()
+	} else {
+		// Allow yugabyte user to fully manage this installation (GetInstallRoot() to be safe)
+		userName := viper.GetString("service_username")
+		common.Chown(common.GetInstallRoot(), userName, userName, true)
+	}
+	plat.Start()
+	log.Info("Finishing Platform upgrade")
+}
+
 func configureConfHTTPS() {
 
 	generateCertGolang()
-
-	os.Chmod("key.pem", os.ModePerm)
-	os.Chmod("cert.pem", os.ModePerm)
 
 	os.MkdirAll(common.GetInstallRoot()+"/yb-platform/certs", os.ModePerm)
 	log.Debug(common.GetInstallRoot() + "/yb-platform/certs directory successfully created.")
 
 	// Do not use viper because we might have to return the default.
 	keyStorePassword := config.GetYamlPathData("platform.keyStorePassword")
+	if _, err := os.Stat("server.ks"); !errors.Is(err, os.ErrNotExist) {
+		os.Remove("server.ks")
+	}
 
 	_, err := common.ExecuteBashCommand("bash",
 		[]string{"-c", "./pemtokeystore-linux-amd64 -keystore server.ks " +
