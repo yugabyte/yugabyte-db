@@ -3299,12 +3299,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File sourceRootCertDirPath, boolean ignoreErrors) {
+      XClusterConfig xClusterConfig,
+      File sourceRootCertDirPath,
+      boolean ignoreErrors,
+      boolean skipRemoveTransactionalCert) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
-    Collection<NodeDetails> nodes = targetUniverse.getNodes();
-    for (NodeDetails node : nodes) {
+
+    // If transactional replication is enabled and this subtask is going to delete the certificate
+    // for the last xCluster config on the target universe, delete the cert for transactional
+    // replication as well. It is assumed that xCluster replications can be deleted one by one only.
+    boolean removeTransactionalReplicationCert =
+        !skipRemoveTransactionalCert
+            && XClusterConfigTaskBase.isTransactionalReplication(targetUniverse)
+            && !XClusterConfigTaskBase.otherXClusterConfigsAsTargetExist(
+                targetUniverse.universeUUID, xClusterConfig.uuid);
+
+    for (NodeDetails node : targetUniverse.getNodes()) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
       transferParams.universeUUID = targetUniverse.universeUUID;
       transferParams.nodeName = node.nodeName;
@@ -3317,23 +3329,27 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
+
+      if (removeTransactionalReplicationCert) {
+        TransferXClusterCerts.Params transferParamsForTransactionCert =
+            new TransferXClusterCerts.Params();
+        transferParamsForTransactionCert.universeUUID = targetUniverse.universeUUID;
+        transferParamsForTransactionCert.nodeName = node.nodeName;
+        transferParamsForTransactionCert.azUuid = node.azUuid;
+        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.REMOVE;
+        transferParamsForTransactionCert.replicationGroupName =
+            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
+        transferParamsForTransactionCert.ignoreErrors = ignoreErrors;
+
+        TransferXClusterCerts transferXClusterCertsForTransactionTask =
+            createTask(TransferXClusterCerts.class);
+        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
+        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
+      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
-      XClusterConfig xClusterConfig, File sourceRootCertDirPath) {
-    return createTransferXClusterCertsRemoveTasks(
-        xClusterConfig, sourceRootCertDirPath, false /* ignoreErrors */);
-  }
-
-  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(XClusterConfig xClusterConfig) {
-    return createTransferXClusterCertsRemoveTasks(
-        xClusterConfig,
-        Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID)
-            .getUniverseDetails()
-            .getSourceRootCertDirPath());
   }
 
   protected void createDeleteXClusterConfigSubtasks(
@@ -3367,7 +3383,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 sourceRootCertDirPath,
                 forceDelete
                     || xClusterConfig.status
-                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse,
+                false /* skipRemoveTransactionalCert */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     }
@@ -3513,10 +3530,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.action = TransferXClusterCerts.Params.Action.COPY;
       transferParams.replicationGroupName = replicationGroupName;
       transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
+      transferParams.ignoreErrors = false;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
       subTaskGroup.addSubTask(transferXClusterCertsTask);
+
+      // If transactional replication is enabled, transfer the cert for it as well. It assumes that
+      // the TransferXClusterCerts subtask for the same parameters is idempotent.
+      if (XClusterConfigTaskBase.isTransactionalReplication(
+          Universe.getOrBadRequest(taskParams().universeUUID))) {
+        TransferXClusterCerts.Params transferParamsForTransactionCert =
+            new TransferXClusterCerts.Params();
+        transferParamsForTransactionCert.universeUUID = taskParams().universeUUID;
+        transferParamsForTransactionCert.nodeName = node.nodeName;
+        transferParamsForTransactionCert.azUuid = node.azUuid;
+        transferParamsForTransactionCert.rootCertPath = certificate;
+        transferParamsForTransactionCert.action = TransferXClusterCerts.Params.Action.COPY;
+        transferParamsForTransactionCert.replicationGroupName =
+            XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME;
+        transferParamsForTransactionCert.producerCertsDirOnTarget = sourceRootCertDirPath;
+        transferParamsForTransactionCert.ignoreErrors = false;
+
+        TransferXClusterCerts transferXClusterCertsForTransactionTask =
+            createTask(TransferXClusterCerts.class);
+        transferXClusterCertsForTransactionTask.initialize(transferParamsForTransactionCert);
+        subTaskGroup.addSubTask(transferXClusterCertsForTransactionTask);
+      }
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
