@@ -31,10 +31,14 @@ func SetupRegisterCommand(parentCmd *cobra.Command) {
 	registerCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
 	registerCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
 	registerCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
+	registerCmd.PersistentFlags().Bool("skip_verify_cert", false,
+		"Skip Yugabyte Anywhere SSL cert verification.")
 	registerCmd.MarkPersistentFlagRequired("api_token")
 	unregisterCmd.PersistentFlags().
 		StringP("api_token", "t", "", "Optional API token for unregistering the node.")
 	unregisterCmd.PersistentFlags().StringP("node_id", "i", "", "Node ID")
+	unregisterCmd.PersistentFlags().Bool("skip_verify_cert", false,
+		"Skip Yugabyte Anywhere SSL cert verification.")
 	parentCmd.AddCommand(registerCmd)
 	parentCmd.AddCommand(unregisterCmd)
 }
@@ -51,6 +55,14 @@ func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Unable to store node agent ID - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagBool(
+		cmd,
+		"skip_verify_cert",
+		util.PlatformSkipVerifyCertKey,
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Error storing skip_verify_cert value - %s", err.Error())
 	}
 	// API token is optional.
 	return unregisterHandler(apiToken)
@@ -112,6 +124,14 @@ func registerCmdHandler(cmd *cobra.Command, args []string) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Unable to get platform URL - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagBool(
+		cmd,
+		"skip_verify_cert",
+		util.PlatformSkipVerifyCertKey,
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Error storing skip_verify_cert value - %s", err.Error())
 	}
 	err = server.RetrieveUser(apiToken)
 	if err != nil {
