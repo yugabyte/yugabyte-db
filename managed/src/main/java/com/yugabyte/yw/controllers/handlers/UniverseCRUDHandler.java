@@ -437,12 +437,14 @@ public class UniverseCRUDHandler {
     }
     boolean cloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
 
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-      c.validate(!cloudEnabled);
+      c.validate(!cloudEnabled, isAuthEnforced);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -992,9 +994,12 @@ public class UniverseCRUDHandler {
 
     // Set the provider code.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(addOnCluster.userIntent.provider));
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    addOnCluster.validate(
-        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
+    addOnCluster.validate(!cloudEnabled, isAuthEnforced);
 
     TaskType taskType = TaskType.AddOnClusterCreate;
     if (addOnCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1066,9 +1071,12 @@ public class UniverseCRUDHandler {
     // Set the provider code.
     Provider provider =
         Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
+    boolean isAuthEnforced =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.universe.auth.is_enforced");
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    readOnlyCluster.validate(
-        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
+    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced);
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
