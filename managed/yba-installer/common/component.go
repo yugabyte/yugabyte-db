@@ -11,6 +11,7 @@ type Component interface {
 	TemplateFile() string
 	Name() string
 	Uninstall(cleanData bool)
+	Upgrade()
 	Status() Status
 	Start()
 	Stop()

@@ -149,12 +149,13 @@ func Contains[T comparable](values []T, target T) bool {
 }
 
 // Chown changes ownership of dir to user:group, recursively (optional).
-func Chown(dir, user, group string, recursive bool) {
+func Chown(dir, user, group string, recursive bool) error {
 	args := []string{fmt.Sprintf("%s:%s", user, group), dir}
 	if recursive {
 		args = append([]string{"-R"}, args...)
 	}
-	ExecuteBashCommand("chown", args)
+	_, err := ExecuteBashCommand("chown", args)
+	return err
 }
 
 // HasSudoAccess determines whether or not running user has sudo permissions.
