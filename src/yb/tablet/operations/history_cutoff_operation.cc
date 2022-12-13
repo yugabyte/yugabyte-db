@@ -57,7 +57,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
   return Status::OK();
 }
 
-Status HistoryCutoffOperation::Prepare() {
+Status HistoryCutoffOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }
