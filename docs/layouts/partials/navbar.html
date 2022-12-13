@@ -91,15 +91,16 @@
     <ul class="header-menu ds-flex hide-mobile" id="header-menu-list">
       {{ range .Site.Menus.main.ByWeight }}
         {{ $anchorLink = "" }}
-        {{ if ne .URL "" }}
-          {{ if eq .URL "/" }}
-            {{ $anchorLink = "/" }}
+        {{ if eq .URL "/" }}
+          {{ $anchorLink = "/" }}
+          {{ if not .Params.excludeVersion }}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{ end }}
+        {{ else }}
+          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+            {{ $anchorLink = .URL }}
           {{ else }}
-            {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
-              {{ $anchorLink = .URL }}
-            {{ else }}
-              {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
-            {{ end }}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
           {{ end }}
         {{ end }}
 
@@ -134,6 +135,9 @@
       {{ $anchorLink := "" }}
       {{ if eq .URL "/" }}
         {{ $anchorLink = "/" }}
+        {{ if not .Params.excludeVersion }}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+        {{ end }}
       {{ else }}
         {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
           {{ $anchorLink = .URL }}
