@@ -66,8 +66,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           createXClusterConfigRenameTask(editFormData.name)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-          // Delete the old directory if it created a new one.
-          sourceCertificate.ifPresent(cert -> createTransferXClusterCertsRemoveTasks());
+          // Delete the old directory if it created a new one. When the old directory is removed
+          // because of renaming, the directory for transactional replication must not be deleted.
+          sourceCertificate.ifPresent(
+              cert ->
+                  createTransferXClusterCertsRemoveTasks(
+                      xClusterConfig,
+                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
+                      false /* ignoreErrors */,
+                      true /* skipRemoveTransactionalCert */));
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
