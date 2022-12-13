@@ -74,11 +74,6 @@ public class EncryptionAtRestController extends AuthenticatedController {
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
 
-  public static final String HC_ADDR_FNAME = HashicorpVaultConfigParams.HC_VAULT_ADDRESS;
-  public static final String HC_TOKEN_FNAME = HashicorpVaultConfigParams.HC_VAULT_TOKEN;
-  public static final String HC_ENGINE_FNAME = HashicorpVaultConfigParams.HC_VAULT_ENGINE;
-  public static final String HC_MPATH_FNAME = HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH;
-
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
@@ -129,7 +124,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null
+            || formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null) {
           throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
         }
         try {
@@ -196,15 +192,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // NO checks required
         break;
       case HASHICORP:
-        if (formData.get(HC_ENGINE_FNAME) != null
-            && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
-        }
-        if (formData.get(HC_MPATH_FNAME) != null
-            && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
+        List<String> hashicorpKmsNonEditableFields =
+            Arrays.asList(
+                HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+                HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+                HashicorpVaultConfigParams.HC_VAULT_ADDRESS);
+        for (String field : hashicorpKmsNonEditableFields) {
+          if (formData.get(field) != null && !authconfig.get(field).equals(formData.get(field))) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format("Hashicorp KmsConfig field '%s' cannot be changed.", field));
+          }
         }
         break;
       case GCP:
@@ -274,11 +272,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
-        formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
 
-        if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
-          formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+          formData.set(
+              HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
         }
         break;
       case GCP:
