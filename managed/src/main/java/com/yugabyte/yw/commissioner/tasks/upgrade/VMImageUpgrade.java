@@ -112,6 +112,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               nodeList, params -> params.vmUpgradeTaskType = taskParams().vmUpgradeTaskType)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+      // Copy the source root certificate to the node.
+      createTransferXClusterCertsCopyTasks(
+          Collections.singleton(node), getUniverse(), SubTaskGroupType.InstallingSoftware);
+
       processTypes.forEach(
           processType -> {
             if (processType.equals(ServerType.CONTROLLER)) {

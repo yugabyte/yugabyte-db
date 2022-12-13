@@ -852,6 +852,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
             write_id = decoded_value.write_id;
 
             if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
+              reverse_index_iter.Next();
               continue;
             }
 

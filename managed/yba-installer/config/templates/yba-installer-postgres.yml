@@ -8,8 +8,8 @@
       After=network-online.target
 
       [Service]
-      User=yugabyte
-      Group=yugabyte
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
       Type=forking
       TimeoutSec=300
 

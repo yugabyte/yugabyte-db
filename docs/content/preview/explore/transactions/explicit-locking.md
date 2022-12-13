@@ -3,7 +3,7 @@ title: Explicit locking
 headerTitle: Explicit locking
 linkTitle: Explicit locking
 description: Explicit locking in YugabyteDB.
-headcontent: Explore row locking in YugabyteDB
+headcontent: Learn how row locking works in YugabyteDB
 menu:
   preview:
     identifier: explore-transactions-explicit-locking-1-ysql
@@ -22,8 +22,6 @@ type: docs
   </li>
 
 </ul>
-
-This section describes how explicit locking works in YugabyteDB.
 
 YugabyteDB supports most row-level locks, similar to PostgreSQL. Explicit row-locks use transaction priorities to ensure that two transactions can never hold conflicting locks on the same row. To do this, the query layer acquires the row lock by assigning a very high value for the priority of the transaction that is being run. This causes all other transactions that conflict with the current transaction to fail, because they have a lower transaction priority.
 
@@ -74,7 +72,7 @@ yugabyte=# SELECT * from t WHERE k='k1' FOR UPDATE;
 (1 row)
 ```
 
-Before completing the transaction, try to update the same key in your other session using a simple update statement.
+Before completing the transaction, try to update the same key in your other session using a basic update statement.
 
 ```sql
 yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';

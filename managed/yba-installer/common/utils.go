@@ -5,6 +5,7 @@
 package common
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -147,12 +148,11 @@ func IndexOf(arr []string, val string) int {
 	return -1
 }
 
-// Contains checks an array s for the presence of str.
-func Contains(s []string, str string) bool {
-
-	for _, v := range s {
-
-		if v == str {
+// Contains checks an array values for the presence of target.
+// Type must be a comparable
+func Contains[T comparable](values []T, target T) bool {
+	for _, v := range values {
+		if v == target {
 			return true
 		}
 	}
@@ -275,4 +275,61 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) {
 
 	args := []string{"-sf", binaryPath, linkPath}
 	ExecuteBashCommand("ln", args)
+}
+
+type defaultAnswer int
+
+func (d defaultAnswer) String() string {
+	return strconv.Itoa(int(d))
+}
+
+const (
+	DefaultNone defaultAnswer = iota
+	DefaultYes
+	DefaultNo
+)
+
+func UserConfirm(prompt string, defAns defaultAnswer) bool {
+	if !strings.HasSuffix(prompt, " ") {
+		prompt = prompt + " "
+	}
+	var selector string
+	switch defAns {
+	case DefaultNone:
+		selector = "[yes/no]"
+	case DefaultYes:
+		selector = "[YES/no]"
+	case DefaultNo:
+		selector = "[yes/NO]"
+	default:
+		log.Fatal("unknown defaultanswer " + defAns.String())
+	}
+
+	for {
+		fmt.Printf("%s%s: ", prompt, selector)
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("invalid input: " + err.Error())
+			continue
+		}
+		input = strings.TrimSuffix(input, "\n")
+		input = strings.Trim(input, " ")
+		input = strings.ToLower(input)
+		switch input {
+		case "n", "no":
+			return false
+		case "y", "yes":
+			return true
+		case "":
+			if defAns == DefaultYes {
+				return true
+			} else if defAns == DefaultNo {
+				return false
+			}
+			fallthrough
+		default:
+			fmt.Println("please enter 'yes' or 'no'")
+		}
+	}
 }

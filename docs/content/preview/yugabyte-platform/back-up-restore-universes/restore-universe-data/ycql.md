@@ -39,11 +39,11 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
 3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:
 
-    ![Restore backup](/images/yp/restore-entire-backup.png)
+    ![Restore backup](/images/yp/restore-entire-backup-ycql.png)
 
 4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
-    ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql.png)
+    ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql-1.png)
 
     - Select the name of the universe to which you want to restore the backup.
 
@@ -67,7 +67,7 @@ In addition to the basic restore, an advanced option is available if you have mo
 
 To perform this type of restore, click **... > Advanced Restore**, as per the following illustration:
 
-![Restore advanced](/images/yp/restore-advanced.png)
+![Restore advanced](/images/yp/restore-advanced-ycql-1.png)
 
 To proceed, complete the fields of the **Advanced Restore** dialog shown in the following illustration:
 
@@ -91,4 +91,6 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
-![Backups - YSQL](/images/yp/backups.png)
+![Backups](/images/yp/backups-list.png)
+
+By clicking on a specific universe included in the list, you can access the backup details and trigger a restore.

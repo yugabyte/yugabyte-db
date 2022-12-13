@@ -62,8 +62,6 @@ You can also modify TLS settings for an existing universe, as follows:
 
       ![TLS Configuration Expanded](/images/yp/encryption-in-transit/tls-config2.png)
 
-    
-
     - If encryption in transit is currently enabled for the universe, you can either disable or modify it, as follows:
 
       - To disable encryption in transit, disable the **Encryption in Transit for this Universe** field and then click **OK**.
@@ -193,7 +191,9 @@ You rotate the existing custom certificates and replace them with new database n
 
   - Click **OK**.<br>
 
-    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.
+    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br>
+
+  ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
 
 ### Expand the universe
 
@@ -368,6 +368,52 @@ When you create a universe, you can enable TLS using certificates provided by Ha
 
 You can also edit TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then modifying the required settings.
 
+## Kubernetes cert-manager
+
+For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configure an existing running instance of the [cert-manager](https://cert-manager.io/) as a TLS certificate provider for a cluster, assuming that the following criteria are met:
+
+- The cert-manager is running in the Kubernetes cluster.
+- A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same root certificate file must be prepared for upload to YugabyteDB Anywhere.
+- An Issuer or ClusterIssuer Kind is configured on the cert-manager and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
+
+During the universe creation, you can enable TLS certificates issued by the cert-manager, as follows:
+
+1. Upload the root certificate to YugabyteDB Anywhere:
+
+   - Prepare the root certificate in a file (for example, `root.crt`).
+   - Navigate to **Configs > Security > Encryption in Transit** and click **Add Certificate**.
+   - On the **Add Certificate** dialog shown in the following illustration, select **K8S cert-manager**:
+
+     ![img](/images/yp/security/kubernetes-cert-manager.png)
+
+   - In the **Certificate Name** field, enter a meaningful name for your certificate configuration.
+   - Click **Upload Root Certificate** and select the root certificate file that you prepared.
+   - Click **Add** to make the certificate available.
+
+2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Since an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+
+   ![img](/images/yp/security/kubernetes-cert-manager-add-region.png)
+
+3. Create the universe:
+
+   - Navigate to **Universes** and click **Create Universe**.
+   - In the **Provider** field, select the cloud provided that you have configured in step 2.
+   - Complete the fields based on your requirements, and select **Enable Node-to-Node TLS** or **Enable Client-to-Node TLS**.
+   - Select the root certificate that you have uploaded in step 1.
+   - Click **Create**.
+
+### Troubleshoot
+
+If you encounter problems, you should verify the name of Issuer or ClusterIssuer in the Kubernetes cluster, as well as ensure that the Kubernetes cluster is in Ready state. You can use the following commands:
+
+```sh
+kubectl get ClusterIssuer
+```
+
+```sh
+kubectl -n <namespace> Issuer
+```
+
 ## Connecting to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
@@ -398,6 +444,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   ```sh
   cd <yugabyte software install directory>
   bin/ysqlsh -h 172.152.43.78 -p 5433 sslmode=require
+  ```
+
+  ```output
   ysqlsh (11.2-YB-2.3.3.0-b0)
   SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
   Type "help" for help.

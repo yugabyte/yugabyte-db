@@ -11,17 +11,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.104.3"
+  HUGO_VERSION = "0.108.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -122,6 +122,10 @@
 
 # Build an app was in quick-start, now in develop
 
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
+  force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
   to = "/preview/develop/build-apps/c/cloud-ysql-c/"

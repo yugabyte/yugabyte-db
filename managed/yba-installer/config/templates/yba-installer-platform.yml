@@ -112,8 +112,8 @@ services:
       After=network-online.target
 
       [Service]
-      User=yugabyte
-      Group=yugabyte
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk8u345-b01"

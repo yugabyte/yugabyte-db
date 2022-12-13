@@ -437,6 +437,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createSingleKubernetesExecutorTask(
         KubernetesCommandExecutor.CommandType.POD_INFO, activeZones, isReadOnlyCluster);
 
+    // Copy the source root certificate to the new pods.
+    createTransferXClusterCertsCopyTasks(
+        podsToAdd, getUniverse(), SubTaskGroupType.ConfigureUniverse);
+
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }

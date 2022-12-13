@@ -41,9 +41,9 @@ To create a VPC network in AWS, you need to complete the following tasks:
 | Task | Notes |
 | :--- | :--- |
 | **[Create the VPC](#create-a-vpc)** | Reserves a range of private IP addresses for the network.<br>You need to create a VPC for each region in multi-region clusters.<br>The status of the VPC is _Active_ when done. |
-| **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
 | **[Accept the peering request in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
 With the exception of accepting the peering request in AWS, these tasks are performed in YugabyteDB Managed.
@@ -69,26 +69,12 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
 1. Select the region. Typically, the same region that hosts the VPC with which you want to peer.
-1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the address _does not overlap_ with that of the application VPC. The address should also not overlap with the VPCs that will be used in the other regions of a multi-region cluster.
+1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the following:
+    - the address _does not overlap_ with that of the application VPC.
+    - the address _does not overlap_ with the VPCs that will be used for the other regions of a multi-region cluster.
 1. Click **Save**.
 
 YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
-
-The VPC's network name and project ID are automatically assigned. You'll need these details when configuring the peering in GCP.
-
-## Deploy a cluster in the VPC
-
-You can deploy your cluster in a VPC any time after the VPC is created. You must deploy the cluster in the VPC; the VPC can't be changed after cluster creation.
-
-To deploy a cluster in a VPC:
-
-1. On the **Clusters** page, click **Add Cluster**.
-1. Choose **Dedicated**.
-1. Enter a name for the cluster, choose **AWS**, and click **Next**.
-1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
-For a **Multi-Region Deployment**, select each region and its corresponding VPC.
-
-For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
 ## Create a peering connection
 
@@ -167,25 +153,30 @@ To add a routing table entry:
 
 When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
 
+## Deploy a cluster in the VPC
+
+You can deploy your cluster in a VPC any time after the VPC is created. You must deploy the cluster in the VPC; the VPC can't be changed after cluster creation.
+
+To deploy a cluster in a VPC:
+
+1. On the **Clusters** page, click **Add Cluster**.
+1. Choose **Dedicated**.
+1. Enter a name for the cluster, choose **AWS**, and click **Next**.
+1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Use VPC peering**, and select your VPC.
+
+    For a **Multi-Region Deployment**, select each region and its corresponding VPC.
+
+For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
+
 ## Add the application VPC to the cluster IP allow list
 
-To enable the peered application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
-
-{{< tip title="What you need" >}}
-The CIDR address for the AWS application VPC you are peering with.
-
-**Where to find it**<br>Navigate to the AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
-{{< /tip >}}
+To enable the peered application VPC to connect to the cluster, you need to add the peered VPC to the cluster IP allow list.
 
 To add the application VPC to the cluster IP allow list:
 
-1. On the **Clusters** page, select the cluster you are peering, and click **Add IP Allow List** to display the **Add IP Allow List** sheet.
+1. On the **Clusters** page, select the cluster you are peering, click **Actions**, and choose **Edit IP Allow List** to display the **Add IP Allow List** sheet.
 
-1. Click **Create New List and Add to Cluster**.
-
-1. Enter a name and description for the list. For example, the name and details of your application VPC.
-
-1. Add at least one of the CIDR blocks associated with the peered application VPC.
+1. Click **Add Peered VPC Networks**.
 
 1. Click **Save** when done.
 
