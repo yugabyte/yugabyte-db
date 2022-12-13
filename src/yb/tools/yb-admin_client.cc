@@ -3003,8 +3003,36 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(
           cout << "Target imported " << colocated_prefix << "table name: " << table_name.ToString()
                << endl;
         } else if (!keyspace.name.empty()) {
-          cout << "Target imported " << colocated_prefix << "table name: " << keyspace.name << "."
-               << meta.name() << endl;
+          if (master::IsColocatedDbParentTableName(meta.name())) {
+            // Check whether the import_snapshot command is invoked for a colocation migration.
+            // And adjust the output message if a colocation migration happens.
+            master::GetNamespaceInfoResponsePB ns_resp;
+            RETURN_NOT_OK(RequestMasterLeader(&ns_resp, [&](RpcController* rpc) {
+              master::GetNamespaceInfoRequestPB req;
+              req.mutable_namespace_()->set_name(keyspace.name);
+              req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+              return master_ddl_proxy_->GetNamespaceInfo(req, &ns_resp, rpc);
+            }));
+            if (ns_resp.has_legacy_colocated_database()
+                && !ns_resp.legacy_colocated_database()) {
+              master::ListTablegroupsResponsePB resp;
+              RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+                master::ListTablegroupsRequestPB req;
+                req.set_namespace_id(ns_resp.namespace_().id());
+                return master_ddl_proxy_->ListTablegroups(req, &resp, rpc);
+              }));
+              // For colocation migration, there should be only one default tablegroup in the target
+              // imported database because we don't support tablespace in a legacy colocated
+              // database.
+              DCHECK_EQ(resp.tablegroups().size(), 1);
+              cout << "Target imported " << colocated_prefix << "table name: "
+                   << keyspace.name << "."
+                   << master::GetColocationParentTableName(resp.tablegroups()[0].id()) << endl;
+            }
+          } else {
+            cout << "Target imported " << colocated_prefix << "table name: " << keyspace.name << "."
+                 << meta.name() << endl;
+          }
         }
 
         // Print old table name before the table renaming in the code below.

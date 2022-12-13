@@ -379,7 +379,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
     ImportSnapshotMetaResponsePB_TableMetaPB* table_meta = nullptr;
   };
-  typedef std::map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
+  typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
   struct ExternalNamespaceSnapshotData {
     ExternalNamespaceSnapshotData() : db_type(YQL_DATABASE_UNKNOWN), just_created(false) {}
@@ -389,7 +389,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     bool just_created;
   };
   // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
-  typedef std::map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;
+  typedef std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;
 
   struct ExternalUDTypeSnapshotData {
     ExternalUDTypeSnapshotData() : just_created(false) {}
@@ -399,7 +399,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     bool just_created;
   };
   // Map: old_type_id (key) -> new_type_id + type_entry_pb + created-flag.
-  typedef std::map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
+  typedef std::unordered_map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
   Status ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_pb,
                                   ImportSnapshotMetaResponsePB* resp,
