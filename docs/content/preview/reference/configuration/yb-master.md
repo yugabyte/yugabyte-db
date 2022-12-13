@@ -256,9 +256,9 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 Failed followers will be evicted from the Raft group and the data will be re-replicated.
 
-Default: `true`
+Default: `false`
 
-Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once its evicted.
+Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once it is evicted.
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
