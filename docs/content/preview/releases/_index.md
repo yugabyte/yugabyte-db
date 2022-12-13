@@ -47,12 +47,12 @@ The information in this section is a summary for convenience only. For complete 
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.17](release-notes/v2.17/) <span class='metadata-tag-green'>Preview</span> | December 8, 2022 | n/a | n/a |
-| [v2.16]() | December 12, 2022 <span class='metadata-tag-green'>STS</span>| August 12, 2023 | Feburary 12, 2024 |
-| [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | July 14, 2022 | January 14, 2024 | July 14, 2024 |
-| [v2.12](release-notes/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
-| [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | May 15, 2023 |
-| [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
+| [v2.17](release-notes/v2.17/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.17" release >}} | n/a | n/a |
+| [v2.16]() <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.16" release >}} | {{< yb-eol-dates "v2.16" EOM >}} | {{< yb-eol-dates "v2.16" EOL >}} |
+| [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
+| [v2.12](release-notes/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
+| [v2.8](release-notes/v2.8/) | {{< yb-eol-dates "v2.8" release >}} | {{< yb-eol-dates "v2.8" EOM >}} | {{< yb-eol-dates "v2.8" EOL >}} |
+| [v2.6](release-notes/v2.6/) | {{< yb-eol-dates "v2.6" release >}} | {{< yb-eol-dates "v2.6" EOM >}} | {{< yb-eol-dates "v2.6" EOL >}} |
 
 ### Releases at end of life (EOL) {#eol-releases}
 
