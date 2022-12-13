@@ -380,7 +380,6 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   [preview_api.params]
-    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -676,7 +675,6 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   [stable_api.params]
-    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -862,7 +860,6 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.12_api".params]
-    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1042,7 +1039,6 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.8_api".params]
-    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1209,7 +1205,6 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.6_api".params]
-    classes = "separator"
     showSection = true
     hideLink = true
 

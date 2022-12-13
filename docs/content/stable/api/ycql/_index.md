@@ -11,6 +11,8 @@ menu:
     identifier: api-cassandra
     parent: yugabyte-api-ycql
     weight: 3000
+    params:
+      classes: separator
 type: indexpage
 ---
 

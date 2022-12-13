@@ -11,6 +11,8 @@ menu:
     parent: yugabyte-api-ycql
     identifier: api-cassandra
     weight: 10
+    params:
+      classes: separator
 aliases:
   - /preview/api/ycql/
   - /preview/api/cassandra/
