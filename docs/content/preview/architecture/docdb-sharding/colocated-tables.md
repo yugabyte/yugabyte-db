@@ -27,7 +27,7 @@ Backup-restore support for colocated tables is in active development. Refer to i
 
 ## Motivation
 
-This feature is desirable in a number of scenarios, some of which are described below.
+The following sections describe some scenarios where colocated tables are beneficial.
 
 ### Small datasets needing HA or geo-distribution
 
@@ -65,20 +65,22 @@ This is characteristic of a microservices-oriented architecture, where each micr
 
 **Example:** Multi-tenant SaaS services where one database is created per customer. As new customers are rapidly on-boarded, it becomes necessary to add more databases quickly while maintaining high-availability and fault-tolerance of each database.
 
-## Tradeoffs
+## Benefits and tradeoffs
 
-Fundamentally, colocated tables have the following tradeoffs:
+Colocated tables have the following benefits:
 
-- **Higher performance - no network reads for joins**.
-All of the data across the various colocated tables is local, which means joins no longer have to
+- Better performance - no network reads for joins.
+
+  All of the data across the various colocated tables is local, which means joins no longer have to
 read data over the network. This improves the speed of joins.
 
-- **Support higher number of tables - using fewer tablets**.
-Because multiple tables and indexes can share one underlying tablet, a much higher number of tables
-can be supported using colocated tables.
+- Support higher number of tables - using fewer tablets.
 
-- **Lower scalability - until removal from colocation tablet**.
-The assumptions behind tables that are colocated is that their data need not be automatically sharded and distributed across nodes. If it is known a priori that a table will get large, it can be opted out of the colocation tablet at creation time. If a table already present in the colocation tablet gets too large, it can dynamically be removed from the colocation tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
+  Because multiple tables and indexes can share one underlying tablet, a much higher number of tables can be supported using colocated tables.
+
+However, these come with the tradeoff of lower scalability for large tables, until the tables are removed from the colocation tablet.
+
+The assumptions behind tables that are colocated is that their data need not be automatically sharded and distributed across nodes. If it is known a priori that a table will get large, it can be opted out of the colocation tablet when it is created. If a table already present in the colocation tablet gets too large, it can be dynamically removed from the colocation tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
 
 ## What's next?
 
