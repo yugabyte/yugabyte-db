@@ -41,31 +41,6 @@ SELECT
 $$
 LANGUAGE SQL PARALLEL SAFE;
 
-CREATE FUNCTION pg_stat_monitor_settings(
-    OUT name  text,
-    OUT value text,
-    OUT default_value text,
-    OUT description  text,
-    OUT minimum INTEGER,
-    OUT maximum INTEGER,
-    OUT options text,
-    OUT restart text
-)
-RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'pg_stat_monitor_settings'
-LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
-
-CREATE VIEW pg_stat_monitor_settings AS SELECT
-    name,
-    value,
-    default_value,
-    description,
-    minimum,
-    maximum,
-    options,
-    restart
-FROM pg_stat_monitor_settings();
-
 CREATE FUNCTION decode_error_level(elevel int)
 RETURNS  text
 AS
@@ -465,7 +440,6 @@ $$ LANGUAGE plpgsql;
 SELECT pgsm_create_view();
 REVOKE ALL ON FUNCTION range FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_cmd_type FROM PUBLIC;
-REVOKE ALL ON FUNCTION pg_stat_monitor_settings FROM PUBLIC;
 REVOKE ALL ON FUNCTION decode_error_level FROM PUBLIC;
 REVOKE ALL ON FUNCTION pg_stat_monitor_internal FROM PUBLIC;
 REVOKE ALL ON FUNCTION get_histogram_timings FROM PUBLIC;
