@@ -48,7 +48,7 @@
       <ul class="navbar-nav right-nav">
         {{ range .Site.Menus.top_nav }}
           <li class="nav-item">
-            <a class="{{- if .Params.classes }} {{ .Params.classes }}{{- end }}"{{ if .URL }} href="{{ .URL }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+            <a class="{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" {{ if .URL }}href="{{ .URL }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}{{ else }}role="button"{{- end }} title="{{ .Name }}">
               <span>{{ .Name }}</span>
               {{ .Post }}
             </a>
@@ -57,10 +57,10 @@
               <ul class="header-submenu">
                 {{ range $startNow }}
                   <li>
-                    <a href="{{ .URL }}" title="{{ .Name }}">
+                    <a href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
                       {{ if .Params.imageUrl }}
                       <div class="icon">
-                        <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" />
+                        <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}">
                       </div>
                       {{ end }}
                       <div class="title">
@@ -104,7 +104,7 @@
         {{ end }}
 
         <li class="header-link{{ if .HasChildren }} dropdown{{- end }}">
-          <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+          <a class="hover-label" {{ if ne $anchorLink "" }}href="{{ $anchorLink }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}{{ else }}role="button"{{- end }} title="{{ .Name }}">
             <span class="header-menu-text">{{ .Name }}</span>
           </a>
 
@@ -142,20 +142,26 @@
         {{ end }}
       {{ end }}
 
-      <li>
-        <a {{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
-          {{ if .Params.imageUrl }}
-            <div class="icon">
-              <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" width="24" height="24">
-            </div>
-          {{ end }}
-          <div class="title">
-            <span>{{ .Name }}</span>
-            {{ if .Params.description }}
-              <span class="desc">{{ .Params.description }}</span>
+      <li{{ if .Params.classes }} class="{{ .Params.classes }}"{{- end }}>
+        {{ if ne $anchorLink "" }}
+          <a href="{{ $anchorLink }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }} title="{{ .Name }}">
+
+            {{ if .Params.imageUrl }}
+              <div class="icon">
+                <img src="{{ .Params.imageUrl }}" alt="{{ .Name }}" title="{{ .Name }}"width="24" height="24">
+              </div>
             {{ end }}
-          </div>
-        </a>
+
+            <div class="title">
+              <span>{{ .Name }}</span>
+              {{ if .Params.description }}
+                <span class="desc">{{ .Params.description }}</span>
+              {{ end }}
+            </div>
+          </a>
+        {{ else }}
+          <span>{{ .Name }}</span>
+        {{ end }}
       </li>
     {{ end }}
   </ul>

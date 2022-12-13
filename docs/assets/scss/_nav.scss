@@ -78,53 +78,60 @@ body {
 
             .algolia-autocomplete {
               max-width: 100%;
+            }
 
-              .td-search-input {
-                font-weight: 400;
+            .td-search-input {
+              font-weight: 400;
+              font-size: 13px;
+              line-height: 16px;
+              color: #0b1117;
+              width: 400px;
+              height: 32px;
+              left: 20px;
+              outline: none;
+              top: 20px;
+              background: #fff;
+              position: static !important;
+              text-indent: 38px;
+              border: 1px solid #d7dee4;
+              border-radius: 8px;
+              vertical-align: middle !important;
+              padding: 0;
+
+              @media (max-width: 1199px) {
+                width: 285px !important;
+              }
+
+              @media (max-width: 767px) {
+                width: 100% !important;
+              }
+
+              &::-webkit-input-placeholder {
                 font-size: 13px;
                 line-height: 16px;
-                color: #0b1117;
-                width: 400px;
-                height: 32px;
-                left: 20px;
-                outline: none;
-                top: 20px;
-                background: #fff;
-                position: static !important;
-                text-indent: 38px;
-                border: 1px solid #d7dee4;
-                border-radius: 8px;
-                vertical-align: middle !important;
-                padding: 0;
+                color: #6d7c88;
+              }
 
-                @media (max-width: 1199px) {
-                  width: 285px !important;
-                }
+              &::-webkit-placeholder {
+                font-size: 13px;
+                line-height: 16px;
+                color: #6d7c88;
+              }
 
-                @media (max-width: 767px) {
-                  width: 100% !important;
-                }
+              &:focus {
+                box-shadow: 0 0 0 1px #cbdbff;
+                border: 1px solid #cbdbff;
+              }
 
-                &::-webkit-input-placeholder {
-                  font-size: 13px;
-                  line-height: 16px;
-                  color: #6d7c88;
-                }
-
-                &::-webkit-placeholder {
-                  font-size: 13px;
-                  line-height: 16px;
-                  color: #6d7c88;
-                }
-
-                &:focus {
-                  box-shadow: 0 0 0 1px #cbdbff;
-                  border: 1px solid #cbdbff;
-                }
-
-                &::-webkit-search-cancel-button {
-                  margin-right: 12px;
-                }
+              &::-webkit-search-cancel-button {
+                position: relative;
+                right: 10px;
+                -webkit-appearance: none;
+                height: 20px;
+                width: 20px;
+                border-radius: 10px;
+                background: url(/icons/cancel.svg) center no-repeat;
+                z-index: 999;
               }
             }
 
@@ -138,6 +145,10 @@ body {
               height: 24px;
               margin-left: -25px;
               z-index: 99;
+            }
+
+            &.active-input input[type="reset"] {
+              display: block;
             }
           }
 
@@ -240,7 +251,7 @@ body {
                       }
                     }
 
-                    &:hover {
+                    &:not(.label):hover {
                       background: #f2f6ff;
                     }
                   }
@@ -252,6 +263,17 @@ body {
                 visibility: visible;
                 height: auto;
                 overflow: visible;
+
+                &::before {
+                  position: fixed;
+                  content: "";
+                  left: 0;
+                  top: 0;
+                  width: 100vw;
+                  background-color: transparent;
+                  z-index: -1;
+                  height: 100vh;
+                }
               }
             }
           }
@@ -421,6 +443,21 @@ body {
 
             &:focus,
             &:hover {
+              a {
+                position: relative;
+
+                &::after {
+                  content: "";
+                  background: transparent;
+                  width: 100%;
+                  height: 10px;
+                  position: absolute;
+                  bottom: -10px;
+                  left: 0;
+                  z-index: -4;
+                }
+              }
+
               color: #6d7c88;
 
               @media (min-width: 992px) {
@@ -511,7 +548,26 @@ body {
                       }
                     }
 
-                    &:hover {
+                    &.label {
+                      font-weight: 500;
+                      font-size: 11.5px;
+                      line-height: 14px;
+                      display: flex;
+                      flex-flow: column;
+                      align-items: flex-start;
+                      text-transform: uppercase;
+                      color: #97a5b0;
+
+                      &.label ~ .label::before {
+                        margin: 0 0 24px -15px;
+                        border-top: 1px solid #e9eef2;
+                        content: "";
+                        width: calc(100% + 30px);
+                        height: auto;
+                      }
+                    }
+
+                    &:not(.label):hover {
                       background: #f2f6ff;
 
                       a .title span {
@@ -975,7 +1031,7 @@ body {
   }
 
   body > header .td-navbar.navbar-expand .top-nav.top-nav {
-    height: 80px;
+    height: 81px;
     padding: 20px 15px;
     margin-bottom: 0;
   }

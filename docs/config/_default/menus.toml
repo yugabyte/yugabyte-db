@@ -4,7 +4,7 @@
   name = "Star us on Github"
   weight = 1
   url = "https://github.com/yugabyte/yugabyte-db"
-  post = "<img width='24' height='24' src='/icons/github.svg' alt='YugabyteDB Github' />"
+  post = "<img width='24' height='24' src='/icons/github.svg' alt='YugabyteDB Github'>"
   [top_nav.params]
     classes = "tritiery-btn"
     newTab = true
@@ -13,7 +13,7 @@
   name = "Join us on Slack"
   weight = 2
   url = "https://communityinviter.com/apps/yugabyte-db/register"
-  post = "<img width='24' height='24' src='/icons/slack.svg' alt='YugabyteDB Community Slack' />"
+  post = "<img width='24' height='24' src='/icons/slack.svg' alt='YugabyteDB Community Slack'>"
   [top_nav.params]
     classes = "tritiery-btn"
     newTab = true
@@ -37,21 +37,21 @@
     newTab = true
     tagLine = "No credit card required"
 
-[[start_now]]
-  name = "YugabyteDB Anywhere"
-  weight = 2
-  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
-  [start_now.params]
-    buttonText = "Request a free trial"
-    classes = "secondary-btn sm-btn"
-    description = "Self-managed cloud DBaaS"
-    imageUrl = "/icons/server.svg"
-    newTab = true
+# [[start_now]]
+#   name = "YugabyteDB Anywhere"
+#   weight = 2
+#   url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
+#   [start_now.params]
+#     buttonText = "Request a free trial"
+#     classes = "secondary-btn sm-btn"
+#     description = "Self-managed cloud DBaaS"
+#     imageUrl = "/icons/server.svg"
+#     newTab = true
 
 [[start_now]]
   name = "YugabyteDB"
   weight = 3
-  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
+  url = "https://download.yugabyte.com/#/"
   [start_now.params]
     buttonText = "Download"
     classes = "secondary-btn sm-btn"
@@ -65,12 +65,13 @@
   name = "Products"
   weight = 1
   identifier = "products"
+  url = "/preview/"
 
 [[main]]
   name = "YugabyteDB"
   weight = 2
   parent = "products"
-  url = "/"
+  url = "/preview/"
   [main.params]
     description = "The open source distributed SQL database"
     imageUrl = "/icons/database.svg"
@@ -97,7 +98,7 @@
 [[main]]
   name = "Integrations"
   weight = 2
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   [main.params]
     excludeVersion = true
 
@@ -105,28 +106,45 @@
   name = "APIs"
   weight = 3
   identifier = "yugabyte-apis"
+  url = "/api/ysql/"
+
+[[main]]
+  name = "SQL APIs"
+  weight = 1
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
 
 [[main]]
   name = "YSQL"
-  weight = 1
+  weight = 2
   identifier = "yugabytedb-api-ysql"
   parent = "yugabyte-apis"
   url = "/api/ysql/"
   [main.params]
-    imageUrl = "/icons/database.svg"
+    imageUrl = "/icons/api.svg"
 
 [[main]]
   name = "YCQL"
-  weight = 2
+  weight = 3
   identifier = "yugabytedb-api-ycql"
   parent = "yugabyte-apis"
   url = "/api/ycql/"
   [main.params]
-    imageUrl = "/icons/cloud.svg"
+    imageUrl = "/icons/api.svg"
+
+[[main]]
+  name = "Management APIs"
+  weight = 4
+  parent = "yugabyte-apis"
+  [main.params]
+    classes = "label"
+    excludeVersion = true
 
 [[main]]
   name = "YugabyteDB Anywhere API"
-  weight = 3
+  weight = 5
   identifier = "yugabytedb-anywhere-api"
   parent = "yugabyte-apis"
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
@@ -136,7 +154,7 @@
 
 [[main]]
   name = "YugabyteDB Managed API"
-  weight = 4
+  weight = 6
   identifier = "yugabytedb-anaged-api"
   parent = "yugabyte-apis"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
@@ -155,6 +173,9 @@
   name = "Releases"
   weight = 5
   identifier = "releases"
+  url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "YugabyteDB"
@@ -358,6 +379,7 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   [preview_api.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -653,6 +675,7 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   [stable_api.params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -838,6 +861,7 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.12_api".params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1017,6 +1041,7 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.8_api".params]
+    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1183,6 +1208,7 @@
   weight = 3
   identifier = "yugabyte-api-ycql"
   ["v2.6_api".params]
+    classes = "separator"
     showSection = true
     hideLink = true
 

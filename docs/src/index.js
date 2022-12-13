@@ -12,7 +12,7 @@ function setCookie(name, value, monthToLive) {
   }
   cookie += '; max-age=' + (monthToLive * 30 * (24 * 60 * 60));
   cookie += '; path=/';
-  if (location.hostname !== 'localhost' && location.hostname !== '192.168.10.7') {
+  if (location.hostname !== 'localhost' && location.hostname !== '192.168.10.5' && location.hostname !== '192.168.10.6' && location.hostname !== '192.168.10.7') {
     cookie += '; secure=true';
   }
   document.cookie = cookie;
@@ -60,7 +60,7 @@ function getCookie(name) {
 }
 
 /**
- * Show popup when the text limit exceed in Pills
+ * Show popup when the text limit exceed in Pills.
  */
 function popupOnPills() {
   $('ul.nav.yb-pills li').each(function () {
@@ -72,28 +72,8 @@ function popupOnPills() {
 }
 
 /**
- * Whether the element is in view port or not.
- *
- * @param {*} el Element that needs to check.
- *
- * @returns boolean
+ * Check anchor multilines.
  */
-function yugabyteIsElementInViewport(el) {
-  // Special bonus for those using jQuery.
-  if (typeof $ === 'function' && el instanceof $ && el.length > 0) {
-    el = el[0];
-  } else {
-    return true;
-  }
-  const rect = el.getBoundingClientRect();
-  return (
-    rect.top >= 0 &&
-    rect.left >= 0 &&
-    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) - 120 &&
-    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-  );
-}
-
 function checkAnchorMultilines() {
   $('.td-sidebar nav:not(.fixed-nav) a').each((index, event) => {
     if ($(event).outerHeight() >= 42 && $(event).outerHeight() < 60) {
@@ -134,7 +114,7 @@ function yugabyteActiveMainNav() {
 }
 
 /**
- * Move Right Nav to dropdown in mobile .
+ * Move Right Nav to dropdown in mobile.
  */
 function rightnavAppend() {
   if ($(window).width() < 992) {
@@ -267,6 +247,8 @@ function yugabyteDraggabbleSideNav() {
 }
 
 $(document).ready(() => {
+  $('.td-search-input:focus').parents('form').addClass('active-input');
+
   const cookieVal = getCookie('leftMenuWidth');
   if (getCookie('leftMenuWidth')) {
     $('.td-main').addClass('hide-right-menu');
@@ -329,6 +311,10 @@ $(document).ready(() => {
           scrollTop: $('.header-submenu').offset().top + 350,
         }, 1000);
       }
+    });
+
+    $(document).on('click', '.start-now-popup.open + .header-submenu', (event) => {
+      $(event.currentTarget.parentNode).find('.open').toggleClass('open');
     });
 
     $(document).on('click', '.mobile-menu', () => {
@@ -491,7 +477,7 @@ $(document).ready(() => {
     }
   })(document);
 
-  $('.content-parent').on('scroll', () => {
+  $(window).on('scroll', () => {
     // Active TOC link on scroll.
     if ($('.td-toc #TableOfContents').length > 0) {
       let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
