@@ -129,8 +129,9 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	}
 
 	// Delete the certs from past failures.
-	if config.String(util.PlatformCertsUpgradeKey) != "" {
-		err := util.DeleteCerts(util.PlatformCertsUpgradeKey)
+	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
+	if upgradeCertDir != "" && upgradeCertDir != config.String(util.PlatformCertsKey) {
+		err := util.DeleteCerts(upgradeCertDir)
 		// Log the error in deleting the certs but do not suspend the process.
 		if err != nil {
 			util.FileLogger().Errorf(
@@ -139,10 +140,10 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 			)
 		}
 	}
-	// Save the location of new certs in the config
+	// Save the location of new certs in the config.
 	config.Update(util.PlatformCertsUpgradeKey, uuid)
 
-	// Run the update script to change the symlink to the updated version
+	// Run the update script to change the symlink to the updated version.
 	if err := HandleUpgradeScript(config, ctx, config.String(util.PlatformVersionUpdateKey)); err != nil {
 		util.FileLogger().Errorf(
 			"Error in upgrading to version - %s",
@@ -151,7 +152,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 		return
 	}
 
-	// Put Upgraded state along with the update version
+	// Put Upgraded state along with the update version.
 	util.FileLogger().Infof(
 		"Sending the updated version to the platform - %s",
 		config.String(util.PlatformVersionUpdateKey),
@@ -201,6 +202,7 @@ func HandleUpgradedStateAfterRestart(ctx context.Context, config *util.Config) e
 
 	// Remove the Current Version Directory and change version to upgrade version.
 	config.Update(util.PlatformVersionKey, config.String(util.PlatformVersionUpdateKey))
+	config.Remove(util.PlatformVersionUpdateKey)
 	if err := removeReleasesExceptCurrent(); err != nil {
 		util.FileLogger().Errorf("Error in cleaning up the releases directory - %s", err.Error())
 		return err

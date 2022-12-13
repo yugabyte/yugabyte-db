@@ -915,6 +915,11 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   )
 
   add_custom_target("${output_exe_name}" ALL DEPENDS "${output_executable_path}")
+  foreach(symlink_name IN LISTS symlink_as_names)
+    # For each symlinked executable name (yb-master, yb-tserver) create an alias target that will
+    # cause the LTO executable to be built.
+    add_custom_target("${symlink_name}" DEPENDS "${output_executable_path}")
+  endforeach()
 
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${output_exe_name}" "${dynamic_exe_name}")

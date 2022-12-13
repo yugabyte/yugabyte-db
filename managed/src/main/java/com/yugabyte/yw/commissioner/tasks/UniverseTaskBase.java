@@ -1671,6 +1671,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.setSubTaskGroupType(subTask);
   }
 
+  public SubTaskGroup createTServerTaskForNode(NodeDetails currentNode, String taskType) {
+    return createTServerTaskForNode(currentNode, taskType, false /*isIgnoreError*/);
+  }
   /**
    * Start T-Server process on the given node
    *
@@ -1678,7 +1681,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param taskType Command start/stop
    * @return Subtask group
    */
-  public SubTaskGroup createTServerTaskForNode(NodeDetails currentNode, String taskType) {
+  public SubTaskGroup createTServerTaskForNode(
+      NodeDetails currentNode, String taskType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -1692,6 +1696,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // The service and the command we want to run.
     params.process = "tserver";
     params.command = taskType;
+    params.isIgnoreError = isIgnoreError;
     // Set the InstanceType
     params.instanceType = currentNode.cloudInfo.instance_type;
     params.useSystemd = userIntent.useSystemd;
@@ -1825,9 +1830,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes set of nodes on which yb-controller has to be stopped
    */
-  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
-    return createStopServerTasks(nodes, "controller", false);
+  public SubTaskGroup createStopYbControllerTasks(
+      Collection<NodeDetails> nodes, boolean isIgnoreError) {
+    return createStopServerTasks(nodes, "controller", isIgnoreError);
   }
+
+  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
+    return createStopYbControllerTasks(nodes, false /*isIgnoreError*/);
+  }
+
   /**
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *

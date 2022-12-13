@@ -56,201 +56,113 @@ Result<std::vector<KeyEntryValue>> ScanChoices::DecodeKeyEntryValue(
   return values;
 }
 
-// This class combines the notions of option filters (col1 IN (1,2,3)) and
-// singular range bound filters (col1 < 4 AND col1 >= 1) into a single notion of
-// lists of options of ranges, each encoded by an OptionRange instance as
-// below. So a filter for a column given in the
-// Doc(QL/PGSQL)ScanSpec is converted into an OptionRange.
-// In the end, each HybridScanChoices
-// instance should have a sorted list of disjoint ranges for every IN/EQ clause.
-// Right now this supports a conjunction of range bound and discrete filters.
-// Disjunctions are also supported but are UNTESTED.
-// TODO: Test disjunctions when YSQL and YQL support pushing those down
-// The lower and upper values are vectors to incorporate multi-column IN caluse.
-class OptionRange {
- public:
-  OptionRange(
-      std::vector<KeyEntryValue> lower, bool lower_inclusive, std::vector<KeyEntryValue> upper,
-      bool upper_inclusive)
-      : lower_(lower),
-        lower_inclusive_(lower_inclusive),
-        upper_(upper),
-        upper_inclusive_(upper_inclusive) {
-    DCHECK(lower.size() == upper.size());
-  }
+HybridScanChoices::HybridScanChoices(
+  const Schema& schema,
+  const KeyBytes& lower_doc_key,
+  const KeyBytes& upper_doc_key,
+  bool is_forward_scan,
+  const std::vector<ColumnId>& range_options_col_ids,
+  const std::shared_ptr<std::vector<OptionList>>& range_options,
+  const std::vector<ColumnId>& range_bounds_col_ids,
+  const QLScanRange* range_bounds,
+  const std::vector<size_t>& range_options_num_cols)
+    : ScanChoices(is_forward_scan), lower_doc_key_(lower_doc_key), upper_doc_key_(upper_doc_key) {
+  size_t num_hash_cols = schema.num_hash_key_columns();
 
-  const std::vector<KeyEntryValue>& lower() const { return lower_; }
-  bool lower_inclusive() const { return lower_inclusive_; }
-  const std::vector<KeyEntryValue>& upper() const { return upper_; }
-  bool upper_inclusive() const { return upper_inclusive_; }
-  size_t size() const { return lower_.size(); }
+  for (size_t idx = num_hash_cols; idx < schema.num_key_columns(); idx++) {
+    const ColumnId col_id = schema.column_id(idx);
+    std::vector<OptionRange> current_options;
+    size_t num_cols = 1;
+    bool col_has_range_option =
+        std::find(range_options_col_ids.begin(), range_options_col_ids.end(), col_id) !=
+        range_options_col_ids.end();
 
-  static bool upper_lt(const OptionRange& range1, const OptionRange& range2) {
-    DCHECK(range1.size() == range2.size());
-    return range1.upper_ < range2.upper_;
-  }
+    bool col_has_range_bound =
+        std::find(range_bounds_col_ids.begin(), range_bounds_col_ids.end(), col_id) !=
+        range_bounds_col_ids.end();
+    // If this is a range bound filter, we create a singular
+    // list of the given range bound
+    if (col_has_range_bound && !col_has_range_option) {
+      const auto col_sort_type = schema.column(idx).sorting_type();
+      const QLScanRange::QLRange range = range_bounds->RangeFor(col_id);
+      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
+      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
+      current_options.emplace_back(
+          std::vector{lower},
+          GetQLRangeBoundIsInclusive(range, col_sort_type, true),
+          std::vector{upper},
+          GetQLRangeBoundIsInclusive(range, col_sort_type, false));
+    } else if (col_has_range_option) {
+      num_cols = range_options_num_cols[idx - num_hash_cols];
+      auto& options = (*range_options)[idx - num_hash_cols];
 
-  static bool lower_gt(const OptionRange &range1,
-                       const OptionRange &range2) {
-    DCHECK(range1.size() == range2.size());
-    return range1.lower_ > range2.lower_;
-  }
-
- private:
-  std::vector<KeyEntryValue> lower_;
-  bool lower_inclusive_;
-  std::vector<KeyEntryValue> upper_;
-  bool upper_inclusive_;
-};
-
-class HybridScanChoices : public ScanChoices {
- public:
-  // Constructs a list of ranges for each IN/EQ clause from the given scanspec.
-  // A filter of the form col1 IN (1,2) is converted to col1 IN ([[1], [1]], [[2], [2]]).
-  // And filter of the form (col2, col3) IN ((3,4), (5,6)) is converted to
-  // (col2, col3) IN ([[3, 4], [3, 4]], [[5, 6], [5, 6]]).
-
-  HybridScanChoices(
-      const Schema& schema,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key,
-      bool is_forward_scan,
-      const std::vector<ColumnId>& range_options_col_ids,
-      const std::shared_ptr<std::vector<OptionList>>& range_options,
-      const std::vector<ColumnId>& range_bounds_col_ids,
-      const QLScanRange* range_bounds,
-      const std::vector<size_t>& range_options_num_cols)
-      : ScanChoices(is_forward_scan), lower_doc_key_(lower_doc_key), upper_doc_key_(upper_doc_key) {
-    size_t num_hash_cols = schema.num_hash_key_columns();
-
-    for (size_t idx = num_hash_cols; idx < schema.num_key_columns(); idx++) {
-      const ColumnId col_id = schema.column_id(idx);
-      std::vector<OptionRange> current_options;
-      size_t num_cols = 1;
-      bool col_has_range_option =
-          std::find(range_options_col_ids.begin(), range_options_col_ids.end(), col_id) !=
-          range_options_col_ids.end();
-
-      bool col_has_range_bound =
-          std::find(range_bounds_col_ids.begin(), range_bounds_col_ids.end(), col_id) !=
-          range_bounds_col_ids.end();
-      // If this is a range bound filter, we create a singular
-      // list of the given range bound
-      if (col_has_range_bound && !col_has_range_option) {
-        const auto col_sort_type = schema.column(idx).sorting_type();
-        const QLScanRange::QLRange range = range_bounds->RangeFor(col_id);
-        const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
-        const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
+      if (options.empty()) {
+        // If there is nothing specified in the IN list like in
+        // SELECT * FROM ... WHERE c1 IN ();
+        // then nothing should pass the filter.
+        // To enforce this, we create a range bound (kHighest, kLowest)
+        //
+        // As of D15647 we do not send empty options.
+        // This is kept for backward compatibility during rolling upgrades.
         current_options.emplace_back(
-            std::vector{lower},
-            GetQLRangeBoundIsInclusive(range, col_sort_type, true),
-            std::vector{upper},
-            GetQLRangeBoundIsInclusive(range, col_sort_type, false));
-      } else if (col_has_range_option) {
-        num_cols = range_options_num_cols[idx - num_hash_cols];
-        auto& options = (*range_options)[idx - num_hash_cols];
-
-        if (options.empty()) {
-          // If there is nothing specified in the IN list like in
-          // SELECT * FROM ... WHERE c1 IN ();
-          // then nothing should pass the filter.
-          // To enforce this, we create a range bound (kHighest, kLowest)
-          //
-          // As of D15647 we do not send empty options.
-          // This is kept for backward compatibility during rolling upgrades.
-          current_options.emplace_back(
-              std::vector(num_cols, KeyEntryValue(KeyEntryType::kHighest)),
-              true,
-              std::vector(num_cols, KeyEntryValue(KeyEntryType::kLowest)),
-              true);
-        }
-
-        for (const auto& option : options) {
-          current_options.emplace_back(option, true, option, true);
-        }
-        idx = idx + num_cols - 1;
-      } else {
-        // If no filter is specified, we just impose an artificial range
-        // filter [kLowest, kHighest]
-        current_options.emplace_back(
-            std::vector{KeyEntryValue(KeyEntryType::kLowest)},
+            std::vector(num_cols, KeyEntryValue(KeyEntryType::kHighest)),
             true,
-            std::vector{KeyEntryValue(KeyEntryType::kHighest)},
+            std::vector(num_cols, KeyEntryValue(KeyEntryType::kLowest)),
             true);
       }
-      range_cols_scan_options_.push_back(current_options);
-      // For IN/EQ clause at index i,
-      // range_options_num_cols_[i] == range_cols_scan_options_[i][0].upper.size()
-      range_options_num_cols_.push_back(num_cols);
-    }
 
-    current_scan_target_ranges_.resize(range_cols_scan_options_.size());
-    for (size_t i = 0; i < range_cols_scan_options_.size(); i++) {
-      current_scan_target_ranges_[i] = range_cols_scan_options_.at(i).begin();
-    }
-
-    if (is_forward_scan_) {
-      current_scan_target_ = lower_doc_key;
+      for (const auto& option : options) {
+        current_options.emplace_back(option, true, option, true);
+      }
+      idx = idx + num_cols - 1;
     } else {
-      current_scan_target_ = upper_doc_key;
+      // If no filter is specified, we just impose an artificial range
+      // filter [kLowest, kHighest]
+      current_options.emplace_back(
+          std::vector{KeyEntryValue(KeyEntryType::kLowest)},
+          true,
+          std::vector{KeyEntryValue(KeyEntryType::kHighest)},
+          true);
     }
+    range_cols_scan_options_.push_back(current_options);
+    // For IN/EQ clause at index i,
+    // range_options_num_cols_[i] == range_cols_scan_options_[i][0].upper.size()
+    range_options_num_cols_.push_back(num_cols);
   }
 
-  HybridScanChoices(
-      const Schema& schema,
-      const DocPgsqlScanSpec& doc_spec,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key)
-      : HybridScanChoices(
-            schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
-            doc_spec.range_options_indexes(), doc_spec.range_options(),
-            doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
-            doc_spec.range_options_num_cols()) {}
+  current_scan_target_ranges_.resize(range_cols_scan_options_.size());
+  for (size_t i = 0; i < range_cols_scan_options_.size(); i++) {
+    current_scan_target_ranges_[i] = range_cols_scan_options_.at(i).begin();
+  }
 
-  HybridScanChoices(
-      const Schema& schema,
-      const DocQLScanSpec& doc_spec,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key)
-      : HybridScanChoices(
-            schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
-            doc_spec.range_options_indexes(), doc_spec.range_options(),
-            doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
-            doc_spec.range_options_num_cols()) {}
+  if (is_forward_scan_) {
+    current_scan_target_ = lower_doc_key;
+  } else {
+    current_scan_target_ = upper_doc_key;
+  }
+}
 
-  Status SkipTargetsUpTo(const Slice& new_target) override;
-  Status DoneWithCurrentTarget() override;
-  Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
+HybridScanChoices::HybridScanChoices(
+const Schema& schema,
+const DocPgsqlScanSpec& doc_spec,
+const KeyBytes& lower_doc_key,
+const KeyBytes& upper_doc_key)
+: HybridScanChoices(
+  schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
+  doc_spec.range_options_indexes(), doc_spec.range_options(),
+  doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
+  doc_spec.range_options_num_cols()) {}
 
- protected:
-  // Utility function for (multi)key scans. Updates the target scan key by
-  // incrementing the option index for an OptionList. Will handle overflow by setting current
-  // index to 0 and incrementing the previous index instead. If it overflows at first index
-  // it means we are done, so it clears the scan target idxs array.
-  Status IncrementScanTargetAtOptionList(int start_option_list_idx);
-
- private:
-  KeyBytes prev_scan_target_;
-
-  // The following encodes the list of ranges we are iterating over
-  std::vector<std::vector<OptionRange>> range_cols_scan_options_;
-
-  // Vector of references to currently active elements being used
-  // in range_cols_scan_options_
-  // current_scan_target_ranges_[i] gives us the current OptionRange
-  // column i is iterating over of the elements in
-  // range_cols_scan_options_[i]
-  mutable std::vector<std::vector<OptionRange>::const_iterator> current_scan_target_ranges_;
-
-  bool is_options_done_ = false;
-
-  const KeyBytes lower_doc_key_;
-  const KeyBytes upper_doc_key_;
-
-  // For every set of range options, stores the number of columns involved
-  // (the number of columns can be more than one with the support for multi-column operations)
-  std::vector<size_t> range_options_num_cols_;
-};
+HybridScanChoices::HybridScanChoices(
+  const Schema& schema,
+  const DocQLScanSpec& doc_spec,
+  const KeyBytes& lower_doc_key,
+  const KeyBytes& upper_doc_key)
+  : HybridScanChoices(
+    schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
+    doc_spec.range_options_indexes(), doc_spec.range_options(),
+    doc_spec.range_bounds_indexes(), doc_spec.range_bounds(),
+    doc_spec.range_options_num_cols()) {}
 
 // Sets current_scan_target_ to the first tuple in the filter space
 // that is >= new_target.
@@ -629,6 +541,14 @@ Status HybridScanChoices::IncrementScanTargetAtOptionList(int start_option_list_
   }
 
   return Status::OK();
+}
+
+std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
+  std::vector<OptionRange> result;
+  for (auto it : current_scan_target_ranges_) {
+    result.push_back(*it);
+  }
+  return result;
 }
 
 // Method called when the scan target is done being used

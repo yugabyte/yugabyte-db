@@ -178,7 +178,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Actually prepare and start. In case of leader-side operations, this stops short of calling
   // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
   // we can append multiple rounds to the consensus queue together.
-  Status PrepareAndStart();
+  Status PrepareAndStart(IsLeaderSide is_leader_side = IsLeaderSide::kTrue);
 
   // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for

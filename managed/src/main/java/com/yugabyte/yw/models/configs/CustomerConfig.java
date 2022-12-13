@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -149,12 +150,15 @@ public class CustomerConfig extends Model {
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 
   public Map<String, String> dataAsMap() {
-    Map<String, String> result = new ObjectMapper().convertValue(data, Map.class);
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> result = mapper.convertValue(data, Map.class);
     // Remove not String values.
     Map<String, String> r = new HashMap<>();
-    for (Entry<String, String> entry : result.entrySet()) {
+    for (Entry<String, Object> entry : result.entrySet()) {
       if (entry.getValue() instanceof String) {
-        r.put(entry.getKey(), entry.getValue());
+        r.put(entry.getKey(), entry.getValue().toString());
+      } else if (entry.getKey().equals("PROXY_SETTINGS")) {
+        r.putAll((mapper.convertValue(entry.getValue(), ProxySetting.class)).toMap());
       }
     }
     return r;

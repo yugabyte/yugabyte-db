@@ -94,7 +94,7 @@ class PgLibPqTest : public LibPqTestBase {
                                                           MonoDelta timeout)>
                                                           GetParentTableTabletLocation;
 
-  void TestMultiBankAccount(IsolationLevel isolation);
+  void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
   void DoIncrement(int key, int num_increments, IsolationLevel isolation);
 
@@ -574,9 +574,10 @@ Result<int64_t> ReadSumBalance(
   return sum;
 }
 
-void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
+void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colocation) {
   constexpr int kAccounts = RegularBuildVsSanitizers(20, 10);
   constexpr int64_t kInitialBalance = 100;
+  const std::string db_name = "testdb";
 
 #ifndef NDEBUG
   const auto kTimeout = 180s;
@@ -587,14 +588,24 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
 #endif
 
   PGConn conn = ASSERT_RESULT(Connect());
+
+  if (colocation) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
+  } else {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
+  }
+
+  conn = ASSERT_RESULT(ConnectToDB(db_name));
+
   std::vector<PGConn> thread_connections;
   for (int i = 0; i < kThreads; ++i) {
-    thread_connections.push_back(ASSERT_RESULT(Connect()));
+    thread_connections.push_back(ASSERT_RESULT(ConnectToDB(db_name)));
   }
 
   for (int i = 1; i <= kAccounts; ++i) {
-    ASSERT_OK(conn.ExecuteFormat(
-        "CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i));
+
     ASSERT_OK(conn.ExecuteFormat(
         "INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance));
   }
@@ -640,10 +651,10 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
     });
   }
 
-  thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
+  thread_holder.AddThreadFunctor([this, &counter, &reads, &writes, isolation,
+                                  &stop_flag = thread_holder.stop_flag(), &db_name]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
-    auto connection = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(ConnectToDB(db_name));
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
@@ -738,8 +749,18 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot),
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshotWithColocation),
+    PgLibPqSmallClockSkewTest) {
+  TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION, true /* colocation */);
+}
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializableWithColocation)) {
+  TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
 void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
@@ -1566,6 +1587,37 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
     options->extra_master_flags.push_back("--ysql_beta_feature_tablegroup=true");
   }
 };
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CreateTablesToTablegroup),
+          PgLibPqTablegroupTest) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const string kDatabaseName = "test_db";
+  const string kTablegroupName = "tg1";
+
+  // Let ts-1 be the leader of tablet.
+  ASSERT_OK(cluster_->SetFlagOnMasters("use_create_table_leader_hint", "false"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(2), "TEST_skip_election_when_fail_detected", "true"));
+
+  // Make one follower ignore applying change metadata operations.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "TEST_ignore_apply_change_metadata_on_followers", "true"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_tbl ("
+      "h INT PRIMARY KEY,"
+      "a INT,"
+      "b FLOAT CONSTRAINT test_tbl_uniq UNIQUE WITH (colocation_id=654321)"
+      ") WITH (colocation_id=123456) TABLEGROUP $0",
+      kTablegroupName));
+
+  cluster_->AssertNoCrashes();
+}
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {

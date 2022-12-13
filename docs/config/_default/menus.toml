@@ -65,13 +65,13 @@
   name = "Products"
   weight = 1
   identifier = "products"
-  url = "/preview/"
+  url = "/"
 
 [[main]]
   name = "YugabyteDB"
   weight = 2
   parent = "products"
-  url = "/preview/"
+  url = "/"
   [main.params]
     description = "The open source distributed SQL database"
     imageUrl = "/icons/database.svg"
@@ -332,6 +332,7 @@
   name = "Integrations"
   weight = 11
   identifier = "integrations"
+  url = "/preview/integrations/"
   [preview.params]
     showSection = true
 
@@ -587,7 +588,7 @@
 [[stable]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   [stable.params]
     showSection = true
 
@@ -773,7 +774,7 @@
 [["v2.12"]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.12".params]
     showSection = true
 
@@ -961,7 +962,7 @@
 [["v2.8"]]
   name = "Integrations"
   weight = 11
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.8".params]
     showSection = true
 
@@ -1140,7 +1141,7 @@
   name = "Integrations"
   weight = 11
   identifier = "integrations"
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/integrations/"
   ["v2.6".params]
     showSection = true
 

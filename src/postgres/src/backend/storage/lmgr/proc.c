@@ -799,6 +799,11 @@ RemoveProcFromArray(int code, Datum arg)
 /*
  * ProcKill() -- Destroy the per-proc data structure for
  *		this process. Release any of its held LW locks.
+ *
+ * If you are going to edit this, take a look at postmaster.c:reaper as well.
+ * That function handles as much as this as possible but from the perspective
+ * of the parent of the terminated child, to handle cases where the child was
+ * not able to clean itself up.
  */
 static void
 ProcKill(int code, Datum arg)
@@ -809,7 +814,7 @@ ProcKill(int code, Datum arg)
 	Assert(MyProc != NULL);
 
 	/* Make sure we're out of the sync rep lists */
-	SyncRepCleanupAtProcExit();
+	SyncRepCleanupAtProcExit(MyProc);
 
 #ifdef USE_ASSERT_CHECKING
 	{

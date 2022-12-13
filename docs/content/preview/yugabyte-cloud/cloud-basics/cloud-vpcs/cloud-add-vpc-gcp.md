@@ -39,9 +39,9 @@ To create a VPC network on GCP, you need to complete the following tasks:
 | Task | Notes |
 | :--- | :--- |
 | **[Create the VPC](#create-a-vpc)** | Reserves a range of private IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
-| **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
 | **[Complete the peering in GCP](#complete-the-peering-in-gcp)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
+| **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
 With the exception of completing the peering in GCP, these tasks are performed in YugabyteDB Managed.
@@ -65,9 +65,9 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (GCP).
 1. Choose one of the following options:
-    - **Automated** - VPCs are created globally and assigned to all regions supported by YugabyteDB Managed.
-    - **Custom** - Select a region. Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap. If the VPC is to be used for a multi-region cluster, add a region for each of the regions in the cluster.
-1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc).
+    - **Automated** - VPCs are created globally and GCP assigns network blocks to each region supported by YugabyteDB Managed. (Not recommended for production, refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations) in the GCP documentation.)
+    - **Custom** - Select a region. Click **Add Region** to add additional regions. If the VPC is to be used for a multi-region cluster, add a region for each of the regions in the cluster.
+1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). CIDR addresses in different regions can't overlap.
     - For Automated, use network sizes of /16, /17, or /18.
     - For Custom, use network sizes of /24, /25, or /26.
 
@@ -78,20 +78,6 @@ To create a VPC, do the following:
 YugabyteDB Managed adds the VPC to the [VPCs list](../cloud-add-vpc/) with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
 The VPC's network name and project ID are automatically assigned. You'll need these details when configuring the peering in GCP.
-
-## Deploy a cluster in the VPC
-
-You can deploy a cluster in the VPC any time after the VPC is created.
-
-To deploy a cluster in a VPC:
-
-1. On the **Clusters** page, click **Add Cluster**.
-1. Choose **Dedicated**.
-1. Enter a name for the cluster, choose **GCP**, and click **Next**.
-1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
-For a **Multi-Region Deployment**, select a region where the cluster is to be deployed, then select the VPC. The same VPC is used for all regions.
-
-For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
 ## Create a peering connection
 
@@ -146,25 +132,30 @@ In the Google Cloud Console, do the following:
 
 When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
 
+## Deploy a cluster in the VPC
+
+You can deploy a cluster in the VPC any time after the VPC is created.
+
+To deploy a cluster in a VPC:
+
+1. On the **Clusters** page, click **Add Cluster**.
+1. Choose **Dedicated**.
+1. Enter a name for the cluster, choose **GCP**, and click **Next**.
+1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Use VPC peering**, and select your VPC.
+
+    For a **Multi-Region Deployment**, select the regions where the cluster is to be deployed, then select the VPC. The same VPC is used for all regions.
+
+For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
+
 ## Add the application VPC to the cluster IP allow list
 
-To enable the peered application VPC to connect to the cluster, you need to add the VPC to the cluster IP allow list.
-
-{{< tip title="What you need" >}}
-The CIDR address for the GCP application VPC you are peering with.
-
-**Where to find it**<br>Navigate to the GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
-{{< /tip >}}
+To enable the peered application VPC to connect to the cluster, you need to add the peered VPC to the cluster IP allow list.
 
 To add the application VPC to the cluster IP allow list:
 
-1. On the **Clusters** page, select the cluster you are peering, and click **Add IP Allow List** to display the **Add IP Allow List** sheet.
+1. On the **Clusters** page, select the cluster you are peering, click **Actions**, and choose **Edit IP Allow List** to display the **Add IP Allow List** sheet.
 
-1. Click **Create New List and Add to Cluster**.
-
-1. Enter a name and description for the list. For example, the name and details of your application VPC.
-
-1. Add at least one of the CIDR blocks associated with the peered application VPC.
+1. Click **Add Peered VPC Networks**.
 
 1. Click **Save** when done.
 
