@@ -1,7 +1,7 @@
-A cluster with the preceding configuration can be created using the following yugabyted commands:
+To create a cluster with the preceding configuration, use the following yugabyted commands:
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP1>/yugabyte-data      \
   --listen=<IP1>                               \
   --master_flags "placement_cloud=aws,placement_region=us-east-1,placement_zone=us-east-1a" \
@@ -9,7 +9,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP2>/yugabyte-data      \
   --listen=<IP2>                               \
   --join=<IP1>                                 \
@@ -18,7 +18,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP3>/yugabyte-data      \
   --listen=<IP3>                               \
   --join=<IP1>                                 \
@@ -27,7 +27,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP4>/yugabyte-data      \
   --listen=<IP4>                               \
   --join=<IP1>                                 \
@@ -35,7 +35,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP5>/yugabyte-data      \
   --listen=<IP5>                               \
   --join=<IP1>                                 \
@@ -43,7 +43,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP6>/yugabyte-data      \
   --listen=<IP6>                               \
   --join=<IP1>                                 \
@@ -51,7 +51,7 @@ bin/yugabyted start                            \
 ```
 
 ```sh
-bin/yugabyted start                            \
+./bin/yugabyted start                          \
   --base_dir=/home/yugabyte/<IP7>/yugabyte-data      \
   --listen=<IP7>                               \
   --join=<IP1>                                 \

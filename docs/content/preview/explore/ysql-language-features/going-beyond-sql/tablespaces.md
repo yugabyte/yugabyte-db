@@ -84,12 +84,14 @@ The topology is shown in the following illustration:
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
   {{% includeMarkdown "./tablespaces-yugabyted.md" %}}
   </div>
-  <div id="platform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="platform-tab">
+  <div id="platform" class="tab-pane fade" role="tabpanel" aria-labelledby="platform-tab">
   {{% includeMarkdown "./tablespaces-platform.md" %}}
   </div>
 </div>
 
-After cluster creation, verify if the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI.
+### Review the cluster
+
+After cluster creation, verify that the nodes have been created with the given configuration by navigating to the Tablet Servers page in the YB-Master UI.
 
 ![YB Master UI - Tablet Servers Page](/images/explore/tablespaces/Geo_distributed_cluster_nodes_Master_UI.png)
 
