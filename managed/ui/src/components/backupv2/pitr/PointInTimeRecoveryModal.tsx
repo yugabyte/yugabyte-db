@@ -10,13 +10,13 @@
 import React, { FC } from 'react';
 import moment from 'moment';
 import clsx from 'clsx';
+import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { useMutation, useQueryClient } from 'react-query';
 import { Field, FormikProps } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
-import { DATE_FORMAT } from '../common/BackupUtils';
 import { FormatUnixTimeStampTimeToTimezone } from './PointInTimeRecoveryList';
 import { restoreSnapShot } from '../common/PitrAPI';
 import CautionIcon from '../common/CautionIcon';
@@ -40,6 +40,8 @@ enum RECOVERY_MODE {
   'RELATIVE',
   'EXACT'
 }
+
+const DATE_FORMAT = 'YYYY/MM/DD';
 
 const DURATION_OPTIONS = [
   {
@@ -82,6 +84,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   universeUUID
 }) => {
   const queryClient = useQueryClient();
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
 
   const createPITR = useMutation((values: any) => restoreSnapShot(universeUUID, values), {
     onSuccess: () => {
@@ -122,6 +125,9 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       }
     }
 
+    const convertToTZ = (date: any, timeZone: any) =>
+      new Date(date.toLocaleString('en-US', { timeZone }));
+
     if (recovery_time_mode === RECOVERY_MODE.EXACT) {
       const dateTime = new Date(
         customDate.getFullYear(),
@@ -131,18 +137,24 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
         customTime.getMinutes(),
         customTime.getSeconds()
       );
-      finalTimeStamp = moment(dateTime).unix() * 1000;
+      const convertedDate = convertToTZ(
+        dateTime,
+        currentUserTimezone ? currentUserTimezone : 'UTC'
+      );
+      const timezoneDiff = moment(dateTime).unix() - moment(convertedDate).unix();
+      finalTimeStamp = (moment(dateTime).unix() + timezoneDiff) * 1000;
     }
 
     return finalTimeStamp;
   };
 
-  const validateForm = (values: any) => {
+  const validateForm = (values: any): any => {
     const errors = {
       recovery_time_mode: 'Please select a time within your retention period'
     };
     const finalTimeStamp = getFinalTimeStamp(values);
-    if (!(finalTimeStamp >= minTime && finalTimeStamp <= maxTime + 60000)) return errors; // delay of 1 min in case if min and max time are the same
+    const delay = 60000; // delay of 1 min in case if min and max time are the same
+    if (!(finalTimeStamp >= minTime - delay && finalTimeStamp <= maxTime + delay)) return errors;
 
     return {};
   };
@@ -161,7 +173,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
 
   return (
     <YBModalForm
-      title="Recover database-1 to a point in time"
+      title={`Recover ${config.dbName} to a point in time`}
       visible={visible}
       onHide={onHide}
       submitLabel="Recover"
@@ -171,6 +183,8 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       initialValues={initialValues}
       validate={validateForm}
       render={({ values, setFieldValue, errors }: FormikProps<Form_Values>) => {
+        const error = validateForm(values)?.recovery_time_mode;
+
         return (
           <>
             <div className="notice">
@@ -223,24 +237,23 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                           />
                           <span>Ago</span>
                           <div className="break" />
-                          {values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE &&
-                          errors.recovery_time_mode ? (
-                              // eslint-disable-next-line react/jsx-indent
-                              <div className="pitr-error-text">
-                                <CautionIcon />
-                                &nbsp;{errors.recovery_time_mode}
-                              </div>
-                            ) : (
-                              <div className="pitr-info-text">
+                          {values['recovery_time_mode'] === RECOVERY_MODE.RELATIVE && error ? (
+                            // eslint-disable-next-line react/jsx-indent
+                            <div className="pitr-error-text">
+                              <CautionIcon />
+                              &nbsp;{error}
+                            </div>
+                          ) : (
+                            <div className="pitr-info-text">
                               Will recover to:{' '}
-                                <FormatUnixTimeStampTimeToTimezone
-                                  timestamp={getFinalTimeStamp({
-                                    ...values,
-                                    recovery_time_mode: RECOVERY_MODE.RELATIVE
-                                  })}
-                                />
-                              </div>
-                            )}
+                              <FormatUnixTimeStampTimeToTimezone
+                                timestamp={getFinalTimeStamp({
+                                  ...values,
+                                  recovery_time_mode: RECOVERY_MODE.RELATIVE
+                                })}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -275,7 +288,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                               Date
                               <DatePicker
                                 placeholder="Pick a time"
-                                formats={DATE_FORMAT}
+                                format={DATE_FORMAT}
                                 value={values.customDate}
                                 max={new Date()}
                                 defaultValue={new Date()}
@@ -299,11 +312,10 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
 
                           <Row>
                             <div className="break" />
-                            {values['recovery_time_mode'] === RECOVERY_MODE.EXACT &&
-                              errors.recovery_time_mode && (
+                            {values['recovery_time_mode'] === RECOVERY_MODE.EXACT && error && (
                               <div className="pitr-error-text">
                                 <CautionIcon />
-                                  &nbsp;{errors.recovery_time_mode}
+                                &nbsp;{error}
                               </div>
                             )}
                           </Row>
