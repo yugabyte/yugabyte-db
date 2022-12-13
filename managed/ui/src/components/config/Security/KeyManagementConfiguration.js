@@ -43,7 +43,7 @@ let kmsConfigTypes = [
 ];
 
 //GCP KMS
-const PROTECTION_LEVELS = [
+export const PROTECTION_LEVELS = [
   { label: 'HSM (Hardware)', value: 'HSM' },
   { label: 'Software', value: 'SOFTWARE' }
 ];
