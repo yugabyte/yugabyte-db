@@ -23,7 +23,7 @@ The following section illustrates how to run an Akka Persistence Cassandra based
 
 ## Prerequisites
 
-To use Akka Persistence Cassandra plugin, ensure that you have the following:
+To use the Akka Persistence Cassandra plugin, ensure that you have the following:
 
 - YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 - Java Development Kit (JDK) 1.8 installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
@@ -48,7 +48,6 @@ The following example is inspired from the [akka-cassandra-demo](https://github.
     ```
 
     ```scala
-
     //Delete the existing datastax java driver from the dependencies of the application.
 
     lazy val akkaVersion     = "2.6.9"
@@ -268,4 +267,4 @@ The output should include an event with a `persistance_id` same as the `account_
 
 ## Limitations
 
-Some older versions of Akka Persistence Cassandra use Cassandra Materialized Views which may not work with YugabyteDB. So, you need to use versions of Akka Persistence Cassandra that *do not* use Cassandra Materialized Views.
+Some older versions of Akka Persistence Cassandra use Cassandra Materialized Views which may not work with YugabyteDB. Use versions of Akka Persistence Cassandra that *do not* use Cassandra Materialized Views.
