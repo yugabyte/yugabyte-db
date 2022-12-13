@@ -1228,8 +1228,21 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
-				dependent_rel = heap_openrv(((PartitionCmd *)cmd->def)->name,
-											AccessExclusiveLock);
+				RangeVar *partition_rv = ((PartitionCmd *)cmd->def)->name;
+				Relation r = relation_openrv(partition_rv, AccessExclusiveLock);
+				char relkind = r->rd_rel->relkind;
+				relation_close(r, AccessShareLock);
+				/*
+				 * If alter is performed on an index as opposed to a table
+				 * skip schema version increment.
+				 */
+				if (relkind == RELKIND_INDEX ||
+					relkind == RELKIND_PARTITIONED_INDEX)
+				{
+					return handles;
+				}
+
+				dependent_rel = heap_openrv(partition_rv, AccessExclusiveLock);
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.

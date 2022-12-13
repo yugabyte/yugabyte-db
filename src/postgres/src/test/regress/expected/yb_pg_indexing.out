@@ -168,21 +168,27 @@ ERROR:  "idxpart" is not an index
 alter index idxpart_a_b_idx attach partition idxpart1;
 ERROR:  "idxpart1" is not an index
 alter index idxpart_a_b_idx attach partition idxpart_a_b_idx;
-ERROR:  "idxpart_a_b_idx" is an index
--- Re-enable after fixing #14529
-/*
+ERROR:  cannot attach index "idxpart_a_b_idx" as a partition of index "idxpart_a_b_idx"
+DETAIL:  Index "idxpart_a_b_idx" is not an index on any partition of table "idxpart".
 alter index idxpart_a_b_idx attach partition idxpart1_b_idx;
+ERROR:  relation "idxpart1_b_idx" does not exist
 alter index idxpart_a_b_idx attach partition idxpart1_tst1;
+ERROR:  cannot attach index "idxpart1_tst1" as a partition of index "idxpart_a_b_idx"
+DETAIL:  The index definitions do not match.
 alter index idxpart_a_b_idx attach partition idxpart1_tst2;
+ERROR:  cannot attach index "idxpart1_tst2" as a partition of index "idxpart_a_b_idx"
+DETAIL:  The index definitions do not match.
 alter index idxpart_a_b_idx attach partition idxpart1_tst3;
+ERROR:  cannot attach index "idxpart1_tst3" as a partition of index "idxpart_a_b_idx"
+DETAIL:  The index definitions do not match.
 -- OK
 alter index idxpart_a_b_idx attach partition idxpart1_a_b_idx;
 alter index idxpart_a_b_idx attach partition idxpart1_a_b_idx; -- quiet
-
 -- reject dupe
 create index idxpart1_2_a_b on idxpart1 (a, b);
 alter index idxpart_a_b_idx attach partition idxpart1_2_a_b;
-*/
+ERROR:  cannot attach index "idxpart1_2_a_b" as a partition of index "idxpart_a_b_idx"
+DETAIL:  Another index is already attached for partition "idxpart1".
 drop table idxpart;
 -- make sure everything's gone
 select indexrelid::regclass, indrelid::regclass
@@ -290,21 +296,45 @@ where indexrelid::regclass::text like 'idxpart%'
 (4 rows)
 
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
-ERROR:  "idxpart22_a_idx" is an index
--- Re-enable after fixing #14529
-/*
 select indexrelid::regclass, indrelid::regclass, inhparent::regclass
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
 where indexrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
+   indexrelid    | indrelid  |   inhparent    
+-----------------+-----------+----------------
+ idxpart1_a_idx  | idxpart1  | idxpart_a_idx
+ idxpart22_a_idx | idxpart22 | idxpart2_a_idx
+ idxpart2_a_idx  | idxpart2  | idxpart_a_idx
+ idxpart_a_idx   | idxpart   | 
+(4 rows)
+
 -- attaching idxpart22 is not enough to set idxpart22_a_idx valid ...
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 \d idxpart2
+              Table "public.idxpart2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+Partition of: idxpart FOR VALUES FROM (100) TO (1000)
+Partition key: RANGE (a)
+Indexes:
+    "idxpart2_a_idx" lsm (a HASH) INVALID
+Number of partitions: 2 (Use \d+ to list them.)
+
 -- ... but this one is.
 create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
-*/
+              Table "public.idxpart2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+Partition of: idxpart FOR VALUES FROM (100) TO (1000)
+Partition key: RANGE (a)
+Indexes:
+    "idxpart2_a_idx" lsm (a HASH)
+Number of partitions: 2 (Use \d+ to list them.)
+
 drop table idxpart;
 -- When a table is attached a partition and it already has an index, a
 -- duplicate index should not get created, but rather the index becomes
@@ -386,18 +416,27 @@ select relname, indisvalid from pg_class join pg_index on indexrelid = oid
 
 -- idxpart1_a_idx is not valid, so idxpart_a_idx should not become valid:
 alter index idxpart_a_idx attach partition idxpart1_a_idx;
-ERROR:  "idxpart1_a_idx" is an index
--- Re-enable after fixing #14529
-/*
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
+    relname     | indisvalid 
+----------------+------------
+ idxpart1_a_idx | f
+ idxpart_a_idx  | f
+(2 rows)
+
 -- after creating and attaching this, both idxpart1_a_idx and idxpart_a_idx
 -- should become valid
 create index on idxpart11 (a);
 alter index idxpart1_a_idx attach partition idxpart11_a_idx;
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
-*/
+     relname     | indisvalid 
+-----------------+------------
+ idxpart11_a_idx | t
+ idxpart1_a_idx  | t
+ idxpart_a_idx   | t
+(3 rows)
+
 drop table idxpart;
 -- verify dependency handling during ALTER TABLE DETACH PARTITION
 create table idxpart (a int) partition by range (a);
@@ -565,8 +604,9 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
 drop index idxpart_a_idx;
 create index on only idxpart (a text_pattern_ops);
 -- must reject
--- Re-enable after fixing #14529
--- alter index idxpart_a_idx attach partition idxpart2_a_idx;
+alter index idxpart_a_idx attach partition idxpart2_a_idx;
+ERROR:  cannot attach index "idxpart2_a_idx" as a partition of index "idxpart_a_idx"
+DETAIL:  The index definitions do not match.
 drop table idxpart;
 -- Verify that attaching indexes maps attribute numbers correctly
 create table idxpart (col1 int, a int, col2 int, b int) partition by range (a);
@@ -583,18 +623,31 @@ create index idxpart1_2_idx on idxpart1 ((b + a)) where a > 1;
 create index idxpart1_2b_idx on idxpart1 ((a + b)) where a > 1;
 create index idxpart1_2c_idx on idxpart1 ((b + a)) where b > 1;
 alter index idxpart_1_idx attach partition idxpart1_1b_idx;	-- fail
-ERROR:  "idxpart1_1b_idx" is an index
--- Re-enable after fixing #14529
-/*
+ERROR:  cannot attach index "idxpart1_1b_idx" as a partition of index "idxpart_1_idx"
+DETAIL:  The index definitions do not match.
 alter index idxpart_1_idx attach partition idxpart1_1_idx;
 alter index idxpart_2_idx attach partition idxpart1_2b_idx;	-- fail
+ERROR:  cannot attach index "idxpart1_2b_idx" as a partition of index "idxpart_2_idx"
+DETAIL:  The index definitions do not match.
 alter index idxpart_2_idx attach partition idxpart1_2c_idx;	-- fail
+ERROR:  cannot attach index "idxpart1_2c_idx" as a partition of index "idxpart_2_idx"
+DETAIL:  The index definitions do not match.
 alter index idxpart_2_idx attach partition idxpart1_2_idx;	-- ok
 select relname as child, inhparent::regclass as parent, pg_get_indexdef as childdef
   from pg_class left join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-*/
+      child      |    parent     |                                          childdef
+-----------------+---------------+--------------------------------------------------------------------------------------------
+ idxpart1_1_idx  | idxpart_1_idx | CREATE INDEX idxpart1_1_idx ON public.idxpart1 USING lsm (b HASH, a ASC)
+ idxpart1_1b_idx |               | CREATE INDEX idxpart1_1b_idx ON public.idxpart1 USING lsm (b HASH)
+ idxpart1_2_idx  | idxpart_2_idx | CREATE INDEX idxpart1_2_idx ON public.idxpart1 USING lsm (((b + a)) HASH) WHERE (a > 1)
+ idxpart1_2b_idx |               | CREATE INDEX idxpart1_2b_idx ON public.idxpart1 USING lsm (((a + b)) HASH) WHERE (a > 1)
+ idxpart1_2c_idx |               | CREATE INDEX idxpart1_2c_idx ON public.idxpart1 USING lsm (((b + a)) HASH) WHERE (b > 1)
+ idxpart_1_idx   |               | CREATE INDEX idxpart_1_idx ON ONLY public.idxpart USING lsm (b HASH, a ASC)
+ idxpart_2_idx   |               | CREATE INDEX idxpart_2_idx ON ONLY public.idxpart USING lsm (((b + a)) HASH) WHERE (a > 1)
+(7 rows)
+
 drop table idxpart;
 -- Make sure the partition columns are mapped correctly
 create table idxpart (a int, b int, c text) partition by range (a);
@@ -1299,8 +1352,7 @@ create table idxpart21 partition of idxpart2 for values from (100) to (200);
 create table idxpart22 partition of idxpart2 for values from (200) to (300);
 create index on idxpart22 (a);
 create index on only idxpart2 (a);
--- Re-enable after fixing #14529
---alter index idxpart2_a_idx attach partition idxpart22_a_idx;
+alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 create index on idxpart (a);
 create table idxpart_another (a int, b int, primary key (a, b)) partition by range (a);
 create table idxpart_another_1 partition of idxpart_another for values from (0) to (100);
