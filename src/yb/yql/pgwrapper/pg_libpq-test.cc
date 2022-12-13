@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/lexical_cast.hpp>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
@@ -993,7 +995,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
     auto result = conn.FetchFormat("SELECT COUNT(*) FROM $0", kTableName);
     if (result.ok()) {
       LogResult(result->get());
-      auto count = ASSERT_RESULT(GetInt64(result->get(), 0, 0));
+      auto count = ASSERT_RESULT(GetValue<PGUint64>(result->get(), 0, 0));
       LOG(INFO) << "Total count: " << count;
       ASSERT_EQ(count, kNumBatches * kBatchSize);
       break;
@@ -1085,7 +1087,7 @@ Result<master::TabletLocationsPB> GetLegacyColocatedDBTabletLocations(
 }
 
 struct TableGroupInfo {
-  int oid;
+  Oid oid;
   std::string id;
   TabletId tablet_id;
   std::shared_ptr<client::YBTable> table;
@@ -1142,7 +1144,6 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
       },
       timeout,
       "wait for tablegroup parent tablet"));
-  LOG(INFO) << "yifan yifan";
   return tablets[0];
 }
 
@@ -1150,14 +1151,10 @@ Result<TableGroupInfo> SelectTablegroup(
     client::YBClient* client, PGConn* conn, const std::string& database_name,
     const std::string& group_name) {
   TableGroupInfo group_info;
-  auto res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
-  const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
-  LOG(INFO) << "yifan";
-  res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
-  group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
-  LOG(INFO) << "yifan yifan";
+  const auto database_oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name)));
+  group_info.oid = VERIFY_RESULT(conn->FetchValue<PGOid>(
+      Format("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name)));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
   group_info.tablet_id = VERIFY_RESULT(GetTablegroupTabletLocations(
@@ -2125,6 +2122,125 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTest
   ASSERT_LT(rpcs_during, 100);
 }
 
+namespace {
+
+template<class T>
+T RelativeDiff(T a, T b) {
+  const auto d = std::max(std::abs(a), std::abs(b));
+  return d == 0.0 ? 0.0 : std::abs(a - b) / d;
+}
+
+template<typename T>
+concept HasExactRepresentation = std::numeric_limits<T>::is_exact || std::is_same_v<T, std::string>;
+
+template<HasExactRepresentation T>
+bool IsEqual(const T& a, const T& b) {
+  return a == b;
+}
+
+bool IsEqual(long double a, long double b) {
+  constexpr auto kRelativeThreshold = 1e-10;
+  return RelativeDiff(a, b) < kRelativeThreshold;
+}
+
+template<HasExactRepresentation T>
+bool IsEqualAsString(const T& value, const std::string& str) {
+  return IsEqual(value, boost::lexical_cast<T>(str));
+}
+
+template<class T>
+bool IsEqualAsString(const T& value, const std::string& str) {
+  return IsEqual(value, boost::lexical_cast<long double>(str));
+}
+
+// Run SELECT query of [T in] casted to the equivalent pg type. Check that FetchValue and
+// FetchRowAsString return the same thing back.
+template<typename Tag, typename T>
+Status CheckFetch(PGConn* conn, const T& in, const std::string& type) {
+  std::ostringstream ss;
+  constexpr int kPrecision = 1000;
+  // In case of a large float/double, all digits should be specified to avoid rounding to an
+  // out-of-bounds number.
+  ss << std::setprecision(kPrecision) << in;
+  const auto query = Format("SELECT '$0'::$1", ss.str(), type);
+  LOG(INFO) << "Query: " << query;
+
+  auto out = VERIFY_RESULT(conn->FetchValue<Tag>(query));
+  LOG(INFO) << "Result: " << out;
+  SCHECK(IsEqual(in, out), IllegalState, Format("Unexpected result: in=$0, out=$1", in, out));
+
+  const auto out_str = VERIFY_RESULT(conn->FetchRowAsString(query));
+  LOG(INFO) << "Result string: " << out_str;
+  SCHECK(IsEqualAsString(in, out_str),
+         IllegalState,
+         Format("Unexpected string result: in=$0, out_str=$1", in, out_str));
+  return Status::OK();
+}
+
+template<typename T>
+Status CheckFetch(PGConn* conn, const T& in, const std::string& type) {
+  return CheckFetch<T, T>(conn, in, type);
+}
+
+} // namespace
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Fetch), PgLibPqTestRF1) {
+  constexpr auto kPgTypeBool = "bool";
+  constexpr auto kPgTypeInt2 = "int2";
+  constexpr auto kPgTypeInt4 = "int4";
+  constexpr auto kPgTypeInt8 = "int8";
+  constexpr auto kPgTypeFloat4 = "float4";
+  constexpr auto kPgTypeFloat8 = "float8";
+  constexpr auto kPgTypeOid = "oid";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Test bool";
+  ASSERT_OK(CheckFetch(&conn, false, kPgTypeBool));
+  ASSERT_OK(CheckFetch(&conn, true, kPgTypeBool));
+
+  LOG(INFO) << "Test signed ints";
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int16_t>::min(), kPgTypeInt2));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int16_t>::max(), kPgTypeInt2));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int32_t>::min(), kPgTypeInt4));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int32_t>::max(), kPgTypeInt4));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int64_t>::min(), kPgTypeInt8));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<int64_t>::max(), kPgTypeInt8));
+
+  LOG(INFO) << "Test float/double";
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<float>::lowest(), kPgTypeFloat4));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<float>::min(), kPgTypeFloat4));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<float>::max(), kPgTypeFloat4));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<double>::lowest(), kPgTypeFloat8));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<double>::min(), kPgTypeFloat8));
+  ASSERT_OK(CheckFetch(&conn, std::numeric_limits<double>::max(), kPgTypeFloat8));
+
+  LOG(INFO) << "Test string";
+  const auto str = "hello     "s;
+  ASSERT_OK(CheckFetch(&conn, str, "text"));
+  ASSERT_OK(CheckFetch(&conn, str, "char(10)"));
+  ASSERT_OK(CheckFetch(&conn, str, "bpchar"));
+  ASSERT_OK(CheckFetch(&conn, str, "bpchar(10)"));
+  ASSERT_OK(CheckFetch(&conn, str, "varchar"));
+  ASSERT_OK(CheckFetch(&conn, str, "varchar(10)"));
+  ASSERT_OK(CheckFetch(&conn, str, "cstring"));
+
+  LOG(INFO) << "Test oid: unsigned int with no conversion";
+  ASSERT_OK(CheckFetch<PGOid>(&conn, std::numeric_limits<Oid>::min(), kPgTypeOid));
+  ASSERT_OK(CheckFetch<PGOid>(&conn, std::numeric_limits<Oid>::max(), kPgTypeOid));
+
+  LOG(INFO) << "Test unsigned ints: signed int converted to unsigned int with sign check";
+  ASSERT_NOK(CheckFetch<PGUint16>(&conn, -1, kPgTypeInt2));
+  ASSERT_OK(CheckFetch<PGUint16>(&conn, 0, kPgTypeInt2));
+  ASSERT_OK(CheckFetch<PGUint16>(&conn, std::numeric_limits<int16_t>::max(), kPgTypeInt2));
+  ASSERT_NOK(CheckFetch<PGUint32>(&conn, -1, kPgTypeInt4));
+  ASSERT_OK(CheckFetch<PGUint32>(&conn, 0, kPgTypeInt4));
+  ASSERT_OK(CheckFetch<PGUint32>(&conn, std::numeric_limits<int32_t>::max(), kPgTypeInt4));
+  ASSERT_NOK(CheckFetch<PGUint64>(&conn, -1, kPgTypeInt8));
+  ASSERT_OK(CheckFetch<PGUint64>(&conn, 0, kPgTypeInt8));
+  ASSERT_OK(CheckFetch<PGUint64>(&conn, std::numeric_limits<int64_t>::max(), kPgTypeInt8));
+}
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
   const string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -2684,17 +2800,16 @@ TEST_F_EX(PgLibPqTest,
   PGResultPtr res = ASSERT_RESULT(conn.Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<int32> enum_oids = {
-    ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-    ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-    ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+  std::vector<Oid> enum_oids = {
+    ASSERT_RESULT(GetValue<PGOid>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<PGOid>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<PGOid>(res.get(), 2, 0)),
   };
   // Ensure that we do see large OIDs in pg_enum table.
-  LOG(INFO) << "enum_oids: " << (Oid)enum_oids[0] << ","
-            << (Oid)enum_oids[1] << "," << (Oid)enum_oids[2];
-  ASSERT_GT((Oid)enum_oids[0], kOidAdjustment);
-  ASSERT_GT((Oid)enum_oids[1], kOidAdjustment);
-  ASSERT_GT((Oid)enum_oids[2], kOidAdjustment);
+  LOG(INFO) << "enum_oids: " << enum_oids[0] << "," << enum_oids[1] << "," << enum_oids[2];
+  ASSERT_GT(enum_oids[0], kOidAdjustment);
+  ASSERT_GT(enum_oids[1], kOidAdjustment);
+  ASSERT_GT(enum_oids[2], kOidAdjustment);
 
   // Create a table using the enum type and insert a few rows.
   ASSERT_OK(conn.ExecuteFormat(
@@ -2912,9 +3027,8 @@ TEST_F_EX(PgLibPqTest,
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
   ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  auto matview_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto matview_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(
+      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
   auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_user_ddl_operation_timeout_sec", "1"));
   ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW mv"));
@@ -2962,10 +3076,9 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     MasterCatalogVersionMap result;
     std::string output;
     for (int i = 0; i != lines; ++i) {
-      const auto db_oid = static_cast<Oid>(VERIFY_RESULT(GetInt32(res.get(), i, 0)));
-      const auto current_version = static_cast<Version>(VERIFY_RESULT(GetInt64(res.get(), i, 1)));
-      const auto last_breaking_version =
-          static_cast<Version>(VERIFY_RESULT(GetInt64(res.get(), i, 2)));
+      const auto db_oid = VERIFY_RESULT(GetValue<PGOid>(res.get(), i, 0));
+      const auto current_version = VERIFY_RESULT(GetValue<PGUint64>(res.get(), i, 1));
+      const auto last_breaking_version = VERIFY_RESULT(GetValue<PGUint64>(res.get(), i, 2));
       result.emplace(db_oid, CatalogVersion{current_version, last_breaking_version});
       if (!output.empty()) {
         output += ", ";
@@ -2977,7 +3090,7 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
   }
 
   static Result<Oid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
-    return VERIFY_RESULT(conn->FetchValue<int32>(Format(
+    return VERIFY_RESULT(conn->FetchValue<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
   }
 
@@ -3349,51 +3462,30 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
   // Count oid column which is a system column.
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid) FROM pg_type"));
-  auto lines = PQntuples(res.get());
-  ASSERT_EQ(lines, 1);
-  auto columns = PQnfields(res.get());
-  ASSERT_EQ(columns, 1);
-  int64 count_oid = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
-  // Should get a positive count.
-  ASSERT_GT(count_oid, 0);
+  const auto count_oid = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(oid) FROM pg_type"));
 
   // Count oid column which is a system column, but cast oid to int.
-  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(oid::int) FROM pg_type"));
-  lines = PQntuples(res.get());
-  ASSERT_EQ(lines, 1);
-  columns = PQnfields(res.get());
-  ASSERT_EQ(columns, 1);
-  int64 count_oid_int = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  const auto count_oid_int = ASSERT_RESULT(
+      conn.FetchValue<PGUint64>("SELECT COUNT(oid::int) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid_int, count_oid);
 
   // Count typname column which is a regular column.
-  res = ASSERT_RESULT(conn.Fetch("SELECT COUNT(typname) FROM pg_type"));
-  lines = PQntuples(res.get());
-  ASSERT_EQ(lines, 1);
-  columns = PQnfields(res.get());
-  ASSERT_EQ(columns, 1);
-  int64 count_typname = static_cast<uint32>(CHECK_RESULT(GetInt64(res.get(), 0, 0)));
+  const auto count_typname = ASSERT_RESULT(
+      conn.FetchValue<PGUint64>("SELECT COUNT(typname) FROM pg_type"));
   // Should get the same count.
   ASSERT_EQ(count_oid, count_typname);
 
   // Test unsupported system columns which would otherwise get the same count as shown
   // in vanilla Postgres.
-  auto result = conn.Fetch("SELECT COUNT(ctid) FROM pg_type");
-  ASSERT_NOK(result);
-  result = conn.Fetch("SELECT COUNT(cmin) FROM pg_type");
-  ASSERT_NOK(result);
-  result = conn.Fetch("SELECT COUNT(cmax) FROM pg_type");
-  ASSERT_NOK(result);
-  result = conn.Fetch("SELECT COUNT(xmin) FROM pg_type");
-  ASSERT_NOK(result);
-  result = conn.Fetch("SELECT COUNT(xmax) FROM pg_type");
-  ASSERT_NOK(result);
+  ASSERT_NOK(conn.Fetch("SELECT COUNT(ctid) FROM pg_type"));
+  ASSERT_NOK(conn.Fetch("SELECT COUNT(cmin) FROM pg_type"));
+  ASSERT_NOK(conn.Fetch("SELECT COUNT(cmax) FROM pg_type"));
+  ASSERT_NOK(conn.Fetch("SELECT COUNT(xmin) FROM pg_type"));
+  ASSERT_NOK(conn.Fetch("SELECT COUNT(xmax) FROM pg_type"));
 
   // Test SUM(oid) results in error.
-  result = conn.Fetch("SELECT SUM(oid) FROM pg_type");
-  ASSERT_NOK(result);
+  ASSERT_NOK(conn.Fetch("SELECT SUM(oid) FROM pg_type"));
 }
 
 class PgLibPqLegecyColocatedDBTest : public PgLibPqTest {
