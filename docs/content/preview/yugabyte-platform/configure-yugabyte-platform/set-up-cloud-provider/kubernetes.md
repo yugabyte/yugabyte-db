@@ -365,86 +365,82 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsGroup: 10001
     ```
 
-  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with Taints. We apply `Taints` on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure pods must not schedule onto inappropriate nodes. We can use it to prevent the scheduling of YugabyteDB pods on low resources nodes or schedule on dedicated nodes to YugabyteDB. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core) to know more about tolerations.
+  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with taints. `Taints` are applied on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure that pods do not schedule onto inappropriate nodes. You can `taint` a few nodes for YugabyteDB and provide `tolerations` to YugabyteDB pods so those nodes will have only YugabyteDB pods.
+  For more information, see [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
 
     ```yml
-    ## Example
-    ##
     ## Consider node has following taint.
     ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
-    ##
-    ## Following toleration can be used on pod.
-    ## tolerations:
-    ## - key: dedicated
-    ##   operator: Equal
-    ##   value: experimental
-    ##   effect: NoSchedule
 
     master:
-      tolerations: []
+      tolerations:
+      - key: dedicated
+        operator: Equal
+        value: experimental
+        effect: NoSchedule
 
     tserver:
       tolerations: []
     ```
 
-  - Add `affinity` in Master and Tserver pods. The `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. A user needs to use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. Follow the [link](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core) to know more about `affinity`.
+  - You can use `nodeSelector` to schedule Master and TServer pods on dedicated nodes. For more information, see [Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
 
     ```yml
-    ## Following example can be used to prevent scheduling of multiple master pods on single k8s node.
-    ## affinity:
-    ##   podAntiAffinity:
-    ##     requiredDuringSchedulingIgnoredDuringExecution:
-    ##     - labelSelector:
-    ##         matchExpressions:
-    ##         - key: app
-    ##           operator: In
-    ##           values:
-    ##           - "yb-master"
-    ##       topologyKey: kubernetes.io/hostname
+    ## The pod will get scheduled on a node that has a topology.kubernetes.io/zone=asia-south2-a label.
+    nodeSelector:
+      topology.kubernetes.io/zone: asia-south2-a
+    ```
 
+  - Add `affinity` in Master and TServer pods. The `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core).
+
+    ```yml
+    ## Following example can be used to prevent scheduling of multiple master pods on single kubernetes node.
     master:
-      affinity: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-master"
+            topologyKey: kubernetes.io/hostname
 
     tserver:
       affinity: {}
     ```
 
-  - Add `annotations` to Master and Tserver pods. The Kubernetes `annotations` can attach arbitrary metadata to objects. Follow the [link](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/) to know more about it.
+  - Add `annotations` to Master and Tserver pods. The Kubernetes `annotations` can attach arbitrary metadata to objects. For more information, see [Annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/).
 
     ```yml
-    ## Example
-    ## podAnnotations:
-    ##   application: "yugabytedb"
-
     master:
-      podAnnotations: {}
+      podAnnotations:
+        application: "yugabytedb"
 
     tserver:
       podAnnotations: {}
     ```
 
-  - Add `labels` to Master and Tserver pods. The Kubernetes `labels` are key/value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to users. Follow the [link](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/) to know more about it.
+  - Add `labels` to Master and Tserver pods. The Kubernetes `labels` are key/value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/).
 
     ```yml
-    ## Example
-    ## podLabels:
-    ##   environment: production
-    ##   app: yugabytedb
-
     master:
-      podLabels: {}
+      podLabels:
+        environment: production
+        app: yugabytedb
 
     tserver:
       podLabels: {}
     ```
 
-  - Preflight checks used to verify the YugabyteDB prerequisites.
+  - You can use the following preflight checks to verify YugabyteDB prerequisites:
     1. DNS address resolution
     2. Disk IO
     3. Port available for bind
     4. Ulimit
 
-    Follow the [link](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites) to know more YugabyteDB prerequisites.
+    For more information, see [Prerequisites](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
     ```yml
     preflight:
