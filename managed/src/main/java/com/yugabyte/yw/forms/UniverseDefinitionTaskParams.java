@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -11,22 +9,32 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
+import play.data.validation.Constraints;
+
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,11 +47,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
-import javax.validation.constraints.Size;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.Constraints;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -157,6 +162,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
+
+  @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -878,6 +885,27 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return null;
     }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public void setExistingLBs(List<Cluster> clusters) {
+    Map<ClusterAZ, String> existingLBsMap = new HashMap<>();
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent.enableLB) {
+        // Get AZs in cluster
+        List<PlacementInfo.PlacementAZ> azList =
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+        for (PlacementInfo.PlacementAZ placementAZ : azList) {
+          String lbName = placementAZ.lbName;
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          if (!Strings.isNullOrEmpty(lbName)) {
+            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
+            existingLBsMap.computeIfAbsent(clusterAZ, v -> lbName);
+          }
+        }
+      }
+    }
+    this.existingLBs = existingLBsMap;
   }
 
   public static class BaseConverter<T extends UniverseDefinitionTaskParams>

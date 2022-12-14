@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Objects;
@@ -128,6 +125,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.ClusterAZ;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -139,6 +137,23 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.slf4j.MDC;
+import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.ModifyClusterConfigIncrementVersion;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+import play.api.Play;
+import play.libs.Json;
+
+import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -154,22 +169,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import javax.annotation.Nullable;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.slf4j.MDC;
-import org.yb.ColumnSchema.SortOrder;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.ModifyClusterConfigIncrementVersion;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes;
-import play.api.Play;
-import play.libs.Json;
+
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -2600,6 +2602,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param targetClusters list of clusters with nodes that need to be added/removed. If null/empty,
    *     default to all clusters.
    * @param nodesToIgnore list of nodes to exclude.
+   * @param nodesToAdd list of nodes to add that may not be updated in the taskParams by the time
+   *     the map is created.
    * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
    *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
    *     nodes)
@@ -2607,11 +2611,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Map<LoadBalancerPlacement, LoadBalancerConfig> createLoadBalancerMap(
       UniverseDefinitionTaskParams taskParams,
       List<Cluster> targetClusters,
-      Set<NodeDetails> nodesToIgnore) {
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
     boolean allClusters = CollectionUtils.isEmpty(targetClusters);
     // Get load balancer map for target clusters
     Map<LoadBalancerPlacement, LoadBalancerConfig> targetLbMap =
-        generateLoadBalancerMap(taskParams, targetClusters, nodesToIgnore);
+        generateLoadBalancerMap(taskParams, targetClusters, nodesToIgnore, nodesToAdd);
     // Get load balancer map remaining clusters in universe
     List<Cluster> remainingClusters = taskParams.clusters;
     if (!allClusters) {
@@ -2622,7 +2627,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               .collect(Collectors.toList());
     }
     Map<LoadBalancerPlacement, LoadBalancerConfig> remainingLbMap =
-        generateLoadBalancerMap(taskParams, remainingClusters, nodesToIgnore);
+        generateLoadBalancerMap(taskParams, remainingClusters, nodesToIgnore, nodesToAdd);
 
     // Filter by target load balancers and
     // merge nodes in other clusters that are part of the same load balancer
@@ -2642,6 +2647,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param taskParams the universe task params.
    * @param clusters list of clusters.
    * @param nodesToIgnore list of nodes to exclude.
+   * @param nodesToAdd list of nodes to add that may not be updated to show in the taskParams by the
+   *     time the map is created.
    * @return a map. Key is LoadBalancerPlacement (cloud provider uuid, region code, load balancer
    *     name) and value is LoadBalancerConfig (load balancer name, map of AZs and their list of
    *     nodes)
@@ -2649,7 +2656,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Map<LoadBalancerPlacement, LoadBalancerConfig> generateLoadBalancerMap(
       UniverseDefinitionTaskParams taskParams,
       List<Cluster> clusters,
-      Set<NodeDetails> nodesToIgnore) {
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
     // Prov1 + Reg1 + LB1 -> AZ1 (n1, n2, n3,...), AZ2 (n4, n5), AZ3(nX)
     Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap = new HashMap<>();
     if (CollectionUtils.isEmpty(clusters)) {
@@ -2666,9 +2674,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 .stream()
                 .filter(n -> n.isActive() && n.isTserver)
                 .collect(Collectors.toSet());
+        // Ignore nodes
+        Set<AvailabilityZone> ignoredAzs = new HashSet<>();
         if (CollectionUtils.isNotEmpty(nodesToIgnore)) {
           nodes =
               nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
+          for (NodeDetails n : nodesToIgnore) {
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(n.azUuid);
+            ignoredAzs.add(az);
+          }
+        }
+        // Add new nodes
+        if (CollectionUtils.isNotEmpty(nodesToAdd)) {
+          nodes.addAll(nodesToAdd);
         }
         for (NodeDetails node : nodes) {
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
@@ -2682,13 +2700,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           String lbName = placementAZ.lbName;
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
           // Skip map creation if all nodes in entire Regions/AZs have been ignored
-          if (azNodes.containsKey(az)) {
+          if (!Strings.isNullOrEmpty(lbName) && azNodes.containsKey(az)) {
             LoadBalancerPlacement lbPlacement =
                 new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
             LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
             loadBalancerMap
                 .computeIfAbsent(lbPlacement, v -> lbConfig)
                 .addNodes(az, azNodes.get(az));
+          }
+        }
+        // Ensure removal of ignored nodes with PlacementAZs not in PlacementInfo
+        Map<ClusterAZ, String> existingLBs = taskParams.existingLBs;
+        if (MapUtils.isNotEmpty(existingLBs)) {
+          for (AvailabilityZone az : ignoredAzs) {
+            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
+            if (existingLBs.containsKey(clusterAZ)) {
+              String lbName = existingLBs.get(clusterAZ);
+              LoadBalancerPlacement lbPlacement =
+                  new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+              loadBalancerMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
+            }
           }
         }
       }
