@@ -58,6 +58,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
@@ -420,7 +421,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // key mismatch, or missing IDs)
   Status CreatePreparedChangeMetadata(
       ChangeMetadataOperation* operation,
-      const Schema* schema);
+      const Schema* schema,
+      IsLeaderSide is_leader_side);
 
   // Apply the Schema of the specified operation.
   Status AlterSchema(ChangeMetadataOperation* operation);

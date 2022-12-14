@@ -60,7 +60,7 @@ LWWritePB* RequestTraits<LWWritePB>::MutableRequest(consensus::LWReplicateMsg* r
   return replicate->mutable_write();
 }
 
-Status WriteOperation::Prepare() {
+Status WriteOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE_EVENT0("txn", "WriteOperation::Prepare");
   return Status::OK();
 }

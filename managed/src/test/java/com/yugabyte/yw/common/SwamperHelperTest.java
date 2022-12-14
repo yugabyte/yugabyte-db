@@ -107,7 +107,10 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
 
       ArrayNode targetsJson = (ArrayNode) Json.parse(sb.toString());
-      ArrayNode targetsExpectedJson = (ArrayNode) TestUtils.readResourceAsJson(expectedFile);
+      String expectedTargetsTemplate = TestUtils.readResource(expectedFile);
+      String expectedTargetsStr =
+          expectedTargetsTemplate.replaceAll("UNIVERSE_UUID", u.getUniverseUUID().toString());
+      ArrayNode targetsExpectedJson = (ArrayNode) Json.parse(expectedTargetsStr);
 
       List<JsonNode> targets = new ArrayList<>();
       List<JsonNode> expectedTargets = new ArrayList<>();
@@ -115,7 +118,11 @@ public class SwamperHelperTest extends FakeDBApplication {
       targetsExpectedJson.forEach(expectedTargets::add);
       assertThat(targets, containsInAnyOrder(expectedTargets.toArray()));
     } catch (Exception e) {
-      fail("Error occurred reading target json file: " + targetFilePath);
+      fail(
+          "Error occurred reading target json file: "
+              + targetFilePath
+              + ". Reason: "
+              + e.getMessage());
     }
   }
 

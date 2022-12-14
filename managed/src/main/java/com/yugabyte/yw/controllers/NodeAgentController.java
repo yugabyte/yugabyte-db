@@ -34,9 +34,12 @@ public class NodeAgentController extends AuthenticatedController {
     return PlatformResults.withData(nodeAgent);
   }
 
+  public Result list(UUID customerUuid, String nodeIp) {
+    return PlatformResults.withData(nodeAgentHandler.list(customerUuid, nodeIp));
+  }
+
   public Result get(UUID customerUuid, UUID nodeUuid) {
-    NodeAgent nodeAgent = nodeAgentHandler.get(customerUuid, nodeUuid);
-    return PlatformResults.withData(nodeAgent);
+    return PlatformResults.withData(nodeAgentHandler.get(customerUuid, nodeUuid));
   }
 
   public Result updateState(UUID customerUuid, UUID nodeUuid) {

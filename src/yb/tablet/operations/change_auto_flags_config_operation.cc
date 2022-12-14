@@ -32,7 +32,7 @@ LWAutoFlagsConfigPB* RequestTraits<LWAutoFlagsConfigPB>::MutableRequest(
   return replicate->mutable_auto_flags_config();
 }
 
-Status ChangeAutoFlagsConfigOperation::Prepare() {
+Status ChangeAutoFlagsConfigOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX_AND_FUNC(2);
   return Status::OK();
 }

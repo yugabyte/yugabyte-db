@@ -240,8 +240,7 @@ TableName GetColocatedDbParentTableName(const NamespaceId& database_id) {
 bool IsTablegroupParentTableId(const TableId& table_id) {
   return (table_id.find(kTablegroupParentTableIdSuffix) == 32 &&
       boost::algorithm::ends_with(table_id, kTablegroupParentTableIdSuffix)) ||
-      (table_id.find(kColocationParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kColocationParentTableIdSuffix));
+      IsColocatedDbTablegroupParentTableId(table_id);
 }
 
 TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id) {
@@ -257,6 +256,11 @@ TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
 TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
   DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
   return table_id.substr(0, 32);
+}
+
+bool IsColocatedDbTablegroupParentTableId(const TableId& table_id) {
+  return table_id.find(kColocationParentTableIdSuffix) == 32 &&
+      boost::algorithm::ends_with(table_id, kColocationParentTableIdSuffix);
 }
 
 TableId GetColocationParentTableId(const TablegroupId& tablegroup_id) {

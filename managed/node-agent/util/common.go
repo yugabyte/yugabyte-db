@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/user"
+	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
@@ -33,7 +35,7 @@ const (
 	NodeHomeDirectory       = "/home/yugabyte"
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
-	UpgradeScript           = "yb-node-agent.sh"
+	UpgradeScript           = "node-agent-installer.sh"
 	InstallScript           = "node-agent-installer.sh"
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -245,4 +247,28 @@ func IsDigits(str string) bool {
 		}
 	}
 	return true
+}
+
+// UserInfo returns the user, user ID and group ID for the user name.
+func UserInfo(username string) (*user.User, uint32, uint32, error) {
+	userAcc, err := user.Current()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if userAcc.Username != username {
+		var err error
+		userAcc, err = user.Lookup(username)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+	}
+	uid, err := strconv.Atoi(userAcc.Uid)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	gid, err := strconv.Atoi(userAcc.Gid)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return userAcc, uint32(uid), uint32(gid), nil
 }

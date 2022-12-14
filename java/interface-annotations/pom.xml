@@ -21,7 +21,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.35-SNAPSHOT</version>
+    <version>0.8.36-SNAPSHOT</version>
   </parent>
 
   <artifactId>interface-annotations</artifactId>
@@ -29,9 +29,9 @@
 
   <dependencies>
     <dependency>
-      <groupId>org.spf4j</groupId>
-      <artifactId>spf4j-jdiff-maven-plugin</artifactId>
-      <version>8.9.5</version>
+      <groupId>org.apache.yetus</groupId>
+      <artifactId>audience-annotations-jdiff</artifactId>
+      <version>0.13.0</version>
     </dependency>
   </dependencies>
 

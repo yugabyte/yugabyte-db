@@ -52,6 +52,7 @@ class RpcShellClient(object):
     """
 
     def __init__(self, options):
+        self.user = options.get("user", "")
         self.ip = options.get("ip")
         self.port = options.get("port")
         self.cert_path = options.get("cert_path")
@@ -92,13 +93,25 @@ class RpcShellClient(object):
         output = RpcShellOutput()
         try:
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            bash = kwargs.get('bash', False)
             if isinstance(cmd, str):
-                cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
+                if bash:
+                    cmd_args_list = ["/bin/bash", "-c", cmd]
+                else:
+                    cmd_args_list = shlex.split(to_native(cmd, errors='surrogate_or_strict'))
             else:
-                cmd_args_list = cmd
+                if bash:
+                    # Need to join with spaces, but surround arguments with spaces
+                    # using "'" character.
+                    cmd_str = ' '.join(
+                        list(map(lambda part: part if ' ' not in part else "'" + part + "'", cmd)))
+                    cmd_args_list = ["/bin/bash", "-c", cmd_str]
+                else:
+                    cmd_args_list = cmd
             stub = NodeAgentStub(self.channel)
             for response in stub.ExecuteCommand(
-                    ExecuteCommandRequest(command=cmd_args_list), timeout=timeout_sec):
+                    ExecuteCommandRequest(user=self.user, command=cmd_args_list),
+                    timeout=timeout_sec):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -112,15 +125,15 @@ class RpcShellClient(object):
             output.stderr = str(e)
         return output
 
-    def read_iterfile(self, in_path, out_path, chunk_size=1024):
+    def read_iterfile(self, user, in_path, out_path, chunk_size=1024):
         file_info = FileInfo()
         file_info.filename = out_path
-        yield UploadFileRequest(fileInfo=file_info)
+        yield UploadFileRequest(user=user, fileInfo=file_info)
         with open(in_path, mode='rb') as f:
             while True:
                 chunk = f.read(chunk_size)
                 if chunk:
-                    yield UploadFileRequest(chunkData=chunk)
+                    yield UploadFileRequest(user=user, chunkData=chunk)
                 else:
                     return
 
@@ -131,7 +144,8 @@ class RpcShellClient(object):
 
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         stub = NodeAgentStub(self.channel)
-        stub.UploadFile(self.read_iterfile(local_path, remote_path), timeout=timeout_sec)
+        stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path),
+                        timeout=timeout_sec)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -141,7 +155,7 @@ class RpcShellClient(object):
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         stub = NodeAgentStub(self.channel)
         for response in stub.DownloadFile(
-                DownloadFileRequest(filename=in_path), timeout=timeout_sec):
+                DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
 

@@ -1493,7 +1493,7 @@ class TabletBootstrap {
     }
 
     RETURN_NOT_OK(tablet_->CreatePreparedChangeMetadata(
-        &operation, request->has_schema() ? &schema : nullptr));
+        &operation, request->has_schema() ? &schema : nullptr, IsLeaderSide::kTrue));
 
     if (request->has_schema()) {
       // Apply the alter schema to the tablet.

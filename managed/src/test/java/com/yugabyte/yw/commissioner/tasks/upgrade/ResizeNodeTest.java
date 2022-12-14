@@ -579,9 +579,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                     .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
-    taskParams.clusters =
-        Collections.singletonList(
-            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getReadOnlyClusters().get(0).userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     taskParams.getReadOnlyClusters().get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getReadOnlyClusters().get(0).userIntent.providerType = Common.CloudType.aws;
