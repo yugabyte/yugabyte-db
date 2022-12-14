@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -21,11 +23,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
@@ -101,6 +104,15 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
             createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
+
+          // Remove node from load balancer.
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(
+                  universeDetails,
+                  ImmutableList.of(universeDetails.getClusterByUuid(currentNode.placementUuid)),
+                  ImmutableSet.of(currentNode),
+                  null));
 
           // Stop the tserver.
           createTServerTaskForNode(currentNode, "stop")

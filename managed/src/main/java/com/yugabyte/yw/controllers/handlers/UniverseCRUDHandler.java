@@ -10,9 +10,6 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
@@ -64,6 +61,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Status;
+
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -77,13 +82,9 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Http.Status;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class UniverseCRUDHandler {
 
@@ -697,6 +698,9 @@ public class UniverseCRUDHandler {
       taskParams.ybcSoftwareVersion = u.getUniverseDetails().ybcSoftwareVersion;
       taskParams.ybcInstalled = true;
     }
+
+    // Set existing LBs into taskParams
+    taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
     if (taskParams.getPrimaryCluster() == null) {
       // Update of a read only cluster.
