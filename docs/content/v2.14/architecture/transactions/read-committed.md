@@ -30,7 +30,7 @@ In addition to the two key requirements, there is an extra YSQL specific require
 * A client starts a distributed transaction by connecting to YSQL on some node N1 in the YugabyteDB cluster and issuing some statement which reads data from multiple shards on different physical YB-TServers in the cluster. For this, the read point, which defines the snapshot of the database at which the data will be read, is picked on some YB-TServer node M based on the current time of that YB-TServer. Depending on the scenario, node M could be the same as N1 or not, but that isn't relevant to this discussion. Consider T1 to be the chosen read time.
 * The node N1 might collect data from many shards on different physical YB-TServers. In this pursuit, it will issue requests to many other nodes to read data.
 * Assuming that node N1 reads from some node N2, it could be the case that there exists some data written on node N2 at time T2 (> T1) but was written before the read was issued. This can happen because of clock skew where the physical clock on node N2 might be running slightly ahead of node M, and hence the write which was actually done in the past, still has a timestamp higher than T1.
-* Note that the clock skew between all nodes in the cluster is always within a [`max_clock_skew`](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
+* Note that the clock skew between all nodes in the cluster is always within a [`max_clock_skew`](/preview/reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
 * For writes at some time higher than T1 + `max_clock_skew`, the database can be sure that they were done after the read timestamp was chosen on any node. But for writes at a time between T1 and T1 + `max_clock_skew`, node N2 can find itself in an ambiguous situation such as the following:
 
   * it should still return the data if the client issued the read after the data was committed, because it could be the same client connecting to YSQL from a different node and the following guarantee needs to be maintained: the database always returns data that was committed in the past.
@@ -99,7 +99,7 @@ insert into test values (2, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -112,7 +112,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -242,7 +242,7 @@ The other degenerate scenario that can occur differs in the output of the `UPDAT
    <td>
 
 ```sql
-update test set v=10 where k=2;    
+update test set v=10 where k=2;
 ```
 
 ```output
@@ -375,7 +375,7 @@ insert into test values (2, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -388,7 +388,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -523,7 +523,7 @@ insert into test values (1, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -536,7 +536,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -694,7 +694,7 @@ insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -707,7 +707,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -891,7 +891,7 @@ insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -904,7 +904,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1081,7 +1081,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1094,7 +1094,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1188,7 +1188,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1201,7 +1201,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1225,7 +1225,7 @@ UPDATE 1
    <td>
 
 ```sql
-insert into test values (2, 1) on conflict (k) do update set v=100;    
+insert into test values (2, 1) on conflict (k) do update set v=100;
 ```
 
 ```output
@@ -1313,7 +1313,7 @@ insert into test values (1, 1);
     <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
   </td>
@@ -1326,7 +1326,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1439,7 +1439,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1452,7 +1452,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1476,7 +1476,7 @@ UPDATE 1
    <td>
 
 ```sql
-insert into test values (1, 1) on conflict (k) do update set v=100;    
+insert into test values (1, 1) on conflict (k) do update set v=100;
 ```
 
 ```output

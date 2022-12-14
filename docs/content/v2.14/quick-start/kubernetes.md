@@ -133,12 +133,12 @@ To start YugabyteDB Helm chart, perform the following:
 - Validate the chart version, as follows:
 
     ```sh
-    helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+    helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.14" format="short">}}
     ```
 
     ```output
     NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-  yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+  yugabytedb/yugabyte  {{<yb-version version="v2.14" format="short">}}          {{<yb-version version="v2.14" format="build">}}  YugabyteDB is the high-performance distributed ...
   ```
 
 Now you are ready to create a local YugabyteDB cluster.
@@ -150,7 +150,7 @@ Create a YugabyteDB cluster in Minikube using the following commands. Note that 
 ```sh
 kubectl create namespace yb-demo
 helm install yb-demo yugabytedb/yugabyte \
---version {{<yb-version version="stable" format="short">}} \
+--version {{<yb-version version="v2.14" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
@@ -160,7 +160,7 @@ Since load balancers are not available in a Minikube environment, the LoadBalanc
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \
---version {{<yb-version version="stable" format="short">}} \
+--version {{<yb-version version="v2.14" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo

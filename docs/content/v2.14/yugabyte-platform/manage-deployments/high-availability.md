@@ -29,7 +29,7 @@ When you promote a standby instance to active, YugabyteDB Anywhere restores your
 
 Before configuring the high-availability cluster, ensure that you have the following:
 
-* YugabyteDB Anywhere versioin 2.5.3.1 or later.
+* YugabyteDB Anywhere version 2.5.3.1 or later.
 * [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the high-availability cluster.
 * YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere is typically reachable (port 80 and 443, for example).
 * All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. Note that it is generally recommended to upgrade all YugabyteDB Anywhere instances in the high-availability cluster at approximately the same time.
@@ -44,7 +44,7 @@ You can configure the active instance as follows:
 
     ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)<br><br>
 
-1. Enter the instance’s IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
+1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
 1. Click **Generate Key** and copy the shared key.
 
