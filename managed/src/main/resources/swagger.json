@@ -5021,6 +5021,27 @@
       "required" : [ "creatingUser", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
+    "NamespaceInfoResp" : {
+      "description" : "Namespace information response",
+      "properties" : {
+        "name" : {
+          "description" : "Namespace name",
+          "type" : "string"
+        },
+        "namespaceUUID" : {
+          "description" : "Namespace UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "tableType" : {
+          "description" : "Table type",
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "NodeActionFormData" : {
       "properties" : {
         "nodeAction" : {
@@ -15735,6 +15756,47 @@
         "tags" : [ "Backups", "Table management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/namespaces" : {
+      "get" : {
+        "description" : "Get a list of all namespaces in the specified universe",
+        "operationId" : "getAllNamespaces",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeSystemNamespaces",
+          "required" : false,
+          "type" : "boolean"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/NamespaceInfoResp"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all namespaces",
+        "tags" : [ "Table management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
       "post" : {
         "description" : "",
@@ -17560,7 +17622,7 @@
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc_throttle_params" : {
       "get" : {
         "description" : "",
-        "operationId" : "getThrottleparams",
+        "operationId" : "getThrottleParams",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
