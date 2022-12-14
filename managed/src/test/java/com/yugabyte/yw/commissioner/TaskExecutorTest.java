@@ -84,7 +84,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
           TaskType.StartNodeInUniverse,
-          TaskType.StopNodeInUniverse);
+          TaskType.StopNodeInUniverse,
+          TaskType.ResizeNode);
 
   @Override
   protected Application provideApplication() {

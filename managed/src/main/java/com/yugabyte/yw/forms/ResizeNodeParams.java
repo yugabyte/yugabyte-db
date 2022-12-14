@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -44,7 +45,12 @@ public class ResizeNodeParams extends UpgradeTaskParams {
 
   @Override
   public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+    verifyParams(universe, null);
+  }
+
+  @Override
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
+    super.verifyParams(universe, nodeState); // we call verifyParams which will fail
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new IllegalArgumentException(
@@ -71,7 +77,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       }
       hasClustersToResize = true;
     }
-    if (!hasClustersToResize) {
+    if (!hasClustersToResize && !forceResizeNode) {
       throw new IllegalArgumentException("No changes!");
     }
   }

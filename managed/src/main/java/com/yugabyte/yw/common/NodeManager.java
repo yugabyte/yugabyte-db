@@ -1747,6 +1747,9 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           break;
         }
       case Update_Mounted_Disks:
@@ -1778,7 +1781,9 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
-
+          if (taskParam.force) {
+            commandArgs.add("--force");
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }

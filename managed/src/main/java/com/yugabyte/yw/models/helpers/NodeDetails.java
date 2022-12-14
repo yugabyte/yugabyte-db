@@ -369,6 +369,14 @@ public class NodeDetails {
     return IN_TRANSIT_STATES.contains(state);
   }
 
+  @JsonIgnore
+  public boolean isInTransit(NodeState omittedState) {
+    if (omittedState != state) {
+      return isInTransit();
+    }
+    return false;
+  }
+
   // This is invoked to see if the node can be deleted from the universe JSON.
   @JsonIgnore
   public boolean isRemovable() {

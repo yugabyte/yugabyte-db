@@ -495,7 +495,11 @@ public class Universe extends Model {
    * @return true if there is any such node.
    */
   public boolean nodesInTransit() {
-    return getUniverseDetails().nodeDetailsSet.stream().anyMatch(NodeDetails::isInTransit);
+    return nodesInTransit(null);
+  }
+
+  public boolean nodesInTransit(NodeDetails.NodeState omittedState) {
+    return getNodes().stream().anyMatch(n -> n.isInTransit(omittedState));
   }
 
   public NodeDetails getNodeOrBadRequest(String nodeName) {
