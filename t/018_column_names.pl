@@ -67,7 +67,7 @@ my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
     "message,min_time,planid,query,query_plan,queryid,relations,resp_calls," .
     "rows_retrieved,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
     "shared_blks_written,sqlcode,stddev_time,temp_blks_read,temp_blks_written," .
-    "top_query,top_queryid,total_time,userid,wal_bytes,wal_fpi,wal_records"
+    "top_query,top_queryid,total_time,userid"
  );
 
 # Start server
