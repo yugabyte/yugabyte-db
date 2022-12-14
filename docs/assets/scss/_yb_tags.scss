@@ -1,0 +1,30 @@
+.metadata-tag-green,
+.metadata-tag-gray {
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 16px;
+  text-transform: uppercase;
+  height: 20px;
+  color: #4e5f6d;
+  background: #e9eef2;
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin: 0 6px;
+  border: 0 !important;
+}
+
+.metadata-tag-green {
+  background: #cdefe1;
+}
+
+a > {
+  .metadata-tag-green,
+  .metadata-tag-gray {
+    text-decoration: underline;
+    text-decoration-color: #e9eef2;
+
+    .metadata-tag-green {
+      text-decoration-color: #cdefe1;
+    }
+  }
+}
