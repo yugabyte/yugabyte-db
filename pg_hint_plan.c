@@ -498,7 +498,7 @@ void pg_hint_plan_join_search_one_level(PlannerInfo *root, int level);
 void pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 								   Index rti, RangeTblEntry *rte);
 static void create_plain_partial_paths(PlannerInfo *root,
-													RelOptInfo *rel);
+									   RelOptInfo *rel);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel,
 									  List *other_rels_list,
 									  ListCell *other_rels);
@@ -4897,8 +4897,6 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 										RelOptInfo *rel2, RelOptInfo *joinrel,
 										SpecialJoinInfo *sjinfo, List *restrictlist);
-static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-									Index rti, RangeTblEntry *rte);
 
 #define standard_join_search pg_hint_plan_standard_join_search
 #define join_search_one_level pg_hint_plan_join_search_one_level

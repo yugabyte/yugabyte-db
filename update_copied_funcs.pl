@@ -2,7 +2,7 @@
 
 use strict;
 
-my $srcpath;
+my $srcpath = "/home/ioltas/git/postgres/";
 my @sources = (
 	'src/backend/optimizer/path/allpaths.c',
 	'src/backend/optimizer/path/joinrels.c');
@@ -10,13 +10,6 @@ my %defs =
   ('core.c'
    => {protos => [],
 	   funcs => ['set_plain_rel_pathlist',
-	   			 'set_tablesample_rel_pathlist',
-	   			 'set_foreign_pathlist',
-	   			 'set_function_pathlist',
-	   			 'set_values_pathlist',
-	   			 'set_tablefunc_pathlist',
-	   			 'set_rel_pathlist',
-				 'set_append_rel_pathlist',
 				 'standard_join_search',
 				 'create_plain_partial_paths',
 				 'join_search_one_level',
@@ -35,7 +28,7 @@ my %defs =
 	   funcs => ['make_join_rel',
 				 'populate_joinrel_with_paths'],
 	   head => make_join_rel_head()});
-	
+
 open (my $in, '-|', "objdump -W `which postgres`") || die "failed to objdump";
 while (<$in>)
 {
@@ -152,13 +145,6 @@ sub core_c_head()
  *
  *	static functions:
  *	   set_plain_rel_pathlist()
- *	   set_tablesample_rel_pathlist()
- *	   set_foreign_pathlist()
- *	   set_function_pathlist()
- *	   set_values_pathlist()
- *	   set_tablefunc_pathlist()
- *	   set_rel_pathlist()
- *	   set_append_rel_pathlist()
  *	   create_plain_partial_paths()
  *
  * src/backend/optimizer/path/joinrels.c
@@ -245,7 +231,7 @@ adjust_rows(double rows, RowsHint *hint)
 }
 EOS
 }
-   
+
 
 sub patch_make_join_rel
 {
@@ -259,7 +245,7 @@ index 0e7b99f..287e7f1 100644
 @@ -126,6 +126,84 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
  	joinrel = build_join_rel(root, joinrelids, rel1, rel2, sjinfo,
  							 &restrictlist);
- 
+
 +	/* !!! START: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
 +	{
 +		RowsHint   *rows_hint = NULL;
@@ -330,10 +316,10 @@ index 0e7b99f..287e7f1 100644
 +				 */
 +				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
 +										   restrictlist);
-+				
++
 +				joinrel->rows = adjust_rows(joinrel->rows, domultiply);
 +			}
-+			
++
 +		}
 +	}
 +	/* !!! END: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
