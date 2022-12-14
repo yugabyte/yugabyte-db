@@ -46,7 +46,7 @@ body {
     }
   }
 
-  .secondary-btn {
+  .secondary-btn:not(.btn-priority) {
     height: 32px;
     border-radius: 8px;
     font-weight: 600;
@@ -93,7 +93,7 @@ body {
     }
   }
 
-  .tritiery-btn {
+  .tritiery-btn:not(.btn-priority) {
     height: 32px;
     border-radius: 8px;
     font-weight: 600;
