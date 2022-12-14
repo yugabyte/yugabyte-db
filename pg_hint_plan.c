@@ -1917,6 +1917,8 @@ get_hints_from_comment(const char *p)
 			 *   - underscores, for identifier
 			 *   - commas, for SELECT clause, EXPLAIN and PREPARE
 			 *   - parentheses, for EXPLAIN and PREPARE
+			 *   - squared brackets, for arrays (like arguments of PREPARE
+			 *     statements).
 			 *
 			 * Note that we don't use isalpha() nor isalnum() in ctype.h here to
 			 * avoid behavior which depends on locale setting.
@@ -1927,7 +1929,8 @@ get_hints_from_comment(const char *p)
 				!isspace(*p) &&
 				*p != '_' &&
 				*p != ',' &&
-				*p != '(' && *p != ')')
+				*p != '(' && *p != ')' &&
+				*p != '[' && *p != ']')
 				return NULL;
 		}
 	}

@@ -1255,3 +1255,11 @@ DEALLOCATE p1;
 DEALLOCATE p2;
 DEALLOCATE p3;
 DROP TABLE s1.tpc;
+
+--No.14-1-2 PREPARE query with array parameters
+PREPARE test_query(numeric[]) AS
+  /*+ MergeJoin(t1 t2) */ WITH test AS
+    (SELECT 1 AS x)
+  SELECT t1.* FROM test t1, test t2
+    WHERE t1.x = ANY($1) AND t1.x = t2.x;
+EXPLAIN EXECUTE test_query(array[1,2,3]);

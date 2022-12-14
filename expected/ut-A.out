@@ -4850,3 +4850,32 @@ DEALLOCATE p1;
 DEALLOCATE p2;
 DEALLOCATE p3;
 DROP TABLE s1.tpc;
+--No.14-1-2 PREPARE query with array parameters
+PREPARE test_query(numeric[]) AS
+  /*+ MergeJoin(t1 t2) */ WITH test AS
+    (SELECT 1 AS x)
+  SELECT t1.* FROM test t1, test t2
+    WHERE t1.x = ANY($1) AND t1.x = t2.x;
+EXPLAIN EXECUTE test_query(array[1,2,3]);
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge Join  (cost=0.08..0.10 rows=1 width=4)
+   Merge Cond: (t1.x = t2.x)
+   CTE test
+     ->  Result  (cost=0.00..0.01 rows=1 width=4)
+   ->  Sort  (cost=0.04..0.04 rows=1 width=4)
+         Sort Key: t1.x
+         ->  CTE Scan on test t1  (cost=0.00..0.03 rows=1 width=4)
+               Filter: ((x)::numeric = ANY ('{1,2,3}'::numeric[]))
+   ->  Sort  (cost=0.03..0.04 rows=1 width=4)
+         Sort Key: t2.x
+         ->  CTE Scan on test t2  (cost=0.00..0.02 rows=1 width=4)
+(11 rows)
+
