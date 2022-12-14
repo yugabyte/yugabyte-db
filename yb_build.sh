@@ -177,6 +177,10 @@ Build options:
   --skip-final-lto-link
     For LTO builds, skip the final linking step for server executables, which could take many
     minutes.
+  --cxx-test-filter-re, --cxx-test-filter-regex
+    Regular expression for filtering C++ tests to build. This regular expression is not anchored
+    on either end, so e.g. you can specify a substring of the test name. Use ^ or $ as needed.
+
 Linting options:
 
   --shellcheck
@@ -458,6 +462,8 @@ run_cxx_build() {
     log "Using cmake binary: $cmake_binary"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
+    local cmake_stdout_path=${BUILD_ROOT}/cmake_stdout.txt
+    local cmake_stderr_path=${BUILD_ROOT}/cmake_stderr.txt
     set +e
     (
       # Always disable remote build (running the compiler on a remote worker node) when running the
@@ -470,26 +476,51 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}" \
+        >"${cmake_stdout_path}" 2>"${cmake_stderr_path}"
     )
     local cmake_exit_code=$?
     set -e
     capture_sec_timestamp "cmake_end"
+
+    # Show the contents of special CMake output files before we show CMake output itself.
     if [[ ${cmake_exit_code} != 0 ]]; then
       log "CMake failed with exit code ${cmake_exit_code}."
       (
         find "${BUILD_ROOT}" -name "CMake*.log" | while read -r cmake_log_path; do
           echo
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo "Contents of ${cmake_log_path}:"
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo
           cat "${cmake_log_path}"
           echo
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo
         done
       ) >&2
+    fi
+
+    if [[ -s ${cmake_stdout_path} ]]; then
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        # Only mark CMake standard output as such in case of an error. Otherwise, just pass it
+        # through.
+        echo "CMake standard output (also saved to ${cmake_stdout_path}):"
+        echo
+      fi
+      cat "${cmake_stdout_path}"
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        echo
+      fi
+    fi
+    if [[ -s ${cmake_stderr_path} ]]; then
+      echo "CMake standard error (also saved to ${cmake_stderr_path}):" >&2
+      echo >&2
+      cat "${cmake_stderr_path}" >&2
+      echo >&2
+    fi
+
+    if [[ ${cmake_exit_code} != 0 ]]; then
       fatal "CMake failed with exit code ${cmake_exit_code}. See additional logging above."
     fi
   fi
@@ -724,6 +755,12 @@ enable_clangd_index_build() {
   export YB_EXPORT_COMPILE_COMMANDS=1
 }
 
+set_cxx_test_filter_regex() {
+  expect_num_args 1 "$@"
+  force_run_cmake=true
+  cmake_opts+=( "-DYB_TEST_FILTER_RE=$1" )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -798,6 +835,9 @@ if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then
 fi
 
 export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
+cxx_test_filter_regex=""
+reset_cxx_test_filter=false
 
 yb_build_args=( "$@" )
 
@@ -1267,6 +1307,13 @@ while [[ $# -gt 0 ]]; do
     --skip-final-lto-link)
       export YB_SKIP_FINAL_LTO_LINK=1
     ;;
+    --cxx-test-filter-re|--cxx-test-filter-regex)
+      cxx_test_filter_regex=$2
+      shift
+    ;;
+    --reset-cxx-test-filter)
+      reset_cxx_test_filter=true
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -1334,6 +1381,16 @@ if [[ -n ${build_tests} ]]; then
   else
     cmake_opts+=( -DYB_BUILD_TESTS=OFF )
   fi
+fi
+
+if [[ -n ${cxx_test_filter_regex} ]]; then
+  if [[ ${reset_cxx_test_filter} == "true" ]]; then
+    fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"
+  fi
+  set_cxx_test_filter_regex "${cxx_test_filter_regex}"
+fi
+if [[ ${reset_cxx_test_filter} == "true" ]]; then
+  set_cxx_test_filter_regex ""
 fi
 
 log "YugabyteDB build is running on host '$HOSTNAME'"
