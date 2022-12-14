@@ -1577,27 +1577,54 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
         case AGTV_NULL:
             return 0;
         case AGTV_STRING:
-            return varstr_cmp(a->val.string.val, a->val.string.len,
-                              b->val.string.val, b->val.string.len,
-                              DEFAULT_COLLATION_OID);
+        {
+            /* varstr_cmp isn't guaranteed to return 1, 0, -1 */
+            int result = varstr_cmp(a->val.string.val, a->val.string.len,
+                                    b->val.string.val, b->val.string.len,
+                                    DEFAULT_COLLATION_OID);
+            if (result > 0)
+            {
+                return 1;
+            }
+            else if (result < 0)
+            {
+                return -1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
         case AGTV_NUMERIC:
             return DatumGetInt32(DirectFunctionCall2(
                 numeric_cmp, PointerGetDatum(a->val.numeric),
                 PointerGetDatum(b->val.numeric)));
         case AGTV_BOOL:
             if (a->val.boolean == b->val.boolean)
+            {
                 return 0;
+            }
             else if (a->val.boolean > b->val.boolean)
+            {
                 return 1;
+            }
             else
+            {
                 return -1;
+            }
         case AGTV_INTEGER:
             if (a->val.int_value == b->val.int_value)
+            {
                 return 0;
+            }
             else if (a->val.int_value > b->val.int_value)
+            {
                 return 1;
+            }
             else
+            {
                 return -1;
+            }
         case AGTV_FLOAT:
             return compare_two_floats_orderability(a->val.float_value,
                                                    b->val.float_value);
@@ -1614,11 +1641,17 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
             b_graphid = b_id->val.int_value;
 
             if (a_graphid == b_graphid)
+            {
                 return 0;
+            }
             else if (a_graphid > b_graphid)
+            {
                 return 1;
+            }
             else
+            {
                 return -1;
+            }
         }
         case AGTV_PATH:
         {
@@ -1638,7 +1671,9 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
                 res = compare_agtype_scalar_values(&a_elem, &b_elem);
 
                 if (res)
+                {
                     return res;
+                }
             }
 
             return 0;
@@ -1650,12 +1685,16 @@ int compare_agtype_scalar_values(agtype_value *a, agtype_value *b)
     }
     /* check for integer compared to float */
     if (a->type == AGTV_INTEGER && b->type == AGTV_FLOAT)
+    {
         return compare_two_floats_orderability((float8)a->val.int_value,
                                                b->val.float_value);
+    }
     /* check for float compared to integer */
     if (a->type == AGTV_FLOAT && b->type == AGTV_INTEGER)
+    {
         return compare_two_floats_orderability(a->val.float_value,
                                                (float8)b->val.int_value);
+    }
     /* check for integer or float compared to numeric */
     if (is_numeric_result(a, b))
     {
