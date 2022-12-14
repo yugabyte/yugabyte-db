@@ -82,12 +82,12 @@ public class PitrController extends AuthenticatedController {
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config retention period can't be less than 1 second");
+          BAD_REQUEST, "PITR Config retention period cannot be less than 1 second");
     }
 
     if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "PITR Config interval can't be less than retention period");
+          BAD_REQUEST, "PITR Config interval cannot be less than retention period");
     }
 
     TableType type = BackupUtil.API_TYPE_TO_TABLE_TYPE_MAP.get(ApiType.valueOf(tableType));
