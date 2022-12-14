@@ -477,7 +477,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/stable/quick-start/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   [stable.params]
     showSection = true
     hideChildren = true
@@ -641,7 +641,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/preview/quick-start/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   ["v2.14".params]
     showSection = true
     hideChildren = true
