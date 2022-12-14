@@ -16,19 +16,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li class="active">
-    <a href="../install-yb-voyager/macos/" class="nav-link">
+    <a href="../macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="../install-yb-voyager/linux/" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="../install-yb-voyager/ubuntu/" class="nav-link">
+    <a href="../ubuntu/" class="nav-link">
       <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
       Ubuntu
     </a>
