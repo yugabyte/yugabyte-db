@@ -29,13 +29,13 @@ Prepare your source database by creating a new database user, and provide it wit
     </a>
   </li>
   <li>
-    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="false">
+    <a href="#mysql" class="nav-link" id="mysql-tab" data-toggle="tab" role="tab" aria-controls="mysql" aria-selected="true">
       <i class="icon-mysql" aria-hidden="true"></i>
       MySQL
     </a>
   </li>
   <li>
-    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="false">
+    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>

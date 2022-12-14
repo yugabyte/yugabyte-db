@@ -13,28 +13,6 @@ menu:
 type: docs
 ---
 
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li class="active">
-    <a href="../macos/" class="nav-link">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
-  <li>
-    <a href="../linux/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      Linux
-    </a>
-  </li>
-  <li>
-    <a href="../ubuntu/" class="nav-link">
-      <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
-      Ubuntu
-    </a>
-  </li>
-</ul>
-
 ## Prerequisites
 
 The following sections describe the prerequisites for installing YugabyteDB Voyager.
@@ -82,36 +60,74 @@ The export directory has the following sub-directories and files:
 
 ## Install yb-voyager
 
+
+<!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../macos/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../ubuntu/" class="nav-link">
+      <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
+      Ubuntu
+    </a>
+  </li>
+</ul> -->
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab" role="tab" aria-controls="linux" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="#ubuntu" class="nav-link" id="ubuntu-tab" data-toggle="tab" role="tab" aria-controls="ubuntu" aria-selected="true">
+      <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
+      Ubuntu
+    </a>
+  </li>
+  <li>
+    <a href="#airgapped" class="nav-link" id="airgapped-tab" data-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
+      <i class="fa-solid fa-link-slash" aria-hidden="true"></i>
+      Airgapped
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
+  {{% includeMarkdown "./macos.md" %}}
+  </div>
+  <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
+  {{% includeMarkdown "./linux.md" %}}
+  </div>
+  <div id="ubuntu" class="tab-pane fade" role="tabpanel" aria-labelledby="ubuntu-tab">
+  {{% includeMarkdown "./ubuntu.md" %}}
+  </div>
+  <div id="airgapped" class="tab-pane fade" role="tabpanel" aria-labelledby="airgapped-tab">
+  {{% includeMarkdown "./airgapped.md" %}}
+  </div>
+</div>
+
 YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the [*export directory*](#create-an-export-directory).
 <!-- For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory). -->
 
 To install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites), do the following:
-
-- Clone the yb-voyager repository.
-
-  ```sh
-  git clone https://github.com/yugabyte/yb-voyager.git
-  ```
-
-- Change the directory to `yb-voyager/installer_scripts`.
-
-  ```sh
-  cd yb-voyager/installer_scripts
-  ```
-
-- Install yb-voyager using the following script:
-
-  ```sh
-  ./install-yb-voyager
-  ```
-
-  It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
-
-- The script generates a `.yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
-
-  ```sh
-  source ~/.yb-voyager.rc
-  ```
 
 - Check that yb-voyager is installed using the following command:
 

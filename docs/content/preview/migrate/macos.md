@@ -1,14 +1,16 @@
----
-title: Install
-headerTitle: Install
-linkTitle: Install
-description: Explore the prerequisites, YugabyteDB Voyager installation, and so on.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-image: /images/section_icons/develop/learn.png
-menu:
-  preview:
-    identifier: install-yb-voyager-macos
-    parent: voyager
-    weight: 101
-type: docs
----
+
+Perform the following steps to install yb-voyager using brew for MacOS:
+
+1. [Tap](https://docs.brew.sh/Taps) to the `yugabyte` brew repository using the following command:
+
+    ```sh
+    brew tap yugabyte/yugabytedb
+    ```
+
+    The repository contains the formula to build and install `yb-voyager` on your MacOS device.
+
+2. Install `yb-voyager` and its dependencies using the following command:
+
+    ```sh
+    brew install yb-voyager
+    ```
