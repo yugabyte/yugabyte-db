@@ -204,8 +204,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
-  "io.grpc" % "grpc-testing" % "1.48.0" % Test,
-  "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "io.grpc" % "grpc-testing" % "1.48.0" % Test
 )
 // Clear default resolvers.
 appResolvers := None
@@ -428,7 +427,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b11"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.36-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b11"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b2"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
