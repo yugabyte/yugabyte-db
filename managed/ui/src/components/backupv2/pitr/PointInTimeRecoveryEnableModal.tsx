@@ -11,16 +11,14 @@ import React, { FC } from 'react';
 import * as Yup from 'yup';
 import { Field, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
-import { uniqBy } from 'lodash';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { createPITRConfig } from '../common/PitrAPI';
+import { createPITRConfig, getNameSpaces } from '../common/PitrAPI';
 import './PointInTimeRecoveryEnableModal.scss';
 
 interface PointInTimeRecoveryEnableModalProps {
@@ -56,9 +54,9 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
 }) => {
   const queryClient = useQueryClient();
 
-  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
-    [universeUUID, 'tables'],
-    () => fetchTablesInUniverse(universeUUID!),
+  const { data: nameSpaces, isLoading } = useQuery(
+    [universeUUID, 'namespaces'],
+    () => getNameSpaces(universeUUID),
     {
       enabled: visible
     }
@@ -106,7 +104,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
 
   if (!visible) return null;
 
-  if (isTableListLoading) return <YBLoading />;
+  if (isLoading) return <YBLoading />;
 
   return (
     <YBModalForm
@@ -120,16 +118,13 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
       initialValues={initialValues}
       validationSchema={validationSchema}
       render={({ values, setFieldValue, errors }: FormikProps<Form_Values>) => {
-        const tablesByAPI = tablesInUniverse?.data.filter(
+        const nameSpacesByAPI = nameSpaces?.filter(
           (t: any) => t.tableType === values['api_type'].value
         );
-
-        const uniqueKeyspaces = uniqBy(tablesByAPI, 'keySpace').map((t: any) => {
-          return {
-            label: t.keySpace,
-            value: t.keySpace
-          };
-        });
+        const nameSpacesList = nameSpacesByAPI.map((nameSpace: any) => ({
+          label: nameSpace.name,
+          value: nameSpace.name
+        }));
 
         return (
           <>
@@ -158,7 +153,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                   name="database"
                   component={YBFormSelect}
                   label="Select the Database you want to enable point-in-time recovery for"
-                  options={uniqueKeyspaces}
+                  options={nameSpacesList}
                   onChange={(_: any, val: any) => {
                     setFieldValue('database', val);
                   }}
