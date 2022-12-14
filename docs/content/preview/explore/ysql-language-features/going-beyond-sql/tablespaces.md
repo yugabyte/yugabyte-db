@@ -14,7 +14,7 @@ aliases:
 type: docs
 ---
 
-YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed database. In PostgreSQL, tablespaces allow administrators to specify where on a disk specific tables and indexes should reside based on how users want to store and access the data. Control over data placement enables fine-grained performance tuning, for example, by placing heavily accessed smaller tables and indexes in SSD.
+YugabyteDB extends the concept of PostgreSQL tablespaces for a distributed database. In PostgreSQL, tablespaces allow administrators to specify where on a disk specific tables and indexes should reside based on how users want to store and access the data. This control over data placement enables fine-grained performance tuning. You can, for example, place heavily accessed smaller tables and indexes in SSDs.
 
 YSQL tablespaces re-purpose this concept for a geo-distributed deployment by allowing you to specify the number of replicas for a table or index, and how they can be distributed across a set of clouds, regions, and zones. Replicating and pinning tables in specific regions can lower read latency, improve resilience, and achieve compliance with data residency laws. For example, you can create duplicate indexes on the same column of a table and place these indexes close to users in different regions for fast access. Similarly, you can partition a master table and associate the partitions with different tablespaces to pin the data geographically.
 
