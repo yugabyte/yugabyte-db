@@ -18,6 +18,7 @@ In addition, **if you are using YugabyteDB Managed**, you need the following to 
 
 - The cluster CA certificate
 - Your computer added to the cluster IP allow list
+- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address (this doesn't apply if you are using a Sandbox cluster)
 
 {{< note title="Note" >}}
 
@@ -26,6 +27,8 @@ To take advantage of smart driver load balancing features when connecting to clu
 For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically.
 
 {{< /note >}}
+
+For more information on connecting applications in YugabyteDB Managed, refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 ## Download your cluster certificate
 
@@ -53,3 +56,7 @@ To add your computer to the cluster IP allow list:
 1. Click **Save**.
 
 The allow list takes up to 30 seconds to become active.
+
+## Enable Public Access
+
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If your cluster is in a VPC and you are connecting from a public IP address (such as your computer), enable Public Access on the cluster **Settings** tab.
