@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -267,6 +268,11 @@ public class CustomerTaskController extends AuthenticatedController {
         // Reset the error string.
         params.setErrorString(null);
         taskParams = params;
+        break;
+      case ResizeNode:
+        ResizeNodeParams resizeNodeParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
+        resizeNodeParams.setErrorString(null);
+        taskParams = resizeNodeParams;
         break;
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:

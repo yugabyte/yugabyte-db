@@ -100,9 +100,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   private static final List<TaskType> RESIZE_VOLUME_SEQ =
       ImmutableList.of(TaskType.InstanceActions);
 
-  private static final List<TaskType> UPDATE_INSTANCE_TYPE_SEQ =
-      ImmutableList.of(TaskType.ChangeInstanceType, TaskType.UpdateNodeDetails);
-
   @InjectMocks private ResizeNode resizeNode;
 
   @Override
@@ -963,11 +960,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean waitForMasterLeader,
       boolean isRf1) {
     List<TaskType> nodeUpgradeTasks = new ArrayList<>();
-    if (increaseVolume) {
-      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
-    }
     if (changeInstance) {
       nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
+    }
+    if (increaseVolume) {
+      nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
     }
     List<UniverseTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
