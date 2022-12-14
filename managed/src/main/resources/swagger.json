@@ -6,12 +6,14 @@
       "properties" : {
         "creationDate" : {
           "description" : "Creation date of key",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
         },
         "expirationDate" : {
           "description" : "Expiration date of key",
+          "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
         },
