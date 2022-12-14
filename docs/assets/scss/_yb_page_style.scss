@@ -55,7 +55,8 @@ body.yb-page-style {
       }
     }
 
-    &.bottom-right-image {
+    &.bottom-right-image,
+    &.top-icon-image {
       ul {
         li {
           p:last-child {
@@ -132,6 +133,57 @@ body.yb-page-style {
               background: #f2f6ff;
               border: 1px solid #cddbff;
               box-shadow: 0 0 0 1px #cddbff;
+            }
+          }
+        }
+      }
+    }
+
+    &.top-icon-image {
+      ul {
+        li {
+          padding-top: 80px;
+
+          p:last-child {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            img {
+              margin: 0;
+              border: none;
+              max-width: 100%;
+            }
+          }
+
+          p {
+            max-width: inherit;
+          }
+        }
+      }
+
+      &.width-half {
+        ul {
+          li {
+            p:nth-child(1) {
+              margin: 0 0 24px;
+            }
+          }
+        }
+      }
+
+      &.width-third {
+        ul {
+          li {
+            padding-top: 72px;
+
+            p:nth-child(1) {
+              margin: 0 0 16px;
             }
           }
         }
