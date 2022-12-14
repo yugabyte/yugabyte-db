@@ -375,12 +375,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
-
-    if (!removeMasters.isEmpty() || !newMasters.isEmpty()) {
-      // Update placement info on master leader.
-      createPlacementInfoTask(null /* additional blacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-    }
+    // Update placement info on master leader.
+    createPlacementInfoTask(null /* additional blacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!newTservers.isEmpty()
         || !newMasters.isEmpty()
@@ -411,10 +408,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     createManageLoadBalancerTasks(
         createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null));
 
-    if (cluster.clusterType == ClusterType.PRIMARY
-        && PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
-            cluster.placementInfo)) {
+    if (cluster.clusterType == ClusterType.PRIMARY) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
