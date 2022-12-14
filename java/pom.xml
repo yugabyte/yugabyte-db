@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.36-SNAPSHOT</version>
+  <version>0.8.37-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>YugaByte</name>
@@ -354,7 +354,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.36-SNAPSHOT</version>
+        <version>0.8.37-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -525,7 +525,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.36-SNAPSHOT</version>
+        <version>0.8.37-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>
