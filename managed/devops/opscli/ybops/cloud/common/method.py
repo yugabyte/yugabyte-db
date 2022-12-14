@@ -884,6 +884,11 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(UpdateDiskMethod, self).__init__(base_command, "disk_update")
 
+    def add_extra_args(self):
+        super(UpdateDiskMethod, self).add_extra_args()
+        self.parser.add_argument("--force", action="store_true",
+                                 default=False, help="Force disk update.")
+
     def prepare(self):
         super(UpdateDiskMethod, self).prepare()
 
@@ -936,6 +941,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                                  help="Max memory for postgress process.")
         self.parser.add_argument("--air_gap", action="store_true",
                                  default=False, help="Run airgapped install.")
+        self.parser.add_argument("--force", action="store_true",
+                                 default=False, help="Force instance type change.")
 
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
@@ -962,24 +969,28 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                                     " using --instance_type argument.")
 
     def _resize_instance(self, args, host_info):
-        if args.instance_type != host_info['instance_type']:
-            logging.info("Stopping instance {}".format(args.search_pattern))
-            self.cloud.stop_instance(host_info)
+        try:
+            if args.instance_type != host_info['instance_type'] or args.force:
+                logging.info("Stopping instance {}".format(args.search_pattern))
+                self.cloud.stop_instance(host_info)
 
-            logging.info('Instance {} is stopped'.format(args.search_pattern))
+                logging.info('Instance {} is stopped'.format(args.search_pattern))
 
-            try:
                 # Change instance type
                 self._change_instance_type(args, host_info)
-                logging.info('Instance {}\'s type changed to {}'
-                             .format(args.search_pattern, args.instance_type))
-            except Exception as e:
-                raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
-                                        .format(repr(e)))
-            finally:
-                self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
-                logging.info('Instance {} is started'.format(args.search_pattern))
-
+                logging.info(
+                    "Instance %s\'s type changed to %s",
+                    args.search_pattern, args.instance_type)
+            else:
+                logging.info(
+                    "Instance %s\'s type has not changed from %s. Skipping.",
+                    args.search_pattern, args.instance_type)
+        except Exception as e:
+            raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
+                                    .format(repr(e)))
+        finally:
+            self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
+            logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
         self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
@@ -1423,6 +1434,13 @@ class ControlInstanceMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Instance: {} is of type {}, not {}, cannot configure".format(
                 args.search_pattern, host_info['server_type'],
                 self.YB_SERVER_TYPE))
+
+        # Skip if instance is not running.
+        if not host_info.get("is_running", True):
+            logging.info(
+                "Skipping ctl command %s for process: %s due to node not in running state",
+                self.name, self.base_command.name)
+            return
 
         logging.info("Running ctl command {} for process: {} in instance: {}".format(
             self.name, self.base_command.name, args.search_pattern))
