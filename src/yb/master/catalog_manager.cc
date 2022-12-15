@@ -2508,12 +2508,12 @@ Status CatalogManager::DoRefreshTablespaceInfo() {
 }
 
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
+                                           CowWriteLock<PersistentTableInfo>* l_ptr,
                                            const IndexInfoPB& index_info,
                                            CreateTableResponsePB* resp) {
   LOG(INFO) << "AddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
             << yb::ToString(index_info);
-  TRACE("Locking indexed table");
-  auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
+  auto& l = *l_ptr;
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Make sure that the index appears to not have been added to the table until the tservers apply
@@ -3601,6 +3601,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, find the table info
   scoped_refptr<TableInfo> indexed_table;
+  CowWriteLock<PersistentTableInfo> indexed_table_write_lock;
   if (IsIndex(req)) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
@@ -3981,6 +3982,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                    tablet->id()));
         tablets.push_back(tablet.get());
 
+        // If the request is to create a colocated index, need to aquired the write lock on the
+        // indexed table before acquiring the write lock on the colocated tablet below to prevent
+        // deadlock because a colocated index and its colocated indexed table share the same
+        // colocated tablet.
+        if (IsIndex(req)) {
+          TRACE("Locking indexed table");
+          indexed_table_write_lock = indexed_table->LockForWrite();
+        }
+
         tablet->mutable_metadata()->StartMutation();
         tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
 
@@ -4074,7 +4084,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
       }
     }
-    s = AddIndexInfoToTable(indexed_table, index_info, resp);
+    if (!indexed_table->colocated()) {
+      TRACE("Locking indexed table");
+      indexed_table_write_lock = indexed_table->LockForWrite();
+    }
+    s = AddIndexInfoToTable(indexed_table, &indexed_table_write_lock, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(
           table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting index info"),
