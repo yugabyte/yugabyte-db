@@ -23,7 +23,7 @@ You can install YugabyteDB Voyager on the following:
 
 - RHEL 7/8
 - CentOS 7/8
-- Ubuntu 18.04, 20.04. 22.04
+- Ubuntu 18.04, 20.04, 22.04
 - MacOS (currently supported only for PostgreSQL source database)
 
 ### Hardware requirements
