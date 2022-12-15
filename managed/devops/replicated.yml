@@ -415,8 +415,6 @@ components:
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/ybc/releases'
             container_path: /opt/yugabyte/ybc/releases
-          - host_path: '{{repl ConfigOption "storage_path"}}/node-agent/releases'
-            container_path: /opt/yugabyte/node-agent/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
